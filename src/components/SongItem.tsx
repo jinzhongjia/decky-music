@@ -23,9 +23,12 @@ export const SongItem: FC<SongItemProps> = ({
   isPlaying = false,
   onClick 
 }) => {
+  const handleClick = () => onClick(song);
+  
   return (
     <Focusable
-      onClick={() => onClick(song)}
+      onActivate={handleClick}
+      onClick={handleClick}
       style={{
         display: 'flex',
         alignItems: 'center',

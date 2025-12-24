@@ -379,20 +379,43 @@ class Plugin:
     # ==================== 播放相关 API ====================
 
     async def get_song_url(self, mid: str) -> dict[str, Any]:
-        """获取歌曲播放链接"""
-        try:
-            urls = await song.get_song_urls(mid=[mid], file_type=song.SongFileType.MP3_128, credential=self.credential)
-
-            url = urls.get(mid, "")
-
-            if not url:
-                decky.logger.warning(f"无法获取歌曲 {mid} 的播放链接")
-
-            return {"success": bool(url), "url": url, "mid": mid}
-
-        except Exception as e:
-            decky.logger.error(f"获取播放链接失败: {e}")
-            return {"success": False, "error": str(e), "url": ""}
+        """获取歌曲播放链接，自动尝试多种音质"""
+        # 按优先级尝试不同音质
+        file_types = [
+            song.SongFileType.MP3_320,  # 320kbps MP3 (VIP)
+            song.SongFileType.MP3_128,  # 128kbps MP3
+            song.SongFileType.OGG_192,  # 192kbps OGG
+            song.SongFileType.ACC_192,  # 192kbps AAC
+            song.SongFileType.ACC_96,   # 96kbps AAC
+        ]
+        
+        last_error = ""
+        for file_type in file_types:
+            try:
+                urls = await song.get_song_urls(
+                    mid=[mid], 
+                    file_type=file_type, 
+                    credential=self.credential
+                )
+                url = urls.get(mid, "")
+                
+                if url:
+                    decky.logger.info(f"获取歌曲 {mid} 播放链接成功，音质: {file_type.name}")
+                    return {"success": True, "url": url, "mid": mid, "quality": file_type.name}
+                    
+            except Exception as e:
+                last_error = str(e)
+                decky.logger.debug(f"尝试 {file_type.name} 失败: {e}")
+                continue
+        
+        # 所有音质都失败
+        decky.logger.warning(f"无法获取歌曲 {mid} 的播放链接，可能需要VIP或歌曲不可用")
+        return {
+            "success": False, 
+            "url": "", 
+            "mid": mid,
+            "error": "该歌曲暂时无法播放，可能需要VIP权限或歌曲版权限制"
+        }
 
     async def get_song_urls_batch(self, mids: list[str]) -> dict[str, Any]:
         """批量获取歌曲播放链接"""

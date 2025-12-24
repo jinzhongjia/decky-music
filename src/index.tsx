@@ -218,6 +218,8 @@ function Content() {
           onTogglePlay={player.togglePlay}
           onSeek={player.seek}
           onClick={handleGoToPlayer}
+          onNext={player.playlist.length > 1 ? player.playNext : undefined}
+          onPrev={player.playlist.length > 1 ? player.playPrev : undefined}
         />
       )}
     </div>
