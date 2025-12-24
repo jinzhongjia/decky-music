@@ -26,7 +26,7 @@ mkdir -p out
 
 # 使用 Docker 构建
 echo "🐳 使用 Docker 构建..."
-DOCKER_BUILDKIT=1 docker build --output type=local,dest=out .
+DOCKER_BUILDKIT=1 sudo docker build --output type=local,dest=out .
 
 echo ""
 echo "✅ 构建完成!"

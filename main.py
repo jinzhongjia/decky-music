@@ -380,41 +380,128 @@ class Plugin:
 
     async def get_song_url(self, mid: str) -> dict[str, Any]:
         """获取歌曲播放链接，自动尝试多种音质"""
+        # 检查凭证状态
+        has_credential = self.credential is not None and self.credential.has_musicid()
+        if self.credential:
+            # 输出凭证的所有关键字段
+            cred_info = {
+                "musicid": self.credential.musicid,
+                "musickey_len": len(self.credential.musickey or ''),
+                "openid_len": len(getattr(self.credential, 'openid', '') or ''),
+                "access_token_len": len(getattr(self.credential, 'access_token', '') or ''),
+                "refresh_token_len": len(getattr(self.credential, 'refresh_token', '') or ''),
+                "refresh_key_len": len(getattr(self.credential, 'refresh_key', '') or ''),
+                "login_type": getattr(self.credential, 'login_type', None),
+                "encrypt_uin_len": len(self.credential.encrypt_uin or ''),
+                "has_musickey": self.credential.has_musickey(),
+            }
+            decky.logger.info(f"获取歌曲 {mid}，凭证详情: {cred_info}")
+        else:
+            decky.logger.info(f"获取歌曲 {mid}，凭证为空!")
+        
+        if has_credential:
+            # 检查凭证是否过期
+            try:
+                is_expired = await self.credential.is_expired()
+                if is_expired:
+                    decky.logger.warning("凭证已过期，尝试刷新...")
+                    if await self.credential.can_refresh():
+                        refreshed = await self.credential.refresh()
+                        if refreshed:
+                            self._save_credential()
+                            decky.logger.info("凭证刷新成功")
+                        else:
+                            decky.logger.warning("凭证刷新失败")
+            except Exception as e:
+                decky.logger.warning(f"检查凭证状态失败: {e}")
+        
         # 按优先级尝试不同音质
+        # VIP 用户优先尝试高音质
         file_types = [
             song.SongFileType.MP3_320,  # 320kbps MP3 (VIP)
-            song.SongFileType.MP3_128,  # 128kbps MP3
             song.SongFileType.OGG_192,  # 192kbps OGG
+            song.SongFileType.MP3_128,  # 128kbps MP3
             song.SongFileType.ACC_192,  # 192kbps AAC
             song.SongFileType.ACC_96,   # 96kbps AAC
+            song.SongFileType.ACC_48,   # 48kbps AAC (最低质量，试听)
         ]
         
         last_error = ""
+        all_results = []  # 记录所有尝试的结果
+        
         for file_type in file_types:
             try:
+                decky.logger.info(f"尝试获取 {mid} 音质: {file_type.name}")
                 urls = await song.get_song_urls(
                     mid=[mid], 
                     file_type=file_type, 
                     credential=self.credential
                 )
+                
+                # 详细记录返回结果
                 url = urls.get(mid, "")
+                url_preview = url[:80] + "..." if url and len(url) > 80 else url
+                decky.logger.info(f"API 返回: URL: {url_preview or '(空)'}")
+                
+                # 如果是空的，记录完整的返回内容用于调试
+                if not url:
+                    decky.logger.debug(f"完整返回: {urls}")
+                all_results.append(f"{file_type.name}: {'有URL' if url else '空'}")
                 
                 if url:
-                    decky.logger.info(f"获取歌曲 {mid} 播放链接成功，音质: {file_type.name}")
+                    decky.logger.info(f"✅ 获取歌曲 {mid} 成功，音质: {file_type.name}, URL长度: {len(url)}")
                     return {"success": True, "url": url, "mid": mid, "quality": file_type.name}
+                else:
+                    decky.logger.info(f"❌ 音质 {file_type.name} 返回空 URL")
                     
             except Exception as e:
                 last_error = str(e)
-                decky.logger.debug(f"尝试 {file_type.name} 失败: {e}")
+                all_results.append(f"{file_type.name}: 异常-{str(e)[:50]}")
+                decky.logger.warning(f"❌ 尝试 {file_type.name} 异常: {e}")
                 continue
         
-        # 所有音质都失败
-        decky.logger.warning(f"无法获取歌曲 {mid} 的播放链接，可能需要VIP或歌曲不可用")
+        # 输出所有尝试结果
+        decky.logger.warning(f"所有音质尝试结果: {all_results}")
+        
+        # 尝试获取试听链接作为备用
+        decky.logger.info(f"尝试获取试听链接...")
+        try:
+            # 获取歌曲详情以获取 vs 字段
+            detail = await song.get_detail(mid)
+            track_info = detail.get("track_info", {})
+            vs_list = track_info.get("vs", [])
+            file_info = track_info.get("file", {})
+            size_try = file_info.get("size_try", 0)
+            
+            if vs_list and size_try > 0:
+                try_url = await song.get_try_url(mid, vs_list[0])
+                if try_url:
+                    decky.logger.info(f"✅ 获取试听链接成功，长度: {len(try_url)}")
+                    return {
+                        "success": True, 
+                        "url": try_url, 
+                        "mid": mid, 
+                        "quality": "TRIAL",
+                        "is_trial": True  # 标记为试听版
+                    }
+        except Exception as e:
+            decky.logger.warning(f"获取试听链接失败: {e}")
+        
+        # 所有方法都失败
+        error_msg = "该歌曲暂时无法播放"
+        if not has_credential:
+            error_msg = "请先登录以播放会员歌曲"
+        elif "vip" in last_error.lower() or "付费" in last_error:
+            error_msg = "该歌曲需要付费购买"
+        else:
+            error_msg = "歌曲暂不可用，可能是版权限制"
+            
+        decky.logger.warning(f"无法获取歌曲 {mid}: {error_msg}, 最后错误: {last_error}")
         return {
             "success": False, 
             "url": "", 
             "mid": mid,
-            "error": "该歌曲暂时无法播放，可能需要VIP权限或歌曲版权限制"
+            "error": error_msg
         }
 
     async def get_song_urls_batch(self, mids: list[str]) -> dict[str, Any]:

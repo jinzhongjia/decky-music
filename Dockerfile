@@ -5,6 +5,10 @@ FROM python:3.11-slim AS python-deps
 
 WORKDIR /build
 
+# 安装 git (从 GitHub 拉取依赖需要)
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 # 安装 Python 依赖到 py_modules
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt --target=py_modules \
@@ -51,7 +55,6 @@ COPY --from=frontend /build/plugin.json ./QQMusic/
 COPY --from=frontend /build/package.json ./QQMusic/
 COPY --from=frontend /build/LICENSE ./QQMusic/ 
 COPY --from=frontend /build/README.md ./QQMusic/ 
-COPY --from=frontend /build/defaults ./QQMusic/defaults
 COPY --from=frontend /build/assets ./QQMusic/assets
 
 # 创建 zip 包

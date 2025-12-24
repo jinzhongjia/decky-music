@@ -1,4 +1,5 @@
 # Decky QQ Music Plugin - Python Dependencies
 # CI/CD 构建时安装到 py_modules 目录
 
-qqmusic-api-python>=0.3.6
+# 从 GitHub 直接拉取最新代码
+git+https://github.com/jinzhongjia/QQMusicApi.git@main
