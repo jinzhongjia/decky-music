@@ -1,0 +1,10 @@
+# mise 配置文件
+# https://mise.jdx.dev/
+
+[tools]
+node = "22"
+pnpm = "9"
+
+[env]
+PLUGIN_NAME = "QQMusic"
+

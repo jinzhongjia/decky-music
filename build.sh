@@ -1,77 +1,39 @@
 #!/bin/bash
 # Decky QQ Music 插件构建脚本
-# 在 Linux 环境下运行此脚本来构建插件
+# 使用 Docker 确保 Python 3.11 依赖兼容 Decky Loader
 
 set -e
 
+# 从 plugin.json 读取插件名称
+PLUGIN_NAME=$(grep -o '"name": *"[^"]*"' plugin.json | head -1 | cut -d'"' -f4)
+
 echo "🎵 Decky QQ Music 构建脚本"
 echo "=========================="
+echo "📦 插件名称: $PLUGIN_NAME"
 
-# 检查 Node.js
-if ! command -v node &> /dev/null; then
-    echo "❌ 错误: 需要安装 Node.js"
-    exit 1
-fi
-
-# 检查 pnpm
-if ! command -v pnpm &> /dev/null; then
-    echo "📦 安装 pnpm..."
-    npm install -g pnpm@9
-fi
-
-# 检查 Python
-if ! command -v python3 &> /dev/null; then
-    echo "❌ 错误: 需要安装 Python 3"
+# 检查 Docker
+if ! command -v docker &> /dev/null; then
+    echo "❌ 错误: 需要安装 Docker"
     exit 1
 fi
 
 # 清理旧的构建
 echo "🧹 清理旧的构建..."
 rm -rf out/
-rm -rf py_modules/
-
-# 安装前端依赖
-echo "📦 安装前端依赖..."
-pnpm install
-
-# 构建前端
-echo "🔨 构建前端..."
-pnpm run build
-
-# 安装 Python 依赖
-echo "🐍 安装 Python 依赖..."
-pip3 install -r requirements.txt --target=py_modules
 
 # 创建输出目录
-echo "📁 创建插件包..."
-mkdir -p out/decky-qqmusic
+mkdir -p out
 
-# 复制文件
-cp -r dist out/decky-qqmusic/
-cp -r py_modules out/decky-qqmusic/
-cp main.py out/decky-qqmusic/
-cp plugin.json out/decky-qqmusic/
-cp package.json out/decky-qqmusic/
-cp LICENSE out/decky-qqmusic/
-cp README.md out/decky-qqmusic/
-cp -r defaults out/decky-qqmusic/ 2>/dev/null || true
-cp -r assets out/decky-qqmusic/ 2>/dev/null || true
-
-# 清理不必要的文件
-echo "🧹 清理不必要的文件..."
-find out/decky-qqmusic/py_modules -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-find out/decky-qqmusic/py_modules -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
-find out/decky-qqmusic/py_modules -name "*.pyc" -delete 2>/dev/null || true
-
-# 创建 zip 包
-cd out
-zip -r decky-qqmusic.zip decky-qqmusic
+# 使用 Docker 构建
+echo "🐳 使用 Docker 构建..."
+DOCKER_BUILDKIT=1 docker build --output type=local,dest=out .
 
 echo ""
 echo "✅ 构建完成!"
-echo "📦 输出文件: out/decky-qqmusic.zip"
+echo "📦 输出文件: out/$PLUGIN_NAME.zip"
 echo ""
 echo "安装方法:"
 echo "1. 将 zip 文件传输到 Steam Deck"
 echo "2. 解压到 ~/homebrew/plugins/"
-echo "3. 重启 Decky Loader"
+echo "3. 确保目录名为: $PLUGIN_NAME"
+echo "4. 重启 Decky Loader"
