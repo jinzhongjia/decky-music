@@ -3,12 +3,143 @@
  * 使用全局 Audio 单例，确保关闭面板后音乐继续播放
  * 支持播放列表和自动播放下一首
  * 支持播放历史记录
+ * 支持播放时禁止系统休眠
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { toaster } from "@decky/api";
 import { getSongUrl, getSongLyric } from "../api";
 import type { SongInfo } from "../types";
+
+// ==================== 休眠控制 ====================
+// 参考 DeckyInhibitScreenSaver 实现
+
+interface SettingDef {
+  field: number;
+  wireType: number;
+}
+
+const SettingDefaults: Record<string, SettingDef> = {
+  battery_idle: { field: 1, wireType: 5 },
+  ac_idle: { field: 2, wireType: 5 },
+  battery_suspend: { field: 3, wireType: 5 },
+  ac_suspend: { field: 4, wireType: 5 },
+};
+
+// 保存原始休眠设置
+interface OriginalSleepSettings {
+  batteryIdle: number;
+  acIdle: number;
+  batterySuspend: number;
+  acSuspend: number;
+}
+
+// 默认休眠设置（作为 fallback）
+const DEFAULT_SLEEP_SETTINGS: OriginalSleepSettings = {
+  batteryIdle: 300,      // 5 分钟
+  acIdle: 300,           // 5 分钟
+  batterySuspend: 600,   // 10 分钟
+  acSuspend: 600,        // 10 分钟
+};
+
+// 原始设置（在第一次禁用休眠时保存）
+let originalSleepSettings: OriginalSleepSettings | null = null;
+
+// 生成 Protobuf 格式的设置数据
+function genSettings(fieldDef: SettingDef, value: number): string {
+  const buf: number[] = [];
+  
+  let key = (fieldDef.field << 3) | fieldDef.wireType;
+  do {
+    let b = key & 0x7F;
+    key >>>= 7;
+    if (key) b |= 0x80;
+    buf.push(b);
+  } while (key);
+
+  if (fieldDef.wireType === 0) {
+    do {
+      let b = value & 0x7F;
+      value >>>= 7;
+      if (value) b |= 0x80;
+      buf.push(b);
+    } while (value);
+    return String.fromCharCode(...buf);
+  } else if (fieldDef.wireType === 5) {
+    const valueBytes = new Uint8Array(new Float32Array([value]).buffer);
+    return String.fromCharCode(...buf, ...valueBytes);
+  } else {
+    throw new Error('Unsupported wire type');
+  }
+}
+
+// 获取当前休眠设置
+async function getCurrentSleepSettings(): Promise<OriginalSleepSettings> {
+  try {
+    // @ts-ignore - SteamClient 是全局变量
+    if (typeof SteamClient !== 'undefined' && SteamClient?.Settings?.GetRegisteredSettings) {
+      // @ts-ignore
+      const settings = await SteamClient.Settings.GetRegisteredSettings();
+      console.log("获取到系统休眠设置:", settings);
+      // 尝试解析设置，如果失败则使用默认值
+      // 注意：这里的解析可能需要根据实际返回格式调整
+      if (settings) {
+        return {
+          batteryIdle: settings.battery_idle ?? DEFAULT_SLEEP_SETTINGS.batteryIdle,
+          acIdle: settings.ac_idle ?? DEFAULT_SLEEP_SETTINGS.acIdle,
+          batterySuspend: settings.battery_suspend ?? DEFAULT_SLEEP_SETTINGS.batterySuspend,
+          acSuspend: settings.ac_suspend ?? DEFAULT_SLEEP_SETTINGS.acSuspend,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("获取系统休眠设置失败，使用默认值:", e);
+  }
+  return { ...DEFAULT_SLEEP_SETTINGS };
+}
+
+// 更新系统休眠设置
+async function updateSleepSettings(batteryIdle: number, acIdle: number, batterySuspend: number, acSuspend: number) {
+  try {
+    // @ts-ignore - SteamClient 是全局变量
+    if (typeof SteamClient === 'undefined' || !SteamClient?.System?.UpdateSettings) {
+      console.warn("SteamClient.System.UpdateSettings 不可用");
+      return;
+    }
+    
+    const batteryIdleData = genSettings(SettingDefaults.battery_idle, batteryIdle);
+    const acIdleData = genSettings(SettingDefaults.ac_idle, acIdle);
+    const batterySuspendData = genSettings(SettingDefaults.battery_suspend, batterySuspend);
+    const acSuspendData = genSettings(SettingDefaults.ac_suspend, acSuspend);
+    
+    // @ts-ignore
+    await SteamClient.System.UpdateSettings(window.btoa(batteryIdleData + acIdleData + batterySuspendData + acSuspendData));
+  } catch (e) {
+    console.error("更新休眠设置失败:", e);
+  }
+}
+
+// 禁用休眠
+async function inhibitSleep() {
+  // 第一次禁用时保存原始设置
+  if (!originalSleepSettings) {
+    originalSleepSettings = await getCurrentSleepSettings();
+    console.log("保存原始休眠设置:", originalSleepSettings);
+  }
+  
+  console.log("禁用系统休眠");
+  await updateSleepSettings(0, 0, 0, 0);
+}
+
+// 恢复休眠（使用保存的原始设置或默认值）
+async function uninhibitSleep() {
+  const settings = originalSleepSettings || DEFAULT_SLEEP_SETTINGS;
+  console.log("恢复系统休眠:", settings);
+  await updateSleepSettings(settings.batteryIdle, settings.acIdle, settings.batterySuspend, settings.acSuspend);
+}
+
+// 全局休眠状态
+let sleepInhibited = false;
 
 // 播放历史存储
 const PLAY_HISTORY_KEY = "qqmusic_play_history";
@@ -73,6 +204,39 @@ function getGlobalAudio(): HTMLAudioElement {
     });
   }
   return globalAudio;
+}
+
+// 全局清理函数 - 用于插件卸载时调用
+export function cleanupPlayer() {
+  console.log("清理播放器资源");
+  
+  // 停止播放
+  if (globalAudio) {
+    globalAudio.pause();
+    globalAudio.src = "";
+  }
+  
+  // 恢复休眠
+  if (sleepInhibited) {
+    sleepInhibited = false;
+    uninhibitSleep();
+  }
+  
+  // 清理原始休眠设置
+  originalSleepSettings = null;
+  
+  // 清理全局状态
+  globalCurrentSong = null;
+  globalLyric = "";
+  globalPlaylist = [];
+  globalCurrentIndex = -1;
+  onPlayNextCallback = null;
+  onNeedMoreSongsCallback = null;
+  
+  if (skipTimeoutId) {
+    clearTimeout(skipTimeoutId);
+    skipTimeoutId = null;
+  }
 }
 
 export interface UsePlayerReturn {
@@ -176,6 +340,12 @@ export function usePlayer(): UsePlayerReturn {
         await audio.play();
         setIsPlaying(true);
         isPlayingRef.current = true;
+        
+        // 禁用休眠
+        if (!sleepInhibited) {
+          sleepInhibited = true;
+          inhibitSleep();
+        }
         
         // 添加到播放历史
         const newHistory = addToPlayHistory(song);
@@ -364,8 +534,19 @@ export function usePlayer(): UsePlayerReturn {
     
     if (isPlaying) {
       audio.pause();
+      // 恢复休眠
+      if (sleepInhibited) {
+        sleepInhibited = false;
+        uninhibitSleep();
+      }
     } else {
-      audio.play().catch(e => {
+      audio.play().then(() => {
+        // 禁用休眠
+        if (!sleepInhibited) {
+          sleepInhibited = true;
+          inhibitSleep();
+        }
+      }).catch(e => {
         toaster.toast({
           title: "播放失败",
           body: e.message
@@ -392,6 +573,12 @@ export function usePlayer(): UsePlayerReturn {
     if (skipTimeoutId) {
       clearTimeout(skipTimeoutId);
       skipTimeoutId = null;
+    }
+    
+    // 恢复休眠
+    if (sleepInhibited) {
+      sleepInhibited = false;
+      uninhibitSleep();
     }
     
     // 清理全局状态

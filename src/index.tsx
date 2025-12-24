@@ -8,7 +8,7 @@ import { definePlugin, toaster } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
 import { getLoginStatus, logout, getGuessLike } from "./api";
-import { usePlayer } from "./hooks/usePlayer";
+import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
 import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, clearRecommendCache } from "./components";
 import type { PageType, SongInfo, PlaylistInfo } from "./types";
 
@@ -337,6 +337,11 @@ export default definePlugin(() => {
     icon: <FaMusic />,
     onDismount() {
       console.log("Decky QQ Music 插件已卸载");
+      
+      // 清理播放器（停止播放、恢复休眠）
+      cleanupPlayer();
+      
+      // 移除全局样式
       const styleEl = document.getElementById('decky-qqmusic-styles');
       if (styleEl) {
         styleEl.remove();
