@@ -145,32 +145,36 @@ export const HomePage: FC<HomePageProps> = ({
       </PanelSection>
 
       {/* 猜你喜欢 - 放在上面 */}
-      <PanelSection title={
-        <Focusable style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
+      <PanelSection>
+        {/* 自定义标题行：标题 + 换一批按钮 */}
+        <Focusable style={{
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'space-between',
-          width: '100%',
+          marginBottom: '8px',
         }}>
-          <span>💡 猜你喜欢</span>
+          <span style={{ fontSize: '14px', fontWeight: 500, color: '#fff' }}>
+            💡 猜你喜欢
+          </span>
           <Focusable
             noFocusRing={false}
             onActivate={refreshGuessLike}
             onClick={refreshGuessLike}
             style={{
-              padding: '4px 8px',
-              borderRadius: '4px',
-              background: 'rgba(255,255,255,0.1)',
-              cursor: loadingGuess ? 'wait' : 'pointer',
-              opacity: loadingGuess ? 0.5 : 1,
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
-              fontSize: '12px',
+              padding: '4px 10px',
+              borderRadius: '12px',
+              background: 'rgba(255,255,255,0.1)',
+              cursor: loadingGuess ? 'wait' : 'pointer',
+              opacity: loadingGuess ? 0.6 : 1,
+              fontSize: '11px',
+              color: '#b8bcbf',
             }}
           >
             <FaSyncAlt 
-              size={10} 
+              size={9} 
               style={{ 
                 animation: loadingGuess ? 'spin 1s linear infinite' : 'none' 
               }} 
@@ -178,7 +182,7 @@ export const HomePage: FC<HomePageProps> = ({
             换一批
           </Focusable>
         </Focusable>
-      }>
+
         {loadingGuess && guessLikeSongs.length === 0 ? (
           <PanelSectionRow>
             <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
