@@ -212,8 +212,6 @@ export const HomePage: FC<HomePageProps> = ({
         </PanelSectionRow>
       </PanelSection>
 
-      {/* 底部空白，防止播放器遮挡 */}
-      <div style={{ height: '80px' }} />
     </>
   );
 };
