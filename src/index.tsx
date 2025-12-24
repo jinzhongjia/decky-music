@@ -9,7 +9,7 @@ import { FaMusic } from "react-icons/fa";
 
 import { getLoginStatus, logout, getGuessLike } from "./api";
 import { usePlayer } from "./hooks/usePlayer";
-import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage } from "./components";
+import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, clearRecommendCache } from "./components";
 import type { PageType, SongInfo, PlaylistInfo } from "./types";
 
 // 主内容组件
@@ -50,6 +50,7 @@ function Content() {
   const handleLogout = async () => {
     await logout();
     player.stop();
+    clearRecommendCache(); // 清除推荐缓存
     setCurrentPage('login');
     toaster.toast({
       title: "已退出登录",

@@ -1,14 +1,42 @@
 /**
  * 首页组件 - 包含推荐内容
+ * 使用单例缓存推荐数据，避免重复请求
  */
 
 import { FC, useState, useEffect, useRef } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Focusable } from "@decky/ui";
-import { FaSearch, FaSignOutAlt, FaRedo, FaListUl, FaHistory } from "react-icons/fa";
+import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory } from "react-icons/fa";
 import { getGuessLike, getDailyRecommend } from "../api";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { SongItem } from "./SongItem";
+
+// ==================== 单例缓存 ====================
+// 在模块级别保存数据，避免每次进入页面重新加载
+
+interface RecommendCache {
+  dailySongs: SongInfo[];
+  guessLikeSongs: SongInfo[];
+  dailyLoaded: boolean;
+  guessLoaded: boolean;
+}
+
+const cache: RecommendCache = {
+  dailySongs: [],
+  guessLikeSongs: [],
+  dailyLoaded: false,
+  guessLoaded: false,
+};
+
+// 清除缓存（退出登录时调用）
+export function clearRecommendCache() {
+  cache.dailySongs = [];
+  cache.guessLikeSongs = [];
+  cache.dailyLoaded = false;
+  cache.guessLoaded = false;
+}
+
+// ==================== 组件 ====================
 
 interface HomePageProps {
   onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
@@ -27,48 +55,63 @@ export const HomePage: FC<HomePageProps> = ({
   onLogout,
   currentPlayingMid,
 }) => {
-  const [dailySongs, setDailySongs] = useState<SongInfo[]>([]);
-  const [guessLikeSongs, setGuessLikeSongs] = useState<SongInfo[]>([]);
-  const [loadingDaily, setLoadingDaily] = useState(true);
-  const [loadingGuess, setLoadingGuess] = useState(true);
+  // 使用缓存的初始值
+  const [dailySongs, setDailySongs] = useState<SongInfo[]>(cache.dailySongs);
+  const [guessLikeSongs, setGuessLikeSongs] = useState<SongInfo[]>(cache.guessLikeSongs);
+  const [loadingDaily, setLoadingDaily] = useState(!cache.dailyLoaded);
+  const [loadingGuess, setLoadingGuess] = useState(!cache.guessLoaded);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
-    loadRecommendations();
+    
+    // 只有未加载过才请求
+    if (!cache.dailyLoaded) {
+      loadDailyRecommend();
+    }
+    if (!cache.guessLoaded) {
+      loadGuessLike();
+    }
+    
     return () => {
       mountedRef.current = false;
     };
   }, []);
 
-  const loadRecommendations = async () => {
-    // 加载每日推荐
+  const loadDailyRecommend = async () => {
     setLoadingDaily(true);
-    getDailyRecommend().then(result => {
-      if (!mountedRef.current) return;
-      if (result.success) {
-        setDailySongs(result.songs);
-      }
-      setLoadingDaily(false);
-    });
+    const result = await getDailyRecommend();
+    if (!mountedRef.current) return;
+    
+    if (result.success) {
+      setDailySongs(result.songs);
+      cache.dailySongs = result.songs;
+    }
+    cache.dailyLoaded = true;
+    setLoadingDaily(false);
+  };
 
-    // 加载猜你喜欢
+  const loadGuessLike = async () => {
     setLoadingGuess(true);
-    getGuessLike().then(result => {
-      if (!mountedRef.current) return;
-      if (result.success) {
-        setGuessLikeSongs(result.songs);
-      }
-      setLoadingGuess(false);
-    });
+    const result = await getGuessLike();
+    if (!mountedRef.current) return;
+    
+    if (result.success) {
+      setGuessLikeSongs(result.songs);
+      cache.guessLikeSongs = result.songs;
+    }
+    cache.guessLoaded = true;
+    setLoadingGuess(false);
   };
 
   const refreshGuessLike = async () => {
     setLoadingGuess(true);
     const result = await getGuessLike();
     if (!mountedRef.current) return;
+    
     if (result.success) {
       setGuessLikeSongs(result.songs);
+      cache.guessLikeSongs = result.songs;
     }
     setLoadingGuess(false);
   };
@@ -78,20 +121,14 @@ export const HomePage: FC<HomePageProps> = ({
       {/* 操作按钮 */}
       <PanelSection>
         <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            onClick={onGoToSearch}
-          >
+          <ButtonItem layout="below" onClick={onGoToSearch}>
             <FaSearch style={{ marginRight: '8px' }} />
             搜索歌曲
           </ButtonItem>
         </PanelSectionRow>
         {onGoToPlaylists && (
           <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              onClick={onGoToPlaylists}
-            >
+            <ButtonItem layout="below" onClick={onGoToPlaylists}>
               <FaListUl style={{ marginRight: '8px' }} />
               我的歌单
             </ButtonItem>
@@ -99,10 +136,7 @@ export const HomePage: FC<HomePageProps> = ({
         )}
         {onGoToHistory && (
           <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              onClick={onGoToHistory}
-            >
+            <ButtonItem layout="below" onClick={onGoToHistory}>
               <FaHistory style={{ marginRight: '8px' }} />
               播放历史
             </ButtonItem>
@@ -110,20 +144,44 @@ export const HomePage: FC<HomePageProps> = ({
         )}
       </PanelSection>
 
-      {/* 每日推荐 */}
-      <SongList
-        title="📅 每日推荐"
-        songs={dailySongs}
-        loading={loadingDaily}
-        showIndex={true}
-        currentPlayingMid={currentPlayingMid}
-        emptyText="登录后查看每日推荐"
-        onSelectSong={(song) => onSelectSong(song, dailySongs)}
-      />
-
-      {/* 猜你喜欢 */}
-      <PanelSection title="💡 猜你喜欢">
-        {loadingGuess ? (
+      {/* 猜你喜欢 - 放在上面 */}
+      <PanelSection title={
+        <Focusable style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          width: '100%',
+        }}>
+          <span>💡 猜你喜欢</span>
+          <Focusable
+            className="qqmusic-btn"
+            focusClassName="qqmusic-btn-focused"
+            onActivate={refreshGuessLike}
+            onClick={refreshGuessLike}
+            style={{
+              padding: '4px 8px',
+              borderRadius: '4px',
+              background: 'rgba(255,255,255,0.1)',
+              cursor: loadingGuess ? 'wait' : 'pointer',
+              opacity: loadingGuess ? 0.5 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '12px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <FaSyncAlt 
+              size={10} 
+              style={{ 
+                animation: loadingGuess ? 'spin 1s linear infinite' : 'none' 
+              }} 
+            />
+            换一批
+          </Focusable>
+        </Focusable>
+      }>
+        {loadingGuess && guessLikeSongs.length === 0 ? (
           <PanelSectionRow>
             <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
               <Spinner />
@@ -141,42 +199,35 @@ export const HomePage: FC<HomePageProps> = ({
             </div>
           </PanelSectionRow>
         ) : (
-          <>
-            <Focusable
-              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
-            >
-              {guessLikeSongs.map((song, idx) => (
-                <SongItem
-                  key={song.mid || idx}
-                  song={song}
-                  index={idx}
-                  isPlaying={currentPlayingMid === song.mid}
-                  onClick={(s) => onSelectSong(s, guessLikeSongs, 'guess-like')}
-                />
-              ))}
-            </Focusable>
-            
-            <PanelSectionRow>
-              <ButtonItem
-                layout="below"
-                onClick={refreshGuessLike}
-                disabled={loadingGuess}
-              >
-                <FaRedo style={{ marginRight: '8px' }} />
-                换一批
-              </ButtonItem>
-            </PanelSectionRow>
-          </>
+          <Focusable style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {guessLikeSongs.map((song, idx) => (
+              <SongItem
+                key={song.mid || idx}
+                song={song}
+                index={idx}
+                isPlaying={currentPlayingMid === song.mid}
+                onClick={(s) => onSelectSong(s, guessLikeSongs, 'guess-like')}
+              />
+            ))}
+          </Focusable>
         )}
       </PanelSection>
+
+      {/* 每日推荐 - 放在下面 */}
+      <SongList
+        title="📅 每日推荐"
+        songs={dailySongs}
+        loading={loadingDaily}
+        showIndex={true}
+        currentPlayingMid={currentPlayingMid}
+        emptyText="登录后查看每日推荐"
+        onSelectSong={(song) => onSelectSong(song, dailySongs)}
+      />
 
       {/* 退出登录 */}
       <PanelSection>
         <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            onClick={onLogout}
-          >
+          <ButtonItem layout="below" onClick={onLogout}>
             <FaSignOutAlt style={{ marginRight: '8px' }} />
             退出登录
           </ButtonItem>
