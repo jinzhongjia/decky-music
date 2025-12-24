@@ -30,36 +30,24 @@
 
 ### 从源码构建
 
-> ⚠️ 注意：必须在 **Linux 环境** 下构建，因为 Python 依赖包含原生模块，Windows 构建的包在 Steam Deck 上无法运行。
+> ⚠️ 注意：使用 Docker 构建，确保已安装 Docker。
 
 **方法 1：使用 GitHub Actions（推荐）**
 
 Fork 此仓库后，GitHub Actions 会自动构建。创建 tag 时会自动发布 Release。
 
-**方法 2：在 Linux 下本地构建**
+**方法 2：本地构建**
+
+需要安装 [mise](https://mise.jdx.dev/) 和 Docker。
 
 ```bash
 git clone https://github.com/your-username/decky-qqmusic.git
 cd decky-qqmusic
 
-# 运行构建脚本
-chmod +x build.sh
-./build.sh
+# 构建
+mise run build
 
-# 输出文件: out/decky-qqmusic.zip
-```
-
-**方法 3：在 Steam Deck 上直接构建**
-
-```bash
-# 进入桌面模式
-git clone https://github.com/your-username/decky-qqmusic.git
-cd decky-qqmusic
-./build.sh
-
-# 安装
-cp -r out/decky-qqmusic ~/homebrew/plugins/
-sudo systemctl restart plugin_loader
+# 输出文件: out/QQMusic.zip 和 out/QQMusic/
 ```
 
 ## 🎮 使用方法
@@ -119,41 +107,6 @@ decky-qqmusic/
     └── defaults.txt            # 默认配置
 ```
 
-### API 接口
-
-#### 登录相关
-
-| 方法 | 说明 |
-|------|------|
-| `get_qr_code(login_type)` | 获取登录二维码 |
-| `check_qr_status()` | 检查扫码状态 |
-| `get_login_status()` | 获取登录状态 |
-| `logout()` | 退出登录 |
-
-#### 推荐相关
-
-| 方法 | 说明 |
-|------|------|
-| `get_daily_recommend()` | 获取每日推荐 |
-| `get_guess_like()` | 获取猜你喜欢 |
-| `get_recommend_playlists()` | 获取推荐歌单 |
-| `get_fav_songs(page, num)` | 获取收藏歌曲 |
-
-#### 搜索相关
-
-| 方法 | 说明 |
-|------|------|
-| `search_songs(keyword, page, num)` | 搜索歌曲 |
-| `get_hot_search()` | 获取热门搜索 |
-
-#### 播放相关
-
-| 方法 | 说明 |
-|------|------|
-| `get_song_url(mid)` | 获取歌曲播放链接 |
-| `get_song_lyric(mid)` | 获取歌词 |
-| `get_song_info(mid)` | 获取歌曲详情 |
-
 ### 环境变量
 
 插件使用以下 Decky 环境变量：
@@ -172,6 +125,61 @@ pnpm run watch
 
 # 构建生产版本
 pnpm run build
+```
+
+### 部署到 Steam Deck
+
+使用 mise 可以快速构建并部署到 Steam Deck。
+
+**0. 开启 Steam Deck SSH 服务**（在 Steam Deck 上执行，只需一次）
+
+```bash
+# 设置 deck 用户密码（首次需要）
+passwd
+
+# 启动并设置开机自启
+sudo systemctl enable --now sshd
+```
+
+**1. 配置 SSH 免密登录**
+
+Linux / WSL:
+```bash
+ssh-copy-id deck@<STEAM_DECK_IP>
+```
+
+Windows PowerShell:
+```powershell
+type $env:USERPROFILE\.ssh\id_rsa.pub | ssh deck@<STEAM_DECK_IP> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+```
+
+**2. Steam Deck 权限配置**（在 Steam Deck 上执行，只需一次）
+
+```bash
+# 修改插件目录权限，允许 deck 用户读写
+sudo chown -R deck:deck /home/deck/homebrew/plugins
+
+# 配置 sudo 免密码
+sudo usermod -aG wheel deck
+sudo visudo
+# 找到 # %wheel ALL=(ALL) NOPASSWD: ALL 这行，去掉前面的 # 号保存
+```
+
+**3. 修改配置**
+
+编辑 `.mise.toml` 中的 `DECK_HOST`：
+```toml
+DECK_HOST = "deck@<STEAM_DECK_IP>"
+```
+
+**4. 部署命令**
+
+```bash
+# 仅同步（已构建过）
+mise run deploy
+
+# 构建并部署
+mise run dev
 ```
 
 ## 📋 待办事项
