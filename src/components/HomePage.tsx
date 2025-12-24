@@ -3,7 +3,7 @@
  */
 
 import { FC, useState, useEffect, useRef } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Focusable } from "@decky/ui";
 import { FaSearch, FaSignOutAlt, FaRedo } from "react-icons/fa";
 import { getGuessLike, getDailyRecommend } from "../api";
 import type { SongInfo } from "../types";
@@ -116,7 +116,11 @@ export const HomePage: FC<HomePageProps> = ({
           </PanelSectionRow>
         ) : (
           <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <Focusable
+              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+              //@ts-expect-error flow-children is valid but not in types
+              flow-children="column"
+            >
               {guessLikeSongs.map((song, idx) => (
                 <SongItem
                   key={song.mid || idx}
@@ -126,7 +130,7 @@ export const HomePage: FC<HomePageProps> = ({
                   onClick={onSelectSong}
                 />
               ))}
-            </div>
+            </Focusable>
             
             <PanelSectionRow>
               <ButtonItem
