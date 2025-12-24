@@ -1,3 +1,8 @@
+[env]
+# Steam Deck SSH 配置
+DECK_HOST = "deck@192.168.0.2"
+DECK_PLUGIN_PATH = "/home/deck/homebrew/plugins"
+
 [tasks.clean]
 description = "清理构建产物"
 run = "rm -rf out/ dist/"
@@ -8,4 +13,18 @@ depends = ["clean"]
 run = """
 mkdir -p out
 DOCKER_BUILDKIT=1 docker build --no-cache --output type=local,dest=out .
+"""
+
+[tasks.deploy]
+description = "同步插件到 Steam Deck"
+run = """
+rsync -avz --delete out/QQMusic/ ${DECK_HOST}:${DECK_PLUGIN_PATH}/QQMusic/
+ssh ${DECK_HOST} "sudo systemctl restart plugin_loader"
+"""
+
+[tasks.dev]
+description = "构建并部署到 Steam Deck"
+run = """
+mise run build
+mise run deploy
 """

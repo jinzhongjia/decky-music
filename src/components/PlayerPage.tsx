@@ -4,7 +4,7 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Field, Focusable } from "@decky/ui";
+import { PanelSection, PanelSectionRow, Spinner, Focusable, ButtonItem } from "@decky/ui";
 import { FaPlay, FaPause, FaStepForward, FaStepBackward, FaArrowLeft } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { formatDuration, getDefaultCover } from "../utils/format";
@@ -179,7 +179,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
             </div>
           </PanelSectionRow>
 
-          {/* 控制按钮 - 使用 Field 获得焦点高亮 */}
+          {/* 控制按钮 */}
           <PanelSectionRow>
             <div style={{ 
               display: 'flex', 
@@ -189,78 +189,71 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               padding: '15px 0',
             }}>
               {/* 上一首按钮 */}
-              <Field
-                focusable
-                highlightOnFocus
-                onActivate={handlePrev}
+              <div
                 onClick={handlePrev}
-                bottomSeparator="none"
-                padding="none"
-                label={
-                  <div style={{ 
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                  }}>
-                    <FaStepBackward size={20} />
-                  </div>
-                }
-              />
+                style={{ 
+                  width: '52px',
+                  height: '52px',
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <FaStepBackward size={20} />
+              </div>
               
               {/* 播放/暂停按钮 */}
-              <Field
-                focusable
-                highlightOnFocus
-                onActivate={onTogglePlay}
+              <div
                 onClick={onTogglePlay}
-                bottomSeparator="none"
-                padding="none"
-                label={
-                  <div style={{ 
-                    width: '68px',
-                    height: '68px',
-                    borderRadius: '50%',
-                    background: '#1db954',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 4px 16px rgba(29, 185, 84, 0.4)',
-                    cursor: 'pointer',
-                  }}>
-                    {isPlaying ? <FaPause size={28} /> : <FaPlay size={28} style={{ marginLeft: '4px' }} />}
-                  </div>
-                }
-              />
+                style={{ 
+                  width: '68px',
+                  height: '68px',
+                  borderRadius: '50%',
+                  background: '#1db954',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 16px rgba(29, 185, 84, 0.4)',
+                  cursor: 'pointer',
+                }}
+              >
+                {isPlaying ? <FaPause size={28} /> : <FaPlay size={28} style={{ marginLeft: '4px' }} />}
+              </div>
               
               {/* 下一首按钮 */}
-              <Field
-                focusable
-                highlightOnFocus
-                onActivate={handleNext}
+              <div
                 onClick={handleNext}
-                bottomSeparator="none"
-                padding="none"
-                label={
-                  <div style={{ 
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                  }}>
-                    <FaStepForward size={20} />
-                  </div>
-                }
-              />
+                style={{ 
+                  width: '52px',
+                  height: '52px',
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <FaStepForward size={20} />
+              </div>
+            </div>
+          </PanelSectionRow>
+
+          {/* 快捷键说明 */}
+          <PanelSectionRow>
+            <div style={{
+              textAlign: 'center',
+              fontSize: '12px',
+              color: '#8b929a',
+              padding: '8px 0',
+            }}>
+              <span style={{ marginRight: '16px' }}>L1 上一首</span>
+              <span style={{ marginRight: '16px' }}>X 暂停/继续</span>
+              <span>R1 下一首</span>
             </div>
           </PanelSectionRow>
         </>
