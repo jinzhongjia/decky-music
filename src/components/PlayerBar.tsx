@@ -86,7 +86,6 @@ export const PlayerBar: FC<PlayerBarProps> = ({
       }}>
         {/* 封面和歌曲信息 - 可聚焦点击进入播放器 */}
         <Focusable
-          noFocusRing={false}
           onActivate={onClick}
           onClick={onClick}
           style={{
@@ -141,7 +140,6 @@ export const PlayerBar: FC<PlayerBarProps> = ({
         <Focusable style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {/* 上一首/后退按钮 */}
           <Focusable
-            noFocusRing={false}
             onActivate={() => onPrev ? onPrev() : onSeek(Math.max(0, currentTime - 10))}
             onClick={(e) => {
               e.stopPropagation();
@@ -162,7 +160,6 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           
           {/* 播放/暂停按钮 */}
           <Focusable
-            noFocusRing={false}
             onActivate={onTogglePlay}
             onClick={(e) => {
               e.stopPropagation();
@@ -185,7 +182,6 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           
           {/* 下一首/快进按钮 */}
           <Focusable
-            noFocusRing={false}
             onActivate={() => onNext ? onNext() : onSeek(Math.min(duration, currentTime + 10))}
             onClick={(e) => {
               e.stopPropagation();

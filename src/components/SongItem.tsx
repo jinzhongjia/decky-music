@@ -1,10 +1,10 @@
 /**
  * 歌曲列表项组件
- * 移除序列号，简化显示
+ * 使用 Field 组件获得焦点高亮效果
  */
 
 import { FC } from "react";
-import { Focusable } from "@decky/ui";
+import { Field } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { formatDuration, getDefaultCover } from "../utils/format";
 
@@ -21,26 +21,23 @@ export const SongItem: FC<SongItemProps> = ({
 }) => {
   const handleClick = () => onClick(song);
   
-  return (
-    <Focusable
-      noFocusRing={false}
-      onActivate={handleClick}
-      onClick={handleClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '8px 10px',
-        background: isPlaying ? 'rgba(29, 185, 84, 0.15)' : 'rgba(255,255,255,0.03)',
-        borderRadius: '8px',
-        cursor: 'pointer',
-        width: '100%',
-        maxWidth: '100%',
-        boxSizing: 'border-box',
-        overflow: 'hidden',
-        borderLeft: isPlaying ? '3px solid #1db954' : '3px solid transparent',
-      }}
-    >
+  // 使用 icon 属性放封面，label 放歌曲信息
+  const songLabel = (
+    <div style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '10px',
+      background: isPlaying ? 'rgba(29, 185, 84, 0.1)' : 'transparent',
+      borderLeft: isPlaying ? '3px solid #1db954' : '3px solid transparent',
+      marginLeft: '-12px',
+      paddingLeft: '9px',
+      marginRight: '-12px',
+      paddingRight: '12px',
+      marginTop: '-8px',
+      marginBottom: '-8px',
+      paddingTop: '8px',
+      paddingBottom: '8px',
+    }}>
       <img 
         src={song.cover}
         alt={song.name}
@@ -56,7 +53,6 @@ export const SongItem: FC<SongItemProps> = ({
           (e.target as HTMLImageElement).src = getDefaultCover(40);
         }}
       />
-      
       <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
         <div style={{ 
           fontSize: '13px', 
@@ -79,7 +75,6 @@ export const SongItem: FC<SongItemProps> = ({
           {song.singer}
         </div>
       </div>
-      
       <div style={{ 
         color: '#8b929a', 
         fontSize: '11px',
@@ -87,7 +82,18 @@ export const SongItem: FC<SongItemProps> = ({
       }}>
         {formatDuration(song.duration)}
       </div>
-    </Focusable>
+    </div>
+  );
+  
+  return (
+    <Field
+      focusable
+      highlightOnFocus
+      onActivate={handleClick}
+      onClick={handleClick}
+      bottomSeparator="none"
+      label={songLabel}
+    />
   );
 };
 

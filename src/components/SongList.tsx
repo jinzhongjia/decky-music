@@ -3,7 +3,7 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, Spinner, Focusable } from "@decky/ui";
+import { PanelSection, PanelSectionRow, Spinner } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { SongItem } from "./SongItem";
 
@@ -55,18 +55,14 @@ export const SongList: FC<SongListProps> = ({
 
   return (
     <PanelSection title={title}>
-      <Focusable
-        style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
-      >
-        {songs.map((song, idx) => (
-          <SongItem
-            key={song.mid || idx}
-            song={song}
-            isPlaying={currentPlayingMid === song.mid}
-            onClick={onSelectSong}
-          />
-        ))}
-      </Focusable>
+      {songs.map((song, idx) => (
+        <SongItem
+          key={song.mid || idx}
+          song={song}
+          isPlaying={currentPlayingMid === song.mid}
+          onClick={onSelectSong}
+        />
+      ))}
     </PanelSection>
   );
 };

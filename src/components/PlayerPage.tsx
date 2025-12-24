@@ -201,7 +201,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
             }}>
               {/* 上一首按钮 */}
               <Focusable
-                noFocusRing={false}
                 onActivate={handlePrev}
                 onClick={handlePrev}
                 style={{ 
@@ -219,7 +218,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               
               {/* 播放/暂停按钮 */}
               <Focusable
-                noFocusRing={false}
                 onActivate={onTogglePlay}
                 onClick={onTogglePlay}
                 style={{ 
@@ -239,7 +237,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               
               {/* 下一首按钮 */}
               <Focusable
-                noFocusRing={false}
                 onActivate={handleNext}
                 onClick={handleNext}
                 style={{ 

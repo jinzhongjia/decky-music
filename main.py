@@ -65,6 +65,9 @@ class Plugin:
                     data = json.load(f)
                 self.credential = Credential.from_cookies_dict(data)
                 self.encrypt_uin = self.credential.encrypt_uin if self.credential else None
+                # 设置凭证到 session
+                if self.credential:
+                    get_session().credential = self.credential
                 decky.logger.info("凭证加载成功")
                 return True
         except Exception as e:
@@ -146,6 +149,8 @@ class Plugin:
             if event == QRCodeLoginEvents.DONE and credential:
                 self.credential = credential
                 self.encrypt_uin = credential.encrypt_uin
+                # 设置凭证到 session
+                get_session().credential = credential
                 self._save_credential()
                 self.current_qr = None
                 result["logged_in"] = True
@@ -282,10 +287,6 @@ class Plugin:
     async def get_guess_like(self) -> dict[str, Any]:
         """获取猜你喜欢"""
         try:
-            # 清除缓存以获取新的推荐
-            session = get_session()
-            await session.clear_cache()
-            
             result = await recommend.get_guess_recommend()
 
             songs = []

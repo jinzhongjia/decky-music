@@ -19,7 +19,6 @@ const PlaylistItem: FC<{
   onClick: () => void;
 }> = ({ playlist, onClick }) => (
   <Focusable
-    noFocusRing={false}
     onActivate={onClick}
     onClick={onClick}
     style={{

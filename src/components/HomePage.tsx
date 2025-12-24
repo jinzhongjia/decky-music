@@ -4,7 +4,7 @@
  */
 
 import { FC, useState, useEffect, useRef } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Focusable } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem, Spinner } from "@decky/ui";
 import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory } from "react-icons/fa";
 import { getGuessLike, getDailyRecommend } from "../api";
 import type { SongInfo } from "../types";
@@ -144,44 +144,24 @@ export const HomePage: FC<HomePageProps> = ({
         )}
       </PanelSection>
 
-      {/* 猜你喜欢 - 放在上面 */}
-      <PanelSection>
-        {/* 自定义标题行：标题 + 换一批按钮 */}
-        <Focusable style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '8px',
-        }}>
-          <span style={{ fontSize: '14px', fontWeight: 500, color: '#fff' }}>
-            💡 猜你喜欢
-          </span>
-          <Focusable
-            noFocusRing={false}
-            onActivate={refreshGuessLike}
+      {/* 猜你喜欢 */}
+      <PanelSection title="💡 猜你喜欢">
+        <PanelSectionRow>
+          <ButtonItem 
+            layout="below" 
             onClick={refreshGuessLike}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '4px 10px',
-              borderRadius: '12px',
-              background: 'rgba(255,255,255,0.1)',
-              cursor: loadingGuess ? 'wait' : 'pointer',
-              opacity: loadingGuess ? 0.6 : 1,
-              fontSize: '11px',
-              color: '#b8bcbf',
-            }}
+            disabled={loadingGuess}
           >
             <FaSyncAlt 
-              size={9} 
+              size={12} 
               style={{ 
+                marginRight: '8px',
                 animation: loadingGuess ? 'spin 1s linear infinite' : 'none' 
               }} 
             />
             换一批
-          </Focusable>
-        </Focusable>
+          </ButtonItem>
+        </PanelSectionRow>
 
         {loadingGuess && guessLikeSongs.length === 0 ? (
           <PanelSectionRow>
@@ -201,20 +181,18 @@ export const HomePage: FC<HomePageProps> = ({
             </div>
           </PanelSectionRow>
         ) : (
-          <Focusable style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {guessLikeSongs.map((song, idx) => (
-              <SongItem
-                key={song.mid || idx}
-                song={song}
-                isPlaying={currentPlayingMid === song.mid}
-                onClick={(s) => onSelectSong(s, guessLikeSongs, 'guess-like')}
-              />
-            ))}
-          </Focusable>
+          guessLikeSongs.map((song, idx) => (
+            <SongItem
+              key={song.mid || idx}
+              song={song}
+              isPlaying={currentPlayingMid === song.mid}
+              onClick={(s) => onSelectSong(s, guessLikeSongs, 'guess-like')}
+            />
+          ))
         )}
       </PanelSection>
 
-      {/* 每日推荐 - 放在下面 */}
+      {/* 每日推荐 */}
       <SongList
         title="📅 每日推荐"
         songs={dailySongs}

@@ -225,7 +225,6 @@ export const SearchPage: FC<SearchPageProps> = ({
               {suggestions.map((s, idx) => (
                 <Focusable
                   key={idx}
-                  noFocusRing={false}
                   onActivate={() => handleSuggestionClick(s)}
                   onClick={() => handleSuggestionClick(s)}
                   style={{
@@ -285,7 +284,6 @@ export const SearchPage: FC<SearchPageProps> = ({
               {searchHistory.map((key, idx) => (
                 <Focusable
                   key={idx}
-                  noFocusRing={false}
                   onActivate={() => handleHistoryClick(key)}
                   onClick={() => handleHistoryClick(key)}
                   style={{
@@ -317,7 +315,6 @@ export const SearchPage: FC<SearchPageProps> = ({
               {hotkeys.map((key, idx) => (
                 <Focusable
                   key={idx}
-                  noFocusRing={false}
                   onActivate={() => handleHotkeyClick(key)}
                   onClick={() => handleHotkeyClick(key)}
                   style={{
