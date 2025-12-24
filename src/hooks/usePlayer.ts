@@ -1,23 +1,39 @@
 /**
  * 播放器状态管理 Hook
  * 使用全局 Audio 单例，确保关闭面板后音乐继续播放
+ * 支持播放列表和自动播放下一首
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { toaster } from "@decky/api";
 import { getSongUrl, getSongLyric } from "../api";
 import type { SongInfo } from "../types";
 
-// 全局音频实例 - 在模块级别创建，不会因组件卸载而销毁
+// 全局状态 - 在模块级别创建，不会因组件卸载而销毁
 let globalAudio: HTMLAudioElement | null = null;
 let globalCurrentSong: SongInfo | null = null;
 let globalLyric: string = "";
+let globalPlaylist: SongInfo[] = [];
+let globalCurrentIndex: number = -1;
+
+// 播放下一首的回调（用于在 ended 事件中调用）
+let onPlayNextCallback: (() => void) | null = null;
+
+// 播放列表结束时获取更多歌曲的回调
+let onNeedMoreSongsCallback: (() => Promise<SongInfo[]>) | null = null;
 
 // 获取或创建全局音频实例
 function getGlobalAudio(): HTMLAudioElement {
   if (!globalAudio) {
     globalAudio = new Audio();
     globalAudio.preload = "auto";
+    
+    // 设置全局的 ended 事件处理
+    globalAudio.addEventListener('ended', () => {
+      if (onPlayNextCallback) {
+        onPlayNextCallback();
+      }
+    });
   }
   return globalAudio;
 }
@@ -31,12 +47,18 @@ export interface UsePlayerReturn {
   loading: boolean;
   error: string;
   lyric: string;
+  playlist: SongInfo[];
+  currentIndex: number;
   
   // 方法
   playSong: (song: SongInfo) => Promise<void>;
+  playPlaylist: (songs: SongInfo[], startIndex?: number) => Promise<void>;
   togglePlay: () => void;
   seek: (time: number) => void;
   stop: () => void;
+  playNext: () => void;
+  playPrev: () => void;
+  setOnNeedMoreSongs: (callback: (() => Promise<SongInfo[]>) | null) => void;
 }
 
 export function usePlayer(): UsePlayerReturn {
@@ -48,56 +70,14 @@ export function usePlayer(): UsePlayerReturn {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [lyric, setLyric] = useState(globalLyric);
+  const [playlist, setPlaylist] = useState<SongInfo[]>(globalPlaylist);
+  const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
+  
+  // 用于避免重复调用
+  const isPlayingRef = useRef(false);
 
-  // 同步全局音频状态到本地状态
-  useEffect(() => {
-    const audio = getGlobalAudio();
-    
-    // 恢复已有的播放状态
-    if (globalCurrentSong) {
-      setCurrentSong(globalCurrentSong);
-      setLyric(globalLyric);
-      setIsPlaying(!audio.paused);
-      setCurrentTime(audio.currentTime);
-      setDuration(audio.duration || globalCurrentSong.duration);
-    }
-    
-    // 设置事件监听
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const handleDurationChange = () => setDuration(audio.duration || 0);
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setCurrentTime(0);
-    };
-    const handleCanPlay = () => setLoading(false);
-    const handleError = () => {
-      setError("音频加载失败");
-      setLoading(false);
-    };
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('durationchange', handleDurationChange);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('canplay', handleCanPlay);
-    audio.addEventListener('error', handleError);
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('pause', handlePause);
-    
-    // 清理时只移除事件监听，不停止播放
-    return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('durationchange', handleDurationChange);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('canplay', handleCanPlay);
-      audio.removeEventListener('error', handleError);
-      audio.removeEventListener('play', handlePlay);
-      audio.removeEventListener('pause', handlePause);
-    };
-  }, []);
-
-  const playSong = useCallback(async (song: SongInfo) => {
+  // 内部播放歌曲方法
+  const playSongInternal = useCallback(async (song: SongInfo, index: number = -1) => {
     const audio = getGlobalAudio();
     
     setLoading(true);
@@ -110,6 +90,10 @@ export function usePlayer(): UsePlayerReturn {
     // 更新全局状态
     globalCurrentSong = song;
     globalLyric = "";
+    if (index >= 0) {
+      globalCurrentIndex = index;
+      setCurrentIndex(index);
+    }
     
     try {
       // 获取播放链接
@@ -118,7 +102,7 @@ export function usePlayer(): UsePlayerReturn {
       if (!urlResult.success || !urlResult.url) {
         setError(urlResult.error || "无法获取播放链接，可能需要VIP");
         setLoading(false);
-        return;
+        return false;
       }
       
       audio.src = urlResult.url;
@@ -127,11 +111,13 @@ export function usePlayer(): UsePlayerReturn {
       try {
         await audio.play();
         setIsPlaying(true);
+        isPlayingRef.current = true;
       } catch (e) {
         toaster.toast({
           title: "播放失败",
           body: (e as Error).message
         });
+        return false;
       }
       
       // 异步获取歌词
@@ -146,11 +132,141 @@ export function usePlayer(): UsePlayerReturn {
           // 歌词获取失败不影响播放
         });
       
+      return true;
     } catch (e) {
       setError((e as Error).message);
       setLoading(false);
+      return false;
     }
   }, []);
+
+  // 播放下一首
+  const playNext = useCallback(async () => {
+    if (globalPlaylist.length === 0) return;
+    
+    let nextIndex = globalCurrentIndex + 1;
+    
+    // 如果已经是最后一首，尝试获取更多歌曲
+    if (nextIndex >= globalPlaylist.length) {
+      if (onNeedMoreSongsCallback) {
+        try {
+          const moreSongs = await onNeedMoreSongsCallback();
+          if (moreSongs && moreSongs.length > 0) {
+            // 替换为新的歌曲列表
+            globalPlaylist = moreSongs;
+            globalCurrentIndex = -1;
+            setPlaylist(moreSongs);
+            nextIndex = 0;
+          } else {
+            nextIndex = 0; // 没有更多歌曲，循环播放
+          }
+        } catch (e) {
+          console.error("获取更多歌曲失败:", e);
+          nextIndex = 0; // 出错时循环播放
+        }
+      } else {
+        nextIndex = 0; // 没有回调，循环播放
+      }
+    }
+    
+    const nextSong = globalPlaylist[nextIndex];
+    if (nextSong) {
+      playSongInternal(nextSong, nextIndex);
+    }
+  }, [playSongInternal]);
+
+  // 播放上一首
+  const playPrev = useCallback(() => {
+    if (globalPlaylist.length === 0) return;
+    
+    let prevIndex = globalCurrentIndex - 1;
+    if (prevIndex < 0) {
+      prevIndex = globalPlaylist.length - 1; // 循环播放
+    }
+    
+    const prevSong = globalPlaylist[prevIndex];
+    if (prevSong) {
+      playSongInternal(prevSong, prevIndex);
+    }
+  }, [playSongInternal]);
+
+  // 注册播放下一首的回调
+  useEffect(() => {
+    onPlayNextCallback = playNext;
+    return () => {
+      // 不要清除回调，因为我们需要在组件卸载后也能自动播放下一首
+    };
+  }, [playNext]);
+
+  // 同步全局音频状态到本地状态
+  useEffect(() => {
+    const audio = getGlobalAudio();
+    
+    // 恢复已有的播放状态
+    if (globalCurrentSong) {
+      setCurrentSong(globalCurrentSong);
+      setLyric(globalLyric);
+      setIsPlaying(!audio.paused);
+      setCurrentTime(audio.currentTime);
+      setDuration(audio.duration || globalCurrentSong.duration);
+    }
+    setPlaylist(globalPlaylist);
+    setCurrentIndex(globalCurrentIndex);
+    
+    // 设置事件监听
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handleDurationChange = () => setDuration(audio.duration || 0);
+    const handleCanPlay = () => setLoading(false);
+    const handleError = () => {
+      setError("音频加载失败");
+      setLoading(false);
+    };
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('durationchange', handleDurationChange);
+    audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('error', handleError);
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handlePause);
+    
+    // 清理时只移除事件监听，不停止播放
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('durationchange', handleDurationChange);
+      audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('error', handleError);
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handlePause);
+    };
+  }, []);
+
+  // 播放单曲（会清空播放列表）
+  const playSong = useCallback(async (song: SongInfo) => {
+    // 设置为单曲播放列表
+    globalPlaylist = [song];
+    globalCurrentIndex = 0;
+    setPlaylist([song]);
+    setCurrentIndex(0);
+    
+    await playSongInternal(song, 0);
+  }, [playSongInternal]);
+
+  // 播放整个播放列表
+  const playPlaylist = useCallback(async (songs: SongInfo[], startIndex: number = 0) => {
+    if (songs.length === 0) return;
+    
+    globalPlaylist = songs;
+    globalCurrentIndex = startIndex;
+    setPlaylist(songs);
+    setCurrentIndex(startIndex);
+    
+    const song = songs[startIndex];
+    if (song) {
+      await playSongInternal(song, startIndex);
+    }
+  }, [playSongInternal]);
 
   const togglePlay = useCallback(() => {
     const audio = getGlobalAudio();
@@ -184,6 +300,9 @@ export function usePlayer(): UsePlayerReturn {
     // 清理全局状态
     globalCurrentSong = null;
     globalLyric = "";
+    globalPlaylist = [];
+    globalCurrentIndex = -1;
+    onNeedMoreSongsCallback = null;
     
     setCurrentSong(null);
     setIsPlaying(false);
@@ -191,6 +310,13 @@ export function usePlayer(): UsePlayerReturn {
     setDuration(0);
     setError("");
     setLyric("");
+    setPlaylist([]);
+    setCurrentIndex(-1);
+  }, []);
+
+  // 设置获取更多歌曲的回调
+  const setOnNeedMoreSongs = useCallback((callback: (() => Promise<SongInfo[]>) | null) => {
+    onNeedMoreSongsCallback = callback;
   }, []);
 
   return {
@@ -201,10 +327,15 @@ export function usePlayer(): UsePlayerReturn {
     loading,
     error,
     lyric,
+    playlist,
+    currentIndex,
     playSong,
+    playPlaylist,
     togglePlay,
     seek,
     stop,
+    playNext,
+    playPrev,
+    setOnNeedMoreSongs,
   };
 }
-

@@ -4,15 +4,16 @@
 
 import { FC, useState, useEffect, useRef } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Focusable } from "@decky/ui";
-import { FaSearch, FaSignOutAlt, FaRedo } from "react-icons/fa";
+import { FaSearch, FaSignOutAlt, FaRedo, FaListUl } from "react-icons/fa";
 import { getGuessLike, getDailyRecommend } from "../api";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { SongItem } from "./SongItem";
 
 interface HomePageProps {
-  onSelectSong: (song: SongInfo) => void;
+  onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
   onGoToSearch: () => void;
+  onGoToPlaylists?: () => void;
   onLogout: () => void;
   currentPlayingMid?: string;
 }
@@ -20,6 +21,7 @@ interface HomePageProps {
 export const HomePage: FC<HomePageProps> = ({
   onSelectSong,
   onGoToSearch,
+  onGoToPlaylists,
   onLogout,
   currentPlayingMid,
 }) => {
@@ -82,6 +84,17 @@ export const HomePage: FC<HomePageProps> = ({
             搜索歌曲
           </ButtonItem>
         </PanelSectionRow>
+        {onGoToPlaylists && (
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              onClick={onGoToPlaylists}
+            >
+              <FaListUl style={{ marginRight: '8px' }} />
+              我的歌单
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
       </PanelSection>
 
       {/* 每日推荐 */}
@@ -92,7 +105,7 @@ export const HomePage: FC<HomePageProps> = ({
         showIndex={true}
         currentPlayingMid={currentPlayingMid}
         emptyText="登录后查看每日推荐"
-        onSelectSong={onSelectSong}
+        onSelectSong={(song) => onSelectSong(song, dailySongs)}
       />
 
       {/* 猜你喜欢 */}
@@ -125,7 +138,7 @@ export const HomePage: FC<HomePageProps> = ({
                   song={song}
                   index={idx}
                   isPlaying={currentPlayingMid === song.mid}
-                  onClick={onSelectSong}
+                  onClick={(s) => onSelectSong(s, guessLikeSongs, 'guess-like')}
                 />
               ))}
             </Focusable>

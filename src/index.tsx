@@ -7,15 +7,16 @@ import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui
 import { definePlugin, toaster } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
-import { getLoginStatus, logout } from "./api";
+import { getLoginStatus, logout, getGuessLike } from "./api";
 import { usePlayer } from "./hooks/usePlayer";
-import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar } from "./components";
-import type { PageType, SongInfo } from "./types";
+import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage } from "./components";
+import type { PageType, SongInfo, PlaylistInfo } from "./types";
 
 // 主内容组件
 function Content() {
   const [currentPage, setCurrentPage] = useState<PageType>('login');
   const [checking, setChecking] = useState(true);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
   const mountedRef = useRef(true);
   
   const player = usePlayer();
@@ -56,8 +57,32 @@ function Content() {
     });
   };
 
-  const handleSelectSong = async (song: SongInfo) => {
-    await player.playSong(song);
+  // 获取更多猜你喜欢歌曲的回调
+  const fetchMoreGuessLikeSongs = async (): Promise<SongInfo[]> => {
+    const result = await getGuessLike();
+    if (result.success && result.songs.length > 0) {
+      return result.songs;
+    }
+    return [];
+  };
+
+  // 从列表中选择歌曲时，设置整个列表为播放列表
+  // source: 'guess-like' 表示来自猜你喜欢，播放完后会自动刷新
+  const handleSelectSong = async (song: SongInfo, playlist?: SongInfo[], source?: string) => {
+    if (playlist && playlist.length > 0) {
+      const index = playlist.findIndex(s => s.mid === song.mid);
+      await player.playPlaylist(playlist, index >= 0 ? index : 0);
+      
+      // 如果是猜你喜欢，设置自动刷新回调
+      if (source === 'guess-like') {
+        player.setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
+      } else {
+        player.setOnNeedMoreSongs(null);
+      }
+    } else {
+      await player.playSong(song);
+      player.setOnNeedMoreSongs(null);
+    }
   };
 
   const handleGoToPlayer = () => {
@@ -79,6 +104,12 @@ function Content() {
     );
   }
 
+  // 选择歌单
+  const handleSelectPlaylist = (playlist: PlaylistInfo) => {
+    setSelectedPlaylist(playlist);
+    setCurrentPage('playlist-detail');
+  };
+
   // 渲染页面
   const renderPage = () => {
     switch (currentPage) {
@@ -90,6 +121,7 @@ function Content() {
           <HomePage
             onSelectSong={handleSelectSong}
             onGoToSearch={() => setCurrentPage('search')}
+            onGoToPlaylists={() => setCurrentPage('playlists')}
             onLogout={handleLogout}
             currentPlayingMid={player.currentSong?.mid}
           />
@@ -104,6 +136,29 @@ function Content() {
           />
         );
       
+      case 'playlists':
+        return (
+          <PlaylistsPage
+            onSelectPlaylist={handleSelectPlaylist}
+            onBack={() => setCurrentPage('home')}
+          />
+        );
+      
+      case 'playlist-detail':
+        return selectedPlaylist ? (
+          <PlaylistDetailPage
+            playlist={selectedPlaylist}
+            onSelectSong={handleSelectSong}
+            onBack={() => setCurrentPage('playlists')}
+            currentPlayingMid={player.currentSong?.mid}
+          />
+        ) : (
+          <PlaylistsPage
+            onSelectPlaylist={handleSelectPlaylist}
+            onBack={() => setCurrentPage('home')}
+          />
+        );
+      
       case 'player':
         return player.currentSong ? (
           <PlayerPage
@@ -113,14 +168,18 @@ function Content() {
             duration={player.duration}
             loading={player.loading}
             error={player.error}
+            hasPlaylist={player.playlist.length > 1}
             onTogglePlay={player.togglePlay}
             onSeek={player.seek}
+            onNext={player.playNext}
+            onPrev={player.playPrev}
             onBack={() => setCurrentPage('home')}
           />
         ) : (
           <HomePage
             onSelectSong={handleSelectSong}
             onGoToSearch={() => setCurrentPage('search')}
+            onGoToPlaylists={() => setCurrentPage('playlists')}
             onLogout={handleLogout}
           />
         );

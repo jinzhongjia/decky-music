@@ -16,6 +16,8 @@ import type {
   RecommendResponse,
   DailyRecommendResponse,
   RecommendPlaylistResponse,
+  UserPlaylistsResponse,
+  PlaylistSongsResponse,
 } from "../types";
 
 // ==================== 登录相关 ====================
@@ -66,4 +68,12 @@ export const getFavSongs = callable<[page: number, num: number], {
   total: number;
   error?: string;
 }>("get_fav_songs");
+
+// ==================== 歌单相关 ====================
+
+/** 获取用户歌单（创建的和收藏的） */
+export const getUserPlaylists = callable<[], UserPlaylistsResponse>("get_user_playlists");
+
+/** 获取歌单中的歌曲 */
+export const getPlaylistSongs = callable<[playlist_id: number, dirid: number], PlaylistSongsResponse>("get_playlist_songs");
 

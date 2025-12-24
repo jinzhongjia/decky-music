@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "py_modules"))
 import decky
 
 # QQ Music API 导入
-from qqmusic_api import Credential, login, lyric, recommend, search, song, user
+from qqmusic_api import Credential, login, lyric, recommend, search, song, songlist, user
 from qqmusic_api.login import QR, QRCodeLoginEvents, QRLoginType
 from qqmusic_api.utils.session import get_session
 
@@ -388,6 +388,76 @@ class Plugin:
         except Exception as e:
             decky.logger.error(f"获取歌曲信息失败: {e}")
             return {"success": False, "error": str(e), "info": {}}
+
+    # ==================== 歌单相关 API ====================
+
+    async def get_user_playlists(self) -> dict[str, Any]:
+        """获取用户的歌单（创建的和收藏的）"""
+        try:
+            if not self.credential or not self.credential.has_musicid():
+                return {"success": False, "error": "未登录", "created": [], "collected": []}
+
+            musicid = str(self.credential.musicid)
+            encrypt_uin = self.encrypt_uin or ""
+
+            # 获取创建的歌单
+            created_list = []
+            try:
+                created_result = await user.get_created_songlist(musicid, credential=self.credential)
+                for item in created_result:
+                    created_list.append({
+                        "id": item.get("tid", 0) or item.get("id", 0),
+                        "dirid": item.get("dirid", 0),
+                        "name": item.get("diss_name", "") or item.get("title", ""),
+                        "cover": item.get("diss_cover", "") or item.get("pic", ""),
+                        "songCount": item.get("song_cnt", 0) or item.get("songnum", 0),
+                        "playCount": item.get("listen_num", 0),
+                    })
+            except Exception as e:
+                decky.logger.warning(f"获取创建的歌单失败: {e}")
+
+            # 获取收藏的歌单
+            collected_list = []
+            if encrypt_uin:
+                try:
+                    collected_result = await user.get_fav_songlist(encrypt_uin, num=50, credential=self.credential)
+                    fav_list = collected_result.get("v_playlist", []) or collected_result.get("data", {}).get("v_playlist", [])
+                    for item in fav_list:
+                        collected_list.append({
+                            "id": item.get("tid", 0) or item.get("dissid", 0),
+                            "dirid": item.get("dirid", 0),
+                            "name": item.get("diss_name", "") or item.get("title", ""),
+                            "cover": item.get("diss_cover", "") or item.get("logo", ""),
+                            "songCount": item.get("song_cnt", 0) or item.get("song_count", 0),
+                            "creator": item.get("creator", {}).get("nick", "") if isinstance(item.get("creator"), dict) else "",
+                        })
+                except Exception as e:
+                    decky.logger.warning(f"获取收藏的歌单失败: {e}")
+
+            decky.logger.info(f"获取用户歌单: 创建 {len(created_list)} 个, 收藏 {len(collected_list)} 个")
+            return {
+                "success": True,
+                "created": created_list,
+                "collected": collected_list,
+            }
+
+        except Exception as e:
+            decky.logger.error(f"获取用户歌单失败: {e}")
+            return {"success": False, "error": str(e), "created": [], "collected": []}
+
+    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> dict[str, Any]:
+        """获取歌单中的所有歌曲"""
+        try:
+            songs_data = await songlist.get_songlist(playlist_id, dirid)
+
+            songs = [self._format_song(item) for item in songs_data]
+
+            decky.logger.info(f"获取歌单 {playlist_id} 的歌曲: {len(songs)} 首")
+            return {"success": True, "songs": songs, "playlist_id": playlist_id}
+
+        except Exception as e:
+            decky.logger.error(f"获取歌单歌曲失败: {e}")
+            return {"success": False, "error": str(e), "songs": []}
 
     # ==================== 生命周期方法 ====================
 

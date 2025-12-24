@@ -15,10 +15,11 @@ export interface SongInfo {
 /** 歌单信息 */
 export interface PlaylistInfo {
   id: number;
+  dirid?: number;
   name: string;
   cover: string;
   songCount: number;
-  playCount: number;
+  playCount?: number;
   creator?: string;
 }
 
@@ -116,7 +117,23 @@ export interface ApiResponse<T = unknown> {
 }
 
 /** 页面类型 */
-export type PageType = 'login' | 'home' | 'search' | 'player';
+export type PageType = 'login' | 'home' | 'search' | 'player' | 'playlists' | 'playlist-detail';
+
+/** 用户歌单响应 */
+export interface UserPlaylistsResponse {
+  success: boolean;
+  created: PlaylistInfo[];
+  collected: PlaylistInfo[];
+  error?: string;
+}
+
+/** 歌单歌曲响应 */
+export interface PlaylistSongsResponse {
+  success: boolean;
+  songs: SongInfo[];
+  playlist_id: number;
+  error?: string;
+}
 
 /** 播放状态 */
 export interface PlayerState {

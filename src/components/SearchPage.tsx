@@ -11,7 +11,7 @@ import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 
 interface SearchPageProps {
-  onSelectSong: (song: SongInfo) => void;
+  onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
   onBack: () => void;
   currentPlayingMid?: string;
 }
@@ -150,7 +150,7 @@ export const SearchPage: FC<SearchPageProps> = ({
           showIndex={false}
           currentPlayingMid={currentPlayingMid}
           emptyText="未找到相关歌曲"
-          onSelectSong={onSelectSong}
+          onSelectSong={(song) => onSelectSong(song, songs)}
         />
       )}
     </>

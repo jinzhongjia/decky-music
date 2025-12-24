@@ -15,8 +15,11 @@ interface PlayerPageProps {
   duration: number;
   loading: boolean;
   error: string;
+  hasPlaylist?: boolean;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
+  onNext?: () => void;
+  onPrev?: () => void;
   onBack: () => void;
 }
 
@@ -27,8 +30,11 @@ export const PlayerPage: FC<PlayerPageProps> = ({
   duration,
   loading,
   error,
+  hasPlaylist = false,
   onTogglePlay,
   onSeek,
+  onNext,
+  onPrev,
   onBack,
 }) => {
   const actualDuration = duration > 0 ? duration : song.duration;
@@ -161,7 +167,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               padding: '15px 0',
             }}>
               <div 
-                onClick={() => onSeek(Math.max(0, currentTime - 15))}
+                onClick={hasPlaylist && onPrev ? onPrev : () => onSeek(Math.max(0, currentTime - 15))}
                 style={{ 
                   cursor: 'pointer',
                   padding: '14px',
@@ -171,6 +177,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
+                title={hasPlaylist ? "上一首" : "后退15秒"}
               >
                 <FaStepBackward size={18} />
               </div>
@@ -193,7 +200,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               </div>
               
               <div 
-                onClick={() => onSeek(Math.min(actualDuration, currentTime + 15))}
+                onClick={hasPlaylist && onNext ? onNext : () => onSeek(Math.min(actualDuration, currentTime + 15))}
                 style={{ 
                   cursor: 'pointer',
                   padding: '14px',
@@ -203,6 +210,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
+                title={hasPlaylist ? "下一首" : "快进15秒"}
               >
                 <FaStepForward size={18} />
               </div>

@@ -9,4 +9,6 @@ export { PlayerPage } from "./PlayerPage";
 export { PlayerBar } from "./PlayerBar";
 export { SongItem } from "./SongItem";
 export { SongList } from "./SongList";
+export { PlaylistsPage } from "./PlaylistsPage";
+export { PlaylistDetailPage } from "./PlaylistDetailPage";
 
