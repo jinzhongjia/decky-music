@@ -4,7 +4,7 @@
 
 import { FC, useState, useEffect, useRef } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Focusable } from "@decky/ui";
-import { FaSearch, FaSignOutAlt, FaRedo, FaListUl } from "react-icons/fa";
+import { FaSearch, FaSignOutAlt, FaRedo, FaListUl, FaHistory } from "react-icons/fa";
 import { getGuessLike, getDailyRecommend } from "../api";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
@@ -14,6 +14,7 @@ interface HomePageProps {
   onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
   onGoToSearch: () => void;
   onGoToPlaylists?: () => void;
+  onGoToHistory?: () => void;
   onLogout: () => void;
   currentPlayingMid?: string;
 }
@@ -22,6 +23,7 @@ export const HomePage: FC<HomePageProps> = ({
   onSelectSong,
   onGoToSearch,
   onGoToPlaylists,
+  onGoToHistory,
   onLogout,
   currentPlayingMid,
 }) => {
@@ -92,6 +94,17 @@ export const HomePage: FC<HomePageProps> = ({
             >
               <FaListUl style={{ marginRight: '8px' }} />
               我的歌单
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
+        {onGoToHistory && (
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              onClick={onGoToHistory}
+            >
+              <FaHistory style={{ marginRight: '8px' }} />
+              播放历史
             </ButtonItem>
           </PanelSectionRow>
         )}

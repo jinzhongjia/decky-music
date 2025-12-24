@@ -117,7 +117,7 @@ export interface ApiResponse<T = unknown> {
 }
 
 /** 页面类型 */
-export type PageType = 'login' | 'home' | 'search' | 'player' | 'playlists' | 'playlist-detail';
+export type PageType = 'login' | 'home' | 'search' | 'player' | 'playlists' | 'playlist-detail' | 'history';
 
 /** 用户歌单响应 */
 export interface UserPlaylistsResponse {

@@ -11,4 +11,5 @@ export { SongItem } from "./SongItem";
 export { SongList } from "./SongList";
 export { PlaylistsPage } from "./PlaylistsPage";
 export { PlaylistDetailPage } from "./PlaylistDetailPage";
+export { HistoryPage } from "./HistoryPage";
 
