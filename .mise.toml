@@ -18,7 +18,8 @@ DOCKER_BUILDKIT=1 docker build --no-cache --output type=local,dest=out .
 [tasks.deploy]
 description = "同步插件到 Steam Deck"
 run = """
-rsync -avz --delete out/QQMusic/ ${DECK_HOST}:${DECK_PLUGIN_PATH}/QQMusic/
+ssh ${DECK_HOST} "sudo rm -rf ${DECK_PLUGIN_PATH}/QQMusic"
+rsync -avz out/QQMusic/ ${DECK_HOST}:${DECK_PLUGIN_PATH}/QQMusic/
 ssh ${DECK_HOST} "sudo systemctl restart plugin_loader"
 """
 
