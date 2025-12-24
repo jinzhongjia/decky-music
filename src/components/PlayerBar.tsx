@@ -51,9 +51,10 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           right: 0,
           height: '3px',
           background: 'rgba(255,255,255,0.1)',
-          cursor: 'pointer',
+          cursor: duration > 0 ? 'pointer' : 'default',
         }}
         onClick={(e) => {
+          if (duration <= 0) return;
           const rect = e.currentTarget.getBoundingClientRect();
           const percent = (e.clientX - rect.left) / rect.width;
           onSeek(percent * duration);

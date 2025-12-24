@@ -19,12 +19,15 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [status, setStatus] = useState<LoginStatus>("idle");
   const [loginType, setLoginType] = useState<"qq" | "wx">("qq");
   const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
 
   const fetchQrCode = async (type: "qq" | "wx") => {
     setLoginType(type);
     setStatus("loading");
     
     const result = await getQrCode(type);
+    if (!mountedRef.current) return;
+    
     if (result.success && result.qr_data) {
       setQrData(result.qr_data);
       setStatus("waiting");
@@ -45,6 +48,8 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
     
     checkIntervalRef.current = setInterval(async () => {
       const result = await checkQrStatus();
+      if (!mountedRef.current) return;
+      
       if (result.success) {
         switch (result.status) {
           case "success":
@@ -73,7 +78,9 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (checkIntervalRef.current) {
         clearInterval(checkIntervalRef.current);
       }

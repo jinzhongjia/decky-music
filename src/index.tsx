@@ -2,7 +2,7 @@
  * Decky QQ Music 插件主入口
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui";
 import { definePlugin, toaster } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
@@ -16,20 +16,27 @@ import type { PageType, SongInfo } from "./types";
 function Content() {
   const [currentPage, setCurrentPage] = useState<PageType>('login');
   const [checking, setChecking] = useState(true);
+  const mountedRef = useRef(true);
   
   const player = usePlayer();
 
   useEffect(() => {
+    mountedRef.current = true;
     checkLoginStatus();
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const checkLoginStatus = async () => {
     setChecking(true);
     try {
       const result = await getLoginStatus();
+      if (!mountedRef.current) return;
       setCurrentPage(result.logged_in ? 'home' : 'login');
     } catch (e) {
       console.error("检查登录状态失败:", e);
+      if (!mountedRef.current) return;
       setCurrentPage('login');
     }
     setChecking(false);

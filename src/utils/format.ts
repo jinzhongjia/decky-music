@@ -38,6 +38,7 @@ export function getAlbumCover(albumMid: string, size: number = 300): string {
  * 生成默认封面占位图
  */
 export function getDefaultCover(size: number = 48): string {
-  return `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"><rect fill="%232a2a2a" width="${size}" height="${size}" rx="6"/><text x="${size/2}" y="${size/2 + 6}" text-anchor="middle" fill="%23666" font-size="${size/3}">🎵</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"><rect fill="#2a2a2a" width="${size}" height="${size}" rx="6"/><text x="${size/2}" y="${size/2 + 6}" text-anchor="middle" fill="#666" font-size="${size/3}">♪</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 

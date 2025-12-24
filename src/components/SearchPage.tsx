@@ -2,7 +2,7 @@
  * 搜索页面组件
  */
 
-import { FC, useState, useEffect } from "react";
+import { FC, useState, useEffect, useRef } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, TextField, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaSearch, FaArrowLeft } from "react-icons/fa";
@@ -26,13 +26,19 @@ export const SearchPage: FC<SearchPageProps> = ({
   const [loading, setLoading] = useState(false);
   const [hotkeys, setHotkeys] = useState<string[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadHotSearch();
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const loadHotSearch = async () => {
     const result = await getHotSearch();
+    if (!mountedRef.current) return;
     if (result.success) {
       setHotkeys(result.hotkeys.slice(0, 8).map(h => h.keyword));
     }
@@ -46,6 +52,7 @@ export const SearchPage: FC<SearchPageProps> = ({
     setHasSearched(true);
     
     const result = await searchSongs(kw, 1, 30);
+    if (!mountedRef.current) return;
     setLoading(false);
     
     if (result.success) {

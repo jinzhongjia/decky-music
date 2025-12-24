@@ -105,11 +105,15 @@ export function usePlayer(): UsePlayerReturn {
       }
       
       // 异步获取歌词
-      getSongLyric(song.mid).then(lyricResult => {
-        if (lyricResult.success) {
-          setLyric(lyricResult.lyric);
-        }
-      });
+      getSongLyric(song.mid)
+        .then(lyricResult => {
+          if (lyricResult.success) {
+            setLyric(lyricResult.lyric);
+          }
+        })
+        .catch(() => {
+          // 歌词获取失败不影响播放
+        });
       
     } catch (e) {
       setError((e as Error).message);
@@ -124,20 +128,22 @@ export function usePlayer(): UsePlayerReturn {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().catch(e => {
-        toaster.toast({
-          title: "播放失败",
-          body: e.message
+      audioRef.current.play()
+        .then(() => setIsPlaying(true))
+        .catch(e => {
+          toaster.toast({
+            title: "播放失败",
+            body: e.message
+          });
         });
-      });
-      setIsPlaying(true);
     }
   }, [isPlaying]);
 
   const seek = useCallback((time: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
+    if (audioRef.current && audioRef.current.duration) {
+      const clampedTime = Math.max(0, Math.min(time, audioRef.current.duration));
+      audioRef.current.currentTime = clampedTime;
+      setCurrentTime(clampedTime);
     }
   }, []);
 

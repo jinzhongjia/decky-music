@@ -2,12 +2,13 @@
  * 首页组件 - 包含推荐内容
  */
 
-import { FC, useState, useEffect } from "react";
+import { FC, useState, useEffect, useRef } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner } from "@decky/ui";
 import { FaSearch, FaSignOutAlt, FaRedo } from "react-icons/fa";
 import { getGuessLike, getDailyRecommend } from "../api";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
+import { SongItem } from "./SongItem";
 
 interface HomePageProps {
   onSelectSong: (song: SongInfo) => void;
@@ -26,15 +27,21 @@ export const HomePage: FC<HomePageProps> = ({
   const [guessLikeSongs, setGuessLikeSongs] = useState<SongInfo[]>([]);
   const [loadingDaily, setLoadingDaily] = useState(true);
   const [loadingGuess, setLoadingGuess] = useState(true);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadRecommendations();
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const loadRecommendations = async () => {
     // 加载每日推荐
     setLoadingDaily(true);
     getDailyRecommend().then(result => {
+      if (!mountedRef.current) return;
       if (result.success) {
         setDailySongs(result.songs);
       }
@@ -44,6 +51,7 @@ export const HomePage: FC<HomePageProps> = ({
     // 加载猜你喜欢
     setLoadingGuess(true);
     getGuessLike().then(result => {
+      if (!mountedRef.current) return;
       if (result.success) {
         setGuessLikeSongs(result.songs);
       }
@@ -54,6 +62,7 @@ export const HomePage: FC<HomePageProps> = ({
   const refreshGuessLike = async () => {
     setLoadingGuess(true);
     const result = await getGuessLike();
+    if (!mountedRef.current) return;
     if (result.success) {
       setGuessLikeSongs(result.songs);
     }
@@ -94,61 +103,28 @@ export const HomePage: FC<HomePageProps> = ({
               <Spinner />
             </div>
           </PanelSectionRow>
+        ) : guessLikeSongs.length === 0 ? (
+          <PanelSectionRow>
+            <div style={{ 
+              textAlign: 'center', 
+              color: '#8b929a', 
+              padding: '20px',
+              fontSize: '14px',
+            }}>
+              暂无推荐，请稍后再试
+            </div>
+          </PanelSectionRow>
         ) : (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {guessLikeSongs.map((song, idx) => (
-                <div
+                <SongItem
                   key={song.mid || idx}
-                  onClick={() => onSelectSong(song)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '10px 12px',
-                    background: currentPlayingMid === song.mid 
-                      ? 'rgba(29, 185, 84, 0.15)' 
-                      : 'rgba(255,255,255,0.03)',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    borderLeft: currentPlayingMid === song.mid 
-                      ? '3px solid #1db954' 
-                      : '3px solid transparent',
-                  }}
-                >
-                  <img 
-                    src={song.cover}
-                    alt={song.name}
-                    style={{
-                      width: '48px',
-                      height: '48px',
-                      borderRadius: '6px',
-                      objectFit: 'cover',
-                      background: '#2a2a2a',
-                    }}
-                  />
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
-                    <div style={{ 
-                      fontSize: '14px', 
-                      fontWeight: 500,
-                      color: currentPlayingMid === song.mid ? '#1db954' : '#fff',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}>
-                      {song.name}
-                    </div>
-                    <div style={{ 
-                      fontSize: '12px', 
-                      color: '#8b929a',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}>
-                      {song.singer}
-                    </div>
-                  </div>
-                </div>
+                  song={song}
+                  index={idx}
+                  isPlaying={currentPlayingMid === song.mid}
+                  onClick={onSelectSong}
+                />
               ))}
             </div>
             
