@@ -56,6 +56,9 @@ let onPlayNextCallback: (() => void) | null = null;
 // 播放列表结束时获取更多歌曲的回调
 let onNeedMoreSongsCallback: (() => Promise<SongInfo[]>) | null = null;
 
+// 自动跳过的 timeout ID，用于取消
+let skipTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
 // 获取或创建全局音频实例
 function getGlobalAudio(): HTMLAudioElement {
   if (!globalAudio) {
@@ -118,6 +121,12 @@ export function usePlayer(): UsePlayerReturn {
   const playSongInternal = useCallback(async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true): Promise<boolean> => {
     const audio = getGlobalAudio();
     
+    // 取消之前的自动跳过 timeout
+    if (skipTimeoutId) {
+      clearTimeout(skipTimeoutId);
+      skipTimeoutId = null;
+    }
+    
     setLoading(true);
     setError("");
     setCurrentSong(song);
@@ -150,11 +159,12 @@ export function usePlayer(): UsePlayerReturn {
         
         // 如果是列表播放模式，自动跳到下一首
         if (autoSkipOnError && globalPlaylist.length > 1) {
-          setTimeout(() => {
+          skipTimeoutId = setTimeout(() => {
+            skipTimeoutId = null;
             if (onPlayNextCallback) {
               onPlayNextCallback();
             }
-          }, 1500);
+          }, 2000);
         }
         return false;
       }
@@ -183,11 +193,12 @@ export function usePlayer(): UsePlayerReturn {
         
         // 自动跳到下一首
         if (autoSkipOnError && globalPlaylist.length > 1) {
-          setTimeout(() => {
+          skipTimeoutId = setTimeout(() => {
+            skipTimeoutId = null;
             if (onPlayNextCallback) {
               onPlayNextCallback();
             }
-          }, 1500);
+          }, 2000);
         }
         return false;
       }
@@ -376,6 +387,12 @@ export function usePlayer(): UsePlayerReturn {
     const audio = getGlobalAudio();
     audio.pause();
     audio.src = "";
+    
+    // 取消自动跳过 timeout
+    if (skipTimeoutId) {
+      clearTimeout(skipTimeoutId);
+      skipTimeoutId = null;
+    }
     
     // 清理全局状态
     globalCurrentSong = null;
