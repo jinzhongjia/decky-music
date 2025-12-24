@@ -20,6 +20,16 @@ function Content() {
   const mountedRef = useRef(true);
   
   const player = usePlayer();
+  
+  // 使用 ref 保存最新的 player 和页面状态，避免闭包问题
+  const playerRef = useRef(player);
+  const currentPageRef = useRef(currentPage);
+  
+  // 每次渲染时更新 ref
+  useEffect(() => {
+    playerRef.current = player;
+    currentPageRef.current = currentPage;
+  });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -28,6 +38,59 @@ function Content() {
       mountedRef.current = false;
     };
   }, []);
+
+  // 手柄快捷键绑定
+  // X (2): 暂停/播放
+  // L1 (30): 上一曲
+  // R1 (31): 下一曲  
+  // Y (3): 进入详细页
+  useEffect(() => {
+    // @ts-ignore - SteamClient 是全局变量
+    if (typeof SteamClient === 'undefined' || !SteamClient?.Input?.RegisterForControllerInputMessages) {
+      console.warn("SteamClient.Input 不可用，跳过手柄快捷键绑定");
+      return;
+    }
+
+    // @ts-ignore
+    const unregister = SteamClient.Input.RegisterForControllerInputMessages(
+      (_controllerIndex: number, button: number, pressed: boolean) => {
+        // 只处理按下事件
+        if (!pressed) return;
+        
+        // 从 ref 获取最新状态
+        const p = playerRef.current;
+        const page = currentPageRef.current;
+        
+        // 只在有歌曲时响应
+        if (!p.currentSong) return;
+
+        switch (button) {
+          case 2: // X - 播放/暂停
+            p.togglePlay();
+            break;
+          case 30: // L1 - 上一曲
+            if (p.playlist.length > 1) {
+              p.playPrev();
+            }
+            break;
+          case 31: // R1 - 下一曲
+            if (p.playlist.length > 1) {
+              p.playNext();
+            }
+            break;
+          case 3: // Y - 进入详细页
+            if (page !== 'player' && page !== 'login') {
+              setCurrentPage('player');
+            }
+            break;
+        }
+      }
+    );
+
+    return () => {
+      unregister?.unregister?.();
+    };
+  }, []); // 只注册一次，通过 ref 访问最新状态
 
   const checkLoginStatus = async () => {
     setChecking(true);
