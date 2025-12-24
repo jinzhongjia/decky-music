@@ -42,6 +42,17 @@ export const searchSongs = callable<[keyword: string, page: number, num: number]
 /** 获取热门搜索 */
 export const getHotSearch = callable<[], HotSearchResponse>("get_hot_search");
 
+/** 获取搜索建议 */
+export const getSearchSuggest = callable<[keyword: string], {
+  success: boolean;
+  suggestions: Array<{
+    type: string;
+    keyword: string;
+    singer?: string;
+  }>;
+  error?: string;
+}>("get_search_suggest");
+
 // ==================== 播放相关 ====================
 
 /** 获取歌曲播放链接 */
