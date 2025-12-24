@@ -4,7 +4,7 @@
 
 import { FC, useState, useEffect, useRef } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Focusable } from "@decky/ui";
-import { FaArrowLeft, FaCompactDisc, FaHeart } from "react-icons/fa";
+import { FaArrowLeft } from "react-icons/fa";
 import { getUserPlaylists } from "../api";
 import type { PlaylistInfo } from "../types";
 import { formatPlayCount, getDefaultCover } from "../utils/format";
@@ -125,11 +125,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
       </PanelSection>
 
       {/* 创建的歌单 */}
-      <PanelSection title={
-        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <FaCompactDisc /> 创建的歌单 ({createdPlaylists.length})
-        </span>
-      }>
+      <PanelSection title={`💿 创建的歌单 (${createdPlaylists.length})`}>
         {createdPlaylists.length === 0 ? (
           <PanelSectionRow>
             <div style={{ textAlign: 'center', color: '#8b929a', padding: '20px' }}>
@@ -150,11 +146,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
       </PanelSection>
 
       {/* 收藏的歌单 */}
-      <PanelSection title={
-        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <FaHeart /> 收藏的歌单 ({collectedPlaylists.length})
-        </span>
-      }>
+      <PanelSection title={`❤️ 收藏的歌单 (${collectedPlaylists.length})`}>
         {collectedPlaylists.length === 0 ? (
           <PanelSectionRow>
             <div style={{ textAlign: 'center', color: '#8b929a', padding: '20px' }}>

@@ -62,10 +62,9 @@ export const HistoryPage: FC<HistoryPageProps> = ({
               <ButtonItem 
                 layout="below" 
                 onClick={onClearHistory}
-                style={{ opacity: 0.7 }}
               >
-                <FaTrash style={{ marginRight: '8px' }} />
-                清空历史
+                <FaTrash style={{ marginRight: '8px', opacity: 0.7 }} />
+                <span style={{ opacity: 0.8 }}>清空历史</span>
               </ButtonItem>
             </PanelSectionRow>
           </>

@@ -6,7 +6,7 @@
 import { FC, useState, useEffect, useRef, useCallback } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, TextField, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
-import { FaSearch, FaArrowLeft, FaHistory, FaTimes } from "react-icons/fa";
+import { FaSearch, FaArrowLeft, FaTimes } from "react-icons/fa";
 import { searchSongs, getHotSearch, getSearchSuggest } from "../api";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
@@ -270,9 +270,9 @@ export const SearchPage: FC<SearchPageProps> = ({
       {searchHistory.length > 0 && !hasSearched && (
         <PanelSection title="🕐 搜索历史">
           <PanelSectionRow>
-            <ButtonItem layout="below" onClick={clearHistory} style={{ opacity: 0.7 }}>
-              <FaTimes style={{ marginRight: '6px' }} />
-              清空历史
+            <ButtonItem layout="below" onClick={clearHistory}>
+              <FaTimes style={{ marginRight: '6px', opacity: 0.7 }} />
+              <span style={{ opacity: 0.8 }}>清空历史</span>
             </ButtonItem>
           </PanelSectionRow>
           <PanelSectionRow>
