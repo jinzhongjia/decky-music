@@ -3,7 +3,7 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, Spinner } from "@decky/ui";
+import { PanelSection, PanelSectionRow, Spinner, Focusable } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { SongItem } from "./SongItem";
 
@@ -57,7 +57,11 @@ export const SongList: FC<SongListProps> = ({
 
   return (
     <PanelSection title={title}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <Focusable
+        style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+        //@ts-expect-error flow-children is valid but not in types
+        flow-children="column"
+      >
         {songs.map((song, idx) => (
           <SongItem
             key={song.mid || idx}
@@ -68,7 +72,7 @@ export const SongList: FC<SongListProps> = ({
             onClick={onSelectSong}
           />
         ))}
-      </div>
+      </Focusable>
     </PanelSection>
   );
 };
