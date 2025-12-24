@@ -1,10 +1,9 @@
 /**
  * 迷你播放器组件 - 底部播放条
- * 所有按钮都支持手柄操作
+ * 不可获取焦点，只响应点击
  */
 
 import { FC } from "react";
-import { Focusable } from "@decky/ui";
 import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { formatDuration, getDefaultCover } from "../utils/format";
@@ -73,10 +72,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
         gap: '10px',
         marginTop: '2px',
       }}>
-        {/* 封面和歌曲信息 - 可聚焦点击进入播放器 */}
-        <Focusable
-          focusClassName="qqmusic-control-btn-focused"
-          onActivate={onClick}
+        {/* 封面和歌曲信息 - 点击进入播放器详情页 */}
+        <div
           onClick={onClick}
           style={{
             display: 'flex',
@@ -124,14 +121,12 @@ export const PlayerBar: FC<PlayerBarProps> = ({
               {song.singer} · {formatDuration(Math.floor(currentTime))} / {formatDuration(duration)}
             </div>
           </div>
-        </Focusable>
+        </div>
 
-        {/* 播放控制按钮 */}
+        {/* 播放控制按钮 - 只响应点击，不可聚焦 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {/* 上一首/后退按钮 */}
-          <Focusable
-            focusClassName="qqmusic-control-btn-focused"
-            onActivate={() => onPrev ? onPrev() : onSeek(Math.max(0, currentTime - 10))}
+          <div
             onClick={(e) => {
               e.stopPropagation();
               onPrev ? onPrev() : onSeek(Math.max(0, currentTime - 10));
@@ -149,12 +144,10 @@ export const PlayerBar: FC<PlayerBarProps> = ({
             }}
           >
             <FaStepBackward size={14} />
-          </Focusable>
+          </div>
           
           {/* 播放/暂停按钮 */}
-          <Focusable
-            focusClassName="qqmusic-play-btn-focused"
-            onActivate={onTogglePlay}
+          <div
             onClick={(e) => {
               e.stopPropagation();
               onTogglePlay();
@@ -174,12 +167,10 @@ export const PlayerBar: FC<PlayerBarProps> = ({
             }}
           >
             {isPlaying ? <FaPause size={16} /> : <FaPlay size={16} style={{ marginLeft: '2px' }} />}
-          </Focusable>
+          </div>
           
           {/* 下一首/快进按钮 */}
-          <Focusable
-            focusClassName="qqmusic-control-btn-focused"
-            onActivate={() => onNext ? onNext() : onSeek(Math.min(duration, currentTime + 10))}
+          <div
             onClick={(e) => {
               e.stopPropagation();
               onNext ? onNext() : onSeek(Math.min(duration, currentTime + 10));
@@ -197,7 +188,7 @@ export const PlayerBar: FC<PlayerBarProps> = ({
             }}
           >
             <FaStepForward size={14} />
-          </Focusable>
+          </div>
         </div>
       </div>
     </div>
