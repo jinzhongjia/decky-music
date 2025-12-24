@@ -40,8 +40,8 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Python modules - 依赖直接提交到仓库
-# py_modules/
+# Python modules - Docker 构建时自动生成
+py_modules/
 
 /.yalc
 yalc.lock
