@@ -62,3 +62,5 @@ out/*
 cli/
 cli/*
 cli/decky
+
+.vscode/setting.json
