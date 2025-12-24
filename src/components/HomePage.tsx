@@ -118,8 +118,6 @@ export const HomePage: FC<HomePageProps> = ({
           <>
             <Focusable
               style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
-              //@ts-expect-error flow-children is valid but not in types
-              flow-children="column"
             >
               {guessLikeSongs.map((song, idx) => (
                 <SongItem

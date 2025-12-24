@@ -20,6 +20,7 @@ import decky
 # QQ Music API 导入
 from qqmusic_api import Credential, login, lyric, recommend, search, song, user
 from qqmusic_api.login import QR, QRCodeLoginEvents, QRLoginType
+from qqmusic_api.utils.session import get_session
 
 
 class Plugin:
@@ -245,6 +246,10 @@ class Plugin:
     async def get_guess_like(self) -> dict[str, Any]:
         """获取猜你喜欢"""
         try:
+            # 清除缓存以获取新的推荐
+            session = get_session()
+            await session.clear_cache()
+            
             result = await recommend.get_guess_recommend()
 
             songs = []

@@ -59,8 +59,6 @@ export const SongList: FC<SongListProps> = ({
     <PanelSection title={title}>
       <Focusable
         style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
-        //@ts-expect-error flow-children is valid but not in types
-        flow-children="column"
       >
         {songs.map((song, idx) => (
           <SongItem
