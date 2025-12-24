@@ -1,0 +1,11 @@
+[tasks.clean]
+description = "清理构建产物"
+run = "rm -rf out/ dist/"
+
+[tasks.build]
+description = "使用 Docker 构建插件"
+depends = ["clean"]
+run = """
+mkdir -p out
+DOCKER_BUILDKIT=1 docker build --no-cache --output type=local,dest=out .
+"""

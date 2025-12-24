@@ -44,23 +44,49 @@ FROM alpine:latest AS packager
 
 WORKDIR /build
 
-# 安装 zip
-RUN apk add --no-cache zip
+# 安装 zip 和 jq (用于解析 plugin.json)
+RUN apk add --no-cache zip jq
 
-# 从前端阶段复制构建产物
-COPY --from=frontend /build/dist ./QQMusic/dist
-COPY --from=frontend /build/py_modules ./QQMusic/py_modules
-COPY --from=frontend /build/main.py ./QQMusic/
-COPY --from=frontend /build/plugin.json ./QQMusic/
-COPY --from=frontend /build/package.json ./QQMusic/
-COPY --from=frontend /build/LICENSE ./QQMusic/ 
-COPY --from=frontend /build/README.md ./QQMusic/ 
-COPY --from=frontend /build/assets ./QQMusic/assets
+# 先复制 plugin.json 以读取插件名称
+COPY --from=frontend /build/plugin.json ./plugin.json
 
-# 创建 zip 包
-RUN cd /build && zip -rq QQMusic.zip QQMusic
+# 从 plugin.json 读取插件名称并保存到文件
+RUN PLUGIN_NAME=$(jq -r '.name' plugin.json) && echo "$PLUGIN_NAME" > /tmp/plugin_name
 
-# 输出阶段
+# 从前端阶段复制构建产物到以插件名命名的目录
+RUN PLUGIN_NAME=$(cat /tmp/plugin_name) && mkdir -p "$PLUGIN_NAME"
+COPY --from=frontend /build/dist ./dist_tmp
+COPY --from=frontend /build/py_modules ./py_modules_tmp
+COPY --from=frontend /build/main.py ./
+COPY --from=frontend /build/package.json ./package_tmp.json
+COPY --from=frontend /build/LICENSE ./LICENSE_tmp
+COPY --from=frontend /build/README.md ./README_tmp.md
+COPY --from=frontend /build/assets ./assets_tmp
+
+# 移动文件到正确的目录并打包
+RUN PLUGIN_NAME=$(cat /tmp/plugin_name) && \
+    mv dist_tmp "$PLUGIN_NAME/dist" && \
+    mv py_modules_tmp "$PLUGIN_NAME/py_modules" && \
+    mv main.py "$PLUGIN_NAME/" && \
+    mv plugin.json "$PLUGIN_NAME/" && \
+    mv package_tmp.json "$PLUGIN_NAME/package.json" && \
+    mv LICENSE_tmp "$PLUGIN_NAME/LICENSE" && \
+    mv README_tmp.md "$PLUGIN_NAME/README.md" && \
+    mv assets_tmp "$PLUGIN_NAME/assets" && \
+    chmod -R a+rw "$PLUGIN_NAME" && \
+    chmod a+rw /build && \
+    zip -rq "${PLUGIN_NAME}.zip" "$PLUGIN_NAME" && \
+    chmod a+rw "${PLUGIN_NAME}.zip" && \
+    echo "$PLUGIN_NAME" > /tmp/plugin_name
+
+# 输出阶段 - 复制 zip 和插件文件夹
+FROM alpine:latest AS output-prep
+COPY --from=packager /tmp/plugin_name /tmp/plugin_name
+COPY --from=packager /build/ /build/
+RUN PLUGIN_NAME=$(cat /tmp/plugin_name) && \
+    mkdir -p /output && \
+    cp "/build/${PLUGIN_NAME}.zip" /output/ && \
+    cp -r "/build/${PLUGIN_NAME}" /output/
+
 FROM scratch AS output
-COPY --from=packager /build/QQMusic.zip /
-
+COPY --from=output-prep /output/ /
