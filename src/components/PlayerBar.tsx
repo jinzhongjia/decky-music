@@ -47,12 +47,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
       padding: '8px 12px',
       backdropFilter: 'blur(10px)',
     }}>
-      {/* 进度条 */}
-      <Focusable
-        onActivate={() => {
-          // 手柄按A键时跳到中间位置
-          if (duration > 0) onSeek(duration / 2);
-        }}
+      {/* 进度条（仅显示，不可聚焦） */}
+      <div
         style={{
           position: 'absolute',
           top: 0,
@@ -60,13 +56,6 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           right: 0,
           height: '6px',
           background: 'rgba(255,255,255,0.1)',
-          cursor: duration > 0 ? 'pointer' : 'default',
-        }}
-        onClick={(e) => {
-          if (duration <= 0) return;
-          const rect = e.currentTarget.getBoundingClientRect();
-          const percent = (e.clientX - rect.left) / rect.width;
-          onSeek(percent * duration);
         }}
       >
         <div style={{
@@ -74,11 +63,10 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           width: `${progress}%`,
           background: '#1db954',
           transition: 'width 0.1s linear',
-          pointerEvents: 'none',
         }} />
-      </Focusable>
+      </div>
 
-      <Focusable style={{
+      <div style={{
         display: 'flex',
         alignItems: 'center',
         gap: '10px',
@@ -86,6 +74,7 @@ export const PlayerBar: FC<PlayerBarProps> = ({
       }}>
         {/* 封面和歌曲信息 - 可聚焦点击进入播放器 */}
         <Focusable
+          focusClassName="qqmusic-control-btn-focused"
           onActivate={onClick}
           onClick={onClick}
           style={{
@@ -137,9 +126,10 @@ export const PlayerBar: FC<PlayerBarProps> = ({
         </Focusable>
 
         {/* 播放控制按钮 */}
-        <Focusable style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {/* 上一首/后退按钮 */}
           <Focusable
+            focusClassName="qqmusic-control-btn-focused"
             onActivate={() => onPrev ? onPrev() : onSeek(Math.max(0, currentTime - 10))}
             onClick={(e) => {
               e.stopPropagation();
@@ -147,12 +137,14 @@ export const PlayerBar: FC<PlayerBarProps> = ({
             }}
             style={{ 
               cursor: 'pointer',
-              padding: '10px',
+              width: '34px',
+              height: '34px',
               borderRadius: '50%',
               background: 'rgba(255,255,255,0.1)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
             <FaStepBackward size={14} />
@@ -160,6 +152,7 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           
           {/* 播放/暂停按钮 */}
           <Focusable
+            focusClassName="qqmusic-play-btn-focused"
             onActivate={onTogglePlay}
             onClick={(e) => {
               e.stopPropagation();
@@ -167,7 +160,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
             }}
             style={{ 
               cursor: loading ? 'wait' : 'pointer',
-              padding: '12px',
+              width: '40px',
+              height: '40px',
               borderRadius: '50%',
               background: '#1db954',
               color: '#fff',
@@ -175,6 +169,7 @@ export const PlayerBar: FC<PlayerBarProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
             {isPlaying ? <FaPause size={16} /> : <FaPlay size={16} style={{ marginLeft: '2px' }} />}
@@ -182,6 +177,7 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           
           {/* 下一首/快进按钮 */}
           <Focusable
+            focusClassName="qqmusic-control-btn-focused"
             onActivate={() => onNext ? onNext() : onSeek(Math.min(duration, currentTime + 10))}
             onClick={(e) => {
               e.stopPropagation();
@@ -189,18 +185,20 @@ export const PlayerBar: FC<PlayerBarProps> = ({
             }}
             style={{ 
               cursor: 'pointer',
-              padding: '10px',
+              width: '34px',
+              height: '34px',
               borderRadius: '50%',
               background: 'rgba(255,255,255,0.1)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
             <FaStepForward size={14} />
           </Focusable>
-        </Focusable>
-      </Focusable>
+        </div>
+      </div>
     </div>
   );
 };

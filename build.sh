@@ -24,9 +24,9 @@ rm -rf out/
 # 创建输出目录
 mkdir -p out
 
-# 使用 Docker 构建
+# 使用 Docker 构建 (--no-cache 确保拉取最新依赖)
 echo "🐳 使用 Docker 构建..."
-DOCKER_BUILDKIT=1 sudo docker build --output type=local,dest=out .
+DOCKER_BUILDKIT=1 sudo docker build --no-cache --output type=local,dest=out .
 
 echo ""
 echo "✅ 构建完成!"
