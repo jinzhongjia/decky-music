@@ -236,10 +236,46 @@ class Plugin:
             for item in result.get("hotkey", []):
                 hotkeys.append({"keyword": item.get("query", item.get("k", "")), "score": item.get("score", 0)})
 
-            return {"success": True, "hotkeys": hotkeys[:10]}
+            return {"success": True, "hotkeys": hotkeys[:20]}  # 返回更多热搜词
         except Exception as e:
             decky.logger.error(f"获取热搜失败: {e}")
             return {"success": False, "error": str(e), "hotkeys": []}
+
+    async def get_search_suggest(self, keyword: str) -> dict[str, Any]:
+        """获取搜索建议/补全"""
+        try:
+            if not keyword or len(keyword.strip()) == 0:
+                return {"success": True, "suggestions": []}
+
+            result = await search.complete(keyword)
+
+            suggestions = []
+            # 解析歌曲建议
+            for item in result.get("song", {}).get("itemlist", []):
+                suggestions.append({
+                    "type": "song",
+                    "keyword": item.get("name", ""),
+                    "singer": item.get("singer", ""),
+                })
+            # 解析歌手建议
+            for item in result.get("singer", {}).get("itemlist", []):
+                suggestions.append({
+                    "type": "singer",
+                    "keyword": item.get("name", ""),
+                })
+            # 解析专辑建议
+            for item in result.get("album", {}).get("itemlist", []):
+                suggestions.append({
+                    "type": "album",
+                    "keyword": item.get("name", ""),
+                    "singer": item.get("singer", ""),
+                })
+
+            return {"success": True, "suggestions": suggestions[:10]}
+
+        except Exception as e:
+            decky.logger.error(f"获取搜索建议失败: {e}")
+            return {"success": False, "error": str(e), "suggestions": []}
 
     # ==================== 推荐相关 API ====================
 
