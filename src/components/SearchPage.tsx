@@ -353,7 +353,6 @@ export const SearchPage: FC<SearchPageProps> = ({
           title={`搜索结果${songs.length > 0 ? ` (${songs.length})` : ''}`}
           songs={songs}
           loading={loading}
-          showIndex={false}
           currentPlayingMid={currentPlayingMid}
           emptyText="未找到相关歌曲，试试拼音搜索？"
           onSelectSong={(song) => onSelectSong(song, songs)}

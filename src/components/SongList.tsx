@@ -11,7 +11,6 @@ interface SongListProps {
   title: string;
   songs: SongInfo[];
   loading?: boolean;
-  showIndex?: boolean;
   currentPlayingMid?: string;
   emptyText?: string;
   onSelectSong: (song: SongInfo) => void;
@@ -21,7 +20,6 @@ export const SongList: FC<SongListProps> = ({
   title,
   songs,
   loading = false,
-  showIndex = false,
   currentPlayingMid,
   emptyText = "暂无歌曲",
   onSelectSong,
@@ -64,8 +62,6 @@ export const SongList: FC<SongListProps> = ({
           <SongItem
             key={song.mid || idx}
             song={song}
-            index={idx}
-            showIndex={showIndex}
             isPlaying={currentPlayingMid === song.mid}
             onClick={onSelectSong}
           />

@@ -96,8 +96,6 @@ export const HistoryPage: FC<HistoryPageProps> = ({
               <SongItem
                 key={`${song.mid}-${idx}`}
                 song={song}
-                index={idx}
-                showIndex={true}
                 isPlaying={currentPlayingMid === song.mid}
                 onClick={(s) => onSelectSong(s, history)}
               />

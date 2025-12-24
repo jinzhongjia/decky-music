@@ -204,7 +204,6 @@ export const HomePage: FC<HomePageProps> = ({
               <SongItem
                 key={song.mid || idx}
                 song={song}
-                index={idx}
                 isPlaying={currentPlayingMid === song.mid}
                 onClick={(s) => onSelectSong(s, guessLikeSongs, 'guess-like')}
               />
@@ -218,7 +217,6 @@ export const HomePage: FC<HomePageProps> = ({
         title="📅 每日推荐"
         songs={dailySongs}
         loading={loadingDaily}
-        showIndex={true}
         currentPlayingMid={currentPlayingMid}
         emptyText="登录后查看每日推荐"
         onSelectSong={(song) => onSelectSong(song, dailySongs)}

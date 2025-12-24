@@ -1,25 +1,21 @@
 /**
  * 歌曲列表项组件
+ * 移除序列号，简化显示
  */
 
 import { FC } from "react";
 import { Focusable } from "@decky/ui";
-import { FaPlay } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { formatDuration, getDefaultCover } from "../utils/format";
 
 interface SongItemProps {
   song: SongInfo;
-  index?: number;
-  showIndex?: boolean;
   isPlaying?: boolean;
   onClick: (song: SongInfo) => void;
 }
 
 export const SongItem: FC<SongItemProps> = ({ 
   song, 
-  index = 0, 
-  showIndex = false,
   isPlaying = false,
   onClick 
 }) => {
@@ -27,8 +23,7 @@ export const SongItem: FC<SongItemProps> = ({
   
   return (
     <Focusable
-      className="qqmusic-focusable"
-      focusClassName="qqmusic-focused"
+      // 不使用 noFocusRing，让 Decky 显示默认焦点环
       onActivate={handleClick}
       onClick={handleClick}
       style={{
@@ -40,35 +35,22 @@ export const SongItem: FC<SongItemProps> = ({
         borderRadius: '8px',
         cursor: 'pointer',
         width: '100%',
-        transition: 'all 0.15s ease',
         borderLeft: isPlaying ? '3px solid #1db954' : '3px solid transparent',
       }}
     >
-      {showIndex && (
-        <div style={{
-          width: '24px',
-          textAlign: 'center',
-          color: isPlaying ? '#1db954' : '#8b929a',
-          fontSize: '14px',
-          fontWeight: isPlaying ? 600 : 400,
-        }}>
-          {isPlaying ? <FaPlay size={12} /> : index + 1}
-        </div>
-      )}
-      
       <img 
         src={song.cover}
         alt={song.name}
         style={{
-          width: '48px',
-          height: '48px',
+          width: '44px',
+          height: '44px',
           borderRadius: '6px',
           objectFit: 'cover',
           background: '#2a2a2a',
           flexShrink: 0,
         }}
         onError={(e) => {
-          (e.target as HTMLImageElement).src = getDefaultCover(48);
+          (e.target as HTMLImageElement).src = getDefaultCover(44);
         }}
       />
       
