@@ -38,10 +38,11 @@ export const PlayerBar: FC<PlayerBarProps> = ({
 
   return (
     <div style={{
-      position: 'sticky',
+      position: 'fixed',
       bottom: 0,
       left: 0,
       right: 0,
+      zIndex: 100,  // 确保播放器条在其他内容之上
       background: 'linear-gradient(to top, rgba(20, 20, 20, 0.98), rgba(30, 30, 30, 0.95))',
       borderTop: '1px solid rgba(255,255,255,0.1)',
       padding: '8px 12px',
