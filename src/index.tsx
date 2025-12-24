@@ -9,7 +9,7 @@ import { FaMusic } from "react-icons/fa";
 
 import { getLoginStatus, logout, getGuessLike } from "./api";
 import { usePlayer } from "./hooks/usePlayer";
-import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage } from "./components";
+import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage } from "./components";
 import type { PageType, SongInfo, PlaylistInfo } from "./types";
 
 // 主内容组件
@@ -122,7 +122,20 @@ function Content() {
             onSelectSong={handleSelectSong}
             onGoToSearch={() => setCurrentPage('search')}
             onGoToPlaylists={() => setCurrentPage('playlists')}
+            onGoToHistory={() => setCurrentPage('history')}
             onLogout={handleLogout}
+            currentPlayingMid={player.currentSong?.mid}
+          />
+        );
+      
+      case 'history':
+        return (
+          <HistoryPage
+            history={player.playHistory}
+            onSelectSong={handleSelectSong}
+            onClearHistory={player.clearPlayHistory}
+            onRefreshHistory={player.refreshPlayHistory}
+            onBack={() => setCurrentPage('home')}
             currentPlayingMid={player.currentSong?.mid}
           />
         );
@@ -180,6 +193,7 @@ function Content() {
             onSelectSong={handleSelectSong}
             onGoToSearch={() => setCurrentPage('search')}
             onGoToPlaylists={() => setCurrentPage('playlists')}
+            onGoToHistory={() => setCurrentPage('history')}
             onLogout={handleLogout}
           />
         );

@@ -2,12 +2,46 @@
  * 播放器状态管理 Hook
  * 使用全局 Audio 单例，确保关闭面板后音乐继续播放
  * 支持播放列表和自动播放下一首
+ * 支持播放历史记录
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { toaster } from "@decky/api";
 import { getSongUrl, getSongLyric } from "../api";
 import type { SongInfo } from "../types";
+
+// 播放历史存储
+const PLAY_HISTORY_KEY = "qqmusic_play_history";
+const MAX_HISTORY = 100;
+
+// 加载播放历史
+function loadPlayHistory(): SongInfo[] {
+  try {
+    const data = localStorage.getItem(PLAY_HISTORY_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+// 保存播放历史
+function savePlayHistory(history: SongInfo[]) {
+  try {
+    localStorage.setItem(PLAY_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+  } catch {
+    // ignore
+  }
+}
+
+// 添加到播放历史
+function addToPlayHistory(song: SongInfo) {
+  const history = loadPlayHistory();
+  // 移除已存在的相同歌曲，然后添加到开头
+  const filtered = history.filter(s => s.mid !== song.mid);
+  const newHistory = [song, ...filtered].slice(0, MAX_HISTORY);
+  savePlayHistory(newHistory);
+  return newHistory;
+}
 
 // 全局状态 - 在模块级别创建，不会因组件卸载而销毁
 let globalAudio: HTMLAudioElement | null = null;
@@ -49,6 +83,7 @@ export interface UsePlayerReturn {
   lyric: string;
   playlist: SongInfo[];
   currentIndex: number;
+  playHistory: SongInfo[];
   
   // 方法
   playSong: (song: SongInfo) => Promise<void>;
@@ -59,6 +94,8 @@ export interface UsePlayerReturn {
   playNext: () => void;
   playPrev: () => void;
   setOnNeedMoreSongs: (callback: (() => Promise<SongInfo[]>) | null) => void;
+  refreshPlayHistory: () => void;
+  clearPlayHistory: () => void;
 }
 
 export function usePlayer(): UsePlayerReturn {
@@ -72,6 +109,7 @@ export function usePlayer(): UsePlayerReturn {
   const [lyric, setLyric] = useState(globalLyric);
   const [playlist, setPlaylist] = useState<SongInfo[]>(globalPlaylist);
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
+  const [playHistory, setPlayHistory] = useState<SongInfo[]>(loadPlayHistory);
   
   // 用于避免重复调用
   const isPlayingRef = useRef(false);
@@ -112,6 +150,10 @@ export function usePlayer(): UsePlayerReturn {
         await audio.play();
         setIsPlaying(true);
         isPlayingRef.current = true;
+        
+        // 添加到播放历史
+        const newHistory = addToPlayHistory(song);
+        setPlayHistory(newHistory);
       } catch (e) {
         toaster.toast({
           title: "播放失败",
@@ -319,6 +361,17 @@ export function usePlayer(): UsePlayerReturn {
     onNeedMoreSongsCallback = callback;
   }, []);
 
+  // 刷新播放历史（从存储重新加载）
+  const refreshPlayHistory = useCallback(() => {
+    setPlayHistory(loadPlayHistory());
+  }, []);
+
+  // 清空播放历史
+  const clearPlayHistory = useCallback(() => {
+    savePlayHistory([]);
+    setPlayHistory([]);
+  }, []);
+
   return {
     currentSong,
     isPlaying,
@@ -329,6 +382,7 @@ export function usePlayer(): UsePlayerReturn {
     lyric,
     playlist,
     currentIndex,
+    playHistory,
     playSong,
     playPlaylist,
     togglePlay,
@@ -337,5 +391,7 @@ export function usePlayer(): UsePlayerReturn {
     playNext,
     playPrev,
     setOnNeedMoreSongs,
+    refreshPlayHistory,
+    clearPlayHistory,
   };
 }
