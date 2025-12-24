@@ -1,6 +1,7 @@
 {
   "name": "QQMusic",
-  "author": "Decky QQ Music",
+  "version": "0.0.1",
+  "author": "jinzhongjia",
   "flags": [],
   "api_version": 1,
   "publish": {

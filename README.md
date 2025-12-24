@@ -23,7 +23,7 @@
 
 ### 从 Release 安装（推荐）
 
-1. 从 [Releases](https://github.com/your-username/decky-qqmusic/releases) 下载最新的 `decky-qqmusic.zip`
+1. 从 [Releases](https://github.com/jinzhongjia/decky-qqmusic/releases) 下载最新的 `QQMusic.zip`
 2. 将 zip 文件传输到 Steam Deck
 3. 解压到 `~/homebrew/plugins/`
 4. 重启 Decky Loader
@@ -180,14 +180,18 @@ mise run deploy
 mise run dev
 ```
 
+## 🚀 发版流程
+
+1. 更新版本号（`plugin.json` 和 `package.json`）
+2. 提交代码：`git add . && git commit -m "release: v0.0.x"`
+3. 打 tag：`git tag v0.0.x`
+4. 推送：`git push && git push --tags`
+5. GitHub Actions 会自动构建并创建 Release
+
 ## 📋 待办事项
 
 - [ ] 歌词同步滚动显示
-- [ ] 播放列表管理
-- [ ] 歌单/专辑浏览
 - [ ] 音质选择
-- [ ] 后台播放支持
-- [ ] 桌面歌词
 
 ## ⚠️ 注意事项
 
@@ -202,5 +206,5 @@ BSD-3-Clause License
 ## 🙏 致谢
 
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) - Steam Deck 插件加载器
-- [qqmusic-api-python](https://github.com/luren-dc/QQMusicApi) - QQ 音乐 API 库
+- [QQMusicApi](https://github.com/jinzhongjia/QQMusicApi) - QQ 音乐 API 库
 - [decky-plugin-template](https://github.com/SteamDeckHomebrew/decky-plugin-template) - 插件模板
