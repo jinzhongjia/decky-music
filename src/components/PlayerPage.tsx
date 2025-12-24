@@ -152,23 +152,12 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                 <span>{formatDuration(Math.floor(currentTime))}</span>
                 <span>{formatDuration(actualDuration)}</span>
               </div>
-              <Focusable 
-                onActivate={() => {
-                  // 手柄按A键跳到中间
-                  if (actualDuration > 0) onSeek(actualDuration / 2);
-                }}
+              <div
                 style={{
                   height: '8px',
                   background: 'rgba(255,255,255,0.15)',
                   borderRadius: '4px',
                   overflow: 'hidden',
-                  cursor: actualDuration > 0 ? 'pointer' : 'default',
-                }}
-                onClick={(e) => {
-                  if (actualDuration <= 0) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const percent = (e.clientX - rect.left) / rect.width;
-                  onSeek(percent * actualDuration);
                 }}
               >
                 <div style={{
@@ -177,15 +166,14 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   background: 'linear-gradient(90deg, #1db954, #1ed760)',
                   borderRadius: '4px',
                   transition: 'width 0.1s linear',
-                  pointerEvents: 'none',
                 }} />
-              </Focusable>
+              </div>
             </div>
           </PanelSectionRow>
 
-          {/* 控制按钮 - 使用 Focusable 支持手柄 */}
+          {/* 控制按钮 */}
           <PanelSectionRow>
-            <Focusable style={{ 
+            <div style={{ 
               display: 'flex', 
               justifyContent: 'center', 
               alignItems: 'center',
@@ -194,6 +182,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
             }}>
               {/* 上一首按钮 */}
               <Focusable
+                focusClassName="qqmusic-control-btn-focused"
                 onActivate={handlePrev}
                 onClick={handlePrev}
                 style={{ 
@@ -213,6 +202,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               
               {/* 播放/暂停按钮 */}
               <Focusable
+                focusClassName="qqmusic-play-btn-focused"
                 onActivate={onTogglePlay}
                 onClick={onTogglePlay}
                 style={{ 
@@ -234,6 +224,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               
               {/* 下一首按钮 */}
               <Focusable
+                focusClassName="qqmusic-control-btn-focused"
                 onActivate={handleNext}
                 onClick={handleNext}
                 style={{ 
@@ -250,7 +241,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               >
                 <FaStepForward size={20} />
               </Focusable>
-            </Focusable>
+            </div>
           </PanelSectionRow>
 
           {/* 操作提示 */}

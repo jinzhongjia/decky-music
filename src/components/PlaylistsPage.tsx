@@ -19,6 +19,7 @@ const PlaylistItem: FC<{
   onClick: () => void;
 }> = ({ playlist, onClick }) => (
   <Focusable
+    focusClassName="qqmusic-control-btn-focused"
     onActivate={onClick}
     onClick={onClick}
     style={{

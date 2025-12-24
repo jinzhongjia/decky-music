@@ -551,13 +551,14 @@ class Plugin:
             created_list = []
             try:
                 created_result = await user.get_created_songlist(musicid, credential=self.credential)
+                decky.logger.info(f"创建歌单原始数据: {created_result[:1] if created_result else 'empty'}")
                 for item in created_result:
                     created_list.append({
-                        "id": item.get("tid", 0) or item.get("id", 0),
+                        "id": item.get("tid", 0),
                         "dirid": item.get("dirid", 0),
-                        "name": item.get("diss_name", "") or item.get("title", ""),
-                        "cover": item.get("diss_cover", "") or item.get("pic", ""),
-                        "songCount": item.get("song_cnt", 0) or item.get("songnum", 0),
+                        "name": item.get("dirName", "") or item.get("diss_name", "") or item.get("title", ""),
+                        "cover": item.get("picUrl", "") or item.get("diss_cover", "") or item.get("pic", ""),
+                        "songCount": item.get("songNum", 0) or item.get("song_cnt", 0) or item.get("songnum", 0),
                         "playCount": item.get("listen_num", 0),
                     })
             except Exception as e:
@@ -568,15 +569,18 @@ class Plugin:
             if encrypt_uin:
                 try:
                     collected_result = await user.get_fav_songlist(encrypt_uin, num=50, credential=self.credential)
-                    fav_list = collected_result.get("v_playlist", []) or collected_result.get("data", {}).get("v_playlist", [])
+                    decky.logger.info(f"收藏歌单原始数据keys: {collected_result.keys() if collected_result else 'empty'}")
+                    # 尝试多种可能的字段名
+                    fav_list = collected_result.get("v_list", []) or collected_result.get("v_playlist", []) or collected_result.get("data", {}).get("v_list", [])
+                    decky.logger.info(f"收藏歌单列表第一项: {fav_list[:1] if fav_list else 'empty'}")
                     for item in fav_list:
                         collected_list.append({
                             "id": item.get("tid", 0) or item.get("dissid", 0),
                             "dirid": item.get("dirid", 0),
-                            "name": item.get("diss_name", "") or item.get("title", ""),
-                            "cover": item.get("diss_cover", "") or item.get("logo", ""),
-                            "songCount": item.get("song_cnt", 0) or item.get("song_count", 0),
-                            "creator": item.get("creator", {}).get("nick", "") if isinstance(item.get("creator"), dict) else "",
+                            "name": item.get("name", "") or item.get("diss_name", "") or item.get("title", ""),
+                            "cover": item.get("logo", "") or item.get("diss_cover", "") or item.get("pic", ""),
+                            "songCount": item.get("songnum", 0) or item.get("song_cnt", 0) or item.get("song_count", 0),
+                            "creator": item.get("creator", {}).get("nick", "") if isinstance(item.get("creator"), dict) else item.get("creator_name", ""),
                         })
                 except Exception as e:
                     decky.logger.warning(f"获取收藏的歌单失败: {e}")

@@ -245,6 +245,20 @@ export default definePlugin(() => {
       overflow-x: hidden;
       box-sizing: border-box;
     }
+    
+    /* 控制按钮焦点高亮（使用 focusClassName） */
+    .qqmusic-control-btn-focused {
+      outline: 2px solid rgba(255, 255, 255, 0.9) !important;
+      outline-offset: 3px;
+      background: rgba(255, 255, 255, 0.2) !important;
+    }
+    
+    /* 播放/暂停按钮焦点高亮 */
+    .qqmusic-play-btn-focused {
+      outline: 3px solid #fff !important;
+      outline-offset: 4px;
+      box-shadow: 0 4px 28px rgba(29, 185, 84, 0.8) !important;
+    }
   `;
   document.head.appendChild(style);
 
