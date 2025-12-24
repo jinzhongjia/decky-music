@@ -4,8 +4,8 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Focusable } from "@decky/ui";
-import { FaPlay, FaPause, FaStepForward, FaStepBackward, FaArrowLeft } from "react-icons/fa";
+import { PanelSection, PanelSectionRow, Spinner, Focusable } from "@decky/ui";
+import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { formatDuration, getDefaultCover } from "../utils/format";
 
@@ -21,7 +21,7 @@ interface PlayerPageProps {
   onSeek: (time: number) => void;
   onNext?: () => void;
   onPrev?: () => void;
-  onBack: () => void;
+  onBack?: () => void;  // 保留接口兼容性，但不再使用
 }
 
 export const PlayerPage: FC<PlayerPageProps> = ({
@@ -36,7 +36,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
   onSeek,
   onNext,
   onPrev,
-  onBack,
+  onBack: _onBack,  // eslint-disable-line @typescript-eslint/no-unused-vars
 }) => {
   const actualDuration = duration > 0 ? duration : song.duration;
   const progress = actualDuration > 0 ? (currentTime / actualDuration) * 100 : 0;
@@ -59,14 +59,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
 
   return (
     <PanelSection title="🎵 正在播放">
-      {/* 返回按钮 */}
-      <PanelSectionRow>
-        <ButtonItem layout="below" onClick={onBack}>
-          <FaArrowLeft style={{ marginRight: '8px' }} />
-          返回
-        </ButtonItem>
-      </PanelSectionRow>
-
       {/* 封面 */}
       <PanelSectionRow>
         <div style={{ textAlign: 'center', padding: '15px' }}>
@@ -196,7 +188,8 @@ export const PlayerPage: FC<PlayerPageProps> = ({
             <Focusable style={{ 
               display: 'flex', 
               justifyContent: 'center', 
-              gap: '20px',
+              alignItems: 'center',
+              gap: '24px',
               padding: '15px 0',
             }}>
               {/* 上一首按钮 */}
@@ -205,12 +198,14 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                 onClick={handlePrev}
                 style={{ 
                   cursor: 'pointer',
-                  padding: '16px',
+                  width: '52px',
+                  height: '52px',
                   borderRadius: '50%',
                   background: 'rgba(255,255,255,0.1)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  flexShrink: 0,
                 }}
               >
                 <FaStepBackward size={20} />
@@ -222,7 +217,8 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                 onClick={onTogglePlay}
                 style={{ 
                   cursor: 'pointer',
-                  padding: '20px',
+                  width: '68px',
+                  height: '68px',
                   borderRadius: '50%',
                   background: '#1db954',
                   color: '#fff',
@@ -230,6 +226,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                   boxShadow: '0 4px 16px rgba(29, 185, 84, 0.4)',
+                  flexShrink: 0,
                 }}
               >
                 {isPlaying ? <FaPause size={28} /> : <FaPlay size={28} style={{ marginLeft: '4px' }} />}
@@ -241,12 +238,14 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                 onClick={handleNext}
                 style={{ 
                   cursor: 'pointer',
-                  padding: '16px',
+                  width: '52px',
+                  height: '52px',
                   borderRadius: '50%',
                   background: 'rgba(255,255,255,0.1)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  flexShrink: 0,
                 }}
               >
                 <FaStepForward size={20} />
