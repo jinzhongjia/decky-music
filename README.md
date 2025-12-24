@@ -159,10 +159,8 @@ type $env:USERPROFILE\.ssh\id_rsa.pub | ssh deck@<STEAM_DECK_IP> "mkdir -p ~/.ss
 # 修改插件目录权限，允许 deck 用户读写
 sudo chown -R deck:deck /home/deck/homebrew/plugins
 
-# 配置 sudo 免密码
-sudo usermod -aG wheel deck
-sudo visudo
-# 找到 # %wheel ALL=(ALL) NOPASSWD: ALL 这行，去掉前面的 # 号保存
+# 配置 sudo 免密码（用于远程重启服务）
+echo "%wheel ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/wheel
 ```
 
 **3. 修改配置**
