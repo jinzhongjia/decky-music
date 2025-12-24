@@ -1,115 +1,180 @@
-import {
-  ButtonItem,
-  PanelSection,
-  PanelSectionRow,
-  Navigation,
-  staticClasses
-} from "@decky/ui";
-import {
-  addEventListener,
-  removeEventListener,
-  callable,
-  definePlugin,
-  toaster,
-  // routerHook
-} from "@decky/api"
-import { useState } from "react";
-import { FaShip } from "react-icons/fa";
+/**
+ * Decky QQ Music 插件主入口
+ */
 
-// import logo from "../assets/logo.png";
+import { useState, useEffect } from "react";
+import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui";
+import { definePlugin, toaster } from "@decky/api";
+import { FaMusic } from "react-icons/fa";
 
-// This function calls the python function "add", which takes in two numbers and returns their sum (as a number)
-// Note the type annotations:
-//  the first one: [first: number, second: number] is for the arguments
-//  the second one: number is for the return value
-const add = callable<[first: number, second: number], number>("add");
+import { getLoginStatus, logout } from "./api";
+import { usePlayer } from "./hooks/usePlayer";
+import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar } from "./components";
+import type { PageType, SongInfo } from "./types";
 
-// This function calls the python function "start_timer", which takes in no arguments and returns nothing.
-// It starts a (python) timer which eventually emits the event 'timer_event'
-const startTimer = callable<[], void>("start_timer");
-
+// 主内容组件
 function Content() {
-  const [result, setResult] = useState<number | undefined>();
+  const [currentPage, setCurrentPage] = useState<PageType>('login');
+  const [checking, setChecking] = useState(true);
+  
+  const player = usePlayer();
 
-  const onClick = async () => {
-    const result = await add(Math.random(), Math.random());
-    setResult(result);
+  useEffect(() => {
+    checkLoginStatus();
+  }, []);
+
+  const checkLoginStatus = async () => {
+    setChecking(true);
+    try {
+      const result = await getLoginStatus();
+      setCurrentPage(result.logged_in ? 'home' : 'login');
+    } catch (e) {
+      console.error("检查登录状态失败:", e);
+      setCurrentPage('login');
+    }
+    setChecking(false);
+  };
+
+  const handleLoginSuccess = () => {
+    setCurrentPage('home');
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    player.stop();
+    setCurrentPage('login');
+    toaster.toast({
+      title: "已退出登录",
+      body: "期待下次见面！"
+    });
+  };
+
+  const handleSelectSong = async (song: SongInfo) => {
+    await player.playSong(song);
+  };
+
+  const handleGoToPlayer = () => {
+    if (player.currentSong) {
+      setCurrentPage('player');
+    }
+  };
+
+  // 加载中
+  if (checking) {
+    return (
+      <PanelSection title="QQ音乐">
+        <PanelSectionRow>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+            <Spinner />
+          </div>
+        </PanelSectionRow>
+      </PanelSection>
+    );
+  }
+
+  // 渲染页面
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'login':
+        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+      
+      case 'home':
+        return (
+          <HomePage
+            onSelectSong={handleSelectSong}
+            onGoToSearch={() => setCurrentPage('search')}
+            onLogout={handleLogout}
+            currentPlayingMid={player.currentSong?.mid}
+          />
+        );
+      
+      case 'search':
+        return (
+          <SearchPage
+            onSelectSong={handleSelectSong}
+            onBack={() => setCurrentPage('home')}
+            currentPlayingMid={player.currentSong?.mid}
+          />
+        );
+      
+      case 'player':
+        return player.currentSong ? (
+          <PlayerPage
+            song={player.currentSong}
+            isPlaying={player.isPlaying}
+            currentTime={player.currentTime}
+            duration={player.duration}
+            loading={player.loading}
+            error={player.error}
+            onTogglePlay={player.togglePlay}
+            onSeek={player.seek}
+            onBack={() => setCurrentPage('home')}
+          />
+        ) : (
+          <HomePage
+            onSelectSong={handleSelectSong}
+            onGoToSearch={() => setCurrentPage('search')}
+            onLogout={handleLogout}
+          />
+        );
+      
+      default:
+        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+    }
   };
 
   return (
-    <PanelSection title="Panel Section">
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={onClick}
-        >
-          {result ?? "Add two numbers via Python"}
-        </ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={() => startTimer()}
-        >
-          {"Start Python timer"}
-        </ButtonItem>
-      </PanelSectionRow>
-
-      {/* <PanelSectionRow>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <img src={logo} />
-        </div>
-      </PanelSectionRow> */}
-
-      {/*<PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={() => {
-            Navigation.Navigate("/decky-plugin-test");
-            Navigation.CloseSideMenus();
-          }}
-        >
-          Router
-        </ButtonItem>
-      </PanelSectionRow>*/}
-    </PanelSection>
+    <div style={{ paddingBottom: player.currentSong && currentPage !== 'player' ? '70px' : '0' }}>
+      {renderPage()}
+      
+      {/* 迷你播放器条 - 非全屏播放器页面且有歌曲时显示 */}
+      {player.currentSong && currentPage !== 'player' && currentPage !== 'login' && (
+        <PlayerBar
+          song={player.currentSong}
+          isPlaying={player.isPlaying}
+          currentTime={player.currentTime}
+          duration={player.duration || player.currentSong.duration}
+          loading={player.loading}
+          onTogglePlay={player.togglePlay}
+          onSeek={player.seek}
+          onClick={handleGoToPlayer}
+        />
+      )}
+    </div>
   );
-};
+}
 
+// 插件导出
 export default definePlugin(() => {
-  console.log("Template plugin initializing, this is called once on frontend startup")
+  console.log("Decky QQ Music 插件已初始化");
 
-  // serverApi.routerHook.addRoute("/decky-plugin-test", DeckyPluginRouterTest, {
-  //   exact: true,
-  // });
-
-  // Add an event listener to the "timer_event" event from the backend
-  const listener = addEventListener<[
-    test1: string,
-    test2: boolean,
-    test3: number
-  ]>("timer_event", (test1, test2, test3) => {
-    console.log("Template got timer_event with:", test1, test2, test3)
-    toaster.toast({
-      title: "template got timer_event",
-      body: `${test1}, ${test2}, ${test3}`
-    });
-  });
+  // 添加旋转动画样式
+  const style = document.createElement('style');
+  style.id = 'decky-qqmusic-styles';
+  style.textContent = `
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  `;
+  document.head.appendChild(style);
 
   return {
-    // The name shown in various decky menus
-    name: "Test Plugin",
-    // The element displayed at the top of your plugin's menu
-    titleView: <div className={staticClasses.Title}>Decky Example Plugin</div>,
-    // The content of your plugin's menu
+    name: "QQ音乐",
+    titleView: (
+      <div className={staticClasses.Title}>
+        <FaMusic style={{ marginRight: '8px' }} />
+        QQ音乐
+      </div>
+    ),
     content: <Content />,
-    // The icon displayed in the plugin list
-    icon: <FaShip />,
-    // The function triggered when your plugin unloads
+    icon: <FaMusic />,
     onDismount() {
-      console.log("Unloading")
-      removeEventListener("timer_event", listener);
-      // serverApi.routerHook.removeRoute("/decky-plugin-test");
+      console.log("Decky QQ Music 插件已卸载");
+      const styleEl = document.getElementById('decky-qqmusic-styles');
+      if (styleEl) {
+        styleEl.remove();
+      }
     },
   };
 });

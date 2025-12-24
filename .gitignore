@@ -35,7 +35,14 @@ Thumbs.db
 # Ignore built ts files
 dist/
 
+# Python cache
 __pycache__/
+*.pyc
+*.pyo
+
+# Python modules - 由 CI/CD 在 Linux 环境下安装
+# 不要提交 Windows 安装的包，它们在 Steam Deck 上无法运行
+py_modules/
 
 /.yalc
 yalc.lock

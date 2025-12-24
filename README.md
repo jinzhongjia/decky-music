@@ -1,101 +1,200 @@
-# Decky Plugin Template [![Chat](https://img.shields.io/badge/chat-on%20discord-7289da.svg)](https://deckbrew.xyz/discord)
+# Decky QQ Music 插件
 
-Reference example for using [decky-frontend-lib](https://github.com/SteamDeckHomebrew/decky-frontend-lib) (@decky/ui) in a [decky-loader](https://github.com/SteamDeckHomebrew/decky-loader) plugin.
+[![Chat](https://img.shields.io/badge/chat-on%20discord-7289da.svg)](https://deckbrew.xyz/discord)
 
-### **Please also refer to the [wiki](https://wiki.deckbrew.xyz/en/user-guide/home#plugin-development) for important information on plugin development and submissions/updates. currently documentation is split between this README and the wiki which is something we are hoping to rectify in the future.**  
+在 Steam Deck 上享受 QQ 音乐的 Decky Loader 插件。
 
-## Developers
+## ✨ 功能特性
 
-### Dependencies
+- 🔐 **扫码登录** - 支持 QQ 和微信扫码登录
+- 📅 **每日推荐** - 个性化每日推荐歌曲
+- 💡 **猜你喜欢** - 智能推荐，支持换一批
+- 🔍 **歌曲搜索** - 支持关键词搜索，显示热门搜索
+- 🎵 **音乐播放** - 在线播放歌曲，支持播放控制
+- 📝 **歌词显示** - 获取歌词信息
+- 💾 **登录状态保存** - 自动保存登录凭证，无需重复登录
 
-This template relies on the user having Node.js v16.14+ and `pnpm` (v9) installed on their system.  
-Please make sure to install pnpm v9 to prevent issues with CI during plugin submission.  
-`pnpm` can be downloaded from `npm` itself which is recommended.
+## 📦 安装
 
-#### Linux
+### 前提条件
 
-```bash
-sudo npm i -g pnpm@9
-```
+- Steam Deck 已安装 [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
+- Node.js v16.14+ 和 pnpm v9
 
-If you would like to build plugins that have their own custom backends, Docker is required as it is used by the Decky CLI tool.
+### 从 Release 安装（推荐）
 
-### Making your own plugin
+1. 从 [Releases](https://github.com/your-username/decky-qqmusic/releases) 下载最新的 `decky-qqmusic.zip`
+2. 将 zip 文件传输到 Steam Deck
+3. 解压到 `~/homebrew/plugins/`
+4. 重启 Decky Loader
 
-1. You can fork this repo or utilize the "Use this template" button on Github.
-2. In your local fork/own plugin-repository run these commands:
-   1. ``pnpm i``
-   2. ``pnpm run build``
-   - These setup pnpm and build the frontend code for testing.
-3. Consult the [decky-frontend-lib](https://github.com/SteamDeckHomebrew/decky-frontend-lib) repository for ways to accomplish your tasks.
-   - Documentation and examples are still rough, 
-   - Decky loader primarily targets Steam Deck hardware so keep this in mind when developing your plugin.
-4. If using VSCodium/VSCode, run the `setup` and `build` and `deploy` tasks. If not using VSCodium etc. you can derive your own makefile or just manually utilize the scripts for these commands as you see fit.
+### 从源码构建
 
-If you use VSCode or it's derivatives (we suggest [VSCodium](https://vscodium.com/)!) just run the `setup` and `build` tasks. It's really that simple.
+> ⚠️ 注意：必须在 **Linux 环境** 下构建，因为 Python 依赖包含原生模块，Windows 构建的包在 Steam Deck 上无法运行。
 
-#### Other important information
+**方法 1：使用 GitHub Actions（推荐）**
 
-Everytime you change the frontend code (`index.tsx` etc) you will need to rebuild using the commands from step 2 above or the build task if you're using vscode or a derivative.
+Fork 此仓库后，GitHub Actions 会自动构建。创建 tag 时会自动发布 Release。
 
-Note: If you are receiving build errors due to an out of date library, you should run this command inside of your repository:
+**方法 2：在 Linux 下本地构建**
 
 ```bash
-pnpm update @decky/ui --latest
+git clone https://github.com/your-username/decky-qqmusic.git
+cd decky-qqmusic
+
+# 运行构建脚本
+chmod +x build.sh
+./build.sh
+
+# 输出文件: out/decky-qqmusic.zip
 ```
 
-### Backend support
+**方法 3：在 Steam Deck 上直接构建**
 
-If you are developing with a backend for a plugin and would like to submit it to the [decky-plugin-database](https://github.com/SteamDeckHomebrew/decky-plugin-database) you will need to have all backend code located in ``backend/src``, with backend being located in the root of your git repository.
-When building your plugin, the source code will be built and any finished binary or binaries will be output to ``backend/out`` (which is created during CI.)
-If your buildscript, makefile or any other build method does not place the binary files in the ``backend/out`` directory they will not be properly picked up during CI and your plugin will not have the required binaries included for distribution.
+```bash
+# 进入桌面模式
+git clone https://github.com/your-username/decky-qqmusic.git
+cd decky-qqmusic
+./build.sh
 
-Example:  
-In our makefile used to demonstrate the CI process of building and distributing a plugin backend, note that the makefile explicitly creates the `out` folder (``backend/out``) and then compiles the binary into that folder. Here's the relevant snippet.
-
-```make
-hello:
-	mkdir -p ./out
-	gcc -o ./out/hello ./src/main.c
+# 安装
+cp -r out/decky-qqmusic ~/homebrew/plugins/
+sudo systemctl restart plugin_loader
 ```
 
-The CI does create the `out` folder itself but we recommend creating it yourself if possible during your build process to ensure the build process goes smoothly.
+## 🎮 使用方法
 
-Note: When locally building your plugin it will be placed into a folder called 'out' this is different from the concept described above.
+### 登录
 
-The out folder is not sent to the final plugin, but is then put into a ``bin`` folder which is found at the root of the plugin's directory.  
-More information on the bin folder can be found below in the distribution section below.
+1. 打开 Steam Deck 的游戏模式
+2. 按下 `...` 按钮打开快速访问菜单
+3. 切换到 Decky 插件标签页
+4. 找到并打开 "QQ音乐" 插件
+5. 选择 "QQ扫码登录" 或 "微信扫码登录"
+6. 使用手机扫描二维码并确认登录
 
-### Distribution
+### 首页功能
 
-We recommend following the instructions found in the [decky-plugin-database](https://github.com/SteamDeckHomebrew/decky-plugin-database) on how to get your plugin up on the plugin store. This is the best way to get your plugin in front of users.
-You can also choose to do distribution via a zip file containing the needed files, if that zip file is uploaded to a URL it can then be downloaded and installed via decky-loader.
+- **每日推荐** - 登录后显示个性化推荐歌曲
+- **猜你喜欢** - 显示推荐歌曲，可点击"换一批"刷新
+- **搜索歌曲** - 进入搜索页面
 
-**NOTE: We do not currently have a method to install from a downloaded zip file in "game-mode" due to lack of a usable file-picking dialog.**
+### 播放控制
 
-Layout of a plugin zip ready for distribution:
+- 点击歌曲开始播放
+- 底部播放条显示当前播放歌曲
+- 支持播放/暂停、快进/快退
+
+## 🛠️ 开发
+
+### 项目结构
+
 ```
-pluginname-v1.0.0.zip (version number is optional but recommended for users sake)
-   |
-   pluginname/ <directory>
-   |  |  |
-   |  |  bin/ <directory> (optional)
-   |  |     |
-   |  |     binary (optional)
-   |  |
-   |  dist/ <directory> [required]
-   |      |
-   |      index.js [required]
-   | 
-   package.json [required]
-   plugin.json [required]
-   main.py {required if you are using the python backend of decky-loader: serverAPI}
-   README.md (optional but recommended)
-   LICENSE(.md) [required, filename should be roughly similar, suffix not needed]
+decky-qqmusic/
+├── main.py                     # Python 后端主文件
+├── py_modules/                 # Python 依赖
+│   └── qqmusic_api/            # QQ音乐 API 库
+├── src/
+│   ├── index.tsx               # 前端入口
+│   ├── api/
+│   │   └── index.ts            # API 调用封装
+│   ├── components/
+│   │   ├── index.ts            # 组件导出
+│   │   ├── LoginPage.tsx       # 登录页面
+│   │   ├── HomePage.tsx        # 首页（推荐）
+│   │   ├── SearchPage.tsx      # 搜索页面
+│   │   ├── PlayerPage.tsx      # 全屏播放器
+│   │   ├── PlayerBar.tsx       # 迷你播放条
+│   │   ├── SongItem.tsx        # 歌曲列表项
+│   │   └── SongList.tsx        # 歌曲列表
+│   ├── hooks/
+│   │   └── usePlayer.ts        # 播放器状态管理
+│   ├── utils/
+│   │   └── format.ts           # 格式化工具
+│   └── types.d.ts              # TypeScript 类型定义
+├── dist/                       # 构建输出
+├── plugin.json                 # 插件配置
+├── package.json                # 前端依赖配置
+└── defaults/
+    └── defaults.txt            # 默认配置
 ```
 
-Note regarding licenses: Including a license is required for the plugin store if your chosen license requires the license to be included alongside usage of source-code/binaries!
+### API 接口
 
-Standard procedure for licenses is to have your chosen license at the top of the file, and to leave the original license for the plugin-template at the bottom. If this is not the case on submission to the plugin database, you will be asked to fix this discrepancy.
+#### 登录相关
 
-We cannot and will not distribute your plugin on the Plugin Store if it's license requires it's inclusion but you have not included a license to be re-distributed with your plugin in the root of your git repository.
+| 方法 | 说明 |
+|------|------|
+| `get_qr_code(login_type)` | 获取登录二维码 |
+| `check_qr_status()` | 检查扫码状态 |
+| `get_login_status()` | 获取登录状态 |
+| `logout()` | 退出登录 |
+
+#### 推荐相关
+
+| 方法 | 说明 |
+|------|------|
+| `get_daily_recommend()` | 获取每日推荐 |
+| `get_guess_like()` | 获取猜你喜欢 |
+| `get_recommend_playlists()` | 获取推荐歌单 |
+| `get_fav_songs(page, num)` | 获取收藏歌曲 |
+
+#### 搜索相关
+
+| 方法 | 说明 |
+|------|------|
+| `search_songs(keyword, page, num)` | 搜索歌曲 |
+| `get_hot_search()` | 获取热门搜索 |
+
+#### 播放相关
+
+| 方法 | 说明 |
+|------|------|
+| `get_song_url(mid)` | 获取歌曲播放链接 |
+| `get_song_lyric(mid)` | 获取歌词 |
+| `get_song_info(mid)` | 获取歌曲详情 |
+
+### 环境变量
+
+插件使用以下 Decky 环境变量：
+
+- `DECKY_PLUGIN_SETTINGS_DIR` - 存储用户凭证和配置
+- `DECKY_PLUGIN_LOG_DIR` - 存储日志文件
+
+### 开发命令
+
+```bash
+# 安装依赖
+pnpm install
+
+# 开发模式（监听文件变化）
+pnpm run watch
+
+# 构建生产版本
+pnpm run build
+```
+
+## 📋 待办事项
+
+- [ ] 歌词同步滚动显示
+- [ ] 播放列表管理
+- [ ] 歌单/专辑浏览
+- [ ] 音质选择
+- [ ] 后台播放支持
+- [ ] 桌面歌词
+
+## ⚠️ 注意事项
+
+- 部分歌曲可能需要 QQ 音乐 VIP 才能播放
+- 请遵守 QQ 音乐的使用条款
+- 本插件仅供学习交流使用
+
+## 📄 许可证
+
+BSD-3-Clause License
+
+## 🙏 致谢
+
+- [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) - Steam Deck 插件加载器
+- [qqmusic-api-python](https://github.com/luren-dc/QQMusicApi) - QQ 音乐 API 库
+- [decky-plugin-template](https://github.com/SteamDeckHomebrew/decky-plugin-template) - 插件模板

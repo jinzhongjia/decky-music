@@ -1,0 +1,71 @@
+[project]
+name = "decky-qqmusic"
+version = "1.0.0"
+description = "Decky Loader plugin for QQ Music"
+requires-python = ">=3.11"
+dependencies = [
+    "qqmusic-api-python>=0.3.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+]
+
+[tool.ruff]
+# 目标 Python 版本
+target-version = "py311"
+
+# 行长度
+line-length = 120
+
+# 排除目录
+exclude = [
+    ".git",
+    ".github",
+    "__pycache__",
+    "py_modules",
+    "node_modules",
+    "dist",
+    "out",
+    ".venv",
+    "venv",
+]
+
+[tool.ruff.lint]
+# 启用的规则
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+
+# 忽略的规则
+ignore = [
+    "E501",   # 行太长（由 line-length 控制）
+    "B008",   # 不要在函数参数默认值中执行函数调用
+    "B905",   # zip() 不带 strict= 参数
+    "ARG001", # 未使用的函数参数（有时需要保持接口一致）
+]
+
+# 允许修复的规则
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.isort]
+# isort 配置
+known-first-party = ["qqmusic_api"]
+
+[tool.ruff.format]
+# 格式化配置
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
