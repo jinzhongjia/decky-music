@@ -115,7 +115,7 @@ export function usePlayer(): UsePlayerReturn {
   const isPlayingRef = useRef(false);
 
   // 内部播放歌曲方法
-  const playSongInternal = useCallback(async (song: SongInfo, index: number = -1) => {
+  const playSongInternal = useCallback(async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true): Promise<boolean> => {
     const audio = getGlobalAudio();
     
     setLoading(true);
@@ -138,8 +138,24 @@ export function usePlayer(): UsePlayerReturn {
       const urlResult = await getSongUrl(song.mid);
       
       if (!urlResult.success || !urlResult.url) {
-        setError(urlResult.error || "无法获取播放链接，可能需要VIP");
+        const errorMsg = urlResult.error || "该歌曲暂时无法播放";
+        setError(errorMsg);
         setLoading(false);
+        
+        // 显示友好提示
+        toaster.toast({
+          title: `⚠️ ${song.name}`,
+          body: errorMsg,
+        });
+        
+        // 如果是列表播放模式，自动跳到下一首
+        if (autoSkipOnError && globalPlaylist.length > 1) {
+          setTimeout(() => {
+            if (onPlayNextCallback) {
+              onPlayNextCallback();
+            }
+          }, 1500);
+        }
         return false;
       }
       
@@ -154,11 +170,25 @@ export function usePlayer(): UsePlayerReturn {
         // 添加到播放历史
         const newHistory = addToPlayHistory(song);
         setPlayHistory(newHistory);
+        setLoading(false);
       } catch (e) {
+        const errorMsg = (e as Error).message;
+        setError(errorMsg);
+        setLoading(false);
+        
         toaster.toast({
           title: "播放失败",
-          body: (e as Error).message
+          body: errorMsg
         });
+        
+        // 自动跳到下一首
+        if (autoSkipOnError && globalPlaylist.length > 1) {
+          setTimeout(() => {
+            if (onPlayNextCallback) {
+              onPlayNextCallback();
+            }
+          }, 1500);
+        }
         return false;
       }
       
@@ -176,8 +206,15 @@ export function usePlayer(): UsePlayerReturn {
       
       return true;
     } catch (e) {
-      setError((e as Error).message);
+      const errorMsg = (e as Error).message;
+      setError(errorMsg);
       setLoading(false);
+      
+      toaster.toast({
+        title: "播放出错",
+        body: errorMsg
+      });
+      
       return false;
     }
   }, []);
@@ -213,7 +250,8 @@ export function usePlayer(): UsePlayerReturn {
     
     const nextSong = globalPlaylist[nextIndex];
     if (nextSong) {
-      playSongInternal(nextSong, nextIndex);
+      // 播放下一首时，如果失败也自动跳过
+      playSongInternal(nextSong, nextIndex, true);
     }
   }, [playSongInternal]);
 
@@ -228,7 +266,7 @@ export function usePlayer(): UsePlayerReturn {
     
     const prevSong = globalPlaylist[prevIndex];
     if (prevSong) {
-      playSongInternal(prevSong, prevIndex);
+      playSongInternal(prevSong, prevIndex, true);
     }
   }, [playSongInternal]);
 

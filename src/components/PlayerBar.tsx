@@ -1,5 +1,6 @@
 /**
  * 迷你播放器组件 - 底部播放条
+ * 所有按钮都支持手柄操作
  */
 
 import { FC } from "react";
@@ -17,6 +18,8 @@ interface PlayerBarProps {
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
   onClick: () => void;
+  onNext?: () => void;
+  onPrev?: () => void;
 }
 
 export const PlayerBar: FC<PlayerBarProps> = ({
@@ -28,6 +31,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
   onTogglePlay,
   onSeek,
   onClick,
+  onNext,
+  onPrev,
 }) => {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -43,13 +48,17 @@ export const PlayerBar: FC<PlayerBarProps> = ({
       backdropFilter: 'blur(10px)',
     }}>
       {/* 进度条 */}
-      <div 
+      <Focusable
+        onActivate={() => {
+          // 手柄按A键时跳到中间位置
+          if (duration > 0) onSeek(duration / 2);
+        }}
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
           right: 0,
-          height: '3px',
+          height: '6px',
           background: 'rgba(255,255,255,0.1)',
           cursor: duration > 0 ? 'pointer' : 'default',
         }}
@@ -65,16 +74,19 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           width: `${progress}%`,
           background: '#1db954',
           transition: 'width 0.1s linear',
+          pointerEvents: 'none',
         }} />
-      </div>
+      </Focusable>
 
       <Focusable style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '12px',
+        gap: '10px',
+        marginTop: '2px',
       }}>
-        {/* 封面和歌曲信息 */}
-        <div 
+        {/* 封面和歌曲信息 - 可聚焦点击进入播放器 */}
+        <Focusable
+          onActivate={onClick}
           onClick={onClick}
           style={{
             display: 'flex',
@@ -83,6 +95,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
             flex: 1,
             overflow: 'hidden',
             cursor: 'pointer',
+            padding: '4px',
+            borderRadius: '8px',
           }}
         >
           <img 
@@ -99,7 +113,7 @@ export const PlayerBar: FC<PlayerBarProps> = ({
               (e.target as HTMLImageElement).src = getDefaultCover(44);
             }}
           />
-          <div style={{ overflow: 'hidden', minWidth: 0 }}>
+          <div style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
             <div style={{ 
               fontSize: '14px', 
               fontWeight: 500,
@@ -117,71 +131,76 @@ export const PlayerBar: FC<PlayerBarProps> = ({
               overflow: 'hidden',
               textOverflow: 'ellipsis',
             }}>
-              {song.singer}
+              {song.singer} · {formatDuration(Math.floor(currentTime))} / {formatDuration(duration)}
             </div>
           </div>
-        </div>
+        </Focusable>
 
-        {/* 时间显示 */}
-        <div style={{ 
-          fontSize: '11px', 
-          color: '#8b929a',
-          flexShrink: 0,
-        }}>
-          {formatDuration(Math.floor(currentTime))} / {formatDuration(duration)}
-        </div>
-
-        {/* 播放控制 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div 
+        {/* 播放控制按钮 */}
+        <Focusable style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* 上一首/后退按钮 */}
+          <Focusable
+            onActivate={() => onPrev ? onPrev() : onSeek(Math.max(0, currentTime - 10))}
             onClick={(e) => {
               e.stopPropagation();
-              onSeek(Math.max(0, currentTime - 10));
+              onPrev ? onPrev() : onSeek(Math.max(0, currentTime - 10));
             }}
             style={{ 
               cursor: 'pointer',
-              padding: '8px',
+              padding: '10px',
               borderRadius: '50%',
               background: 'rgba(255,255,255,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             <FaStepBackward size={14} />
-          </div>
+          </Focusable>
           
-          <div 
+          {/* 播放/暂停按钮 */}
+          <Focusable
+            onActivate={onTogglePlay}
             onClick={(e) => {
               e.stopPropagation();
               onTogglePlay();
             }}
             style={{ 
               cursor: loading ? 'wait' : 'pointer',
-              padding: '10px',
+              padding: '12px',
               borderRadius: '50%',
               background: '#1db954',
               color: '#fff',
               opacity: loading ? 0.7 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             {isPlaying ? <FaPause size={16} /> : <FaPlay size={16} style={{ marginLeft: '2px' }} />}
-          </div>
+          </Focusable>
           
-          <div 
+          {/* 下一首/快进按钮 */}
+          <Focusable
+            onActivate={() => onNext ? onNext() : onSeek(Math.min(duration, currentTime + 10))}
             onClick={(e) => {
               e.stopPropagation();
-              onSeek(Math.min(duration, currentTime + 10));
+              onNext ? onNext() : onSeek(Math.min(duration, currentTime + 10));
             }}
             style={{ 
               cursor: 'pointer',
-              padding: '8px',
+              padding: '10px',
               borderRadius: '50%',
               background: 'rgba(255,255,255,0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             <FaStepForward size={14} />
-          </div>
-        </div>
+          </Focusable>
+        </Focusable>
       </Focusable>
     </div>
   );
 };
-

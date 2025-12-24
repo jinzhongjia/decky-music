@@ -223,11 +223,12 @@ export const SearchPage: FC<SearchPageProps> = ({
               marginTop: '-8px',
             }}>
               {suggestions.map((s, idx) => (
-                <div
+                <Focusable
                   key={idx}
+                  onActivate={() => handleSuggestionClick(s)}
                   onClick={() => handleSuggestionClick(s)}
                   style={{
-                    padding: '8px 12px',
+                    padding: '10px 12px',
                     cursor: 'pointer',
                     borderRadius: '6px',
                     background: 'rgba(255,255,255,0.05)',
@@ -247,7 +248,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                   }}>
                     {s.type === 'song' ? '歌曲' : s.type === 'singer' ? '歌手' : '专辑'}
                   </span>
-                </div>
+                </Focusable>
               ))}
             </Focusable>
           </PanelSectionRow>
@@ -267,24 +268,13 @@ export const SearchPage: FC<SearchPageProps> = ({
 
       {/* 搜索历史 */}
       {searchHistory.length > 0 && !hasSearched && (
-        <PanelSection title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            <span><FaHistory style={{ marginRight: '6px' }} />搜索历史</span>
-            <span 
-              onClick={clearHistory}
-              style={{ 
-                fontSize: '12px', 
-                color: '#8b929a', 
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              <FaTimes size={10} /> 清空
-            </span>
-          </div>
-        }>
+        <PanelSection title="🕐 搜索历史">
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={clearHistory} style={{ opacity: 0.7 }}>
+              <FaTimes style={{ marginRight: '6px' }} />
+              清空历史
+            </ButtonItem>
+          </PanelSectionRow>
           <PanelSectionRow>
             <Focusable style={{ 
               display: 'flex', 
@@ -292,12 +282,13 @@ export const SearchPage: FC<SearchPageProps> = ({
               gap: '8px',
             }}>
               {searchHistory.map((key, idx) => (
-                <span
+                <Focusable
                   key={idx}
+                  onActivate={() => handleHistoryClick(key)}
                   onClick={() => handleHistoryClick(key)}
                   style={{
                     background: 'rgba(255,255,255,0.08)',
-                    padding: '6px 12px',
+                    padding: '8px 14px',
                     borderRadius: '16px',
                     fontSize: '13px',
                     cursor: 'pointer',
@@ -306,7 +297,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                   }}
                 >
                   {key}
-                </span>
+                </Focusable>
               ))}
             </Focusable>
           </PanelSectionRow>
@@ -323,14 +314,15 @@ export const SearchPage: FC<SearchPageProps> = ({
               gap: '8px',
             }}>
               {hotkeys.map((key, idx) => (
-                <span
+                <Focusable
                   key={idx}
+                  onActivate={() => handleHotkeyClick(key)}
                   onClick={() => handleHotkeyClick(key)}
                   style={{
                     background: idx < 3 
                       ? 'linear-gradient(135deg, rgba(255,100,100,0.2), rgba(255,150,100,0.2))'
                       : 'rgba(255,255,255,0.08)',
-                    padding: '6px 12px',
+                    padding: '8px 14px',
                     borderRadius: '16px',
                     fontSize: '13px',
                     cursor: 'pointer',
@@ -341,7 +333,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                 >
                   {idx < 3 && <span style={{ marginRight: '4px' }}>{idx + 1}</span>}
                   {key}
-                </span>
+                </Focusable>
               ))}
             </Focusable>
           </PanelSectionRow>

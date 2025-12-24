@@ -19,6 +19,7 @@ const PlaylistItem: FC<{
   onClick: () => void;
 }> = ({ playlist, onClick }) => (
   <Focusable
+    onActivate={onClick}
     onClick={onClick}
     style={{
       display: 'flex',
