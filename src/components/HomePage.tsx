@@ -154,8 +154,7 @@ export const HomePage: FC<HomePageProps> = ({
         }}>
           <span>💡 猜你喜欢</span>
           <Focusable
-            className="qqmusic-btn"
-            focusClassName="qqmusic-btn-focused"
+            noFocusRing={false}
             onActivate={refreshGuessLike}
             onClick={refreshGuessLike}
             style={{
@@ -168,7 +167,6 @@ export const HomePage: FC<HomePageProps> = ({
               alignItems: 'center',
               gap: '4px',
               fontSize: '12px',
-              transition: 'all 0.15s ease',
             }}
           >
             <FaSyncAlt 

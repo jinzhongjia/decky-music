@@ -112,8 +112,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
       {error && (
         <PanelSectionRow>
           <Focusable
-            className={hasPlaylist ? "qqmusic-focusable" : undefined}
-            focusClassName={hasPlaylist ? "qqmusic-focused" : undefined}
+            noFocusRing={!hasPlaylist}
             onActivate={hasPlaylist && onNext ? onNext : undefined}
             onClick={hasPlaylist && onNext ? onNext : undefined}
             style={{ 
@@ -124,7 +123,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               background: 'rgba(255, 107, 107, 0.1)',
               borderRadius: '8px',
               cursor: hasPlaylist ? 'pointer' : 'default',
-              transition: 'all 0.15s ease',
             }}
           >
             <div style={{ marginBottom: '6px' }}>⚠️ {error}</div>
@@ -203,8 +201,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
             }}>
               {/* 上一首按钮 */}
               <Focusable
-                className="qqmusic-btn"
-                focusClassName="qqmusic-btn-focused"
+                noFocusRing={false}
                 onActivate={handlePrev}
                 onClick={handlePrev}
                 style={{ 
@@ -215,7 +212,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  transition: 'all 0.15s ease',
                 }}
               >
                 <FaStepBackward size={20} />
@@ -223,8 +219,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               
               {/* 播放/暂停按钮 */}
               <Focusable
-                className="qqmusic-btn"
-                focusClassName="qqmusic-btn-focused"
+                noFocusRing={false}
                 onActivate={onTogglePlay}
                 onClick={onTogglePlay}
                 style={{ 
@@ -237,7 +232,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                   boxShadow: '0 4px 16px rgba(29, 185, 84, 0.4)',
-                  transition: 'all 0.15s ease',
                 }}
               >
                 {isPlaying ? <FaPause size={28} /> : <FaPlay size={28} style={{ marginLeft: '4px' }} />}
@@ -245,8 +239,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               
               {/* 下一首按钮 */}
               <Focusable
-                className="qqmusic-btn"
-                focusClassName="qqmusic-btn-focused"
+                noFocusRing={false}
                 onActivate={handleNext}
                 onClick={handleNext}
                 style={{ 
@@ -257,7 +250,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  transition: 'all 0.15s ease',
                 }}
               >
                 <FaStepForward size={20} />

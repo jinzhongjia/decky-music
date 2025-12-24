@@ -23,7 +23,7 @@ export const SongItem: FC<SongItemProps> = ({
   
   return (
     <Focusable
-      // 不使用 noFocusRing，让 Decky 显示默认焦点环
+      noFocusRing={false}
       onActivate={handleClick}
       onClick={handleClick}
       style={{
