@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build plugin
+        run: |
+          mkdir -p out
+          DOCKER_BUILDKIT=1 docker build --output type=local,dest=out .
+
+      - name: Get plugin info
+        id: plugin_info
+        run: |
+          PLUGIN_NAME=$(jq -r '.name' plugin.json)
+          PLUGIN_VERSION=$(jq -r '.version' plugin.json)
+          echo "name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
+          echo "version=$PLUGIN_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ steps.plugin_info.outputs.name }} v${{ steps.plugin_info.outputs.version }}
+          body: |
+            ## 安装方法
+            
+            1. 下载 `${{ steps.plugin_info.outputs.name }}.zip`
+            2. 解压到 Steam Deck 的 `~/homebrew/plugins/` 目录
+            3. 重启 Decky Loader
+            
+            ## 更新日志
+            
+            请查看 [Commits](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }})
+          files: |
+            out/${{ steps.plugin_info.outputs.name }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
