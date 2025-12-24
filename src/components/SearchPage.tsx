@@ -225,6 +225,8 @@ export const SearchPage: FC<SearchPageProps> = ({
               {suggestions.map((s, idx) => (
                 <Focusable
                   key={idx}
+                  className="qqmusic-focusable"
+                  focusClassName="qqmusic-focused"
                   onActivate={() => handleSuggestionClick(s)}
                   onClick={() => handleSuggestionClick(s)}
                   style={{
@@ -233,6 +235,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                     borderRadius: '6px',
                     background: 'rgba(255,255,255,0.05)',
                     fontSize: '13px',
+                    transition: 'all 0.15s ease',
                   }}
                 >
                   <span style={{ color: '#fff' }}>{s.keyword}</span>
@@ -284,6 +287,8 @@ export const SearchPage: FC<SearchPageProps> = ({
               {searchHistory.map((key, idx) => (
                 <Focusable
                   key={idx}
+                  className="qqmusic-focusable"
+                  focusClassName="qqmusic-focused"
                   onActivate={() => handleHistoryClick(key)}
                   onClick={() => handleHistoryClick(key)}
                   style={{
@@ -293,7 +298,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                     fontSize: '13px',
                     cursor: 'pointer',
                     color: '#dcdedf',
-                    transition: 'background 0.2s',
+                    transition: 'all 0.15s ease',
                   }}
                 >
                   {key}
@@ -316,6 +321,8 @@ export const SearchPage: FC<SearchPageProps> = ({
               {hotkeys.map((key, idx) => (
                 <Focusable
                   key={idx}
+                  className="qqmusic-focusable"
+                  focusClassName="qqmusic-focused"
                   onActivate={() => handleHotkeyClick(key)}
                   onClick={() => handleHotkeyClick(key)}
                   style={{
@@ -327,7 +334,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                     fontSize: '13px',
                     cursor: 'pointer',
                     color: idx < 3 ? '#ffaa80' : '#dcdedf',
-                    transition: 'background 0.2s',
+                    transition: 'all 0.15s ease',
                     border: idx < 3 ? '1px solid rgba(255,150,100,0.3)' : 'none',
                   }}
                 >

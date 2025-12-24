@@ -19,6 +19,8 @@ const PlaylistItem: FC<{
   onClick: () => void;
 }> = ({ playlist, onClick }) => (
   <Focusable
+    className="qqmusic-focusable"
+    focusClassName="qqmusic-focused"
     onActivate={onClick}
     onClick={onClick}
     style={{
@@ -29,7 +31,7 @@ const PlaylistItem: FC<{
       background: 'rgba(255,255,255,0.03)',
       borderRadius: '8px',
       cursor: 'pointer',
-      transition: 'background 0.2s',
+      transition: 'all 0.15s ease',
     }}
   >
     <img

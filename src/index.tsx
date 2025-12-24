@@ -204,7 +204,7 @@ function Content() {
   };
 
   return (
-    <div style={{ paddingBottom: player.currentSong && currentPage !== 'player' ? '70px' : '0' }}>
+    <div className="qqmusic-container" style={{ paddingBottom: player.currentSong && currentPage !== 'player' ? '70px' : '0' }}>
       {renderPage()}
       
       {/* 迷你播放器条 - 非全屏播放器页面且有歌曲时显示 */}
@@ -230,13 +230,38 @@ function Content() {
 export default definePlugin(() => {
   console.log("Decky QQ Music 插件已初始化");
 
-  // 添加旋转动画样式
+  // 添加全局样式
   const style = document.createElement('style');
   style.id = 'decky-qqmusic-styles';
   style.textContent = `
     @keyframes spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
+    }
+    
+    /* 手柄焦点高亮样式 - 使用多种选择器确保生效 */
+    .qqmusic-focused,
+    .gpfocus.qqmusic-focusable,
+    .qqmusic-focusable.gpfocus {
+      outline: 2px solid #1db954 !important;
+      outline-offset: 2px;
+      background: rgba(29, 185, 84, 0.2) !important;
+      box-shadow: 0 0 12px rgba(29, 185, 84, 0.4) !important;
+    }
+    
+    .qqmusic-btn-focused,
+    .gpfocus.qqmusic-btn,
+    .qqmusic-btn.gpfocus {
+      outline: 2px solid #1db954 !important;
+      outline-offset: 1px;
+      transform: scale(1.08);
+      box-shadow: 0 0 16px rgba(29, 185, 84, 0.5) !important;
+    }
+    
+    /* 防止滚动条导致宽度变化 */
+    .qqmusic-container {
+      overflow-x: hidden;
+      box-sizing: border-box;
     }
   `;
   document.head.appendChild(style);

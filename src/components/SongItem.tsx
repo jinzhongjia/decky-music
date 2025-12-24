@@ -27,6 +27,8 @@ export const SongItem: FC<SongItemProps> = ({
   
   return (
     <Focusable
+      className="qqmusic-focusable"
+      focusClassName="qqmusic-focused"
       onActivate={handleClick}
       onClick={handleClick}
       style={{
@@ -38,7 +40,7 @@ export const SongItem: FC<SongItemProps> = ({
         borderRadius: '8px',
         cursor: 'pointer',
         width: '100%',
-        transition: 'background 0.2s',
+        transition: 'all 0.15s ease',
         borderLeft: isPlaying ? '3px solid #1db954' : '3px solid transparent',
       }}
     >
