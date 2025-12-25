@@ -10,6 +10,7 @@ import { formatPlayCount, getDefaultCover } from "../utils/format";
 import { useDataManager } from "../hooks/useDataManager";
 import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { EmptyState } from "./EmptyState";
 
 interface PlaylistsPageProps {
   onSelectPlaylist: (playlist: PlaylistInfo) => void;
@@ -102,11 +103,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
       {/* 创建的歌单 */}
       <PanelSection title={`💿 创建的歌单 (${dataManager.createdPlaylists.length})`}>
         {dataManager.createdPlaylists.length === 0 ? (
-          <PanelSectionRow>
-            <div style={{ textAlign: 'center', color: '#8b929a', padding: '20px' }}>
-              暂无创建的歌单
-            </div>
-          </PanelSectionRow>
+          <EmptyState message="暂无创建的歌单" />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {dataManager.createdPlaylists.map((playlist) => (
@@ -123,11 +120,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
       {/* 收藏的歌单 */}
       <PanelSection title={`❤️ 收藏的歌单 (${dataManager.collectedPlaylists.length})`}>
         {dataManager.collectedPlaylists.length === 0 ? (
-          <PanelSectionRow>
-            <div style={{ textAlign: 'center', color: '#8b929a', padding: '20px' }}>
-              暂无收藏的歌单
-            </div>
-          </PanelSectionRow>
+          <EmptyState message="暂无收藏的歌单" />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {dataManager.collectedPlaylists.map((playlist) => (

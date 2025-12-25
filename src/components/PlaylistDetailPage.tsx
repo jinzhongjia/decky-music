@@ -11,6 +11,7 @@ import { getDefaultCover } from "../utils/format";
 import { SongItem } from "./SongItem";
 import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { EmptyState } from "./EmptyState";
 
 interface PlaylistDetailPageProps {
   playlist: PlaylistInfo;
@@ -114,11 +115,7 @@ export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
         {loading ? (
           <LoadingSpinner />
         ) : songs.length === 0 ? (
-          <PanelSectionRow>
-            <div style={{ textAlign: 'center', color: '#8b929a', padding: '20px' }}>
-              歌单暂无歌曲
-            </div>
-          </PanelSectionRow>
+          <EmptyState message="歌单暂无歌曲" />
         ) : (
           <Focusable style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {songs.map((song, idx) => (

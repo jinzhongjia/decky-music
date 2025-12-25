@@ -7,6 +7,7 @@ import { PanelSection, PanelSectionRow } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { SongItem } from "./SongItem";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { EmptyState } from "./EmptyState";
 
 interface SongListProps {
   title: string;
@@ -36,16 +37,7 @@ export const SongList: FC<SongListProps> = ({
   if (songs.length === 0) {
     return (
       <PanelSection title={title}>
-        <PanelSectionRow>
-          <div style={{ 
-            textAlign: 'center', 
-            color: '#8b929a', 
-            padding: '20px',
-            fontSize: '14px',
-          }}>
-            {emptyText}
-          </div>
-        </PanelSectionRow>
+        <EmptyState message={emptyText} />
       </PanelSection>
     );
   }

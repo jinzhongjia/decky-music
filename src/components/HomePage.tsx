@@ -11,6 +11,7 @@ import { SongList } from "./SongList";
 import { SongItem } from "./SongItem";
 import { useDataManager } from "../hooks/useDataManager";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { EmptyState } from "./EmptyState";
 
 // 清除缓存（保持向后兼容）
 export function clearRecommendCache() {
@@ -88,16 +89,7 @@ export const HomePage: FC<HomePageProps> = ({
         {dataManager.guessLoading && dataManager.guessLikeSongs.length === 0 ? (
           <LoadingSpinner />
         ) : dataManager.guessLikeSongs.length === 0 ? (
-          <PanelSectionRow>
-            <div style={{ 
-              textAlign: 'center', 
-              color: '#8b929a', 
-              padding: '20px',
-              fontSize: '14px',
-            }}>
-              暂无推荐，请稍后再试
-            </div>
-          </PanelSectionRow>
+          <EmptyState message="暂无推荐，请稍后再试" />
         ) : (
           dataManager.guessLikeSongs.map((song, idx) => (
             <SongItem

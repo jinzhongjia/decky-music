@@ -8,6 +8,7 @@ import { FaTrash, FaPlay } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { SongItem } from "./SongItem";
 import { BackButton } from "./BackButton";
+import { EmptyState } from "./EmptyState";
 
 interface HistoryPageProps {
   history: SongInfo[];
@@ -67,20 +68,11 @@ export const HistoryPage: FC<HistoryPageProps> = ({
       {/* 历史列表 */}
       {history.length === 0 ? (
         <PanelSection>
-          <PanelSectionRow>
-            <div style={{ 
-              textAlign: 'center', 
-              color: '#8b929a', 
-              padding: '40px 20px',
-              fontSize: '14px',
-            }}>
-              暂无播放历史
-              <br />
-              <span style={{ fontSize: '12px', marginTop: '8px', display: 'block' }}>
-                播放歌曲后会自动记录在这里
-              </span>
-            </div>
-          </PanelSectionRow>
+          <EmptyState 
+            message="暂无播放历史" 
+            description="播放歌曲后会自动记录在这里"
+            padding="40px 20px"
+          />
         </PanelSection>
       ) : (
         <PanelSection>
