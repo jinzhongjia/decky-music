@@ -33,7 +33,7 @@ export const SafeImage: FC<SafeImageProps> = ({
   const isFailed = src && failedImages.has(src);
   const finalSrc = (src && !isFailed) ? src : defaultCover;
 
-  const handleError = (e: React.SyntheticEvent<HTMLImageElement, React.SyntheticEvent>) => {
+  const handleError = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const target = e.target as HTMLImageElement;
 
     // 记录失败的 URL
@@ -57,4 +57,3 @@ export const SafeImage: FC<SafeImageProps> = ({
     />
   );
 };
-
