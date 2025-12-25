@@ -42,6 +42,11 @@ const cache: DataCache = {
   playlistsLoading: false,
 };
 
+// 正在进行的请求（避免并发重复请求）
+let guessLikePromise: Promise<SongInfo[]> | null = null;
+let dailyRecommendPromise: Promise<SongInfo[]> | null = null;
+let playlistsPromise: Promise<{ created: PlaylistInfo[]; collected: PlaylistInfo[] }> | null = null;
+
 // 监听器列表
 type Listener = () => void;
 const listeners: Set<Listener> = new Set();
@@ -102,42 +107,38 @@ const preloadPlaylistCovers = async (playlists: PlaylistInfo[]) => {
  * 加载猜你喜欢
  */
 export const loadGuessLike = async (forceRefresh = false): Promise<SongInfo[]> => {
-  if (cache.guessLoading) {
-    // 等待当前加载完成
-    return new Promise((resolve) => {
-      const check = () => {
-        if (!cache.guessLoading) {
-          resolve(cache.guessLikeSongs);
-        } else {
-          setTimeout(check, 100);
-        }
-      };
-      check();
-    });
-  }
-
   if (cache.guessLoaded && !forceRefresh) {
     return cache.guessLikeSongs;
+  }
+
+  if (guessLikePromise) {
+    return guessLikePromise;
   }
 
   cache.guessLoading = true;
   notifyListeners();
 
-  try {
-    const result = await getGuessLike();
-    if (result.success && result.songs.length > 0) {
-      cache.guessLikeSongs = result.songs;
-      cache.guessLoaded = true;
-      // 预加载封面图片
-      preloadSongCovers(result.songs);
+  guessLikePromise = (async () => {
+    try {
+      const result = await getGuessLike();
+      if (result.success && result.songs.length > 0) {
+        cache.guessLikeSongs = result.songs;
+        cache.guessLoaded = true;
+        // 预加载封面图片
+        preloadSongCovers(result.songs);
+      }
+    } catch (e) {
+      console.error("[DataManager] 加载猜你喜欢失败:", e);
+    } finally {
+      cache.guessLoading = false;
+      notifyListeners();
+      guessLikePromise = null;
     }
-  } catch (e) {
-    console.error("[DataManager] 加载猜你喜欢失败:", e);
-  }
 
-  cache.guessLoading = false;
-  notifyListeners();
-  return cache.guessLikeSongs;
+    return cache.guessLikeSongs;
+  })();
+
+  return guessLikePromise;
 };
 
 /**
@@ -151,83 +152,77 @@ export const refreshGuessLike = async (): Promise<SongInfo[]> => {
  * 加载每日推荐
  */
 export const loadDailyRecommend = async (): Promise<SongInfo[]> => {
-  if (cache.dailyLoading) {
-    return new Promise((resolve) => {
-      const check = () => {
-        if (!cache.dailyLoading) {
-          resolve(cache.dailySongs);
-        } else {
-          setTimeout(check, 100);
-        }
-      };
-      check();
-    });
-  }
-
   if (cache.dailyLoaded) {
     return cache.dailySongs;
+  }
+
+  if (dailyRecommendPromise) {
+    return dailyRecommendPromise;
   }
 
   cache.dailyLoading = true;
   notifyListeners();
 
-  try {
-    const result = await getDailyRecommend();
-    if (result.success && result.songs.length > 0) {
-      cache.dailySongs = result.songs;
-      cache.dailyLoaded = true;
-      // 预加载封面图片
-      preloadSongCovers(result.songs);
+  dailyRecommendPromise = (async () => {
+    try {
+      const result = await getDailyRecommend();
+      if (result.success && result.songs.length > 0) {
+        cache.dailySongs = result.songs;
+        cache.dailyLoaded = true;
+        // 预加载封面图片
+        preloadSongCovers(result.songs);
+      }
+    } catch (e) {
+      console.error("[DataManager] 加载每日推荐失败:", e);
+    } finally {
+      cache.dailyLoading = false;
+      notifyListeners();
+      dailyRecommendPromise = null;
     }
-  } catch (e) {
-    console.error("[DataManager] 加载每日推荐失败:", e);
-  }
 
-  cache.dailyLoading = false;
-  notifyListeners();
-  return cache.dailySongs;
+    return cache.dailySongs;
+  })();
+
+  return dailyRecommendPromise;
 };
 
 /**
  * 加载用户歌单
  */
 export const loadPlaylists = async (): Promise<{ created: PlaylistInfo[], collected: PlaylistInfo[] }> => {
-  if (cache.playlistsLoading) {
-    return new Promise((resolve) => {
-      const check = () => {
-        if (!cache.playlistsLoading) {
-          resolve({ created: cache.createdPlaylists, collected: cache.collectedPlaylists });
-        } else {
-          setTimeout(check, 100);
-        }
-      };
-      check();
-    });
-  }
-
   if (cache.playlistsLoaded) {
     return { created: cache.createdPlaylists, collected: cache.collectedPlaylists };
+  }
+
+  if (playlistsPromise) {
+    return playlistsPromise;
   }
 
   cache.playlistsLoading = true;
   notifyListeners();
 
-  try {
-    const result = await getUserPlaylists();
-    if (result.success) {
-      cache.createdPlaylists = result.created || [];
-      cache.collectedPlaylists = result.collected || [];
-      cache.playlistsLoaded = true;
-      // 预加载歌单封面
-      preloadPlaylistCovers([...cache.createdPlaylists, ...cache.collectedPlaylists]);
+  playlistsPromise = (async () => {
+    try {
+      const result = await getUserPlaylists();
+      if (result.success) {
+        cache.createdPlaylists = result.created || [];
+        cache.collectedPlaylists = result.collected || [];
+        cache.playlistsLoaded = true;
+        // 预加载歌单封面
+        preloadPlaylistCovers([...cache.createdPlaylists, ...cache.collectedPlaylists]);
+      }
+    } catch (e) {
+      console.error("[DataManager] 加载歌单失败:", e);
+    } finally {
+      cache.playlistsLoading = false;
+      notifyListeners();
+      playlistsPromise = null;
     }
-  } catch (e) {
-    console.error("[DataManager] 加载歌单失败:", e);
-  }
 
-  cache.playlistsLoading = false;
-  notifyListeners();
-  return { created: cache.createdPlaylists, collected: cache.collectedPlaylists };
+    return { created: cache.createdPlaylists, collected: cache.collectedPlaylists };
+  })();
+
+  return playlistsPromise;
 };
 
 // ==================== 预加载 ====================
@@ -257,15 +252,18 @@ export const clearDataCache = () => {
   cache.guessLikeSongs = [];
   cache.guessLoaded = false;
   cache.guessLoading = false;
+  guessLikePromise = null;
   
   cache.dailySongs = [];
   cache.dailyLoaded = false;
   cache.dailyLoading = false;
+  dailyRecommendPromise = null;
   
   cache.createdPlaylists = [];
   cache.collectedPlaylists = [];
   cache.playlistsLoaded = false;
   cache.playlistsLoading = false;
+  playlistsPromise = null;
   
   notifyListeners();
   console.log("[DataManager] 缓存已清除");
@@ -331,4 +329,3 @@ export function useDataManager() {
     clearDataCache,
   };
 }
-

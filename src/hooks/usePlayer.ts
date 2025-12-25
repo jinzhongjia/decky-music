@@ -6,7 +6,7 @@
  * 支持播放时禁止系统休眠
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { toaster } from "@decky/api";
 import { getSongUrl, getSongLyric } from "../api";
 import type { SongInfo } from "../types";
@@ -205,6 +205,10 @@ const CACHE_TTL = 30 * 60 * 1000;
 // 歌词缓存 (持久缓存，直到插件重载)
 const lyricCache = new Map<string, ParsedLyric>();
 
+// 预取任务缓存，避免重复请求
+const prefetchingUrlPromises = new Map<string, Promise<void>>();
+const prefetchingLyricPromises = new Map<string, Promise<void>>();
+
 // 获取或创建全局音频实例
 function getGlobalAudio(): HTMLAudioElement {
   if (!globalAudio) {
@@ -213,8 +217,16 @@ function getGlobalAudio(): HTMLAudioElement {
 
     // 设置全局的 ended 事件处理
     globalAudio.addEventListener('ended', () => {
-      if (onPlayNextCallback) {
+      const hasNext = (globalPlaylist.length > 1) || Boolean(onNeedMoreSongsCallback);
+
+      if (onPlayNextCallback && hasNext) {
         onPlayNextCallback();
+        return;
+      }
+
+      if (sleepInhibited) {
+        sleepInhibited = false;
+        uninhibitSleep();
       }
     });
   }
@@ -227,6 +239,46 @@ function getGlobalAudio(): HTMLAudioElement {
  */
 export function getAudioCurrentTime(): number {
   return globalAudio?.currentTime || 0;
+}
+
+// 预取下一首的播放链接与歌词，减少切歌延迟
+async function prefetchSongAssets(song: SongInfo) {
+  const tasks: Promise<void>[] = [];
+
+  const cachedUrl = songUrlCache.get(song.mid);
+  const urlStale = !cachedUrl || Date.now() - cachedUrl.timestamp >= CACHE_TTL;
+  if (urlStale && !prefetchingUrlPromises.has(song.mid)) {
+    const urlPromise = getSongUrl(song.mid)
+      .then((urlResult) => {
+        if (urlResult.success && urlResult.url) {
+          songUrlCache.set(song.mid, { url: urlResult.url, timestamp: Date.now() });
+        }
+      })
+      .catch(() => { })
+      .finally(() => prefetchingUrlPromises.delete(song.mid));
+
+    prefetchingUrlPromises.set(song.mid, urlPromise);
+    tasks.push(urlPromise);
+  }
+
+  if (!lyricCache.has(song.mid) && !prefetchingLyricPromises.has(song.mid)) {
+    const lyricPromise = getSongLyric(song.mid, true)
+      .then((lyricResult) => {
+        if (lyricResult.success && lyricResult.lyric) {
+          const parsed = parseLyric(lyricResult.lyric, lyricResult.trans);
+          lyricCache.set(song.mid, parsed);
+        }
+      })
+      .catch(() => { })
+      .finally(() => prefetchingLyricPromises.delete(song.mid));
+
+    prefetchingLyricPromises.set(song.mid, lyricPromise);
+    tasks.push(lyricPromise);
+  }
+
+  if (tasks.length > 0) {
+    await Promise.allSettled(tasks);
+  }
 }
 
 // 全局清理函数 - 用于插件卸载时调用
@@ -301,9 +353,6 @@ export function usePlayer(): UsePlayerReturn {
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
   const [playHistory, setPlayHistory] = useState<SongInfo[]>(loadPlayHistory);
 
-  // 用于避免重复调用
-  const isPlayingRef = useRef(false);
-
   // 内部播放歌曲方法
   const playSongInternal = useCallback(async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true): Promise<boolean> => {
     const audio = getGlobalAudio();
@@ -319,12 +368,11 @@ export function usePlayer(): UsePlayerReturn {
     setCurrentSong(song);
     setCurrentTime(0);
     setDuration(song.duration);
-    setLyric("");
+    setLyric(null);
 
     // 更新全局状态
     globalCurrentSong = song;
     globalLyric = null;
-    setLyric(null);
     if (index >= 0) {
       globalCurrentIndex = index;
       setCurrentIndex(index);
@@ -375,7 +423,6 @@ export function usePlayer(): UsePlayerReturn {
       try {
         await audio.play();
         setIsPlaying(true);
-        isPlayingRef.current = true;
 
         if (!sleepInhibited) {
           sleepInhibited = true;
@@ -467,6 +514,7 @@ export function usePlayer(): UsePlayerReturn {
     if (nextSong) {
       // 播放下一首时，如果失败也自动跳过
       playSongInternal(nextSong, nextIndex, true);
+      prefetchSongAssets(globalPlaylist[nextIndex + 1] || nextSong);
     }
   }, [playSongInternal]);
 
@@ -560,6 +608,7 @@ export function usePlayer(): UsePlayerReturn {
     const song = songs[startIndex];
     if (song) {
       await playSongInternal(song, startIndex);
+      prefetchSongAssets(songs[startIndex + 1] || songs[startIndex]);
     }
   }, [playSongInternal]);
 
@@ -617,7 +666,7 @@ export function usePlayer(): UsePlayerReturn {
 
     // 清理全局状态
     globalCurrentSong = null;
-    globalLyric = "";
+    globalLyric = null;
     globalPlaylist = [];
     globalCurrentIndex = -1;
     onNeedMoreSongsCallback = null;
@@ -627,7 +676,7 @@ export function usePlayer(): UsePlayerReturn {
     setCurrentTime(0);
     setDuration(0);
     setError("");
-    setLyric("");
+    setLyric(null);
     setPlaylist([]);
     setCurrentIndex(-1);
   }, []);

@@ -61,14 +61,14 @@ interface QrcLineProps {
   index: number;
   activeIndex: number;
   currentTimeSec: number | null;
-  activeRef: React.RefObject<HTMLDivElement>;
+  activeRef: React.RefObject<HTMLDivElement | null>;
 }
 
 interface LrcLineProps {
   line: { text: string; trans?: string };
   index: number;
   activeIndex: number;
-  activeRef: React.RefObject<HTMLDivElement>;
+  activeRef: React.RefObject<HTMLDivElement | null>;
 }
 
 const getWordProgress = (word: LyricWord, timeSec: number): number => {

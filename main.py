@@ -409,15 +409,24 @@ class Plugin:
         if has_credential:
             await self._ensure_credential_valid()
         
-        # 按优先级尝试不同音质
-        file_types = [
-            song.SongFileType.MP3_320,  # 320kbps MP3 (VIP)
-            song.SongFileType.OGG_192,  # 192kbps OGG
-            song.SongFileType.MP3_128,  # 128kbps MP3
-            song.SongFileType.ACC_192,  # 192kbps AAC
-            song.SongFileType.ACC_96,   # 96kbps AAC
-            song.SongFileType.ACC_48,   # 48kbps AAC (最低质量)
-        ]
+        # 按优先级尝试不同音质：未登录时跳过高品质，减少无效请求
+        if has_credential:
+            file_types = [
+                song.SongFileType.MP3_320,  # 320kbps MP3 (VIP)
+                song.SongFileType.OGG_192,  # 192kbps OGG
+                song.SongFileType.MP3_128,  # 128kbps MP3
+                song.SongFileType.ACC_192,  # 192kbps AAC
+                song.SongFileType.ACC_96,   # 96kbps AAC
+                song.SongFileType.ACC_48,   # 48kbps AAC (最低质量)
+            ]
+        else:
+            file_types = [
+                song.SongFileType.OGG_192,  # 192kbps OGG
+                song.SongFileType.MP3_128,  # 128kbps MP3
+                song.SongFileType.ACC_192,  # 192kbps AAC
+                song.SongFileType.ACC_96,   # 96kbps AAC
+                song.SongFileType.ACC_48,   # 48kbps AAC
+            ]
         
         last_error = ""
         

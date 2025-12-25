@@ -56,19 +56,23 @@ export function useSearchHistory() {
    */
   const addToHistory = useCallback((keyword: string) => {
     if (!keyword || !keyword.trim()) return;
-    
     const trimmedKeyword = keyword.trim();
-    const newHistory = [trimmedKeyword, ...searchHistory.filter(h => h !== trimmedKeyword)].slice(0, MAX_HISTORY);
-    setSearchHistory(newHistory);
-    saveSearchHistory(newHistory);
-  }, [searchHistory]);
+
+    setSearchHistory(prev => {
+      const newHistory = [trimmedKeyword, ...prev.filter(h => h !== trimmedKeyword)].slice(0, MAX_HISTORY);
+      saveSearchHistory(newHistory);
+      return newHistory;
+    });
+  }, []);
 
   /**
    * 清空搜索历史
    */
   const clearHistory = useCallback(() => {
-    setSearchHistory([]);
-    saveSearchHistory([]);
+    setSearchHistory(() => {
+      saveSearchHistory([]);
+      return [];
+    });
   }, []);
 
   return {
@@ -77,4 +81,3 @@ export function useSearchHistory() {
     clearHistory,
   };
 }
-
