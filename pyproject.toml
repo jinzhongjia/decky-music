@@ -69,3 +69,34 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
+[tool.pyright]
+# Python 环境
+pythonVersion = "3.11"
+pythonPlatform = "Linux"
+venvPath = "."
+venv = ".venv"
+
+# 类型检查
+typeCheckingMode = "basic"
+reportMissingImports = "warning"
+reportMissingTypeStubs = "none"
+
+# 排除目录
+exclude = [
+    ".git",
+    ".github",
+    "__pycache__",
+    "py_modules",
+    "node_modules",
+    "dist",
+    "out",
+    ".venv",
+    "venv",
+]
+
+# 额外的类型检查路径
+extraPaths = ["."]
+
+# 忽略缺失的导入（decky 是运行时提供的）
+reportMissingModuleSource = "none"
+
