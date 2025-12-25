@@ -8,6 +8,7 @@ import { toaster } from "@decky/api";
 import { FaQrcode } from "react-icons/fa";
 import { getQrCode, checkQrStatus } from "../api";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { useMountedRef } from "../hooks/useMountedRef";
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
@@ -20,7 +21,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [status, setStatus] = useState<LoginStatus>("idle");
   const [loginType, setLoginType] = useState<"qq" | "wx">("qq");
   const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const mountedRef = useRef(true);
+  const mountedRef = useMountedRef();
 
   const fetchQrCode = async (type: "qq" | "wx") => {
     setLoginType(type);
@@ -79,9 +80,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
   };
 
   useEffect(() => {
-    mountedRef.current = true;
     return () => {
-      mountedRef.current = false;
       if (checkIntervalRef.current) {
         clearInterval(checkIntervalRef.current);
       }

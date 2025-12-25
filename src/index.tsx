@@ -10,6 +10,7 @@ import { FaMusic } from "react-icons/fa";
 import { getLoginStatus, logout, getGuessLike } from "./api";
 import { preloadData, clearDataCache } from "./hooks/useDataManager";
 import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
+import { useMountedRef } from "./hooks/useMountedRef";
 import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, clearRecommendCache } from "./components";
 import { FullscreenPlayer } from "./pages";
 import { ROUTE_PATH, menuManager } from "./patches";
@@ -20,7 +21,7 @@ function Content() {
   const [currentPage, setCurrentPage] = useState<PageType>('login');
   const [checking, setChecking] = useState(true);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
-  const mountedRef = useRef(true);
+  const mountedRef = useMountedRef();
   
   const player = usePlayer();
   
@@ -35,11 +36,7 @@ function Content() {
   });
 
   useEffect(() => {
-    mountedRef.current = true;
     checkLoginStatus();
-    return () => {
-      mountedRef.current = false;
-    };
   }, []);
 
   // 手柄快捷键绑定

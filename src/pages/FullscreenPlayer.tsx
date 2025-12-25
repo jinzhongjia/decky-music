@@ -13,6 +13,7 @@ import {
 import { getLoginStatus } from "../api";
 import { usePlayer, getAudioCurrentTime } from "../hooks/usePlayer";
 import { useDataManager } from "../hooks/useDataManager";
+import { useMountedRef } from "../hooks/useMountedRef";
 import { SongItem } from "../components/SongItem";
 import { LoginPage, SearchPage, PlaylistsPage, PlaylistDetailPage, HistoryPage } from "../components";
 import type { SongInfo, PlaylistInfo } from "../types";
@@ -323,7 +324,7 @@ export const FullscreenPlayer: FC = () => {
   const [checking, setChecking] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
-  const mountedRef = useRef(true);
+  const mountedRef = useMountedRef();
 
   const player = usePlayer();
   const dataManager = useDataManager();
@@ -336,11 +337,7 @@ export const FullscreenPlayer: FC = () => {
 
   // 检查登录状态
   useEffect(() => {
-    mountedRef.current = true;
     checkLoginStatus();
-    return () => {
-      mountedRef.current = false;
-    };
   }, []);
 
   // 手柄快捷键绑定

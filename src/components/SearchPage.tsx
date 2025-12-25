@@ -11,6 +11,7 @@ import { searchSongs, getHotSearch, getSearchSuggest } from "../api";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { BackButton } from "./BackButton";
+import { useMountedRef } from "../hooks/useMountedRef";
 
 // 搜索历史存储 key
 const SEARCH_HISTORY_KEY = "qqmusic_search_history";
@@ -60,14 +61,12 @@ export const SearchPage: FC<SearchPageProps> = ({
   const [searchHistory, setSearchHistory] = useState<string[]>(loadSearchHistory);
   const [hasSearched, setHasSearched] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const mountedRef = useRef(true);
+  const mountedRef = useMountedRef();
   const suggestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    mountedRef.current = true;
     loadHotSearch();
     return () => {
-      mountedRef.current = false;
       if (suggestTimeoutRef.current) {
         clearTimeout(suggestTimeoutRef.current);
       }

@@ -2,7 +2,7 @@
  * 歌单详情页面
  */
 
-import { FC, useState, useEffect, useRef } from "react";
+import { FC, useState, useEffect } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui";
 import { FaPlay } from "react-icons/fa";
 import { getPlaylistSongs } from "../api";
@@ -12,6 +12,7 @@ import { SongItem } from "./SongItem";
 import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { EmptyState } from "./EmptyState";
+import { useMountedRef } from "../hooks/useMountedRef";
 
 interface PlaylistDetailPageProps {
   playlist: PlaylistInfo;
@@ -28,14 +29,10 @@ export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
 }) => {
   const [songs, setSongs] = useState<SongInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const mountedRef = useRef(true);
+  const mountedRef = useMountedRef();
 
   useEffect(() => {
-    mountedRef.current = true;
     loadSongs();
-    return () => {
-      mountedRef.current = false;
-    };
   }, [playlist.id]);
 
   const loadSongs = async () => {
