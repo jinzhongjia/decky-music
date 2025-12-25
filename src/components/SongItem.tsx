@@ -60,6 +60,7 @@ const SongItemComponent: FC<SongItemProps> = ({
             gap: '10px',
             padding: '8px 10px',
             minWidth: 0,
+            width: '100%',
           }}>
             <SafeImage 
               src={song.cover}
@@ -74,7 +75,7 @@ const SongItemComponent: FC<SongItemProps> = ({
                 flexShrink: 0,
               }}
             />
-            <div style={TEXT_CONTAINER}>
+            <div style={{ ...TEXT_CONTAINER, flex: 1 }}>
               <div style={{ 
                 fontSize: '13px', 
                 fontWeight: 600,
@@ -103,6 +104,7 @@ const SongItemComponent: FC<SongItemProps> = ({
                 marginLeft: "auto",
                 flexShrink: 0,
                 whiteSpace: "nowrap",
+                justifyContent: "flex-end",
               }}
             >
               {isPlaying && (
