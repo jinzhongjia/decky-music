@@ -499,7 +499,6 @@ export const FullscreenPlayer: FC = () => {
       
       if (source === 'guess-like') {
         player.setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
-        prefetchNextGuessLikeBatch();
       } else {
         player.setOnNeedMoreSongs(null);
       }

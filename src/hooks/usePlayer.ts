@@ -243,12 +243,30 @@ const lyricCache = new Map<string, ParsedLyric>();
 const prefetchingUrlPromises = new Map<string, Promise<void>>();
 const prefetchingLyricPromises = new Map<string, Promise<ParsedLyric | null>>();
 
+// 订阅者：用于在多个 usePlayer 实例间同步状态（侧边栏/全屏等）
+const playerSubscribers = new Set<() => void>();
+
+function notifyPlayerSubscribers() {
+  playerSubscribers.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      // ignore
+    }
+  });
+}
+
+function broadcastPlayerState() {
+  notifyPlayerSubscribers();
+}
+
 // 统一的歌词获取函数（带缓存/并发复用）
 async function fetchLyricWithCache(mid: string, onResolved?: (parsed: ParsedLyric) => void) {
   const cached = lyricCache.get(mid);
   if (cached) {
     onResolved?.(cached);
     globalLyric = cached;
+    notifyPlayerSubscribers();
     return cached;
   }
 
@@ -271,6 +289,7 @@ async function fetchLyricWithCache(mid: string, onResolved?: (parsed: ParsedLyri
         lyricCache.set(mid, parsed);
         globalLyric = parsed;
         onResolved?.(parsed);
+        notifyPlayerSubscribers();
         return parsed;
       }
       return null;
@@ -429,6 +448,24 @@ export function usePlayer(): UsePlayerReturn {
   const [playlist, setPlaylist] = useState<SongInfo[]>(globalPlaylist);
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
 
+  const syncFromGlobals = useCallback(() => {
+    const audio = getGlobalAudio();
+    setCurrentSong(globalCurrentSong);
+    setLyric(globalLyric);
+    setPlaylist([...globalPlaylist]);
+    setCurrentIndex(globalCurrentIndex);
+    setIsPlaying(!audio.paused);
+    setCurrentTime(audio.currentTime);
+    setDuration(audio.duration || globalCurrentSong?.duration || 0);
+  }, []);
+
+  useEffect(() => {
+    playerSubscribers.add(syncFromGlobals);
+    return () => {
+      playerSubscribers.delete(syncFromGlobals);
+    };
+  }, [syncFromGlobals]);
+
   // 内部播放歌曲方法
   const playSongInternal = useCallback(async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true): Promise<boolean> => {
     const audio = getGlobalAudio();
@@ -539,6 +576,7 @@ export function usePlayer(): UsePlayerReturn {
         fetchLyricWithCache(song.mid, setLyric);
       }
 
+      broadcastPlayerState();
       return true;
     } catch (e) {
       const errorMsg = (e as Error).message;
@@ -583,6 +621,7 @@ export function usePlayer(): UsePlayerReturn {
       playSongInternal(nextSong, nextIndex, true);
       prefetchSongAssets(globalPlaylist[nextIndex + 1] || nextSong);
       saveQueueState(globalPlaylist, globalCurrentIndex);
+      broadcastPlayerState();
     }
   }, [playSongInternal]);
 
@@ -682,6 +721,7 @@ export function usePlayer(): UsePlayerReturn {
     saveQueueState(globalPlaylist, globalCurrentIndex);
     await playSongInternal(song, newIndex);
     prefetchSongAssets(globalPlaylist[newIndex + 1] || globalPlaylist[newIndex]);
+    broadcastPlayerState();
   }, [playSongInternal]);
 
   // 播放整个播放列表：插入当前位置，播放首曲，之后继续原队列
@@ -724,6 +764,7 @@ export function usePlayer(): UsePlayerReturn {
     saveQueueState(globalPlaylist, globalCurrentIndex);
     await playSongInternal(globalPlaylist[newIndex], newIndex);
     prefetchSongAssets(globalPlaylist[newIndex + 1] || globalPlaylist[newIndex]);
+    broadcastPlayerState();
   }, [playSongInternal]);
 
   // 追加歌曲到队列（不打断当前播放；无播放时自动开始）
@@ -737,12 +778,14 @@ export function usePlayer(): UsePlayerReturn {
     globalPlaylist = newPlaylist;
     setPlaylist(newPlaylist);
     saveQueueState(globalPlaylist, globalCurrentIndex);
+    broadcastPlayerState();
 
     // 如果当前没有播放，自动开始播放追加的第一首
     if (!globalCurrentSong || globalCurrentIndex < 0) {
       globalCurrentIndex = 0;
       setCurrentIndex(globalCurrentIndex);
       await playSongInternal(newPlaylist[0], 0);
+      broadcastPlayerState();
     }
   }, [playSongInternal]);
 
@@ -753,6 +796,7 @@ export function usePlayer(): UsePlayerReturn {
     globalPlaylist.splice(index, 1);
     setPlaylist([...globalPlaylist]);
     saveQueueState(globalPlaylist, globalCurrentIndex);
+    broadcastPlayerState();
   }, []);
 
   const togglePlay = useCallback(() => {
@@ -831,6 +875,7 @@ export function usePlayer(): UsePlayerReturn {
     setPlaylist([]);
     setCurrentIndex(-1);
     saveQueueState([], -1);
+    broadcastPlayerState();
   }, []);
 
   // 跳转到当前队列中的指定索引播放
@@ -842,6 +887,7 @@ export function usePlayer(): UsePlayerReturn {
     const song = globalPlaylist[index];
     await playSongInternal(song, index, true);
     prefetchSongAssets(globalPlaylist[index + 1] || song);
+    broadcastPlayerState();
   }, [playSongInternal]);
 
   // 设置获取更多歌曲的回调
