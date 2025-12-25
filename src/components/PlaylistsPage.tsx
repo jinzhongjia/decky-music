@@ -12,6 +12,7 @@ import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { EmptyState } from "./EmptyState";
 import { SafeImage } from "./SafeImage";
+import { TEXT_ELLIPSIS, TEXT_CONTAINER, COLORS } from "../utils/styles";
 
 interface PlaylistsPageProps {
   onSelectPlaylist: (playlist: PlaylistInfo) => void;
@@ -23,7 +24,7 @@ const PlaylistItem: FC<{
   onClick: () => void;
 }> = ({ playlist, onClick }) => (
   <div style={{
-    background: 'rgba(255,255,255,0.03)',
+    background: COLORS.backgroundLight,
     borderRadius: '8px',
     marginBottom: '4px',
   }}>
@@ -50,24 +51,22 @@ const PlaylistItem: FC<{
               height: '48px',
               borderRadius: '6px',
               objectFit: 'cover',
-              background: '#2a2a2a',
+              background: COLORS.backgroundDarkBase,
               flexShrink: 0,
             }}
           />
-          <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+          <div style={TEXT_CONTAINER}>
             <div style={{
               fontSize: '14px',
               fontWeight: 500,
-              color: '#fff',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              color: COLORS.textPrimary,
+              ...TEXT_ELLIPSIS,
             }}>
               {playlist.name || '未命名歌单'}
             </div>
             <div style={{
               fontSize: '12px',
-              color: '#8b929a',
+              color: COLORS.textSecondary,
               marginTop: '2px',
             }}>
               {playlist.songCount || 0} 首

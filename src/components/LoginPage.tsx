@@ -9,6 +9,7 @@ import { FaQrcode } from "react-icons/fa";
 import { getQrCode, checkQrStatus } from "../api";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { useMountedRef } from "../hooks/useMountedRef";
+import { COLORS } from "../utils/styles";
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
@@ -102,11 +103,11 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
   const getStatusColor = () => {
     switch (status) {
-      case "success": return "#1db954";
+      case "success": return COLORS.primary;
       case "scanned": return "#ffc107";
       case "timeout":
       case "refused":
-      case "error": return "#ff6b6b";
+      case "error": return COLORS.error;
       default: return "#b8bcbf";
     }
   };
@@ -131,7 +132,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
             display: 'flex', 
             justifyContent: 'center',
             padding: '15px',
-            background: '#fff',
+            background: COLORS.textPrimary,
             borderRadius: '12px',
             margin: '0 auto',
             width: 'fit-content',
@@ -186,7 +187,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
           <div style={{ 
             textAlign: 'center', 
             fontSize: '12px', 
-            color: '#8b929a',
+            color: COLORS.textSecondary,
             marginTop: '10px',
           }}>
             当前登录方式：{loginType === 'qq' ? 'QQ' : '微信'}

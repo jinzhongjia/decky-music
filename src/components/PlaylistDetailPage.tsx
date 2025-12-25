@@ -11,6 +11,7 @@ import { BackButton } from "./BackButton";
 import { SafeImage } from "./SafeImage";
 import { SongList } from "./SongList";
 import { useMountedRef } from "../hooks/useMountedRef";
+import { TEXT_ELLIPSIS_2_LINES, COLORS } from "../utils/styles";
 
 interface PlaylistDetailPageProps {
   playlist: PlaylistInfo;
@@ -74,17 +75,13 @@ export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
               <div style={{
                 fontSize: '16px',
                 fontWeight: 600,
-                color: '#fff',
+                color: COLORS.textPrimary,
                 marginBottom: '6px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
+                ...TEXT_ELLIPSIS_2_LINES,
               }}>
                 {playlist.name}
               </div>
-              <div style={{ fontSize: '13px', color: '#8b929a' }}>
+              <div style={{ fontSize: '13px', color: COLORS.textSecondary }}>
                 {playlist.songCount} 首歌曲
                 {playlist.creator && ` · ${playlist.creator}`}
               </div>
