@@ -12,30 +12,8 @@ import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { BackButton } from "./BackButton";
 import { useMountedRef } from "../hooks/useMountedRef";
+import { useSearchHistory } from "../hooks/useSearchHistory";
 import { COLORS } from "../utils/styles";
-
-// 搜索历史存储 key
-const SEARCH_HISTORY_KEY = "qqmusic_search_history";
-const MAX_HISTORY = 10;
-
-// 加载搜索历史
-function loadSearchHistory(): string[] {
-  try {
-    const data = localStorage.getItem(SEARCH_HISTORY_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-}
-
-// 保存搜索历史
-function saveSearchHistory(history: string[]) {
-  try {
-    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
-  } catch {
-    // ignore
-  }
-}
 
 interface SearchPageProps {
   onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
@@ -59,11 +37,11 @@ export const SearchPage: FC<SearchPageProps> = ({
   const [loading, setLoading] = useState(false);
   const [hotkeys, setHotkeys] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [searchHistory, setSearchHistory] = useState<string[]>(loadSearchHistory);
   const [hasSearched, setHasSearched] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const mountedRef = useMountedRef();
   const suggestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { searchHistory, addToHistory, clearHistory } = useSearchHistory();
 
   useEffect(() => {
     loadHotSearch();
@@ -130,9 +108,7 @@ export const SearchPage: FC<SearchPageProps> = ({
     setShowSuggestions(false);
     
     // 保存到搜索历史
-    const newHistory = [kw, ...searchHistory.filter(h => h !== kw)].slice(0, MAX_HISTORY);
-    setSearchHistory(newHistory);
-    saveSearchHistory(newHistory);
+    addToHistory(kw);
     
     const result = await searchSongs(kw, 1, 30);
     if (!mountedRef.current) return;
@@ -172,10 +148,6 @@ export const SearchPage: FC<SearchPageProps> = ({
     handleSearch(key);
   };
 
-  const clearHistory = () => {
-    setSearchHistory([]);
-    saveSearchHistory([]);
-  };
 
   return (
     <>
