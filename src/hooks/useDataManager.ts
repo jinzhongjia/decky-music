@@ -51,6 +51,51 @@ const notifyListeners = () => {
   listeners.forEach(listener => listener());
 };
 
+// ==================== 图片预加载 ====================
+
+/**
+ * 预加载图片
+ */
+const preloadImage = (url: string): Promise<void> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = () => resolve(); // 加载失败也继续
+    img.src = url;
+  });
+};
+
+/**
+ * 批量预加载歌曲封面
+ */
+const preloadSongCovers = async (songs: SongInfo[]) => {
+  const covers = songs
+    .filter(song => song.cover)
+    .map(song => song.cover as string);
+  
+  // 并行预加载，但限制并发数
+  const batchSize = 5;
+  for (let i = 0; i < covers.length; i += batchSize) {
+    const batch = covers.slice(i, i + batchSize);
+    await Promise.all(batch.map(preloadImage));
+  }
+};
+
+/**
+ * 批量预加载歌单封面
+ */
+const preloadPlaylistCovers = async (playlists: PlaylistInfo[]) => {
+  const covers = playlists
+    .filter(p => p.cover)
+    .map(p => p.cover as string);
+  
+  const batchSize = 5;
+  for (let i = 0; i < covers.length; i += batchSize) {
+    const batch = covers.slice(i, i + batchSize);
+    await Promise.all(batch.map(preloadImage));
+  }
+};
+
 // ==================== 数据加载函数 ====================
 
 /**
@@ -83,6 +128,8 @@ export const loadGuessLike = async (forceRefresh = false): Promise<SongInfo[]> =
     if (result.success && result.songs.length > 0) {
       cache.guessLikeSongs = result.songs;
       cache.guessLoaded = true;
+      // 预加载封面图片
+      preloadSongCovers(result.songs);
     }
   } catch (e) {
     console.error("[DataManager] 加载猜你喜欢失败:", e);
@@ -129,6 +176,8 @@ export const loadDailyRecommend = async (): Promise<SongInfo[]> => {
     if (result.success && result.songs.length > 0) {
       cache.dailySongs = result.songs;
       cache.dailyLoaded = true;
+      // 预加载封面图片
+      preloadSongCovers(result.songs);
     }
   } catch (e) {
     console.error("[DataManager] 加载每日推荐失败:", e);
@@ -169,6 +218,8 @@ export const loadPlaylists = async (): Promise<{ created: PlaylistInfo[], collec
       cache.createdPlaylists = result.created || [];
       cache.collectedPlaylists = result.collected || [];
       cache.playlistsLoaded = true;
+      // 预加载歌单封面
+      preloadPlaylistCovers([...cache.createdPlaylists, ...cache.collectedPlaylists]);
     }
   } catch (e) {
     console.error("[DataManager] 加载歌单失败:", e);
