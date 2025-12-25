@@ -74,6 +74,34 @@ class Plugin:
             decky.logger.error(f"加载凭证失败: {e}")
         return False
 
+    async def _ensure_credential_valid(self) -> bool:
+        """确保凭证有效，如果过期则尝试刷新
+        
+        Returns:
+            bool: 凭证是否有效
+        """
+        if not self.credential or not self.credential.has_musicid():
+            return False
+        
+        try:
+            is_expired = await self.credential.is_expired()
+            if is_expired:
+                decky.logger.debug("凭证已过期，尝试刷新...")
+                if await self.credential.can_refresh():
+                    refreshed = await self.credential.refresh()
+                    if refreshed:
+                        self._save_credential()
+                        decky.logger.info("凭证刷新成功")
+                        return True
+                    else:
+                        decky.logger.warning("凭证刷新失败")
+                        return False
+                return False
+            return True
+        except Exception as e:
+            decky.logger.warning(f"检查凭证状态失败: {e}")
+            return False
+
     def _format_song(self, item: dict[str, Any]) -> dict[str, Any]:
         """格式化歌曲信息为统一格式"""
         # 处理歌手信息
@@ -170,26 +198,21 @@ class Plugin:
                 self._load_credential()
 
             if self.credential and self.credential.has_musicid():
-                # 检查是否过期
-                is_expired = await self.credential.is_expired()
-                if is_expired:
-                    if await self.credential.can_refresh():
-                        refreshed = await self.credential.refresh()
-                        if refreshed:
-                            self._save_credential()
-                            return {
-                                "logged_in": True,
-                                "musicid": self.credential.musicid,
-                                "encrypt_uin": self.credential.encrypt_uin,
-                                "refreshed": True,
-                            }
+                # 检查并刷新凭证
+                was_expired = await self.credential.is_expired() if self.credential else False
+                is_valid = await self._ensure_credential_valid()
+                
+                if is_valid:
+                    result = {
+                        "logged_in": True,
+                        "musicid": self.credential.musicid,
+                        "encrypt_uin": self.credential.encrypt_uin,
+                    }
+                    if was_expired:
+                        result["refreshed"] = True
+                    return result
+                else:
                     return {"logged_in": False, "expired": True}
-
-                return {
-                    "logged_in": True,
-                    "musicid": self.credential.musicid,
-                    "encrypt_uin": self.credential.encrypt_uin,
-                }
 
             return {"logged_in": False}
 
@@ -249,7 +272,7 @@ class Plugin:
     async def get_search_suggest(self, keyword: str) -> dict[str, Any]:
         """获取搜索建议/补全"""
         try:
-            if not keyword or len(keyword.strip()) == 0:
+            if not keyword or not keyword.strip():
                 return {"success": True, "suggestions": []}
 
             result = await search.complete(keyword)
@@ -381,115 +404,42 @@ class Plugin:
 
     async def get_song_url(self, mid: str) -> dict[str, Any]:
         """获取歌曲播放链接，自动尝试多种音质"""
-        # 检查凭证状态
+        # 确保凭证有效
         has_credential = self.credential is not None and self.credential.has_musicid()
-        if self.credential:
-            # 输出凭证的所有关键字段
-            cred_info = {
-                "musicid": self.credential.musicid,
-                "musickey_len": len(self.credential.musickey or ''),
-                "openid_len": len(getattr(self.credential, 'openid', '') or ''),
-                "access_token_len": len(getattr(self.credential, 'access_token', '') or ''),
-                "refresh_token_len": len(getattr(self.credential, 'refresh_token', '') or ''),
-                "refresh_key_len": len(getattr(self.credential, 'refresh_key', '') or ''),
-                "login_type": getattr(self.credential, 'login_type', None),
-                "encrypt_uin_len": len(self.credential.encrypt_uin or ''),
-                "has_musickey": self.credential.has_musickey(),
-            }
-            decky.logger.info(f"获取歌曲 {mid}，凭证详情: {cred_info}")
-        else:
-            decky.logger.info(f"获取歌曲 {mid}，凭证为空!")
-        
         if has_credential:
-            # 检查凭证是否过期
-            try:
-                is_expired = await self.credential.is_expired()
-                if is_expired:
-                    decky.logger.warning("凭证已过期，尝试刷新...")
-                    if await self.credential.can_refresh():
-                        refreshed = await self.credential.refresh()
-                        if refreshed:
-                            self._save_credential()
-                            decky.logger.info("凭证刷新成功")
-                        else:
-                            decky.logger.warning("凭证刷新失败")
-            except Exception as e:
-                decky.logger.warning(f"检查凭证状态失败: {e}")
+            await self._ensure_credential_valid()
         
         # 按优先级尝试不同音质
-        # VIP 用户优先尝试高音质
         file_types = [
             song.SongFileType.MP3_320,  # 320kbps MP3 (VIP)
             song.SongFileType.OGG_192,  # 192kbps OGG
             song.SongFileType.MP3_128,  # 128kbps MP3
             song.SongFileType.ACC_192,  # 192kbps AAC
             song.SongFileType.ACC_96,   # 96kbps AAC
-            song.SongFileType.ACC_48,   # 48kbps AAC (最低质量，试听)
+            song.SongFileType.ACC_48,   # 48kbps AAC (最低质量)
         ]
         
         last_error = ""
-        all_results = []  # 记录所有尝试的结果
         
         for file_type in file_types:
             try:
-                decky.logger.info(f"尝试获取 {mid} 音质: {file_type.name}")
                 urls = await song.get_song_urls(
                     mid=[mid], 
                     file_type=file_type, 
                     credential=self.credential
                 )
                 
-                # 详细记录返回结果
                 url = urls.get(mid, "")
-                url_preview = url[:80] + "..." if url and len(url) > 80 else url
-                decky.logger.info(f"API 返回: URL: {url_preview or '(空)'}")
-                
-                # 如果是空的，记录完整的返回内容用于调试
-                if not url:
-                    decky.logger.debug(f"完整返回: {urls}")
-                all_results.append(f"{file_type.name}: {'有URL' if url else '空'}")
-                
                 if url:
-                    decky.logger.info(f"✅ 获取歌曲 {mid} 成功，音质: {file_type.name}, URL长度: {len(url)}")
+                    decky.logger.debug(f"获取歌曲 {mid} 成功，音质: {file_type.name}")
                     return {"success": True, "url": url, "mid": mid, "quality": file_type.name}
-                else:
-                    decky.logger.info(f"❌ 音质 {file_type.name} 返回空 URL")
                     
             except Exception as e:
                 last_error = str(e)
-                all_results.append(f"{file_type.name}: 异常-{str(e)[:50]}")
-                decky.logger.warning(f"❌ 尝试 {file_type.name} 异常: {e}")
+                decky.logger.debug(f"尝试 {file_type.name} 失败: {e}")
                 continue
         
-        # 输出所有尝试结果
-        decky.logger.warning(f"所有音质尝试结果: {all_results}")
-        
-        # 尝试获取试听链接作为备用
-        decky.logger.info(f"尝试获取试听链接...")
-        try:
-            # 获取歌曲详情以获取 vs 字段
-            detail = await song.get_detail(mid)
-            track_info = detail.get("track_info", {})
-            vs_list = track_info.get("vs", [])
-            file_info = track_info.get("file", {})
-            size_try = file_info.get("size_try", 0)
-            
-            if vs_list and size_try > 0:
-                try_url = await song.get_try_url(mid, vs_list[0])
-                if try_url:
-                    decky.logger.info(f"✅ 获取试听链接成功，长度: {len(try_url)}")
-                    return {
-                        "success": True, 
-                        "url": try_url, 
-                        "mid": mid, 
-                        "quality": "TRIAL",
-                        "is_trial": True  # 标记为试听版
-                    }
-        except Exception as e:
-            decky.logger.warning(f"获取试听链接失败: {e}")
-        
-        # 所有方法都失败
-        error_msg = "该歌曲暂时无法播放"
+        # 所有方法都失败，生成错误消息
         if not has_credential:
             error_msg = "请先登录以播放会员歌曲"
         elif "vip" in last_error.lower() or "付费" in last_error:
@@ -497,7 +447,7 @@ class Plugin:
         else:
             error_msg = "歌曲暂不可用，可能是版权限制"
             
-        decky.logger.warning(f"无法获取歌曲 {mid}: {error_msg}, 最后错误: {last_error}")
+        decky.logger.warning(f"无法获取歌曲 {mid}: {error_msg}")
         return {
             "success": False, 
             "url": "", 
@@ -551,6 +501,25 @@ class Plugin:
 
     # ==================== 歌单相关 API ====================
 
+    def _format_playlist_item(self, item: dict[str, Any], is_collected: bool = False) -> dict[str, Any]:
+        """格式化歌单项为统一格式"""
+        # 提取创建者信息
+        creator = item.get("creator", {})
+        if isinstance(creator, dict):
+            creator_name = creator.get("nick", "")
+        else:
+            creator_name = item.get("creator_name", "")
+        
+        return {
+            "id": item.get("tid", 0) or item.get("dissid", 0),
+            "dirid": item.get("dirid", 0),
+            "name": item.get("dirName", "") or item.get("diss_name", "") or item.get("name", "") or item.get("title", ""),
+            "cover": item.get("picUrl", "") or item.get("diss_cover", "") or item.get("logo", "") or item.get("pic", ""),
+            "songCount": item.get("songNum", 0) or item.get("song_cnt", 0) or item.get("songnum", 0) or item.get("song_count", 0),
+            "playCount": item.get("listen_num", 0),
+            "creator": creator_name if is_collected else "",
+        }
+
     async def get_user_playlists(self) -> dict[str, Any]:
         """获取用户的歌单（创建的和收藏的）"""
         try:
@@ -564,16 +533,7 @@ class Plugin:
             created_list = []
             try:
                 created_result = await user.get_created_songlist(musicid, credential=self.credential)
-                decky.logger.info(f"创建歌单原始数据: {created_result[:1] if created_result else 'empty'}")
-                for item in created_result:
-                    created_list.append({
-                        "id": item.get("tid", 0),
-                        "dirid": item.get("dirid", 0),
-                        "name": item.get("dirName", "") or item.get("diss_name", "") or item.get("title", ""),
-                        "cover": item.get("picUrl", "") or item.get("diss_cover", "") or item.get("pic", ""),
-                        "songCount": item.get("songNum", 0) or item.get("song_cnt", 0) or item.get("songnum", 0),
-                        "playCount": item.get("listen_num", 0),
-                    })
+                created_list = [self._format_playlist_item(item, is_collected=False) for item in created_result]
             except Exception as e:
                 decky.logger.warning(f"获取创建的歌单失败: {e}")
 
@@ -582,19 +542,13 @@ class Plugin:
             if encrypt_uin:
                 try:
                     collected_result = await user.get_fav_songlist(encrypt_uin, num=50, credential=self.credential)
-                    decky.logger.info(f"收藏歌单原始数据keys: {collected_result.keys() if collected_result else 'empty'}")
                     # 尝试多种可能的字段名
-                    fav_list = collected_result.get("v_list", []) or collected_result.get("v_playlist", []) or collected_result.get("data", {}).get("v_list", [])
-                    decky.logger.info(f"收藏歌单列表第一项: {fav_list[:1] if fav_list else 'empty'}")
-                    for item in fav_list:
-                        collected_list.append({
-                            "id": item.get("tid", 0) or item.get("dissid", 0),
-                            "dirid": item.get("dirid", 0),
-                            "name": item.get("name", "") or item.get("diss_name", "") or item.get("title", ""),
-                            "cover": item.get("logo", "") or item.get("diss_cover", "") or item.get("pic", ""),
-                            "songCount": item.get("songnum", 0) or item.get("song_cnt", 0) or item.get("song_count", 0),
-                            "creator": item.get("creator", {}).get("nick", "") if isinstance(item.get("creator"), dict) else item.get("creator_name", ""),
-                        })
+                    fav_list = (
+                        collected_result.get("v_list", []) 
+                        or collected_result.get("v_playlist", []) 
+                        or collected_result.get("data", {}).get("v_list", [])
+                    )
+                    collected_list = [self._format_playlist_item(item, is_collected=True) for item in fav_list]
                 except Exception as e:
                     decky.logger.warning(f"获取收藏的歌单失败: {e}")
 
