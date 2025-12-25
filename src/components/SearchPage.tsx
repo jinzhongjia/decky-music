@@ -11,6 +11,7 @@ import { searchSongs, getHotSearch, getSearchSuggest } from "../api";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { BackButton } from "./BackButton";
+import { FocusableList } from "./FocusableList";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { useSearchHistory } from "../hooks/useSearchHistory";
 import { useDebounce } from "../hooks/useDebounce";
@@ -235,11 +236,7 @@ export const SearchPage: FC<SearchPageProps> = ({
             </ButtonItem>
           </PanelSectionRow>
           <PanelSectionRow>
-            <Focusable style={{ 
-              display: 'flex', 
-              flexWrap: 'wrap', 
-              gap: '8px',
-            }}>
+            <FocusableList gap="8px" column={false} wrap>
               {searchHistory.map((key, idx) => (
                 <Focusable
                   key={idx}
@@ -257,7 +254,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                   {key}
                 </Focusable>
               ))}
-            </Focusable>
+            </FocusableList>
           </PanelSectionRow>
         </PanelSection>
       )}
@@ -266,11 +263,7 @@ export const SearchPage: FC<SearchPageProps> = ({
       {hotkeys.length > 0 && !hasSearched && (
         <PanelSection title="🔥 热门搜索">
           <PanelSectionRow>
-            <Focusable style={{ 
-              display: 'flex', 
-              flexWrap: 'wrap', 
-              gap: '8px',
-            }}>
+            <FocusableList gap="8px" column={false} wrap>
               {hotkeys.map((key, idx) => (
                 <Focusable
                   key={idx}
@@ -292,7 +285,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                   {key}
                 </Focusable>
               ))}
-            </Focusable>
+            </FocusableList>
           </PanelSectionRow>
         </PanelSection>
       )}

@@ -3,11 +3,12 @@
  */
 
 import { FC, useState, useEffect, useRef } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaQrcode } from "react-icons/fa";
 import { getQrCode, checkQrStatus } from "../api";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { FocusableList } from "./FocusableList";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { COLORS } from "../utils/styles";
 
@@ -155,7 +156,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
       {status === "idle" && (
         <PanelSectionRow>
-          <Focusable style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <FocusableList gap="10px">
             <ButtonItem
               layout="below"
               onClick={() => fetchQrCode("qq")}
@@ -170,7 +171,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
               <FaQrcode style={{ marginRight: '8px' }} />
               微信扫码登录
             </ButtonItem>
-          </Focusable>
+          </FocusableList>
         </PanelSectionRow>
       )}
 

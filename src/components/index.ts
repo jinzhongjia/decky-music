@@ -17,4 +17,5 @@ export { LoadingSpinner } from "./LoadingSpinner";
 export { EmptyState } from "./EmptyState";
 export { SafeImage } from "./SafeImage";
 export { PlayAllButton } from "./PlayAllButton";
+export { FocusableList } from "./FocusableList";
 
