@@ -8,6 +8,7 @@ import { Field } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { formatDuration } from "../utils/format";
 import { SafeImage } from "./SafeImage";
+import { TEXT_ELLIPSIS, TEXT_CONTAINER, COLORS } from "../utils/styles";
 
 interface SongItemProps {
   song: SongInfo;
@@ -24,8 +25,8 @@ export const SongItem: FC<SongItemProps> = ({
   
   return (
     <div style={{
-      background: isPlaying ? 'rgba(29, 185, 84, 0.15)' : 'transparent',
-      borderLeft: isPlaying ? '3px solid #1db954' : '3px solid transparent',
+      background: isPlaying ? COLORS.primaryBg : COLORS.transparent,
+      borderLeft: isPlaying ? `3px solid ${COLORS.primary}` : '3px solid transparent',
       borderRadius: '8px',
       marginBottom: '4px',
     }}>
@@ -52,34 +53,30 @@ export const SongItem: FC<SongItemProps> = ({
                 height: '40px',
                 borderRadius: '6px',
                 objectFit: 'cover',
-                background: '#2a2a2a',
+                background: COLORS.backgroundDarkBase,
                 flexShrink: 0,
               }}
             />
-            <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+            <div style={TEXT_CONTAINER}>
               <div style={{ 
                 fontSize: '13px', 
                 fontWeight: 500,
-                color: isPlaying ? '#1db954' : '#fff',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                color: isPlaying ? COLORS.primary : COLORS.textPrimary,
+                ...TEXT_ELLIPSIS,
               }}>
                 {song.name}
               </div>
               <div style={{ 
                 fontSize: '11px', 
-                color: '#8b929a',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                color: COLORS.textSecondary,
+                ...TEXT_ELLIPSIS,
                 marginTop: '2px',
               }}>
                 {song.singer}
               </div>
             </div>
             <div style={{ 
-              color: '#8b929a', 
+              color: COLORS.textSecondary, 
               fontSize: '11px',
               flexShrink: 0,
             }}>

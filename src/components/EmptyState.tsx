@@ -5,6 +5,7 @@
 
 import { FC, ReactNode } from "react";
 import { PanelSectionRow } from "@decky/ui";
+import { COLORS } from "../utils/styles";
 
 interface EmptyStateProps {
   /** 主消息文本 */
@@ -27,7 +28,7 @@ export const EmptyState: FC<EmptyStateProps> = ({
     <PanelSectionRow>
       <div style={{ 
         textAlign: 'center', 
-        color: '#8b929a', 
+        color: COLORS.textSecondary, 
         padding: typeof padding === 'number' ? `${padding}px` : padding,
         fontSize: typeof fontSize === 'number' ? `${fontSize}px` : fontSize,
       }}>

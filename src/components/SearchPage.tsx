@@ -12,6 +12,7 @@ import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { BackButton } from "./BackButton";
 import { useMountedRef } from "../hooks/useMountedRef";
+import { COLORS } from "../utils/styles";
 
 // 搜索历史存储 key
 const SEARCH_HISTORY_KEY = "qqmusic_search_history";
@@ -185,7 +186,7 @@ export const SearchPage: FC<SearchPageProps> = ({
         <PanelSectionRow>
           <div style={{ 
             fontSize: '12px', 
-            color: '#8b929a', 
+            color: COLORS.textSecondary, 
             marginBottom: '8px',
             padding: '0 4px',
           }}>
@@ -223,13 +224,13 @@ export const SearchPage: FC<SearchPageProps> = ({
                     padding: '10px 12px',
                     cursor: 'pointer',
                     borderRadius: '6px',
-                    background: 'rgba(255,255,255,0.05)',
+                    background: COLORS.backgroundMedium,
                     fontSize: '13px',
                   }}
                 >
-                  <span style={{ color: '#fff' }}>{s.keyword}</span>
+                  <span style={{ color: COLORS.textPrimary }}>{s.keyword}</span>
                   {s.singer && (
-                    <span style={{ color: '#8b929a', marginLeft: '8px' }}>
+                    <span style={{ color: COLORS.textSecondary, marginLeft: '8px' }}>
                       - {s.singer}
                     </span>
                   )}
@@ -279,7 +280,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                   onActivate={() => handleHistoryClick(key)}
                   onClick={() => handleHistoryClick(key)}
                   style={{
-                    background: 'rgba(255,255,255,0.08)',
+                    background: COLORS.backgroundDark,
                     padding: '8px 14px',
                     borderRadius: '16px',
                     fontSize: '13px',
@@ -312,7 +313,7 @@ export const SearchPage: FC<SearchPageProps> = ({
                   style={{
                     background: idx < 3 
                       ? 'linear-gradient(135deg, rgba(255,100,100,0.2), rgba(255,150,100,0.2))'
-                      : 'rgba(255,255,255,0.08)',
+                      : COLORS.backgroundDark,
                     padding: '8px 14px',
                     borderRadius: '16px',
                     fontSize: '13px',

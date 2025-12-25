@@ -8,6 +8,7 @@ import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { formatDuration } from "../utils/format";
 import { SafeImage } from "./SafeImage";
+import { TEXT_ELLIPSIS, TEXT_CONTAINER, FLEX_CENTER, COLORS } from "../utils/styles";
 
 interface PlayerBarProps {
   song: SongInfo;
@@ -44,7 +45,7 @@ export const PlayerBar: FC<PlayerBarProps> = ({
       right: 0,
       zIndex: 100,  // 确保播放器条在其他内容之上
       background: 'linear-gradient(to top, rgba(20, 20, 20, 0.98), rgba(30, 30, 30, 0.95))',
-      borderTop: '1px solid rgba(255,255,255,0.1)',
+      borderTop: `1px solid ${COLORS.borderLight}`,
       padding: '8px 12px',
       backdropFilter: 'blur(10px)',
     }}>
@@ -56,13 +57,13 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           left: 0,
           right: 0,
           height: '6px',
-          background: 'rgba(255,255,255,0.1)',
+          background: COLORS.backgroundDark,
         }}
       >
         <div style={{
           height: '100%',
           width: `${progress}%`,
-          background: '#1db954',
+          background: COLORS.primary,
           transition: 'width 0.1s linear',
         }} />
       </div>
@@ -96,26 +97,22 @@ export const PlayerBar: FC<PlayerBarProps> = ({
               height: '44px',
               borderRadius: '6px',
               objectFit: 'cover',
-              background: '#2a2a2a',
+              background: COLORS.backgroundDarkBase,
             }}
           />
-          <div style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
+          <div style={TEXT_CONTAINER}>
             <div style={{ 
               fontSize: '14px', 
               fontWeight: 500,
-              color: '#fff',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              color: COLORS.textPrimary,
+              ...TEXT_ELLIPSIS,
             }}>
               {song.name}
             </div>
             <div style={{ 
               fontSize: '12px', 
-              color: '#8b929a',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              color: COLORS.textSecondary,
+              ...TEXT_ELLIPSIS,
             }}>
               {song.singer} · {formatDuration(Math.floor(currentTime))} / {formatDuration(duration)}
             </div>
@@ -135,10 +132,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
               width: '34px',
               height: '34px',
               borderRadius: '50%',
-              background: 'rgba(255,255,255,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              background: COLORS.backgroundDark,
+              ...FLEX_CENTER,
               flexShrink: 0,
             }}
           >
@@ -156,12 +151,10 @@ export const PlayerBar: FC<PlayerBarProps> = ({
               width: '40px',
               height: '40px',
               borderRadius: '50%',
-              background: '#1db954',
-              color: '#fff',
+              background: COLORS.primary,
+              color: COLORS.textPrimary,
               opacity: loading ? 0.7 : 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              ...FLEX_CENTER,
               flexShrink: 0,
             }}
           >
@@ -179,10 +172,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
               width: '34px',
               height: '34px',
               borderRadius: '50%',
-              background: 'rgba(255,255,255,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              background: COLORS.backgroundDark,
+              ...FLEX_CENTER,
               flexShrink: 0,
             }}
           >

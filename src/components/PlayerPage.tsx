@@ -11,6 +11,7 @@ import { formatDuration } from "../utils/format";
 import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { SafeImage } from "./SafeImage";
+import { FLEX_CENTER, COLORS } from "../utils/styles";
 
 interface PlayerPageProps {
   song: SongInfo;
@@ -89,14 +90,14 @@ export const PlayerPage: FC<PlayerPageProps> = ({
           <div style={{ 
             fontSize: '18px', 
             fontWeight: 600,
-            color: '#fff',
+            color: COLORS.textPrimary,
             marginBottom: '6px',
           }}>
             {song.name}
           </div>
           <div style={{ 
             fontSize: '14px', 
-            color: '#8b929a',
+            color: COLORS.textSecondary,
           }}>
             {song.singer}{song.album ? ` · ${song.album}` : ''}
           </div>
@@ -112,17 +113,17 @@ export const PlayerPage: FC<PlayerPageProps> = ({
             onClick={hasPlaylist && onNext ? onNext : undefined}
             style={{ 
               textAlign: 'center', 
-              color: '#ff6b6b',
+              color: COLORS.error,
               fontSize: '13px',
               padding: '12px',
-              background: 'rgba(255, 107, 107, 0.1)',
+              background: COLORS.errorBg,
               borderRadius: '8px',
               cursor: hasPlaylist ? 'pointer' : 'default',
             }}
           >
             <div style={{ marginBottom: '6px' }}>⚠️ {error}</div>
             {hasPlaylist && (
-              <div style={{ fontSize: '12px', color: '#8b929a' }}>
+              <div style={{ fontSize: '12px', color: COLORS.textSecondary }}>
                 点击跳过或等待自动播放下一首
               </div>
             )}
@@ -143,7 +144,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                 display: 'flex', 
                 justifyContent: 'space-between',
                 fontSize: '12px',
-                color: '#8b929a',
+                color: COLORS.textSecondary,
                 marginBottom: '8px',
               }}>
                 <span>{formatDuration(Math.floor(currentTime))}</span>
@@ -152,7 +153,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               <div
                 style={{
                   height: '8px',
-                  background: 'rgba(255,255,255,0.15)',
+                  background: COLORS.backgroundDarker,
                   borderRadius: '4px',
                   overflow: 'hidden',
                 }}
@@ -160,7 +161,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                 <div style={{
                   height: '100%',
                   width: `${progress}%`,
-                  background: 'linear-gradient(90deg, #1db954, #1ed760)',
+                  background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.primaryLight})`,
                   borderRadius: '4px',
                   transition: 'width 0.1s linear',
                 }} />
@@ -171,9 +172,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
           {/* 控制按钮 */}
           <PanelSectionRow>
             <div style={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              alignItems: 'center',
+              ...FLEX_CENTER,
               gap: '20px',
               padding: '15px 0',
             }}>
@@ -184,7 +183,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   width: '52px',
                   height: '52px',
                   borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.1)',
+                  background: COLORS.backgroundDark,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -201,12 +200,12 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   width: '68px',
                   height: '68px',
                   borderRadius: '50%',
-                  background: '#1db954',
-                  color: '#fff',
+                  background: COLORS.primary,
+                  color: COLORS.textPrimary,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 4px 16px rgba(29, 185, 84, 0.4)',
+                  boxShadow: `0 4px 16px ${COLORS.primaryShadow}`,
                   cursor: 'pointer',
                 }}
               >
@@ -220,7 +219,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   width: '52px',
                   height: '52px',
                   borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.1)',
+                  background: COLORS.backgroundDark,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -237,7 +236,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
             <div style={{
               textAlign: 'center',
               fontSize: '12px',
-              color: '#8b929a',
+              color: COLORS.textSecondary,
               padding: '8px 0',
             }}>
               <span style={{ marginRight: '16px' }}>L1 上一首</span>

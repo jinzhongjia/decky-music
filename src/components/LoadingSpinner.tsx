@@ -5,6 +5,7 @@
 
 import { FC } from "react";
 import { PanelSectionRow, Spinner } from "@decky/ui";
+import { FLEX_CENTER_HORIZONTAL } from "../utils/styles";
 
 interface LoadingSpinnerProps {
   /** 内边距，默认为 30px */
@@ -17,8 +18,7 @@ export const LoadingSpinner: FC<LoadingSpinnerProps> = ({
   return (
     <PanelSectionRow>
       <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
+        ...FLEX_CENTER_HORIZONTAL,
         padding: typeof padding === 'number' ? `${padding}px` : padding 
       }}>
         <Spinner />
