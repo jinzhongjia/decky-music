@@ -1,88 +1,82 @@
 /**
- * 播放历史页面
+ * 播放队列/历史合并视图
  */
 
-import { FC, useEffect, useCallback, memo } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
-import { FaTrash } from "react-icons/fa";
+import { FC, useCallback, memo, useEffect, useRef } from "react";
+import { PanelSection } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { BackButton } from "./BackButton";
-import { SongList } from "./SongList";
+import { SongItem } from "./SongItem";
 import { EmptyState } from "./EmptyState";
-import { PlayAllButton } from "./PlayAllButton";
 
 interface HistoryPageProps {
-  history: SongInfo[];
-  onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
-  onClearHistory: () => void;
-  onRefreshHistory: () => void;
+  playlist: SongInfo[];
+  currentIndex: number;
+  onSelectIndex: (index: number) => void;
   onBack: () => void;
   currentPlayingMid?: string;
+  onRemoveFromQueue?: (index: number) => void;
+  onRemoveHistory?: (index: number) => void;
 }
 
 const HistoryPageComponent: FC<HistoryPageProps> = ({
-  history,
-  onSelectSong,
-  onClearHistory,
-  onRefreshHistory,
+  playlist,
+  currentIndex,
+  onSelectIndex,
   onBack,
-  currentPlayingMid,
+  onRemoveFromQueue,
+  onRemoveHistory,
 }) => {
-  // 进入页面时刷新历史
-  useEffect(() => {
-    onRefreshHistory();
-  }, [onRefreshHistory]);
+  const currentRef = useRef<HTMLDivElement | null>(null);
 
-  const handlePlayAll = useCallback(() => {
-    if (history.length > 0) {
-      onSelectSong(history[0], history);
-    }
-  }, [history, onSelectSong]);
-
-  const handleSongSelect = useCallback(
-    (song: SongInfo) => {
-      onSelectSong(song, history);
+  const handleSelectFromTimeline = useCallback(
+    (index: number) => {
+      onSelectIndex(index);
     },
-    [history, onSelectSong]
+    [onSelectIndex]
   );
+
+  useEffect(() => {
+    if (currentRef.current) {
+      currentRef.current.scrollIntoView({ block: "center", behavior: "auto" });
+    }
+  }, [currentIndex, playlist.length]);
 
   return (
     <>
       <BackButton onClick={onBack} label="返回首页" />
 
-      {/* 标题和操作 */}
-      <PanelSection title={`🕐 播放历史 (${history.length})`}>
-        {history.length > 0 && (
-          <>
-            <PlayAllButton onClick={handlePlayAll} />
-            <PanelSectionRow>
-              <ButtonItem layout="below" onClick={onClearHistory}>
-                <FaTrash style={{ marginRight: "8px", opacity: 0.7 }} />
-                <span style={{ opacity: 0.8 }}>清空历史</span>
-              </ButtonItem>
-            </PanelSectionRow>
-          </>
+      <PanelSection title="播放队列">
+        {playlist.length === 0 ? (
+          <EmptyState message="还没有播放过歌曲" padding="40px 20px" />
+        ) : (
+          <div style={{ maxHeight: "70vh", overflow: "auto", paddingRight: "6px" }}>
+            {playlist.map((song, idx) => {
+              const isPlaying = idx === currentIndex;
+              return (
+                <div
+                  key={song.mid || `${song.name}-${idx}`}
+                  ref={isPlaying ? currentRef : undefined}
+                  style={{ padding: isPlaying ? "2px 0" : "0" }}
+                >
+                  <SongItem
+                    song={song}
+                    isPlaying={isPlaying}
+                    onClick={() => handleSelectFromTimeline(idx)}
+                    onRemoveFromQueue={
+                      onRemoveFromQueue && idx > currentIndex
+                        ? () => onRemoveFromQueue(idx)
+                        : onRemoveHistory && idx < currentIndex
+                          ? () => onRemoveHistory(idx)
+                          : undefined
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
         )}
       </PanelSection>
-
-      {/* 历史列表 */}
-      {history.length === 0 ? (
-        <PanelSection>
-          <EmptyState
-            message="暂无播放历史"
-            description="播放歌曲后会自动记录在这里"
-            padding="40px 20px"
-          />
-        </PanelSection>
-      ) : (
-        <SongList
-          title=""
-          songs={history}
-          currentPlayingMid={currentPlayingMid}
-          emptyText="暂无播放历史"
-          onSelectSong={handleSongSelect}
-        />
-      )}
     </>
   );
 };

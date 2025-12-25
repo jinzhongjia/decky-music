@@ -146,39 +146,63 @@ async function uninhibitSleep() {
 // 全局休眠状态
 let sleepInhibited = false;
 
-// 播放历史存储
-const PLAY_HISTORY_KEY = "qqmusic_play_history";
-const MAX_HISTORY = 100;
+// 播放队列持久化
+const PLAYLIST_STORAGE_KEY = "qqmusic_playlist_state";
 
-// 加载播放历史
-function loadPlayHistory(): SongInfo[] {
+interface StoredQueueState {
+  playlist: SongInfo[];
+  currentIndex: number;
+  currentMid?: string;
+}
+
+function loadQueueState(): StoredQueueState {
   try {
     // eslint-disable-next-line no-undef
-    const data = localStorage.getItem(PLAY_HISTORY_KEY);
-    return data ? JSON.parse(data) : [];
+    const raw = localStorage.getItem(PLAYLIST_STORAGE_KEY);
+    if (!raw) return { playlist: [], currentIndex: -1 };
+    const parsed = JSON.parse(raw) as StoredQueueState;
+    if (!Array.isArray(parsed.playlist) || typeof parsed.currentIndex !== "number") {
+      return { playlist: [], currentIndex: -1 };
+    }
+    // 若有 currentMid，优先定位到对应索引
+    if (parsed.currentMid) {
+      const idx = parsed.playlist.findIndex((s) => s.mid === parsed.currentMid);
+      if (idx >= 0) {
+        parsed.currentIndex = idx;
+      }
+    }
+    return {
+      playlist: parsed.playlist,
+      currentIndex: Math.min(Math.max(parsed.currentIndex, -1), parsed.playlist.length - 1),
+    };
   } catch {
-    return [];
+    return { playlist: [], currentIndex: -1 };
   }
 }
 
-// 保存播放历史
-function savePlayHistory(history: SongInfo[]) {
+function saveQueueState(playlist: SongInfo[], currentIndex: number) {
   try {
     // eslint-disable-next-line no-undef
-    localStorage.setItem(PLAY_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+    localStorage.setItem(
+      PLAYLIST_STORAGE_KEY,
+      JSON.stringify({
+        playlist,
+        currentIndex,
+        currentMid: playlist[currentIndex]?.mid,
+      })
+    );
   } catch {
     // ignore
   }
 }
 
-// 添加到播放历史
-function addToPlayHistory(song: SongInfo) {
-  const history = loadPlayHistory();
-  // 移除已存在的相同歌曲，然后添加到开头
-  const filtered = history.filter(s => s.mid !== song.mid);
-  const newHistory = [song, ...filtered].slice(0, MAX_HISTORY);
-  savePlayHistory(newHistory);
-  return newHistory;
+function clearQueueState() {
+  try {
+    // eslint-disable-next-line no-undef
+    localStorage.removeItem(PLAYLIST_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 // 全局状态 - 在模块级别创建，不会因组件卸载而销毁
@@ -187,6 +211,16 @@ let globalCurrentSong: SongInfo | null = null;
 let globalLyric: ParsedLyric | null = null;
 let globalPlaylist: SongInfo[] = [];
 let globalCurrentIndex: number = -1;
+
+// 初始化时从本地存储恢复队列
+(() => {
+  const stored = loadQueueState();
+  if (stored.playlist.length > 0) {
+    globalPlaylist = stored.playlist;
+    globalCurrentIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
+    globalCurrentSong = globalPlaylist[globalCurrentIndex] || null;
+  }
+})();
 
 // 播放下一首的回调（用于在 ended 事件中调用）
 let onPlayNextCallback: (() => void) | null = null;
@@ -312,6 +346,8 @@ export function cleanupPlayer() {
     clearTimeout(skipTimeoutId);
     skipTimeoutId = null;
   }
+
+  clearQueueState();
 }
 
 export interface UsePlayerReturn {
@@ -323,22 +359,21 @@ export interface UsePlayerReturn {
   loading: boolean;
   error: string;
   lyric: ParsedLyric | null;
-  playlist: SongInfo[];
+  playlist: SongInfo[]; // 作为“时间线”：currentIndex 前为历史，之后为未来队列
   currentIndex: number;
-  playHistory: SongInfo[];
 
   // 方法
-  playSong: (song: SongInfo) => Promise<void>;
-  playPlaylist: (songs: SongInfo[], startIndex?: number) => Promise<void>;
-  addToQueue: (songs: SongInfo[]) => Promise<void>;
+  playSong: (song: SongInfo) => Promise<void>; // 插入当前位置并立刻播放
+  playPlaylist: (songs: SongInfo[], startIndex?: number) => Promise<void>; // 将列表插入当前位置并从首曲播放
+  addToQueue: (songs: SongInfo[]) => Promise<void>; // 追加到队尾，不打断当前播放
+  removeFromQueue: (index: number) => void; // 删除未来队列中的歌曲（当前/历史不删除）
+  playAtIndex: (index: number) => Promise<void>; // 在当前队列中跳转播放
   togglePlay: () => void;
   seek: (time: number) => void;
   stop: () => void;
   playNext: () => void;
   playPrev: () => void;
   setOnNeedMoreSongs: (callback: (() => Promise<SongInfo[]>) | null) => void;
-  refreshPlayHistory: () => void;
-  clearPlayHistory: () => void;
 }
 
 export function usePlayer(): UsePlayerReturn {
@@ -352,7 +387,6 @@ export function usePlayer(): UsePlayerReturn {
   const [lyric, setLyric] = useState<ParsedLyric | null>(globalLyric);
   const [playlist, setPlaylist] = useState<SongInfo[]>(globalPlaylist);
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
-  const [playHistory, setPlayHistory] = useState<SongInfo[]>(loadPlayHistory);
 
   // 内部播放歌曲方法
   const playSongInternal = useCallback(async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true): Promise<boolean> => {
@@ -378,6 +412,7 @@ export function usePlayer(): UsePlayerReturn {
       globalCurrentIndex = index;
       setCurrentIndex(index);
     }
+    saveQueueState(globalPlaylist, globalCurrentIndex);
 
     try {
       // 1. 获取播放链接 (带缓存)
@@ -430,8 +465,6 @@ export function usePlayer(): UsePlayerReturn {
           inhibitSleep();
         }
 
-        const newHistory = addToPlayHistory(song);
-        setPlayHistory(newHistory);
         setLoading(false);
       } catch (e) {
         // 播放失败处理 (精简版，复用现有逻辑)
@@ -488,26 +521,25 @@ export function usePlayer(): UsePlayerReturn {
 
     let nextIndex = globalCurrentIndex + 1;
 
-    // 如果已经是最后一首，尝试获取更多歌曲
+    // 如果已经是最后一首，尝试获取更多歌曲，否则停止
     if (nextIndex >= globalPlaylist.length) {
       if (onNeedMoreSongsCallback) {
         try {
           const moreSongs = await onNeedMoreSongsCallback();
           if (moreSongs && moreSongs.length > 0) {
-            // 替换为新的歌曲列表
-            globalPlaylist = moreSongs;
-            globalCurrentIndex = -1;
-            setPlaylist(moreSongs);
-            nextIndex = 0;
+            const insertPos = globalCurrentIndex + 1;
+            globalPlaylist.splice(insertPos, 0, ...moreSongs);
+            setPlaylist([...globalPlaylist]);
+            nextIndex = insertPos;
           } else {
-            nextIndex = 0; // 没有更多歌曲，循环播放
+            return; // 没有更多歌曲，停止
           }
         } catch (e) {
           console.error("获取更多歌曲失败:", e);
-          nextIndex = 0; // 出错时循环播放
+          return;
         }
       } else {
-        nextIndex = 0; // 没有回调，循环播放
+        return; // 队列结束，停止
       }
     }
 
@@ -516,6 +548,7 @@ export function usePlayer(): UsePlayerReturn {
       // 播放下一首时，如果失败也自动跳过
       playSongInternal(nextSong, nextIndex, true);
       prefetchSongAssets(globalPlaylist[nextIndex + 1] || nextSong);
+      saveQueueState(globalPlaylist, globalCurrentIndex);
     }
   }, [playSongInternal]);
 
@@ -588,52 +621,100 @@ export function usePlayer(): UsePlayerReturn {
 
   // 播放单曲（会清空播放列表）
   const playSong = useCallback(async (song: SongInfo) => {
-    // 设置为单曲播放列表
-    globalPlaylist = [song];
-    globalCurrentIndex = 0;
-    setPlaylist([song]);
-    setCurrentIndex(0);
+    if (!globalCurrentSong || globalCurrentIndex < 0) {
+      globalPlaylist = [song];
+      globalCurrentIndex = 0;
+      setPlaylist([song]);
+      setCurrentIndex(0);
+      await playSongInternal(song, 0);
+      return;
+    }
 
-    await playSongInternal(song, 0);
+    // 保证时间线唯一：保留当前曲，移除其他相同 mid
+    const filtered = globalPlaylist.filter((s, idx) => s.mid !== song.mid || idx === globalCurrentIndex);
+
+    const past = filtered.slice(0, globalCurrentIndex + 1); // 含当前曲
+    const future = filtered.slice(globalCurrentIndex + 1);
+    globalPlaylist = [...past, song, ...future];
+    const newIndex = past.length;
+    globalCurrentIndex = newIndex;
+    setPlaylist([...globalPlaylist]);
+    setCurrentIndex(newIndex);
+    saveQueueState(globalPlaylist, globalCurrentIndex);
+    await playSongInternal(song, newIndex);
+    prefetchSongAssets(globalPlaylist[newIndex + 1] || globalPlaylist[newIndex]);
   }, [playSongInternal]);
 
-  // 播放整个播放列表
+  // 播放整个播放列表：插入当前位置，播放首曲，之后继续原队列
   const playPlaylist = useCallback(async (songs: SongInfo[], startIndex: number = 0) => {
     if (songs.length === 0) return;
 
-    globalPlaylist = songs;
-    globalCurrentIndex = startIndex;
-    setPlaylist(songs);
-    setCurrentIndex(startIndex);
-
-    const song = songs[startIndex];
-    if (song) {
-      await playSongInternal(song, startIndex);
+    if (!globalCurrentSong || globalCurrentIndex < 0) {
+      globalPlaylist = songs;
+      globalCurrentIndex = startIndex;
+      setPlaylist([...songs]);
+      setCurrentIndex(startIndex);
+      await playSongInternal(songs[startIndex], startIndex);
       prefetchSongAssets(songs[startIndex + 1] || songs[startIndex]);
+      return;
     }
+
+    // 去重后插入：保留当前曲，时间线唯一
+    const currentMid = globalPlaylist[globalCurrentIndex].mid;
+    const seen = new Set<string>([currentMid]);
+    const cleaned = globalPlaylist.filter((s, idx) => {
+      if (idx === globalCurrentIndex) return true; // 当前曲保留
+      if (seen.has(s.mid)) return false;
+      seen.add(s.mid);
+      return true;
+    });
+
+    const songsToInsert = songs.filter((s) => {
+      if (seen.has(s.mid)) return false;
+      seen.add(s.mid);
+      return true;
+    });
+
+    const past = cleaned.slice(0, globalCurrentIndex + 1); // 含当前曲
+    const future = cleaned.slice(globalCurrentIndex + 1);
+    globalPlaylist = [...past, ...songsToInsert, ...future];
+    const newIndex = past.length + startIndex;
+    globalCurrentIndex = newIndex;
+    setPlaylist([...globalPlaylist]);
+    setCurrentIndex(newIndex);
+    saveQueueState(globalPlaylist, globalCurrentIndex);
+    await playSongInternal(globalPlaylist[newIndex], newIndex);
+    prefetchSongAssets(globalPlaylist[newIndex + 1] || globalPlaylist[newIndex]);
   }, [playSongInternal]);
 
   // 追加歌曲到队列（不打断当前播放；无播放时自动开始）
   const addToQueue = useCallback(async (songs: SongInfo[]) => {
     if (songs.length === 0) return;
+    const existingMids = new Set(globalPlaylist.map((s) => s.mid));
+    const songsToAdd = songs.filter((s) => !existingMids.has(s.mid));
+    if (songsToAdd.length === 0) return;
 
-    const uniqueToAdd = songs.filter(
-      song => !globalPlaylist.some(existing => existing.mid === song.mid)
-    );
-
-    if (uniqueToAdd.length === 0) return;
-
-    const newPlaylist = [...globalPlaylist, ...uniqueToAdd];
+    const newPlaylist = [...globalPlaylist, ...songsToAdd];
     globalPlaylist = newPlaylist;
     setPlaylist(newPlaylist);
+    saveQueueState(globalPlaylist, globalCurrentIndex);
 
     // 如果当前没有播放，自动开始播放追加的第一首
     if (!globalCurrentSong || globalCurrentIndex < 0) {
-      globalCurrentIndex = newPlaylist.length - uniqueToAdd.length;
+      globalCurrentIndex = 0;
       setCurrentIndex(globalCurrentIndex);
-      await playSongInternal(newPlaylist[globalCurrentIndex], globalCurrentIndex);
+      await playSongInternal(newPlaylist[0], 0);
     }
   }, [playSongInternal]);
+
+  // 删除未来队列中的歌曲
+  const removeFromQueue = useCallback((index: number) => {
+    if (index <= globalCurrentIndex) return; // 不删除当前/历史
+    if (index < 0 || index >= globalPlaylist.length) return;
+    globalPlaylist.splice(index, 1);
+    setPlaylist([...globalPlaylist]);
+    saveQueueState(globalPlaylist, globalCurrentIndex);
+  }, []);
 
   const togglePlay = useCallback(() => {
     const audio = getGlobalAudio();
@@ -702,7 +783,19 @@ export function usePlayer(): UsePlayerReturn {
     setLyric(null);
     setPlaylist([]);
     setCurrentIndex(-1);
+    saveQueueState([], -1);
   }, []);
+
+  // 跳转到当前队列中的指定索引播放
+  const playAtIndex = useCallback(async (index: number) => {
+    if (index < 0 || index >= globalPlaylist.length) return;
+    globalCurrentIndex = index;
+    setCurrentIndex(index);
+    saveQueueState(globalPlaylist, globalCurrentIndex);
+    const song = globalPlaylist[index];
+    await playSongInternal(song, index, true);
+    prefetchSongAssets(globalPlaylist[index + 1] || song);
+  }, [playSongInternal]);
 
   // 设置获取更多歌曲的回调
   const setOnNeedMoreSongs = useCallback((callback: (() => Promise<SongInfo[]>) | null) => {
@@ -710,16 +803,6 @@ export function usePlayer(): UsePlayerReturn {
   }, []);
 
   // 刷新播放历史（从存储重新加载）
-  const refreshPlayHistory = useCallback(() => {
-    setPlayHistory(loadPlayHistory());
-  }, []);
-
-  // 清空播放历史
-  const clearPlayHistory = useCallback(() => {
-    savePlayHistory([]);
-    setPlayHistory([]);
-  }, []);
-
   return {
     currentSong,
     isPlaying,
@@ -730,17 +813,16 @@ export function usePlayer(): UsePlayerReturn {
     lyric,
     playlist,
     currentIndex,
-    playHistory,
     playSong,
     playPlaylist,
     addToQueue,
+    playAtIndex,
     togglePlay,
     seek,
     stop,
     playNext,
     playPrev,
+    removeFromQueue,
     setOnNeedMoreSongs,
-    refreshPlayHistory,
-    clearPlayHistory,
   };
 }

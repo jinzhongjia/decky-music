@@ -21,6 +21,7 @@ interface SearchPageProps {
   onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
   onBack: () => void;
   currentPlayingMid?: string;
+  onAddSongToQueue?: (song: SongInfo) => void;
 }
 
 interface Suggestion {
@@ -29,7 +30,7 @@ interface Suggestion {
   singer?: string;
 }
 
-const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, currentPlayingMid }) => {
+const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, currentPlayingMid, onAddSongToQueue }) => {
   const [keyword, setKeyword] = useState("");
   const [songs, setSongs] = useState<SongInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -353,6 +354,7 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
           currentPlayingMid={currentPlayingMid}
           emptyText="未找到相关歌曲，试试拼音搜索？"
           onSelectSong={handleSearchResultSelect}
+          onAddToQueue={onAddSongToQueue}
         />
       )}
     </>

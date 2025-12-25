@@ -17,7 +17,8 @@ import { TEXT_ELLIPSIS_2_LINES, COLORS } from "../utils/styles";
 interface PlaylistDetailPageProps {
   playlist: PlaylistInfo;
   onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
-  onAddToQueue?: (songs: SongInfo[]) => void;
+  onAddPlaylistToQueue?: (songs: SongInfo[]) => void;
+  onAddSongToQueue?: (song: SongInfo) => void;
   onBack: () => void;
   currentPlayingMid?: string;
 }
@@ -25,7 +26,8 @@ interface PlaylistDetailPageProps {
 const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
   playlist,
   onSelectSong,
-  onAddToQueue,
+  onAddPlaylistToQueue,
+  onAddSongToQueue,
   onBack,
   currentPlayingMid,
 }) => {
@@ -57,9 +59,9 @@ const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
   }, [songs, onSelectSong]);
 
   const handleAddToQueue = useCallback(() => {
-    if (!onAddToQueue || songs.length === 0) return;
-    onAddToQueue(songs);
-  }, [onAddToQueue, songs]);
+    if (!onAddPlaylistToQueue || songs.length === 0) return;
+    onAddPlaylistToQueue(songs);
+  }, [onAddPlaylistToQueue, songs]);
 
   const handleSongSelect = useCallback(
     (song: SongInfo) => {
@@ -112,7 +114,7 @@ const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
         <PlayAllButton onClick={handlePlayAll} show={!loading && songs.length > 0} />
 
         {/* 添加到队列 */}
-        {!loading && songs.length > 0 && onAddToQueue && (
+        {!loading && songs.length > 0 && onAddPlaylistToQueue && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={handleAddToQueue}>
               <FaPlus style={{ marginRight: "8px" }} />
@@ -130,6 +132,7 @@ const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
         currentPlayingMid={currentPlayingMid}
         emptyText="歌单暂无歌曲"
         onSelectSong={handleSongSelect}
+        onAddToQueue={onAddSongToQueue}
       />
     </>
   );

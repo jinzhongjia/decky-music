@@ -27,6 +27,7 @@ interface HomePageProps {
   onGoToHistory?: () => void;
   onLogout: () => void;
   currentPlayingMid?: string;
+  onAddSongToQueue?: (song: SongInfo) => void;
 }
 
 const HomePageComponent: FC<HomePageProps> = ({
@@ -36,6 +37,7 @@ const HomePageComponent: FC<HomePageProps> = ({
   onGoToHistory,
   onLogout,
   currentPlayingMid,
+  onAddSongToQueue,
 }) => {
   const dataManager = useDataManager();
 
@@ -79,7 +81,7 @@ const HomePageComponent: FC<HomePageProps> = ({
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={onGoToHistory}>
               <FaHistory style={{ marginRight: "8px" }} />
-              播放历史
+              播放队列
             </ButtonItem>
           </PanelSectionRow>
         )}
@@ -113,8 +115,8 @@ const HomePageComponent: FC<HomePageProps> = ({
             <SongItem
               key={song.mid || idx}
               song={song}
-              isPlaying={currentPlayingMid === song.mid}
               onClick={handleSongClick}
+              onAddToQueue={onAddSongToQueue}
             />
           ))
         )}
@@ -128,6 +130,7 @@ const HomePageComponent: FC<HomePageProps> = ({
         currentPlayingMid={currentPlayingMid}
         emptyText="登录后查看每日推荐"
         onSelectSong={handleDailySongClick}
+        onAddToQueue={onAddSongToQueue}
       />
 
       {/* 退出登录 */}

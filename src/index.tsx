@@ -217,6 +217,14 @@ function Content() {
     setCurrentPage('playlist-detail');
   }, []);
 
+  const handleAddSongToQueue = useCallback(async (song: SongInfo) => {
+    await player.addToQueue([song]);
+    toaster.toast({
+      title: "已添加到播放队列",
+      body: song.name
+    });
+  }, [player]);
+
   const handleAddPlaylistToQueue = useCallback(async (songs: SongInfo[]) => {
     if (!songs || songs.length === 0) return;
     await player.addToQueue(songs);
@@ -254,18 +262,7 @@ function Content() {
             onGoToHistory={handleGoToHistory}
             onLogout={handleLogout}
             currentPlayingMid={player.currentSong?.mid}
-          />
-        );
-      
-      case 'history':
-        return (
-          <HistoryPage
-            history={player.playHistory}
-            onSelectSong={handleSelectSong}
-            onClearHistory={player.clearPlayHistory}
-            onRefreshHistory={player.refreshPlayHistory}
-            onBack={handleBackToHome}
-            currentPlayingMid={player.currentSong?.mid}
+            onAddSongToQueue={handleAddSongToQueue}
           />
         );
       
@@ -275,6 +272,7 @@ function Content() {
             onSelectSong={handleSelectSong}
             onBack={handleBackToHome}
             currentPlayingMid={player.currentSong?.mid}
+            onAddSongToQueue={handleAddSongToQueue}
           />
         );
       
@@ -291,7 +289,8 @@ function Content() {
           <PlaylistDetailPage
             playlist={selectedPlaylist}
             onSelectSong={handleSelectSong}
-            onAddToQueue={handleAddPlaylistToQueue}
+            onAddPlaylistToQueue={handleAddPlaylistToQueue}
+            onAddSongToQueue={handleAddSongToQueue}
             onBack={handleBackToPlaylists}
             currentPlayingMid={player.currentSong?.mid}
           />
@@ -299,6 +298,31 @@ function Content() {
           <PlaylistsPage
             onSelectPlaylist={handleSelectPlaylist}
             onBack={handleBackToHome}
+          />
+        );
+
+      case 'history':
+        return (
+          <HistoryPage
+            playlist={player.playlist}
+            currentIndex={player.currentIndex}
+            onSelectIndex={player.playAtIndex}
+            onBack={handleBackToHome}
+            currentPlayingMid={player.currentSong?.mid}
+            onRemoveFromQueue={player.removeFromQueue}
+            onRemoveHistory={player.removeFromQueue} // 复用删除逻辑
+          />
+        );
+
+      case 'history':
+        return (
+          <HistoryPage
+            playlist={player.playlist}
+            currentIndex={player.currentIndex}
+            onSelectIndex={player.playAtIndex}
+            onBack={handleBackToHome}
+            currentPlayingMid={player.currentSong?.mid}
+            onRemoveFromQueue={player.removeFromQueue}
           />
         );
       
@@ -325,6 +349,7 @@ function Content() {
             onGoToPlaylists={handleGoToPlaylists}
             onGoToHistory={handleGoToHistory}
             onLogout={handleLogout}
+            onAddSongToQueue={handleAddSongToQueue}
           />
         );
       
