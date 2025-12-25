@@ -58,7 +58,7 @@ const notifyListeners = () => {
  */
 const preloadImage = (url: string): Promise<void> => {
   return new Promise((resolve) => {
-    const img = new Image();
+    const img = new window.Image();
     img.onload = () => resolve();
     img.onerror = () => resolve(); // 加载失败也继续
     img.src = url;

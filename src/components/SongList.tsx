@@ -3,7 +3,7 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow } from "@decky/ui";
+import { PanelSection } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { SongItem } from "./SongItem";
 import { LoadingSpinner } from "./LoadingSpinner";

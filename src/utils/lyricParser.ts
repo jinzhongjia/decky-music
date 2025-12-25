@@ -94,7 +94,7 @@ function isInvalidLyricText(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return true;
   // 纯斜线、符号等
-  if (/^[\/\-\*\~\s\\：:\.。，,]+$/.test(trimmed)) return true;
+  if (/^[/\-*~\s\\：:.。，,]+$/.test(trimmed)) return true;
   return false;
 }
 
@@ -216,14 +216,14 @@ function parseQrc(qrc: string): QrcLyricLine[] {
       const cleanText = fullText.trim();
       
       // 1. 过滤间奏行（纯斜线、纯符号等）
-      const isInterlude = /^[\/\-\*\~\s\\：:]+$/.test(cleanText) || cleanText.length === 0;
+      const isInterlude = /^[/\-*~\s\\：:]+$/.test(cleanText) || cleanText.length === 0;
       
       // 2. 过滤元信息行（歌曲标题、作词作曲等）
       const isMetaInfo = /^(Writtenby|Composedby|Producedby|Arrangedby|词|曲|编曲|制作|演唱|原唱|翻唱)[\s：:]/i.test(cleanText) ||
-                         /[\-\–]\s*(Artist|Singer|Band|作词|作曲|编曲)/i.test(cleanText);
+                         /[-–]\s*(Artist|Singer|Band|作词|作曲|编曲)/i.test(cleanText);
       
       // 3. 检查是否整行都是符号（包括每个 word）
-      const allSymbols = words.every(w => /^[\/\-\*\~\s\\：:\.。，,\(\)（）]+$/.test(w.text.trim()));
+      const allSymbols = words.every(w => /^[/\-*~\s\\：:.。，,()（）]+$/.test(w.text.trim()));
       
       // 4. 过滤第一行如果是歌曲标题格式（包含 " - " 分隔符且在开头）
       const isTitleLine = result.length === 0 && cleanText.includes(' - ') && lineStart < 60000;

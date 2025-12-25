@@ -4,7 +4,7 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Field } from "@decky/ui";
+import { PanelSection, Field } from "@decky/ui";
 import type { PlaylistInfo } from "../types";
 import { formatPlayCount } from "../utils/format";
 import { useDataManager } from "../hooks/useDataManager";

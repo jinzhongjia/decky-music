@@ -78,8 +78,10 @@ function genSettings(fieldDef: SettingDef, value: number): string {
 async function getCurrentSleepSettings(): Promise<OriginalSleepSettings> {
   try {
     // @ts-ignore - SteamClient 是全局变量
+    // eslint-disable-next-line no-undef
     if (typeof SteamClient !== 'undefined' && SteamClient?.Settings?.GetRegisteredSettings) {
       // @ts-ignore
+      // eslint-disable-next-line no-undef
       const settings = await SteamClient.Settings.GetRegisteredSettings();
       console.log("获取到系统休眠设置:", settings);
       // 尝试解析设置，如果失败则使用默认值
@@ -103,6 +105,7 @@ async function getCurrentSleepSettings(): Promise<OriginalSleepSettings> {
 async function updateSleepSettings(batteryIdle: number, acIdle: number, batterySuspend: number, acSuspend: number) {
   try {
     // @ts-ignore - SteamClient 是全局变量
+    // eslint-disable-next-line no-undef
     if (typeof SteamClient === 'undefined' || !SteamClient?.System?.UpdateSettings) {
       console.warn("SteamClient.System.UpdateSettings 不可用");
       return;
@@ -114,6 +117,7 @@ async function updateSleepSettings(batteryIdle: number, acIdle: number, batteryS
     const acSuspendData = genSettings(SettingDefaults.ac_suspend, acSuspend);
     
     // @ts-ignore
+    // eslint-disable-next-line no-undef
     await SteamClient.System.UpdateSettings(window.btoa(batteryIdleData + acIdleData + batterySuspendData + acSuspendData));
   } catch (e) {
     console.error("更新休眠设置失败:", e);
@@ -149,6 +153,7 @@ const MAX_HISTORY = 100;
 // 加载播放历史
 function loadPlayHistory(): SongInfo[] {
   try {
+    // eslint-disable-next-line no-undef
     const data = localStorage.getItem(PLAY_HISTORY_KEY);
     return data ? JSON.parse(data) : [];
   } catch {
@@ -159,6 +164,7 @@ function loadPlayHistory(): SongInfo[] {
 // 保存播放历史
 function savePlayHistory(history: SongInfo[]) {
   try {
+    // eslint-disable-next-line no-undef
     localStorage.setItem(PLAY_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
   } catch {
     // ignore
