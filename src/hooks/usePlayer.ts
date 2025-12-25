@@ -387,28 +387,7 @@ export function usePlayer(): UsePlayerReturn {
       getSongLyric(song.mid, true)
         .then(lyricResult => {
           if (lyricResult.success && lyricResult.lyric) {
-            // 打印原始歌词前500字符，用于调试
-            console.log("=== 原始歌词数据 (前500字符) ===");
-            console.log(lyricResult.lyric.substring(0, 500));
-            console.log("=== 原始歌词结束 ===");
-            
-            // 解析歌词（自动检测 QRC/LRC 格式）
             const parsed = parseLyric(lyricResult.lyric, lyricResult.trans);
-            console.log("歌词解析结果:", parsed.isQrc ? "QRC格式" : "LRC格式", 
-              parsed.qrcLines?.length || 0, "QRC行", parsed.lines.length, "LRC行");
-            
-            // 打印解析后的前10行，检查是否有 //
-            if (parsed.qrcLines && parsed.qrcLines.length > 0) {
-              console.log("=== 解析后 QRC 前10行 ===");
-              parsed.qrcLines.slice(0, 10).forEach((line, i) => {
-                console.log(`${i}: [${line.time}s] text="${line.text}" words=${line.words.length}`);
-                // 检查是否有 //
-                if (line.text.includes('//') || line.text.includes('/')) {
-                  console.log(`  ⚠️ 发现斜线! words:`, line.words.map(w => `"${w.text}"`).join(', '));
-                }
-              });
-            }
-            
             setLyric(parsed);
             globalLyric = parsed;
           }
