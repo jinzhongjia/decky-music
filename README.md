@@ -206,5 +206,5 @@ BSD-3-Clause License
 ## 🙏 致谢
 
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) - Steam Deck 插件加载器
-- [QQMusicApi](https://github.com/jinzhongjia/QQMusicApi) - QQ 音乐 API 库
+- [QQMusicApi](https://github.com/L-1124/QQMusicApi) - QQ 音乐 API 库 (使用 commit: 3ccc5daaf0b3d35a4b7375824b213c07687fa992)
 - [decky-plugin-template](https://github.com/SteamDeckHomebrew/decky-plugin-template) - 插件模板
