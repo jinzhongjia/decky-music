@@ -11,11 +11,12 @@ import {
 } from "react-icons/fa";
 
 import { getLoginStatus } from "../api";
-import { usePlayer } from "../hooks/usePlayer";
+import { usePlayer, getAudioCurrentTime } from "../hooks/usePlayer";
 import { useDataManager } from "../hooks/useDataManager";
 import { SongItem } from "../components/SongItem";
 import { LoginPage, SearchPage, PlaylistsPage, PlaylistDetailPage, HistoryPage } from "../components";
 import type { SongInfo, PlaylistInfo } from "../types";
+import type { QrcLyricLine, LyricWord } from "../utils/lyricParser";
 
 // 全屏页面内的子页面类型
 type FullscreenPageType = 'player' | 'guess-like' | 'playlists' | 'playlist-detail' | 'history' | 'search' | 'queue' | 'login';
@@ -43,6 +44,11 @@ export const FullscreenPlayer: FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
   const mountedRef = useRef(true);
+  
+  // 高频时间更新（用于 QRC 卡拉OK效果）- 使用计数器强制刷新
+  const [, forceUpdate] = useState(0);
+  const animationFrameRef = useRef<number | null>(null);
+  const lastUpdateTimeRef = useRef(0);
 
   const player = usePlayer();
   const dataManager = useDataManager();
@@ -52,6 +58,37 @@ export const FullscreenPlayer: FC = () => {
   useEffect(() => {
     playerRef.current = player;
   });
+
+  // 高频时间更新（约60fps，用于流畅的卡拉OK填充效果）
+  useEffect(() => {
+    // 只在播放 QRC 歌词且在播放页时启用高频更新
+    if (!player.isPlaying || !player.lyric?.isQrc || currentPage !== 'player') {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      return;
+    }
+
+    const updateLoop = () => {
+      // 直接从 Audio 元素获取时间，每 16ms (约60fps) 强制刷新一次
+      const now = performance.now();
+      if (now - lastUpdateTimeRef.current >= 16) {
+        lastUpdateTimeRef.current = now;
+        forceUpdate(n => n + 1);
+      }
+      animationFrameRef.current = requestAnimationFrame(updateLoop);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(updateLoop);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [player.isPlaying, player.lyric?.isQrc, currentPage]);
 
   // 检查登录状态
   useEffect(() => {
@@ -157,44 +194,194 @@ export const FullscreenPlayer: FC = () => {
   // 歌词容器引用（用于自动滚动）
   const lyricContainerRef = useRef<HTMLDivElement>(null);
   const currentLyricRef = useRef<HTMLDivElement>(null);
+  // 记录上一次的歌词索引，用于判断是否需要滚动
+  const lastLyricIndexRef = useRef(-1);
 
-  // 计算当前歌词索引
+  // 计算当前歌词索引（支持 QRC 和 LRC）
   const getCurrentLyricIndex = useCallback(() => {
-    const lyricLines = player.lyric?.lines || [];
+    const lyric = player.lyric;
+    if (!lyric) return -1;
+    
+    // 直接从 Audio 获取实时时间
+    const currentTime = getAudioCurrentTime();
+    
+    // QRC 格式（时间单位是秒）
+    if (lyric.isQrc && lyric.qrcLines && lyric.qrcLines.length > 0) {
+      for (let i = lyric.qrcLines.length - 1; i >= 0; i--) {
+        if (lyric.qrcLines[i].time <= currentTime) {
+          return i;
+        }
+      }
+      return -1;
+    }
+    
+    // LRC 格式（时间单位是毫秒）
+    const lyricLines = lyric.lines || [];
     if (lyricLines.length === 0) return -1;
     
-    const currentTimeMs = player.currentTime * 1000;
-    
-    // 找到最后一个时间小于等于当前时间的歌词
+    const currentTimeMs = currentTime * 1000;
     for (let i = lyricLines.length - 1; i >= 0; i--) {
       if (lyricLines[i].time <= currentTimeMs) {
         return i;
       }
     }
     return -1;
-  }, [player.lyric, player.currentTime]);
+  }, [player.lyric]);
 
   const currentLyricIndex = getCurrentLyricIndex();
 
   // 自动滚动到当前歌词
   useEffect(() => {
-    if (currentLyricRef.current && lyricContainerRef.current) {
-      const container = lyricContainerRef.current;
-      const current = currentLyricRef.current;
+    // 只在歌词行变化时滚动
+    if (currentLyricIndex !== lastLyricIndexRef.current) {
+      lastLyricIndexRef.current = currentLyricIndex;
       
-      // 计算需要滚动的位置（让当前歌词在容器中央）
-      const containerHeight = container.clientHeight;
-      const currentTop = current.offsetTop;
-      const currentHeight = current.clientHeight;
-      
-      const targetScroll = currentTop - containerHeight / 2 + currentHeight / 2;
-      
-      container.scrollTo({
-        top: Math.max(0, targetScroll),
-        behavior: 'smooth'
-      });
+      if (currentLyricRef.current && lyricContainerRef.current) {
+        const container = lyricContainerRef.current;
+        const current = currentLyricRef.current;
+        
+        // 计算需要滚动的位置（让当前歌词在容器中央）
+        const containerHeight = container.clientHeight;
+        const currentTop = current.offsetTop;
+        const currentHeight = current.clientHeight;
+        
+        const targetScroll = currentTop - containerHeight / 2 + currentHeight / 2;
+        
+        container.scrollTo({
+          top: Math.max(0, targetScroll),
+          behavior: 'smooth'
+        });
+      }
     }
   }, [currentLyricIndex]);
+
+  // 计算单个字的填充进度 (0-100)
+  const getWordProgress = useCallback((word: LyricWord, currentTime: number): number => {
+    if (currentTime >= word.start + word.duration) {
+      return 100;
+    } else if (currentTime > word.start) {
+      return ((currentTime - word.start) / word.duration) * 100;
+    }
+    return 0;
+  }, []);
+
+  // Spotify 风格：渲染 QRC 逐字歌词行
+  const renderQrcLyricLine = (line: QrcLyricLine, index: number, isActive: boolean, isPast: boolean) => {
+    // 直接从 Audio 元素获取实时时间，实现流畅填充
+    const currentTime = getAudioCurrentTime();
+    
+    return (
+      <div
+        key={index}
+        ref={index === currentLyricIndex ? currentLyricRef : null}
+        className="spotify-lyric-line"
+        style={{
+          padding: '14px 16px',
+          marginBottom: '8px',
+          fontSize: isActive ? '24px' : '18px',
+          fontWeight: 700,
+          lineHeight: 1.4,
+          // 只对行切换相关属性添加过渡，不影响内部 clip-path
+          transition: 'font-size 0.3s ease, transform 0.3s ease, background 0.3s ease',
+          borderRadius: '8px',
+          background: isActive ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
+          transform: isActive ? 'scale(1.02)' : 'scale(1)',
+          transformOrigin: 'left center',
+        }}
+      >
+        {/* 逐字渲染 - Spotify 风格 */}
+        <div style={{ lineHeight: 1.6 }}>
+          {line.words.map((word, wordIndex) => {
+            const progress = isActive ? getWordProgress(word, currentTime) : (isPast ? 100 : 0);
+            
+            // 所有字都使用相同的布局结构，避免抖动
+            return (
+              <span
+                key={wordIndex}
+                style={{
+                  position: 'relative',
+                  display: 'inline-block',
+                }}
+              >
+                {/* 底层文字 */}
+                <span style={{ 
+                  color: progress >= 100 ? '#1DB954' : (isPast ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.4)'),
+                }}>
+                  {word.text}
+                </span>
+                {/* 顶层绿色填充（仅在 0 < progress < 100 时显示） */}
+                {progress > 0 && progress < 100 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      color: '#1DB954',
+                      clipPath: `inset(0 ${100 - progress}% 0 0)`,
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {word.text}
+                  </span>
+                )}
+              </span>
+            );
+          })}
+        </div>
+        
+        {/* 翻译 */}
+        {line.trans && (
+          <div style={{
+            fontSize: isActive ? '14px' : '12px',
+            fontWeight: 500,
+            color: isPast ? 'rgba(255,255,255,0.4)' : (isActive ? 'rgba(29, 185, 84, 0.85)' : 'rgba(255,255,255,0.3)'),
+            marginTop: '6px',
+            transition: 'font-size 0.3s ease, color 0.3s ease',
+          }}>
+            {line.trans}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Spotify 风格：渲染普通 LRC 歌词行
+  const renderLrcLyricLine = (line: { text: string; trans?: string }, index: number, isActive: boolean, isPast: boolean) => {
+    return (
+      <div
+        key={index}
+        ref={index === currentLyricIndex ? currentLyricRef : null}
+        className="spotify-lyric-line"
+        style={{
+          padding: '14px 16px',
+          marginBottom: '8px',
+          fontSize: isActive ? '24px' : '18px',
+          fontWeight: 700,
+          lineHeight: 1.4,
+          transition: 'all 0.35s cubic-bezier(0.25, 0.1, 0.25, 1)',
+          borderRadius: '8px',
+          background: isActive ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
+          transform: isActive ? 'scale(1.02)' : 'scale(1)',
+          transformOrigin: 'left center',
+          // Spotify 风格颜色
+          color: isActive ? '#1DB954' : (isPast ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.35)'),
+        }}
+      >
+        <div>{line.text || '♪'}</div>
+        {line.trans && (
+          <div style={{
+            fontSize: isActive ? '15px' : '13px',
+            fontWeight: 500,
+            color: isPast ? 'rgba(255,255,255,0.4)' : (isActive ? 'rgba(29, 185, 84, 0.8)' : 'rgba(255,255,255,0.3)'),
+            marginTop: '6px',
+            transition: 'all 0.35s ease',
+          }}>
+            {line.trans}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // 加载中
   if (checking) {
@@ -424,67 +611,62 @@ export const FullscreenPlayer: FC = () => {
           </div>
         </div>
 
-        {/* 右侧：歌词 */}
+        {/* 右侧：Spotify 风格歌词区域 */}
         <div style={{ 
           flex: 1, 
           display: 'flex', 
           flexDirection: 'column',
           overflow: 'hidden',
-          minWidth: 0
+          minWidth: 0,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.2) 0%, transparent 100%)',
+          borderRadius: '12px',
         }}>
-          <div style={{ 
-            fontSize: '13px', 
-            color: '#8b929a', 
-            marginBottom: '8px',
-            flexShrink: 0
-          }}>
-            歌词
-          </div>
-          
+          {/* 歌词容器 - Spotify 风格滚动 */}
           <div 
             ref={lyricContainerRef}
             style={{ 
               flex: 1, 
               overflow: 'auto',
-              paddingRight: '8px'
+              padding: '20px 16px',
+              scrollBehavior: 'smooth',
+              // 隐藏滚动条但保留滚动功能
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
             }}
           >
-            {lyricLines.length > 0 ? (
-              <div style={{ padding: '40px 0' }}>
-                {lyricLines.map((line, index) => (
-                  <div
-                    key={index}
-                    ref={index === currentLyricIndex ? currentLyricRef : null}
-                    style={{
-                      padding: '8px 12px',
-                      marginBottom: '4px',
-                      fontSize: index === currentLyricIndex ? '16px' : '14px',
-                      color: index === currentLyricIndex ? '#1db954' : '#888',
-                      fontWeight: index === currentLyricIndex ? 'bold' : 'normal',
-                      transition: 'all 0.3s ease',
-                      borderRadius: '6px',
-                      background: index === currentLyricIndex ? 'rgba(29, 185, 84, 0.15)' : 'transparent',
-                      transform: index === currentLyricIndex ? 'scale(1.02)' : 'scale(1)',
-                    }}
-                  >
-                    <div>{line.text || '♪'}</div>
-                    {line.trans && (
-                      <div style={{
-                        fontSize: index === currentLyricIndex ? '13px' : '12px',
-                        color: index === currentLyricIndex ? 'rgba(29, 185, 84, 0.8)' : '#666',
-                        marginTop: '2px'
-                      }}>
-                        {line.trans}
-                      </div>
-                    )}
-                  </div>
-                ))}
+            {/* QRC 逐字高亮模式 */}
+            {player.lyric?.isQrc && player.lyric.qrcLines && player.lyric.qrcLines.length > 0 ? (
+              <div style={{ paddingTop: '60px', paddingBottom: '150px' }}>
+                {player.lyric.qrcLines.map((line, index) => 
+                  renderQrcLyricLine(
+                    line, 
+                    index, 
+                    index === currentLyricIndex,
+                    index < currentLyricIndex
+                  )
+                )}
+              </div>
+            ) : lyricLines.length > 0 ? (
+              /* LRC 普通模式 - 也使用 Spotify 风格 */
+              <div style={{ paddingTop: '60px', paddingBottom: '150px' }}>
+                {lyricLines.map((line, index) => 
+                  renderLrcLyricLine(
+                    line,
+                    index,
+                    index === currentLyricIndex,
+                    index < currentLyricIndex
+                  )
+                )}
               </div>
             ) : (
               <div style={{ 
-                textAlign: 'center', 
-                color: '#555',
-                padding: '40px 16px'
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                color: 'rgba(255,255,255,0.4)',
+                fontSize: '16px',
+                fontWeight: 500,
               }}>
                 {song ? '暂无歌词' : '选择一首歌曲开始播放'}
               </div>

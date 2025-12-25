@@ -207,6 +207,14 @@ function getGlobalAudio(): HTMLAudioElement {
   return globalAudio;
 }
 
+/**
+ * 获取当前音频播放时间（秒）
+ * 直接从 Audio 元素获取，用于高频动画更新
+ */
+export function getAudioCurrentTime(): number {
+  return globalAudio?.currentTime || 0;
+}
+
 // 全局清理函数 - 用于插件卸载时调用
 export function cleanupPlayer() {
   console.log("清理播放器资源");
@@ -375,12 +383,14 @@ export function usePlayer(): UsePlayerReturn {
         return false;
       }
       
-      // 异步获取歌词
-      getSongLyric(song.mid)
+      // 异步获取歌词 (优先获取 QRC 逐字格式)
+      getSongLyric(song.mid, true)
         .then(lyricResult => {
           if (lyricResult.success && lyricResult.lyric) {
-            // 解析歌词（原文 + 翻译）
+            // 解析歌词（自动检测 QRC/LRC 格式）
             const parsed = parseLyric(lyricResult.lyric, lyricResult.trans);
+            console.log("歌词解析结果:", parsed.isQrc ? "QRC格式" : "LRC格式", 
+              parsed.qrcLines?.length || 0, "QRC行", parsed.lines.length, "LRC行");
             setLyric(parsed);
             globalLyric = parsed;
           }

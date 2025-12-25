@@ -58,8 +58,8 @@ export const getSearchSuggest = callable<[keyword: string], {
 /** 获取歌曲播放链接 */
 export const getSongUrl = callable<[mid: string], SongUrlResponse>("get_song_url");
 
-/** 获取歌词 */
-export const getSongLyric = callable<[mid: string], SongLyricResponse>("get_song_lyric");
+/** 获取歌词 (qrc=true 时获取 QRC 逐字格式) */
+export const getSongLyric = callable<[mid: string, qrc?: boolean], SongLyricResponse>("get_song_lyric");
 
 // ==================== 推荐相关 ====================
 

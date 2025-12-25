@@ -516,12 +516,23 @@ class Plugin:
             decky.logger.error(f"批量获取播放链接失败: {e}")
             return {"success": False, "error": str(e), "urls": {}}
 
-    async def get_song_lyric(self, mid: str) -> dict[str, Any]:
-        """获取歌词"""
+    async def get_song_lyric(self, mid: str, qrc: bool = True) -> dict[str, Any]:
+        """获取歌词
+        
+        Args:
+            mid: 歌曲 mid
+            qrc: 是否获取 QRC 格式歌词（带逐字时间，用于卡拉OK效果）
+        """
         try:
-            result = await lyric.get_lyric(mid, qrc=False, trans=True)
+            result = await lyric.get_lyric(mid, qrc=qrc, trans=True)
 
-            return {"success": True, "lyric": result.get("lyric", ""), "trans": result.get("trans", ""), "mid": mid}
+            return {
+                "success": True,
+                "lyric": result.get("lyric", ""),
+                "trans": result.get("trans", ""),
+                "mid": mid,
+                "qrc": qrc  # 标记返回的是否是 QRC 格式
+            }
 
         except Exception as e:
             decky.logger.error(f"获取歌词失败: {e}")
