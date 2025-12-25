@@ -2,7 +2,7 @@
  * 播放历史页面
  */
 
-import { FC, useEffect } from "react";
+import { FC, useEffect, useCallback } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { FaTrash } from "react-icons/fa";
 import type { SongInfo } from "../types";
@@ -33,11 +33,18 @@ export const HistoryPage: FC<HistoryPageProps> = ({
     onRefreshHistory();
   }, [onRefreshHistory]);
 
-  const handlePlayAll = () => {
+  const handlePlayAll = useCallback(() => {
     if (history.length > 0) {
       onSelectSong(history[0], history);
     }
-  };
+  }, [history, onSelectSong]);
+
+  const handleSongSelect = useCallback(
+    (song: SongInfo) => {
+      onSelectSong(song, history);
+    },
+    [history, onSelectSong]
+  );
 
   return (
     <>
@@ -49,11 +56,8 @@ export const HistoryPage: FC<HistoryPageProps> = ({
           <>
             <PlayAllButton onClick={handlePlayAll} />
             <PanelSectionRow>
-              <ButtonItem 
-                layout="below" 
-                onClick={onClearHistory}
-              >
-                <FaTrash style={{ marginRight: '8px', opacity: 0.7 }} />
+              <ButtonItem layout="below" onClick={onClearHistory}>
+                <FaTrash style={{ marginRight: "8px", opacity: 0.7 }} />
                 <span style={{ opacity: 0.8 }}>清空历史</span>
               </ButtonItem>
             </PanelSectionRow>
@@ -64,8 +68,8 @@ export const HistoryPage: FC<HistoryPageProps> = ({
       {/* 历史列表 */}
       {history.length === 0 ? (
         <PanelSection>
-          <EmptyState 
-            message="暂无播放历史" 
+          <EmptyState
+            message="暂无播放历史"
             description="播放歌曲后会自动记录在这里"
             padding="40px 20px"
           />
@@ -76,10 +80,9 @@ export const HistoryPage: FC<HistoryPageProps> = ({
           songs={history}
           currentPlayingMid={currentPlayingMid}
           emptyText="暂无播放历史"
-          onSelectSong={(song) => onSelectSong(song, history)}
+          onSelectSong={handleSongSelect}
         />
       )}
     </>
   );
 };
-
