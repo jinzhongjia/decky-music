@@ -4,11 +4,12 @@
 
 import { FC, useState, useEffect, useRef } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Focusable } from "@decky/ui";
-import { FaArrowLeft, FaPlay } from "react-icons/fa";
+import { FaPlay } from "react-icons/fa";
 import { getPlaylistSongs } from "../api";
 import type { PlaylistInfo, SongInfo } from "../types";
 import { getDefaultCover } from "../utils/format";
 import { SongItem } from "./SongItem";
+import { BackButton } from "./BackButton";
 
 interface PlaylistDetailPageProps {
   playlist: PlaylistInfo;
@@ -54,15 +55,7 @@ export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
 
   return (
     <>
-      {/* 返回按钮 */}
-      <PanelSection>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={onBack}>
-            <FaArrowLeft style={{ marginRight: '8px' }} />
-            返回歌单列表
-          </ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
+      <BackButton onClick={onBack} label="返回歌单列表" />
 
       {/* 歌单信息 */}
       <PanelSection>
