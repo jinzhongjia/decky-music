@@ -2,7 +2,7 @@
  * 歌曲列表组件
  */
 
-import { FC } from "react";
+import { FC, memo } from "react";
 import { PanelSection } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { SongItem } from "./SongItem";
@@ -18,7 +18,7 @@ interface SongListProps {
   onSelectSong: (song: SongInfo) => void;
 }
 
-export const SongList: FC<SongListProps> = ({
+const SongListComponent: FC<SongListProps> = ({
   title,
   songs,
   loading = false,
@@ -55,4 +55,8 @@ export const SongList: FC<SongListProps> = ({
     </PanelSection>
   );
 };
+
+SongListComponent.displayName = 'SongList';
+
+export const SongList = memo(SongListComponent);
 

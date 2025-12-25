@@ -3,7 +3,7 @@
  * 使用全局数据管理器，与全屏页面共享数据
  */
 
-import { FC, useCallback } from "react";
+import { FC, useCallback, memo } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory } from "react-icons/fa";
 import type { SongInfo } from "../types";
@@ -29,7 +29,7 @@ interface HomePageProps {
   currentPlayingMid?: string;
 }
 
-export const HomePage: FC<HomePageProps> = ({
+const HomePageComponent: FC<HomePageProps> = ({
   onSelectSong,
   onGoToSearch,
   onGoToPlaylists,
@@ -47,7 +47,14 @@ export const HomePage: FC<HomePageProps> = ({
     (song: SongInfo) => {
       onSelectSong(song, dataManager.guessLikeSongs, "guess-like");
     },
-    [dataManager, onSelectSong]
+    [dataManager.guessLikeSongs, onSelectSong]
+  );
+
+  const handleDailySongClick = useCallback(
+    (song: SongInfo) => {
+      onSelectSong(song, dataManager.dailySongs);
+    },
+    [dataManager.dailySongs, onSelectSong]
   );
 
   return (
@@ -120,7 +127,7 @@ export const HomePage: FC<HomePageProps> = ({
         loading={dataManager.dailyLoading}
         currentPlayingMid={currentPlayingMid}
         emptyText="登录后查看每日推荐"
-        onSelectSong={(song) => onSelectSong(song, dataManager.dailySongs)}
+        onSelectSong={handleDailySongClick}
       />
 
       {/* 退出登录 */}
@@ -135,3 +142,7 @@ export const HomePage: FC<HomePageProps> = ({
     </>
   );
 };
+
+HomePageComponent.displayName = 'HomePage';
+
+export const HomePage = memo(HomePageComponent);

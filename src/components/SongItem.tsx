@@ -3,7 +3,7 @@
  * 使用 Field 组件获得焦点高亮效果
  */
 
-import { FC } from "react";
+import { FC, memo } from "react";
 import { Field } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { formatDuration } from "../utils/format";
@@ -16,7 +16,7 @@ interface SongItemProps {
   onClick: (song: SongInfo) => void;
 }
 
-export const SongItem: FC<SongItemProps> = ({ 
+const SongItemComponent: FC<SongItemProps> = ({ 
   song, 
   isPlaying = false,
   onClick 
@@ -88,4 +88,8 @@ export const SongItem: FC<SongItemProps> = ({
     </div>
   );
 };
+
+SongItemComponent.displayName = 'SongItem';
+
+export const SongItem = memo(SongItemComponent);
 

@@ -2,7 +2,7 @@
  * Decky QQ Music 插件主入口
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui";
 import { definePlugin, toaster, routerHook } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
@@ -33,11 +33,30 @@ function Content() {
   useEffect(() => {
     playerRef.current = player;
     currentPageRef.current = currentPage;
-  });
+  }, [player, currentPage]);
+
+  const checkLoginStatus = useCallback(async () => {
+    setChecking(true);
+    try {
+      const result = await getLoginStatus();
+      if (!mountedRef.current) return;
+      setCurrentPage(result.logged_in ? 'home' : 'login');
+      
+      // 已登录时启用左侧菜单
+      if (result.logged_in) {
+        menuManager.enable();
+      }
+    } catch (e) {
+      console.error("检查登录状态失败:", e);
+      if (!mountedRef.current) return;
+      setCurrentPage('login');
+    }
+    setChecking(false);
+  }, [mountedRef]);
 
   useEffect(() => {
     checkLoginStatus();
-  }, []);
+  }, [checkLoginStatus]);
 
   // 手柄快捷键绑定
   // X (2): 暂停/播放
@@ -94,33 +113,14 @@ function Content() {
     };
   }, []); // 只注册一次，通过 ref 访问最新状态
 
-  const checkLoginStatus = async () => {
-    setChecking(true);
-    try {
-      const result = await getLoginStatus();
-      if (!mountedRef.current) return;
-      setCurrentPage(result.logged_in ? 'home' : 'login');
-      
-      // 已登录时启用左侧菜单
-      if (result.logged_in) {
-        menuManager.enable();
-      }
-    } catch (e) {
-      console.error("检查登录状态失败:", e);
-      if (!mountedRef.current) return;
-      setCurrentPage('login');
-    }
-    setChecking(false);
-  };
-
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = useCallback(() => {
     setCurrentPage('home');
     // 登录成功后启用左侧菜单并预加载数据
     menuManager.enable();
     preloadData();
-  };
+  }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await logout();
     player.stop();
     clearRecommendCache(); // 清除推荐缓存（旧版兼容）
@@ -132,7 +132,7 @@ function Content() {
       title: "已退出登录",
       body: "期待下次见面！"
     });
-  };
+  }, [player]);
 
   // 获取更多猜你喜欢歌曲的回调
   const fetchMoreGuessLikeSongs = async (): Promise<SongInfo[]> => {
@@ -145,7 +145,7 @@ function Content() {
 
   // 从列表中选择歌曲时，设置整个列表为播放列表
   // source: 'guess-like' 表示来自猜你喜欢，播放完后会自动刷新
-  const handleSelectSong = async (song: SongInfo, playlist?: SongInfo[], source?: string) => {
+  const handleSelectSong = useCallback(async (song: SongInfo, playlist?: SongInfo[], source?: string) => {
     if (playlist && playlist.length > 0) {
       const index = playlist.findIndex(s => s.mid === song.mid);
       await player.playPlaylist(playlist, index >= 0 ? index : 0);
@@ -160,13 +160,39 @@ function Content() {
       await player.playSong(song);
       player.setOnNeedMoreSongs(null);
     }
-  };
+  }, [player]);
 
-  const handleGoToPlayer = () => {
+  const handleGoToPlayer = useCallback(() => {
     if (player.currentSong) {
       setCurrentPage('player');
     }
-  };
+  }, [player.currentSong]);
+
+  const handleGoToSearch = useCallback(() => {
+    setCurrentPage('search');
+  }, []);
+
+  const handleGoToPlaylists = useCallback(() => {
+    setCurrentPage('playlists');
+  }, []);
+
+  const handleGoToHistory = useCallback(() => {
+    setCurrentPage('history');
+  }, []);
+
+  const handleBackToHome = useCallback(() => {
+    setCurrentPage('home');
+  }, []);
+
+  const handleBackToPlaylists = useCallback(() => {
+    setCurrentPage('playlists');
+  }, []);
+
+  // 选择歌单
+  const handleSelectPlaylist = useCallback((playlist: PlaylistInfo) => {
+    setSelectedPlaylist(playlist);
+    setCurrentPage('playlist-detail');
+  }, []);
 
   // 加载中
   if (checking) {
@@ -181,12 +207,6 @@ function Content() {
     );
   }
 
-  // 选择歌单
-  const handleSelectPlaylist = (playlist: PlaylistInfo) => {
-    setSelectedPlaylist(playlist);
-    setCurrentPage('playlist-detail');
-  };
-
   // 渲染页面
   const renderPage = () => {
     switch (currentPage) {
@@ -197,9 +217,9 @@ function Content() {
         return (
           <HomePage
             onSelectSong={handleSelectSong}
-            onGoToSearch={() => setCurrentPage('search')}
-            onGoToPlaylists={() => setCurrentPage('playlists')}
-            onGoToHistory={() => setCurrentPage('history')}
+            onGoToSearch={handleGoToSearch}
+            onGoToPlaylists={handleGoToPlaylists}
+            onGoToHistory={handleGoToHistory}
             onLogout={handleLogout}
             currentPlayingMid={player.currentSong?.mid}
           />
@@ -212,7 +232,7 @@ function Content() {
             onSelectSong={handleSelectSong}
             onClearHistory={player.clearPlayHistory}
             onRefreshHistory={player.refreshPlayHistory}
-            onBack={() => setCurrentPage('home')}
+            onBack={handleBackToHome}
             currentPlayingMid={player.currentSong?.mid}
           />
         );
@@ -221,7 +241,7 @@ function Content() {
         return (
           <SearchPage
             onSelectSong={handleSelectSong}
-            onBack={() => setCurrentPage('home')}
+            onBack={handleBackToHome}
             currentPlayingMid={player.currentSong?.mid}
           />
         );
@@ -230,7 +250,7 @@ function Content() {
         return (
           <PlaylistsPage
             onSelectPlaylist={handleSelectPlaylist}
-            onBack={() => setCurrentPage('home')}
+            onBack={handleBackToHome}
           />
         );
       
@@ -239,13 +259,13 @@ function Content() {
           <PlaylistDetailPage
             playlist={selectedPlaylist}
             onSelectSong={handleSelectSong}
-            onBack={() => setCurrentPage('playlists')}
+            onBack={handleBackToPlaylists}
             currentPlayingMid={player.currentSong?.mid}
           />
         ) : (
           <PlaylistsPage
             onSelectPlaylist={handleSelectPlaylist}
-            onBack={() => setCurrentPage('home')}
+            onBack={handleBackToHome}
           />
         );
       
@@ -263,14 +283,14 @@ function Content() {
             onSeek={player.seek}
             onNext={player.playNext}
             onPrev={player.playPrev}
-            onBack={() => setCurrentPage('home')}
+            onBack={handleBackToHome}
           />
         ) : (
           <HomePage
             onSelectSong={handleSelectSong}
-            onGoToSearch={() => setCurrentPage('search')}
-            onGoToPlaylists={() => setCurrentPage('playlists')}
-            onGoToHistory={() => setCurrentPage('history')}
+            onGoToSearch={handleGoToSearch}
+            onGoToPlaylists={handleGoToPlaylists}
+            onGoToHistory={handleGoToHistory}
             onLogout={handleLogout}
           />
         );

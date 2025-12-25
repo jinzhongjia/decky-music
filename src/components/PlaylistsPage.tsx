@@ -3,7 +3,7 @@
  * 使用全局数据管理器，与全屏页面共享数据
  */
 
-import { FC, useCallback } from "react";
+import { FC, useCallback, memo, useMemo } from "react";
 import { PanelSection, Field } from "@decky/ui";
 import type { PlaylistInfo } from "../types";
 import { formatPlayCount } from "../utils/format";
@@ -19,7 +19,7 @@ interface PlaylistsPageProps {
   onBack: () => void;
 }
 
-const PlaylistItem: FC<{
+const PlaylistItemComponent: FC<{
   playlist: PlaylistInfo;
   onClick: () => void;
 }> = ({ playlist, onClick }) => (
@@ -89,7 +89,11 @@ const PlaylistItem: FC<{
   </div>
 );
 
-export const PlaylistsPage: FC<PlaylistsPageProps> = ({ onSelectPlaylist, onBack }) => {
+PlaylistItemComponent.displayName = 'PlaylistItem';
+
+const PlaylistItem = memo(PlaylistItemComponent);
+
+const PlaylistsPageComponent: FC<PlaylistsPageProps> = ({ onSelectPlaylist, onBack }) => {
   const dataManager = useDataManager();
 
   const handlePlaylistClick = useCallback(
@@ -97,6 +101,31 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({ onSelectPlaylist, onBack
       onSelectPlaylist(playlist);
     },
     [onSelectPlaylist]
+  );
+
+  // 为每个歌单创建稳定的点击处理函数
+  const createdPlaylistHandlers = useMemo(
+    () =>
+      dataManager.createdPlaylists.reduce(
+        (acc, playlist) => {
+          acc[playlist.id] = () => handlePlaylistClick(playlist);
+          return acc;
+        },
+        {} as Record<string, () => void>
+      ),
+    [dataManager.createdPlaylists, handlePlaylistClick]
+  );
+
+  const collectedPlaylistHandlers = useMemo(
+    () =>
+      dataManager.collectedPlaylists.reduce(
+        (acc, playlist) => {
+          acc[playlist.id] = () => handlePlaylistClick(playlist);
+          return acc;
+        },
+        {} as Record<string, () => void>
+      ),
+    [dataManager.collectedPlaylists, handlePlaylistClick]
   );
 
   if (dataManager.playlistsLoading && dataManager.createdPlaylists.length === 0) {
@@ -121,7 +150,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({ onSelectPlaylist, onBack
               <PlaylistItem
                 key={playlist.id}
                 playlist={playlist}
-                onClick={() => handlePlaylistClick(playlist)}
+                onClick={createdPlaylistHandlers[playlist.id] || (() => handlePlaylistClick(playlist))}
               />
             ))}
           </div>
@@ -138,7 +167,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({ onSelectPlaylist, onBack
               <PlaylistItem
                 key={playlist.id}
                 playlist={playlist}
-                onClick={() => handlePlaylistClick(playlist)}
+                onClick={collectedPlaylistHandlers[playlist.id] || (() => handlePlaylistClick(playlist))}
               />
             ))}
           </div>
@@ -147,3 +176,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({ onSelectPlaylist, onBack
     </>
   );
 };
+
+PlaylistsPageComponent.displayName = 'PlaylistsPage';
+
+export const PlaylistsPage = memo(PlaylistsPageComponent);

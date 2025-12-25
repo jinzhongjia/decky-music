@@ -2,7 +2,7 @@
  * 播放历史页面
  */
 
-import { FC, useEffect, useCallback } from "react";
+import { FC, useEffect, useCallback, memo } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { FaTrash } from "react-icons/fa";
 import type { SongInfo } from "../types";
@@ -20,7 +20,7 @@ interface HistoryPageProps {
   currentPlayingMid?: string;
 }
 
-export const HistoryPage: FC<HistoryPageProps> = ({
+const HistoryPageComponent: FC<HistoryPageProps> = ({
   history,
   onSelectSong,
   onClearHistory,
@@ -86,3 +86,7 @@ export const HistoryPage: FC<HistoryPageProps> = ({
     </>
   );
 };
+
+HistoryPageComponent.displayName = 'HistoryPage';
+
+export const HistoryPage = memo(HistoryPageComponent);

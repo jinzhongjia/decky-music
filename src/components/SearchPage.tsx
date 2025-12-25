@@ -3,7 +3,7 @@
  * 支持拼音搜索、搜索建议、搜索历史
  */
 
-import { FC, useState, useEffect, useCallback } from "react";
+import { FC, useState, useEffect, useCallback, memo } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, TextField, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaSearch, FaTimes } from "react-icons/fa";
@@ -29,7 +29,7 @@ interface Suggestion {
   singer?: string;
 }
 
-export const SearchPage: FC<SearchPageProps> = ({ onSelectSong, onBack, currentPlayingMid }) => {
+const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, currentPlayingMid }) => {
   const [keyword, setKeyword] = useState("");
   const [songs, setSongs] = useState<SongInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -89,9 +89,9 @@ export const SearchPage: FC<SearchPageProps> = ({ onSelectSong, onBack, currentP
   }, [debouncedKeyword, fetchSuggestions]);
 
   // 处理输入变化
-  const handleInputChange = (value: string) => {
+  const handleInputChange = useCallback((value: string) => {
     setKeyword(value);
-  };
+  }, []);
 
   const handleSearch = useCallback(
     async (searchKeyword?: string) => {
@@ -178,6 +178,13 @@ export const SearchPage: FC<SearchPageProps> = ({ onSelectSong, onBack, currentP
   const handleSearchButtonClick = useCallback(() => {
     handleSearch();
   }, [handleSearch]);
+
+  const handleSearchResultSelect = useCallback(
+    (song: SongInfo) => {
+      onSelectSong(song, songs);
+    },
+    [songs, onSelectSong]
+  );
 
   return (
     <>
@@ -340,9 +347,13 @@ export const SearchPage: FC<SearchPageProps> = ({ onSelectSong, onBack, currentP
           loading={loading}
           currentPlayingMid={currentPlayingMid}
           emptyText="未找到相关歌曲，试试拼音搜索？"
-          onSelectSong={(song) => onSelectSong(song, songs)}
+          onSelectSong={handleSearchResultSelect}
         />
       )}
     </>
   );
 };
+
+SearchPageComponent.displayName = 'SearchPage';
+
+export const SearchPage = memo(SearchPageComponent);

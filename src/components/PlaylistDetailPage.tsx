@@ -2,7 +2,7 @@
  * 歌单详情页面
  */
 
-import { FC, useState, useEffect, useCallback } from "react";
+import { FC, useState, useEffect, useCallback, memo } from "react";
 import { PanelSection, PanelSectionRow } from "@decky/ui";
 import { getPlaylistSongs } from "../api";
 import type { PlaylistInfo, SongInfo } from "../types";
@@ -20,7 +20,7 @@ interface PlaylistDetailPageProps {
   currentPlayingMid?: string;
 }
 
-export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
+const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
   playlist,
   onSelectSong,
   onBack,
@@ -114,3 +114,7 @@ export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
     </>
   );
 };
+
+PlaylistDetailPageComponent.displayName = 'PlaylistDetailPage';
+
+export const PlaylistDetailPage = memo(PlaylistDetailPageComponent);
