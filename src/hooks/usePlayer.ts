@@ -241,7 +241,46 @@ const lyricCache = new Map<string, ParsedLyric>();
 
 // 预取任务缓存，避免重复请求
 const prefetchingUrlPromises = new Map<string, Promise<void>>();
-const prefetchingLyricPromises = new Map<string, Promise<void>>();
+const prefetchingLyricPromises = new Map<string, Promise<ParsedLyric | null>>();
+
+// 统一的歌词获取函数（带缓存/并发复用）
+async function fetchLyricWithCache(mid: string, onResolved?: (parsed: ParsedLyric) => void) {
+  const cached = lyricCache.get(mid);
+  if (cached) {
+    onResolved?.(cached);
+    globalLyric = cached;
+    return cached;
+  }
+
+  const existing = prefetchingLyricPromises.get(mid);
+  if (existing) {
+    await existing;
+    const after = lyricCache.get(mid);
+    if (after) {
+      onResolved?.(after);
+      globalLyric = after;
+      return after;
+    }
+    return null;
+  }
+
+  const promise = getSongLyric(mid, true)
+    .then((res) => {
+      if (res.success && res.lyric) {
+        const parsed = parseLyric(res.lyric, res.trans);
+        lyricCache.set(mid, parsed);
+        globalLyric = parsed;
+        onResolved?.(parsed);
+        return parsed;
+      }
+      return null;
+    })
+    .catch(() => null)
+    .finally(() => prefetchingLyricPromises.delete(mid));
+
+  prefetchingLyricPromises.set(mid, promise);
+  return promise;
+}
 
 // 获取或创建全局音频实例
 function getGlobalAudio(): HTMLAudioElement {
@@ -277,7 +316,7 @@ export function getAudioCurrentTime(): number {
 
 // 预取下一首的播放链接与歌词，减少切歌延迟
 async function prefetchSongAssets(song: SongInfo) {
-  const tasks: Promise<void>[] = [];
+  const tasks: Promise<unknown>[] = [];
 
   const cachedUrl = songUrlCache.get(song.mid);
   const urlStale = !cachedUrl || Date.now() - cachedUrl.timestamp >= CACHE_TTL;
@@ -301,9 +340,11 @@ async function prefetchSongAssets(song: SongInfo) {
         if (lyricResult.success && lyricResult.lyric) {
           const parsed = parseLyric(lyricResult.lyric, lyricResult.trans);
           lyricCache.set(song.mid, parsed);
+          return parsed;
         }
+        return null;
       })
-      .catch(() => { })
+      .catch(() => null)
       .finally(() => prefetchingLyricPromises.delete(song.mid));
 
     prefetchingLyricPromises.set(song.mid, lyricPromise);
@@ -398,16 +439,23 @@ export function usePlayer(): UsePlayerReturn {
       skipTimeoutId = null;
     }
 
+    const wasSameSong = globalCurrentSong?.mid === song.mid;
+
     setLoading(true);
     setError("");
     setCurrentSong(song);
     setCurrentTime(0);
     setDuration(song.duration);
-    setLyric(null);
+    // 如同一首歌且已有歌词，避免重复清空造成 UI 闪烁
+    if (!wasSameSong) {
+      setLyric(null);
+      globalLyric = null;
+    } else if (globalLyric) {
+      setLyric(globalLyric);
+    }
 
     // 更新全局状态
     globalCurrentSong = song;
-    globalLyric = null;
     if (index >= 0) {
       globalCurrentIndex = index;
       setCurrentIndex(index);
@@ -486,23 +534,9 @@ export function usePlayer(): UsePlayerReturn {
         return false;
       }
 
-      // 2. 获取歌词 (带缓存)
-      if (lyricCache.has(song.mid)) {
-        const cachedLyric = lyricCache.get(song.mid)!;
-        setLyric(cachedLyric);
-        globalLyric = cachedLyric;
-      } else {
-        getSongLyric(song.mid, true)
-          .then(lyricResult => {
-            if (lyricResult.success && lyricResult.lyric) {
-              const parsed = parseLyric(lyricResult.lyric, lyricResult.trans);
-              setLyric(parsed);
-              globalLyric = parsed;
-              // 写入缓存 (歌词缓存不过期)
-              lyricCache.set(song.mid, parsed);
-            }
-          })
-          .catch(() => { });
+      // 2. 获取歌词 (带缓存/并发复用)
+      if (!wasSameSong || !globalLyric) {
+        fetchLyricWithCache(song.mid, setLyric);
       }
 
       return true;
@@ -586,6 +620,11 @@ export function usePlayer(): UsePlayerReturn {
       setIsPlaying(!audio.paused);
       setCurrentTime(audio.currentTime);
       setDuration(audio.duration || globalCurrentSong.duration);
+
+      // 如果没有缓存歌词，尝试拉取
+      if (!globalLyric) {
+        fetchLyricWithCache(globalCurrentSong.mid, setLyric);
+      }
     }
     setPlaylist(globalPlaylist);
     setCurrentIndex(globalCurrentIndex);
@@ -718,6 +757,14 @@ export function usePlayer(): UsePlayerReturn {
 
   const togglePlay = useCallback(() => {
     const audio = getGlobalAudio();
+
+    // 若无音频源但已有当前歌曲（例如重启后恢复状态），重新加载并播放
+    const resumeSong = globalCurrentSong;
+    if (!audio.src && resumeSong) {
+      const resumeIndex = globalCurrentIndex >= 0 ? globalCurrentIndex : 0;
+      void playSongInternal(resumeSong, resumeIndex, false);
+      return;
+    }
 
     if (isPlaying) {
       audio.pause();
