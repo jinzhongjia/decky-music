@@ -37,12 +37,21 @@ export const PlayerBar: FC<PlayerBarProps> = ({
 }) => {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  // 使用 ref 追踪最新值，避免 callback 依赖变化导致子组件重渲染
+  const currentTimeRef = React.useRef(currentTime);
+  const durationRef = React.useRef(duration);
+
+  React.useEffect(() => {
+    currentTimeRef.current = currentTime;
+    durationRef.current = duration;
+  }, [currentTime, duration]);
+
   const handlePrevClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onPrev ? onPrev() : onSeek(Math.max(0, currentTime - 10));
+      onPrev ? onPrev() : onSeek(Math.max(0, currentTimeRef.current - 10));
     },
-    [onPrev, onSeek, currentTime]
+    [onPrev, onSeek]
   );
 
   const handlePlayPauseClick = useCallback(
@@ -56,9 +65,9 @@ export const PlayerBar: FC<PlayerBarProps> = ({
   const handleNextClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onNext ? onNext() : onSeek(Math.min(duration, currentTime + 10));
+      onNext ? onNext() : onSeek(Math.min(durationRef.current, currentTimeRef.current + 10));
     },
-    [onNext, onSeek, duration, currentTime]
+    [onNext, onSeek]
   );
 
   return (
@@ -153,59 +162,78 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           </div>
         </div>
 
-        {/* 播放控制按钮 - 只响应点击，不可聚焦 */}
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          {/* 上一首/后退按钮 */}
-          <div
-            onClick={handlePrevClick}
-            style={{
-              cursor: "pointer",
-              width: "34px",
-              height: "34px",
-              borderRadius: "50%",
-              background: COLORS.backgroundDark,
-              ...FLEX_CENTER,
-              flexShrink: 0,
-            }}
-          >
-            <FaStepBackward size={14} />
-          </div>
-
-          {/* 播放/暂停按钮 */}
-          <div
-            onClick={handlePlayPauseClick}
-            style={{
-              cursor: loading ? "wait" : "pointer",
-              width: "40px",
-              height: "40px",
-              borderRadius: "50%",
-              background: COLORS.primary,
-              color: COLORS.textPrimary,
-              opacity: loading ? 0.7 : 1,
-              ...FLEX_CENTER,
-              flexShrink: 0,
-            }}
-          >
-            {isPlaying ? <FaPause size={16} /> : <FaPlay size={16} style={{ marginLeft: "2px" }} />}
-          </div>
-
-          {/* 下一首/快进按钮 */}
-          <div
-            onClick={handleNextClick}
-            style={{
-              cursor: "pointer",
-              width: "34px",
-              height: "34px",
-              borderRadius: "50%",
-              background: COLORS.backgroundDark,
-              ...FLEX_CENTER,
-              flexShrink: 0,
-            }}
-          >
-            <FaStepForward size={14} />
-          </div>
-        </div>
+        {/* 播放控制按钮 */}
+        <PlayerControls
+          isPlaying={isPlaying}
+          loading={loading}
+          onPrevClick={handlePrevClick}
+          onPlayPauseClick={handlePlayPauseClick}
+          onNextClick={handleNextClick}
+        />
       </div>
     </div>
   );
 };
+
+// 抽离控制按钮组件并 memo 化
+const PlayerControls = React.memo<{
+  isPlaying: boolean;
+  loading: boolean;
+  onPrevClick: (e: React.MouseEvent) => void;
+  onPlayPauseClick: (e: React.MouseEvent) => void;
+  onNextClick: (e: React.MouseEvent) => void;
+}>(({ isPlaying, loading, onPrevClick, onPlayPauseClick, onNextClick }) => {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+      {/* 上一首/后退按钮 */}
+      <div
+        onClick={onPrevClick}
+        style={{
+          cursor: "pointer",
+          width: "34px",
+          height: "34px",
+          borderRadius: "50%",
+          background: COLORS.backgroundDark,
+          ...FLEX_CENTER,
+          flexShrink: 0,
+        }}
+      >
+        <FaStepBackward size={14} />
+      </div>
+
+      {/* 播放/暂停按钮 */}
+      <div
+        onClick={onPlayPauseClick}
+        style={{
+          cursor: loading ? "wait" : "pointer",
+          width: "40px",
+          height: "40px",
+          borderRadius: "50%",
+          background: COLORS.primary,
+          color: COLORS.textPrimary,
+          opacity: loading ? 0.7 : 1,
+          ...FLEX_CENTER,
+          flexShrink: 0,
+        }}
+      >
+        {isPlaying ? <FaPause size={16} /> : <FaPlay size={16} style={{ marginLeft: "2px" }} />}
+      </div>
+
+      {/* 下一首/快进按钮 */}
+      <div
+        onClick={onNextClick}
+        style={{
+          cursor: "pointer",
+          width: "34px",
+          height: "34px",
+          borderRadius: "50%",
+          background: COLORS.backgroundDark,
+          ...FLEX_CENTER,
+          flexShrink: 0,
+        }}
+      >
+        <FaStepForward size={14} />
+      </div>
+    </div>
+  );
+});

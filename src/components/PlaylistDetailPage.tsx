@@ -2,7 +2,7 @@
  * 歌单详情页面
  */
 
-import { FC, useState, useEffect, useCallback, memo } from "react";
+import { FC, useState, useEffect, useCallback, memo, useRef } from "react";
 import { PanelSection, PanelSectionRow } from "@decky/ui";
 import { getPlaylistSongs } from "../api";
 import type { PlaylistInfo, SongInfo } from "../types";
@@ -29,11 +29,13 @@ const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
   const [songs, setSongs] = useState<SongInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const mountedRef = useMountedRef();
+  const requestIdRef = useRef(0);
 
   const loadSongs = useCallback(async () => {
     setLoading(true);
+    const requestId = ++requestIdRef.current;
     const result = await getPlaylistSongs(playlist.id, playlist.dirid || 0);
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
     if (result.success) {
       setSongs(result.songs);
