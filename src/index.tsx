@@ -175,7 +175,6 @@ function Content() {
       // 如果是猜你喜欢，设置自动刷新回调
       if (source === 'guess-like') {
         player.setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
-        prefetchNextGuessLikeBatch();
       } else {
         player.setOnNeedMoreSongs(null);
       }
