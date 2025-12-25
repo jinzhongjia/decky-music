@@ -3,7 +3,7 @@
  * 支持拼音搜索、搜索建议、搜索历史
  */
 
-import { FC, useState, useEffect, useCallback, memo } from "react";
+import { FC, useState, useEffect, useCallback, memo, useRef } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, TextField, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaSearch, FaTimes } from "react-icons/fa";
@@ -40,6 +40,9 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
   const mountedRef = useMountedRef();
   const { searchHistory, addToHistory, clearHistory } = useSearchHistory();
 
+  const searchRequestId = useRef(0);
+  const suggestionRequestId = useRef(0);
+
   // 防抖处理搜索关键词
   const debouncedKeyword = useDebounce(keyword, 300);
 
@@ -52,8 +55,9 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
         return;
       }
 
+      const requestId = ++suggestionRequestId.current;
       const result = await getSearchSuggest(kw);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== suggestionRequestId.current) return;
 
       if (result.success && result.suggestions.length > 0) {
         setSuggestions(result.suggestions);
@@ -105,8 +109,9 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
       // 保存到搜索历史
       addToHistory(kw);
 
+      const requestId = ++searchRequestId.current;
       const result = await searchSongs(kw, 1, 30);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestId !== searchRequestId.current) return;
       setLoading(false);
 
       if (result.success) {

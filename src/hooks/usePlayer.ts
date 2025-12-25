@@ -49,7 +49,7 @@ let originalSleepSettings: OriginalSleepSettings | null = null;
 // 生成 Protobuf 格式的设置数据
 function genSettings(fieldDef: SettingDef, value: number): string {
   const buf: number[] = [];
-  
+
   let key = (fieldDef.field << 3) | fieldDef.wireType;
   do {
     let b = key & 0x7F;
@@ -110,12 +110,12 @@ async function updateSleepSettings(batteryIdle: number, acIdle: number, batteryS
       console.warn("SteamClient.System.UpdateSettings 不可用");
       return;
     }
-    
+
     const batteryIdleData = genSettings(SettingDefaults.battery_idle, batteryIdle);
     const acIdleData = genSettings(SettingDefaults.ac_idle, acIdle);
     const batterySuspendData = genSettings(SettingDefaults.battery_suspend, batterySuspend);
     const acSuspendData = genSettings(SettingDefaults.ac_suspend, acSuspend);
-    
+
     // @ts-ignore
     // eslint-disable-next-line no-undef
     await SteamClient.System.UpdateSettings(window.btoa(batteryIdleData + acIdleData + batterySuspendData + acSuspendData));
@@ -131,7 +131,7 @@ async function inhibitSleep() {
     originalSleepSettings = await getCurrentSleepSettings();
     console.log("保存原始休眠设置:", originalSleepSettings);
   }
-  
+
   console.log("禁用系统休眠");
   await updateSleepSettings(0, 0, 0, 0);
 }
@@ -197,12 +197,20 @@ let onNeedMoreSongsCallback: (() => Promise<SongInfo[]>) | null = null;
 // 自动跳过的 timeout ID，用于取消
 let skipTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+// ==================== 缓存 ====================
+// 歌曲 URL 缓存 (TTL 30分钟)
+const songUrlCache = new Map<string, { url: string, timestamp: number }>();
+const CACHE_TTL = 30 * 60 * 1000;
+
+// 歌词缓存 (持久缓存，直到插件重载)
+const lyricCache = new Map<string, ParsedLyric>();
+
 // 获取或创建全局音频实例
 function getGlobalAudio(): HTMLAudioElement {
   if (!globalAudio) {
     globalAudio = new Audio();
     globalAudio.preload = "auto";
-    
+
     // 设置全局的 ended 事件处理
     globalAudio.addEventListener('ended', () => {
       if (onPlayNextCallback) {
@@ -224,22 +232,22 @@ export function getAudioCurrentTime(): number {
 // 全局清理函数 - 用于插件卸载时调用
 export function cleanupPlayer() {
   console.log("清理播放器资源");
-  
+
   // 停止播放
   if (globalAudio) {
     globalAudio.pause();
     globalAudio.src = "";
   }
-  
+
   // 恢复休眠
   if (sleepInhibited) {
     sleepInhibited = false;
     uninhibitSleep();
   }
-  
+
   // 清理原始休眠设置
   originalSleepSettings = null;
-  
+
   // 清理全局状态
   globalCurrentSong = null;
   globalLyric = null;
@@ -247,7 +255,7 @@ export function cleanupPlayer() {
   globalCurrentIndex = -1;
   onPlayNextCallback = null;
   onNeedMoreSongsCallback = null;
-  
+
   if (skipTimeoutId) {
     clearTimeout(skipTimeoutId);
     skipTimeoutId = null;
@@ -266,7 +274,7 @@ export interface UsePlayerReturn {
   playlist: SongInfo[];
   currentIndex: number;
   playHistory: SongInfo[];
-  
+
   // 方法
   playSong: (song: SongInfo) => Promise<void>;
   playPlaylist: (songs: SongInfo[], startIndex?: number) => Promise<void>;
@@ -292,27 +300,27 @@ export function usePlayer(): UsePlayerReturn {
   const [playlist, setPlaylist] = useState<SongInfo[]>(globalPlaylist);
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
   const [playHistory, setPlayHistory] = useState<SongInfo[]>(loadPlayHistory);
-  
+
   // 用于避免重复调用
   const isPlayingRef = useRef(false);
 
   // 内部播放歌曲方法
   const playSongInternal = useCallback(async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true): Promise<boolean> => {
     const audio = getGlobalAudio();
-    
+
     // 取消之前的自动跳过 timeout
     if (skipTimeoutId) {
       clearTimeout(skipTimeoutId);
       skipTimeoutId = null;
     }
-    
+
     setLoading(true);
     setError("");
     setCurrentSong(song);
     setCurrentTime(0);
     setDuration(song.duration);
     setLyric("");
-    
+
     // 更新全局状态
     globalCurrentSong = song;
     globalLyric = null;
@@ -321,98 +329,107 @@ export function usePlayer(): UsePlayerReturn {
       globalCurrentIndex = index;
       setCurrentIndex(index);
     }
-    
+
     try {
-      // 获取播放链接
-      const urlResult = await getSongUrl(song.mid);
-      
-      if (!urlResult.success || !urlResult.url) {
-        const errorMsg = urlResult.error || "该歌曲暂时无法播放";
-        setError(errorMsg);
-        setLoading(false);
-        
-        // 显示友好提示
-        toaster.toast({
-          title: `⚠️ ${song.name}`,
-          body: errorMsg,
-        });
-        
-        // 如果是列表播放模式，自动跳到下一首
-        if (autoSkipOnError && globalPlaylist.length > 1) {
-          skipTimeoutId = setTimeout(() => {
-            skipTimeoutId = null;
-            if (onPlayNextCallback) {
-              onPlayNextCallback();
-            }
-          }, 2000);
+      // 1. 获取播放链接 (带缓存)
+      let playUrl = "";
+      const cachedUrl = songUrlCache.get(song.mid);
+
+      // 检查缓存是否有效
+      if (cachedUrl && Date.now() - cachedUrl.timestamp < CACHE_TTL) {
+        console.log(`[Player] 使用缓存的 URL: ${song.name}`);
+        playUrl = cachedUrl.url;
+      } else {
+        // 无缓存或已过期，请求 API
+        const urlResult = await getSongUrl(song.mid);
+
+        if (!urlResult.success || !urlResult.url) {
+          const errorMsg = urlResult.error || "该歌曲暂时无法播放";
+          setError(errorMsg);
+          setLoading(false);
+
+          toaster.toast({
+            title: `⚠️ ${song.name}`,
+            body: errorMsg,
+          });
+
+          if (autoSkipOnError && globalPlaylist.length > 1) {
+            skipTimeoutId = setTimeout(() => {
+              skipTimeoutId = null;
+              if (onPlayNextCallback) {
+                onPlayNextCallback();
+              }
+            }, 2000);
+          }
+          return false;
         }
-        return false;
+
+        playUrl = urlResult.url;
+        // 写入缓存
+        songUrlCache.set(song.mid, { url: playUrl, timestamp: Date.now() });
       }
-      
-      audio.src = urlResult.url;
+
+      audio.src = playUrl;
       audio.load();
-      
+
       try {
         await audio.play();
         setIsPlaying(true);
         isPlayingRef.current = true;
-        
-        // 禁用休眠
+
         if (!sleepInhibited) {
           sleepInhibited = true;
           inhibitSleep();
         }
-        
-        // 添加到播放历史
+
         const newHistory = addToPlayHistory(song);
         setPlayHistory(newHistory);
         setLoading(false);
       } catch (e) {
+        // 播放失败处理 (精简版，复用现有逻辑)
         const errorMsg = (e as Error).message;
         setError(errorMsg);
         setLoading(false);
-        
-        toaster.toast({
-          title: "播放失败",
-          body: errorMsg
-        });
-        
-        // 自动跳到下一首
+        toaster.toast({ title: "播放失败", body: errorMsg });
+
+        // 如果是缓存的 URL 导致播放失败（比如通过某种方式过期了但没超时），或许应该清除缓存？
+        // 暂时简单处理：如果播放失败，清除该歌曲的 URL 缓存，以便下次重试能获取新的
+        songUrlCache.delete(song.mid);
+
         if (autoSkipOnError && globalPlaylist.length > 1) {
           skipTimeoutId = setTimeout(() => {
             skipTimeoutId = null;
-            if (onPlayNextCallback) {
-              onPlayNextCallback();
-            }
+            if (onPlayNextCallback) onPlayNextCallback();
           }, 2000);
         }
         return false;
       }
-      
-      // 异步获取歌词 (优先获取 QRC 逐字格式)
-      getSongLyric(song.mid, true)
-        .then(lyricResult => {
-          if (lyricResult.success && lyricResult.lyric) {
-            const parsed = parseLyric(lyricResult.lyric, lyricResult.trans);
-            setLyric(parsed);
-            globalLyric = parsed;
-          }
-        })
-        .catch(() => {
-          // 歌词获取失败不影响播放
-        });
-      
+
+      // 2. 获取歌词 (带缓存)
+      if (lyricCache.has(song.mid)) {
+        const cachedLyric = lyricCache.get(song.mid)!;
+        setLyric(cachedLyric);
+        globalLyric = cachedLyric;
+      } else {
+        getSongLyric(song.mid, true)
+          .then(lyricResult => {
+            if (lyricResult.success && lyricResult.lyric) {
+              const parsed = parseLyric(lyricResult.lyric, lyricResult.trans);
+              setLyric(parsed);
+              globalLyric = parsed;
+              // 写入缓存 (歌词缓存不过期)
+              lyricCache.set(song.mid, parsed);
+            }
+          })
+          .catch(() => { });
+      }
+
       return true;
     } catch (e) {
       const errorMsg = (e as Error).message;
       setError(errorMsg);
       setLoading(false);
-      
-      toaster.toast({
-        title: "播放出错",
-        body: errorMsg
-      });
-      
+      toaster.toast({ title: "播放出错", body: errorMsg });
       return false;
     }
   }, []);
@@ -420,9 +437,9 @@ export function usePlayer(): UsePlayerReturn {
   // 播放下一首
   const playNext = useCallback(async () => {
     if (globalPlaylist.length === 0) return;
-    
+
     let nextIndex = globalCurrentIndex + 1;
-    
+
     // 如果已经是最后一首，尝试获取更多歌曲
     if (nextIndex >= globalPlaylist.length) {
       if (onNeedMoreSongsCallback) {
@@ -445,7 +462,7 @@ export function usePlayer(): UsePlayerReturn {
         nextIndex = 0; // 没有回调，循环播放
       }
     }
-    
+
     const nextSong = globalPlaylist[nextIndex];
     if (nextSong) {
       // 播放下一首时，如果失败也自动跳过
@@ -456,12 +473,12 @@ export function usePlayer(): UsePlayerReturn {
   // 播放上一首
   const playPrev = useCallback(() => {
     if (globalPlaylist.length === 0) return;
-    
+
     let prevIndex = globalCurrentIndex - 1;
     if (prevIndex < 0) {
       prevIndex = globalPlaylist.length - 1; // 循环播放
     }
-    
+
     const prevSong = globalPlaylist[prevIndex];
     if (prevSong) {
       playSongInternal(prevSong, prevIndex, true);
@@ -479,7 +496,7 @@ export function usePlayer(): UsePlayerReturn {
   // 同步全局音频状态到本地状态
   useEffect(() => {
     const audio = getGlobalAudio();
-    
+
     // 恢复已有的播放状态
     if (globalCurrentSong) {
       setCurrentSong(globalCurrentSong);
@@ -490,7 +507,7 @@ export function usePlayer(): UsePlayerReturn {
     }
     setPlaylist(globalPlaylist);
     setCurrentIndex(globalCurrentIndex);
-    
+
     // 设置事件监听
     const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
     const handleDurationChange = () => setDuration(audio.duration || 0);
@@ -501,14 +518,14 @@ export function usePlayer(): UsePlayerReturn {
     };
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
-    
+
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('durationchange', handleDurationChange);
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('error', handleError);
     audio.addEventListener('play', handlePlay);
     audio.addEventListener('pause', handlePause);
-    
+
     // 清理时只移除事件监听，不停止播放
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
@@ -527,19 +544,19 @@ export function usePlayer(): UsePlayerReturn {
     globalCurrentIndex = 0;
     setPlaylist([song]);
     setCurrentIndex(0);
-    
+
     await playSongInternal(song, 0);
   }, [playSongInternal]);
 
   // 播放整个播放列表
   const playPlaylist = useCallback(async (songs: SongInfo[], startIndex: number = 0) => {
     if (songs.length === 0) return;
-    
+
     globalPlaylist = songs;
     globalCurrentIndex = startIndex;
     setPlaylist(songs);
     setCurrentIndex(startIndex);
-    
+
     const song = songs[startIndex];
     if (song) {
       await playSongInternal(song, startIndex);
@@ -548,7 +565,7 @@ export function usePlayer(): UsePlayerReturn {
 
   const togglePlay = useCallback(() => {
     const audio = getGlobalAudio();
-    
+
     if (isPlaying) {
       audio.pause();
       // 恢复休眠
@@ -585,26 +602,26 @@ export function usePlayer(): UsePlayerReturn {
     const audio = getGlobalAudio();
     audio.pause();
     audio.src = "";
-    
+
     // 取消自动跳过 timeout
     if (skipTimeoutId) {
       clearTimeout(skipTimeoutId);
       skipTimeoutId = null;
     }
-    
+
     // 恢复休眠
     if (sleepInhibited) {
       sleepInhibited = false;
       uninhibitSleep();
     }
-    
+
     // 清理全局状态
     globalCurrentSong = null;
     globalLyric = "";
     globalPlaylist = [];
     globalCurrentIndex = -1;
     onNeedMoreSongsCallback = null;
-    
+
     setCurrentSong(null);
     setIsPlaying(false);
     setCurrentTime(0);

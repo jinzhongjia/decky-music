@@ -19,17 +19,28 @@ interface SafeImageProps {
   [key: string]: any;
 }
 
-export const SafeImage: FC<SafeImageProps> = ({ 
-  src, 
-  alt, 
+const failedImages = new Set<string>();
+
+export const SafeImage: FC<SafeImageProps> = ({
+  src,
+  alt,
   size,
   style,
-  ...otherProps 
+  ...otherProps
 }) => {
   const defaultCover = getDefaultCover(size);
-  
+  // 如果已知该图片链接无效，直接使用默认封面
+  const isFailed = src && failedImages.has(src);
+  const finalSrc = (src && !isFailed) ? src : defaultCover;
+
   const handleError = (e: React.SyntheticEvent<HTMLImageElement, React.SyntheticEvent>) => {
     const target = e.target as HTMLImageElement;
+
+    // 记录失败的 URL
+    if (src && src !== defaultCover) {
+      failedImages.add(src);
+    }
+
     // 避免无限循环：如果已经是默认封面，就不再替换
     if (target.src !== defaultCover) {
       target.src = defaultCover;
@@ -37,8 +48,8 @@ export const SafeImage: FC<SafeImageProps> = ({
   };
 
   return (
-    <img 
-      src={src || defaultCover}
+    <img
+      src={finalSrc}
       alt={alt}
       style={style}
       onError={handleError}
