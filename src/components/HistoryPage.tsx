@@ -4,11 +4,12 @@
 
 import { FC, useEffect } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
-import { FaTrash, FaPlay } from "react-icons/fa";
+import { FaTrash } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { BackButton } from "./BackButton";
 import { SongList } from "./SongList";
 import { EmptyState } from "./EmptyState";
+import { PlayAllButton } from "./PlayAllButton";
 
 interface HistoryPageProps {
   history: SongInfo[];
@@ -46,12 +47,7 @@ export const HistoryPage: FC<HistoryPageProps> = ({
       <PanelSection title={`🕐 播放历史 (${history.length})`}>
         {history.length > 0 && (
           <>
-            <PanelSectionRow>
-              <ButtonItem layout="below" onClick={handlePlayAll}>
-                <FaPlay style={{ marginRight: '8px' }} />
-                播放全部
-              </ButtonItem>
-            </PanelSectionRow>
+            <PlayAllButton onClick={handlePlayAll} />
             <PanelSectionRow>
               <ButtonItem 
                 layout="below" 

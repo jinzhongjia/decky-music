@@ -3,13 +3,13 @@
  */
 
 import { FC, useState, useEffect } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
-import { FaPlay } from "react-icons/fa";
+import { PanelSection, PanelSectionRow } from "@decky/ui";
 import { getPlaylistSongs } from "../api";
 import type { PlaylistInfo, SongInfo } from "../types";
 import { BackButton } from "./BackButton";
 import { SafeImage } from "./SafeImage";
 import { SongList } from "./SongList";
+import { PlayAllButton } from "./PlayAllButton";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { TEXT_ELLIPSIS_2_LINES, COLORS } from "../utils/styles";
 
@@ -90,14 +90,10 @@ export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
         </PanelSectionRow>
 
         {/* 播放全部按钮 */}
-        {!loading && songs.length > 0 && (
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={handlePlayAll}>
-              <FaPlay style={{ marginRight: '8px' }} />
-              播放全部
-            </ButtonItem>
-          </PanelSectionRow>
-        )}
+        <PlayAllButton 
+          onClick={handlePlayAll}
+          show={!loading && songs.length > 0}
+        />
       </PanelSection>
 
       {/* 歌曲列表 */}
