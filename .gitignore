@@ -40,6 +40,10 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Python virtual environment
+.venv/
+venv/
+
 # Python modules - Docker 构建时自动生成
 py_modules/
 
