@@ -3,10 +3,11 @@
  */
 
 import { FC, useState, useEffect, useRef } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Focusable, Spinner } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaQrcode } from "react-icons/fa";
 import { getQrCode, checkQrStatus } from "../api";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
@@ -150,13 +151,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
         </PanelSectionRow>
       )}
 
-      {status === "loading" && (
-        <PanelSectionRow>
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-            <Spinner />
-          </div>
-        </PanelSectionRow>
-      )}
+      {status === "loading" && <LoadingSpinner padding={20} />}
 
       {status === "idle" && (
         <PanelSectionRow>

@@ -4,12 +4,13 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { SongItem } from "./SongItem";
 import { useDataManager } from "../hooks/useDataManager";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 // 清除缓存（保持向后兼容）
 export function clearRecommendCache() {
@@ -85,11 +86,7 @@ export const HomePage: FC<HomePageProps> = ({
         </PanelSectionRow>
 
         {dataManager.guessLoading && dataManager.guessLikeSongs.length === 0 ? (
-          <PanelSectionRow>
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
-              <Spinner />
-            </div>
-          </PanelSectionRow>
+          <LoadingSpinner />
         ) : dataManager.guessLikeSongs.length === 0 ? (
           <PanelSectionRow>
             <div style={{ 

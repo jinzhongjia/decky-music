@@ -4,11 +4,12 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, Spinner, Focusable, ButtonItem } from "@decky/ui";
+import { PanelSection, PanelSectionRow, Focusable, ButtonItem } from "@decky/ui";
 import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { formatDuration, getDefaultCover } from "../utils/format";
 import { BackButton } from "./BackButton";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 interface PlayerPageProps {
   song: SongInfo;
@@ -131,13 +132,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
       )}
 
       {/* 加载中 */}
-      {loading && (
-        <PanelSectionRow>
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-            <Spinner />
-          </div>
-        </PanelSectionRow>
-      )}
+      {loading && <LoadingSpinner padding={20} />}
 
       {/* 播放控制 */}
       {!loading && !error && (

@@ -13,4 +13,5 @@ export { PlaylistsPage } from "./PlaylistsPage";
 export { PlaylistDetailPage } from "./PlaylistDetailPage";
 export { HistoryPage } from "./HistoryPage";
 export { BackButton } from "./BackButton";
+export { LoadingSpinner } from "./LoadingSpinner";
 

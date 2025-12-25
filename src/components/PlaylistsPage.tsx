@@ -4,11 +4,12 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Field } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem, Field } from "@decky/ui";
 import type { PlaylistInfo } from "../types";
 import { formatPlayCount, getDefaultCover } from "../utils/format";
 import { useDataManager } from "../hooks/useDataManager";
 import { BackButton } from "./BackButton";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 interface PlaylistsPageProps {
   onSelectPlaylist: (playlist: PlaylistInfo) => void;
@@ -89,11 +90,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
   if (dataManager.playlistsLoading && dataManager.createdPlaylists.length === 0) {
     return (
       <PanelSection title="📂 我的歌单">
-        <PanelSectionRow>
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-            <Spinner />
-          </div>
-        </PanelSectionRow>
+        <LoadingSpinner padding={40} />
       </PanelSection>
     );
   }

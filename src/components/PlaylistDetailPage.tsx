@@ -3,13 +3,14 @@
  */
 
 import { FC, useState, useEffect, useRef } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Focusable } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui";
 import { FaPlay } from "react-icons/fa";
 import { getPlaylistSongs } from "../api";
 import type { PlaylistInfo, SongInfo } from "../types";
 import { getDefaultCover } from "../utils/format";
 import { SongItem } from "./SongItem";
 import { BackButton } from "./BackButton";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 interface PlaylistDetailPageProps {
   playlist: PlaylistInfo;
@@ -111,11 +112,7 @@ export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
       {/* 歌曲列表 */}
       <PanelSection title={`歌曲列表${songs.length > 0 ? ` (${songs.length})` : ''}`}>
         {loading ? (
-          <PanelSectionRow>
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
-              <Spinner />
-            </div>
-          </PanelSectionRow>
+          <LoadingSpinner />
         ) : songs.length === 0 ? (
           <PanelSectionRow>
             <div style={{ textAlign: 'center', color: '#8b929a', padding: '20px' }}>

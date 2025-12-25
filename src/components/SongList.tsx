@@ -3,9 +3,10 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, Spinner } from "@decky/ui";
+import { PanelSection, PanelSectionRow } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { SongItem } from "./SongItem";
+import { LoadingSpinner } from "./LoadingSpinner";
 
 interface SongListProps {
   title: string;
@@ -27,11 +28,7 @@ export const SongList: FC<SongListProps> = ({
   if (loading) {
     return (
       <PanelSection title={title}>
-        <PanelSectionRow>
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
-            <Spinner />
-          </div>
-        </PanelSectionRow>
+        <LoadingSpinner />
       </PanelSection>
     );
   }
