@@ -7,12 +7,12 @@ import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui"
 import { FaPlay } from "react-icons/fa";
 import { getPlaylistSongs } from "../api";
 import type { PlaylistInfo, SongInfo } from "../types";
-import { getDefaultCover } from "../utils/format";
 import { SongItem } from "./SongItem";
 import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { EmptyState } from "./EmptyState";
 import { useMountedRef } from "../hooks/useMountedRef";
+import { SafeImage } from "./SafeImage";
 
 interface PlaylistDetailPageProps {
   playlist: PlaylistInfo;
@@ -60,18 +60,16 @@ export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
       <PanelSection>
         <PanelSectionRow>
           <div style={{ display: 'flex', gap: '16px', padding: '10px 0' }}>
-            <img
-              src={playlist.cover || getDefaultCover(80)}
+            <SafeImage
+              src={playlist.cover}
               alt={playlist.name}
+              size={80}
               style={{
                 width: '80px',
                 height: '80px',
                 borderRadius: '8px',
                 objectFit: 'cover',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-              }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = getDefaultCover(80);
               }}
             />
             <div style={{ flex: 1, minWidth: 0 }}>

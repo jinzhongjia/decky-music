@@ -6,7 +6,8 @@
 import { FC } from "react";
 import { Field } from "@decky/ui";
 import type { SongInfo } from "../types";
-import { formatDuration, getDefaultCover } from "../utils/format";
+import { formatDuration } from "../utils/format";
+import { SafeImage } from "./SafeImage";
 
 interface SongItemProps {
   song: SongInfo;
@@ -42,9 +43,10 @@ export const SongItem: FC<SongItemProps> = ({
             gap: '10px',
             padding: '8px 10px',
           }}>
-            <img 
+            <SafeImage 
               src={song.cover}
               alt={song.name}
+              size={40}
               style={{
                 width: '40px',
                 height: '40px',
@@ -52,9 +54,6 @@ export const SongItem: FC<SongItemProps> = ({
                 objectFit: 'cover',
                 background: '#2a2a2a',
                 flexShrink: 0,
-              }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = getDefaultCover(40);
               }}
             />
             <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>

@@ -15,4 +15,5 @@ export { HistoryPage } from "./HistoryPage";
 export { BackButton } from "./BackButton";
 export { LoadingSpinner } from "./LoadingSpinner";
 export { EmptyState } from "./EmptyState";
+export { SafeImage } from "./SafeImage";
 
