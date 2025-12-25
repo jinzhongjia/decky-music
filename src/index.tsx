@@ -46,12 +46,14 @@ function Content() {
   // Y (3): 进入详细页
   useEffect(() => {
     // @ts-ignore - SteamClient 是全局变量
+    // eslint-disable-next-line no-undef
     if (typeof SteamClient === 'undefined' || !SteamClient?.Input?.RegisterForControllerInputMessages) {
       console.warn("SteamClient.Input 不可用，跳过手柄快捷键绑定");
       return;
     }
 
     // @ts-ignore
+    // eslint-disable-next-line no-undef
     const unregister = SteamClient.Input.RegisterForControllerInputMessages(
       (_controllerIndex: number, button: number, pressed: boolean) => {
         // 只处理按下事件

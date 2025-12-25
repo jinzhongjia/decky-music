@@ -3,7 +3,7 @@
  * 支持拼音搜索、搜索建议、搜索历史
  */
 
-import { FC, useState, useEffect, useRef, useCallback } from "react";
+import { FC, useState, useEffect, useCallback } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, TextField, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaSearch, FaTimes } from "react-icons/fa";
@@ -13,6 +13,7 @@ import { SongList } from "./SongList";
 import { BackButton } from "./BackButton";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { useSearchHistory } from "../hooks/useSearchHistory";
+import { useDebounce } from "../hooks/useDebounce";
 import { COLORS } from "../utils/styles";
 
 interface SearchPageProps {
@@ -40,25 +41,10 @@ export const SearchPage: FC<SearchPageProps> = ({
   const [hasSearched, setHasSearched] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const mountedRef = useMountedRef();
-  const suggestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { searchHistory, addToHistory, clearHistory } = useSearchHistory();
-
-  useEffect(() => {
-    loadHotSearch();
-    return () => {
-      if (suggestTimeoutRef.current) {
-        clearTimeout(suggestTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const loadHotSearch = async () => {
-    const result = await getHotSearch();
-    if (!mountedRef.current) return;
-    if (result.success) {
-      setHotkeys(result.hotkeys.map(h => h.keyword));
-    }
-  };
+  
+  // 防抖处理搜索关键词
+  const debouncedKeyword = useDebounce(keyword, 300);
 
   // 防抖获取搜索建议
   const fetchSuggestions = useCallback(async (kw: string) => {
@@ -80,23 +66,31 @@ export const SearchPage: FC<SearchPageProps> = ({
     }
   }, []);
 
-  // 处理输入变化
-  const handleInputChange = (value: string) => {
-    setKeyword(value);
-    
-    // 防抖处理搜索建议
-    if (suggestTimeoutRef.current) {
-      clearTimeout(suggestTimeoutRef.current);
+  const loadHotSearch = async () => {
+    const result = await getHotSearch();
+    if (!mountedRef.current) return;
+    if (result.success) {
+      setHotkeys(result.hotkeys.map(h => h.keyword));
     }
-    
-    if (value.trim()) {
-      suggestTimeoutRef.current = setTimeout(() => {
-        fetchSuggestions(value);
-      }, 300);
+  };
+
+  useEffect(() => {
+    loadHotSearch();
+  }, []);
+  
+  // 监听防抖后的关键词，自动获取搜索建议
+  useEffect(() => {
+    if (debouncedKeyword.trim()) {
+      fetchSuggestions(debouncedKeyword);
     } else {
       setSuggestions([]);
       setShowSuggestions(false);
     }
+  }, [debouncedKeyword, fetchSuggestions]);
+
+  // 处理输入变化
+  const handleInputChange = (value: string) => {
+    setKeyword(value);
   };
 
   const handleSearch = async (searchKeyword?: string) => {

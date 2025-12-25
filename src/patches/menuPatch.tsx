@@ -21,6 +21,7 @@ interface MainMenuItemProps {
 }
 
 // 获取 React 树
+// eslint-disable-next-line no-undef
 const getReactTree = () => getReactRoot(document.getElementById('root') as HTMLElement);
 
 // 菜单项包装组件

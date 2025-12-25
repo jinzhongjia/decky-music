@@ -3,7 +3,7 @@
  * 从左侧菜单进入的独立页面
  */
 
-import { FC, useState, useEffect, useRef, useCallback, memo } from "react";
+import React, { FC, useState, useEffect, useRef, useCallback, memo } from "react";
 import { Focusable, ButtonItem, Spinner } from "@decky/ui";
 import { 
   FaPlay, FaPause, FaStepForward, FaStepBackward, FaMusic, 
@@ -66,7 +66,9 @@ const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong }) =
   const animationFrameRef = useRef<number | null>(null);
   const lastUpdateTimeRef = useRef(0);
   
+  // eslint-disable-next-line no-undef
   const lyricContainerRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line no-undef
   const currentLyricRef = useRef<HTMLDivElement>(null);
   const lastLyricIndexRef = useRef(-1);
 
@@ -74,6 +76,7 @@ const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong }) =
   useEffect(() => {
     if (!isPlaying || !lyric?.isQrc) {
       if (animationFrameRef.current) {
+        // eslint-disable-next-line no-undef
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
@@ -81,18 +84,22 @@ const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong }) =
     }
 
     const updateLoop = () => {
+      // eslint-disable-next-line no-undef
       const now = performance.now();
       if (now - lastUpdateTimeRef.current >= 16) {
         lastUpdateTimeRef.current = now;
         forceUpdate(n => n + 1);
       }
+      // eslint-disable-next-line no-undef
       animationFrameRef.current = requestAnimationFrame(updateLoop);
     };
 
+    // eslint-disable-next-line no-undef
     animationFrameRef.current = requestAnimationFrame(updateLoop);
 
     return () => {
       if (animationFrameRef.current) {
+        // eslint-disable-next-line no-undef
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
@@ -148,7 +155,7 @@ const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong }) =
   // 检查是否是间奏行
   const isInterludeLine = (text: string): boolean => {
     const trimmed = text.trim();
-    return /^[\/\-\*\~\s]+$/.test(trimmed) || trimmed.length === 0;
+    return /^[/\-*~\s]+$/.test(trimmed) || trimmed.length === 0;
   };
 
   // 渲染 QRC 歌词行
@@ -343,11 +350,13 @@ export const FullscreenPlayer: FC = () => {
   // 手柄快捷键绑定
   useEffect(() => {
     // @ts-ignore
+    // eslint-disable-next-line no-undef
     if (typeof SteamClient === 'undefined' || !SteamClient?.Input?.RegisterForControllerInputMessages) {
       return;
     }
 
     // @ts-ignore
+    // eslint-disable-next-line no-undef
     const unregister = SteamClient.Input.RegisterForControllerInputMessages(
       (_controllerIndex: number, button: number, pressed: boolean) => {
         if (!pressed) return;

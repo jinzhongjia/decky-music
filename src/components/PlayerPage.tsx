@@ -4,7 +4,7 @@
  */
 
 import { FC } from "react";
-import { PanelSection, PanelSectionRow, Focusable, ButtonItem } from "@decky/ui";
+import { PanelSection, PanelSectionRow, Focusable } from "@decky/ui";
 import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { formatDuration } from "../utils/format";

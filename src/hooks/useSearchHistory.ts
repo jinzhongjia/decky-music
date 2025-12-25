@@ -13,6 +13,7 @@ const MAX_HISTORY = 10;
  */
 function loadSearchHistory(): string[] {
   try {
+    // eslint-disable-next-line no-undef
     const data = localStorage.getItem(SEARCH_HISTORY_KEY);
     return data ? JSON.parse(data) : [];
   } catch {
@@ -25,6 +26,7 @@ function loadSearchHistory(): string[] {
  */
 function saveSearchHistory(history: string[]) {
   try {
+    // eslint-disable-next-line no-undef
     localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
   } catch {
     // ignore

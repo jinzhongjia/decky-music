@@ -3,7 +3,7 @@
  * 封装图片加载和错误处理逻辑，自动使用默认封面替换失败的图片
  */
 
-import { FC, CSSProperties } from "react";
+import React, { FC, CSSProperties } from "react";
 import { getDefaultCover } from "../utils/format";
 
 interface SafeImageProps {
@@ -28,7 +28,7 @@ export const SafeImage: FC<SafeImageProps> = ({
 }) => {
   const defaultCover = getDefaultCover(size);
   
-  const handleError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+  const handleError = (e: React.SyntheticEvent<HTMLImageElement, React.SyntheticEvent>) => {
     const target = e.target as HTMLImageElement;
     // 避免无限循环：如果已经是默认封面，就不再替换
     if (target.src !== defaultCover) {
