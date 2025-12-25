@@ -1,39 +1,19 @@
 /**
  * 首页组件 - 包含推荐内容
- * 使用单例缓存推荐数据，避免重复请求
+ * 使用全局数据管理器，与全屏页面共享数据
  */
 
-import { FC, useState, useEffect, useRef } from "react";
+import { FC } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner } from "@decky/ui";
 import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory } from "react-icons/fa";
-import { getGuessLike, getDailyRecommend } from "../api";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { SongItem } from "./SongItem";
+import { useDataManager } from "../hooks/useDataManager";
 
-// ==================== 单例缓存 ====================
-// 在模块级别保存数据，避免每次进入页面重新加载
-
-interface RecommendCache {
-  dailySongs: SongInfo[];
-  guessLikeSongs: SongInfo[];
-  dailyLoaded: boolean;
-  guessLoaded: boolean;
-}
-
-const cache: RecommendCache = {
-  dailySongs: [],
-  guessLikeSongs: [],
-  dailyLoaded: false,
-  guessLoaded: false,
-};
-
-// 清除缓存（退出登录时调用）
+// 清除缓存（保持向后兼容）
 export function clearRecommendCache() {
-  cache.dailySongs = [];
-  cache.guessLikeSongs = [];
-  cache.dailyLoaded = false;
-  cache.guessLoaded = false;
+  // 由 clearDataCache 处理
 }
 
 // ==================== 组件 ====================
@@ -55,66 +35,7 @@ export const HomePage: FC<HomePageProps> = ({
   onLogout,
   currentPlayingMid,
 }) => {
-  // 使用缓存的初始值
-  const [dailySongs, setDailySongs] = useState<SongInfo[]>(cache.dailySongs);
-  const [guessLikeSongs, setGuessLikeSongs] = useState<SongInfo[]>(cache.guessLikeSongs);
-  const [loadingDaily, setLoadingDaily] = useState(!cache.dailyLoaded);
-  const [loadingGuess, setLoadingGuess] = useState(!cache.guessLoaded);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    
-    // 只有未加载过才请求
-    if (!cache.dailyLoaded) {
-      loadDailyRecommend();
-    }
-    if (!cache.guessLoaded) {
-      loadGuessLike();
-    }
-    
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const loadDailyRecommend = async () => {
-    setLoadingDaily(true);
-    const result = await getDailyRecommend();
-    if (!mountedRef.current) return;
-    
-    if (result.success) {
-      setDailySongs(result.songs);
-      cache.dailySongs = result.songs;
-    }
-    cache.dailyLoaded = true;
-    setLoadingDaily(false);
-  };
-
-  const loadGuessLike = async () => {
-    setLoadingGuess(true);
-    const result = await getGuessLike();
-    if (!mountedRef.current) return;
-    
-    if (result.success) {
-      setGuessLikeSongs(result.songs);
-      cache.guessLikeSongs = result.songs;
-    }
-    cache.guessLoaded = true;
-    setLoadingGuess(false);
-  };
-
-  const refreshGuessLike = async () => {
-    setLoadingGuess(true);
-    const result = await getGuessLike();
-    if (!mountedRef.current) return;
-    
-    if (result.success) {
-      setGuessLikeSongs(result.songs);
-      cache.guessLikeSongs = result.songs;
-    }
-    setLoadingGuess(false);
-  };
+  const dataManager = useDataManager();
 
   return (
     <>
@@ -149,27 +70,27 @@ export const HomePage: FC<HomePageProps> = ({
         <PanelSectionRow>
           <ButtonItem 
             layout="below" 
-            onClick={refreshGuessLike}
-            disabled={loadingGuess}
+            onClick={() => dataManager.refreshGuessLike()}
+            disabled={dataManager.guessLoading}
           >
             <FaSyncAlt 
               size={12} 
               style={{ 
                 marginRight: '8px',
-                animation: loadingGuess ? 'spin 1s linear infinite' : 'none' 
+                animation: dataManager.guessLoading ? 'spin 1s linear infinite' : 'none' 
               }} 
             />
             换一批
           </ButtonItem>
         </PanelSectionRow>
 
-        {loadingGuess && guessLikeSongs.length === 0 ? (
+        {dataManager.guessLoading && dataManager.guessLikeSongs.length === 0 ? (
           <PanelSectionRow>
             <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
               <Spinner />
             </div>
           </PanelSectionRow>
-        ) : guessLikeSongs.length === 0 ? (
+        ) : dataManager.guessLikeSongs.length === 0 ? (
           <PanelSectionRow>
             <div style={{ 
               textAlign: 'center', 
@@ -181,12 +102,12 @@ export const HomePage: FC<HomePageProps> = ({
             </div>
           </PanelSectionRow>
         ) : (
-          guessLikeSongs.map((song, idx) => (
+          dataManager.guessLikeSongs.map((song, idx) => (
             <SongItem
               key={song.mid || idx}
               song={song}
               isPlaying={currentPlayingMid === song.mid}
-              onClick={(s) => onSelectSong(s, guessLikeSongs, 'guess-like')}
+              onClick={(s) => onSelectSong(s, dataManager.guessLikeSongs, 'guess-like')}
             />
           ))
         )}
@@ -195,11 +116,11 @@ export const HomePage: FC<HomePageProps> = ({
       {/* 每日推荐 */}
       <SongList
         title="📅 每日推荐"
-        songs={dailySongs}
-        loading={loadingDaily}
+        songs={dataManager.dailySongs}
+        loading={dataManager.dailyLoading}
         currentPlayingMid={currentPlayingMid}
         emptyText="登录后查看每日推荐"
-        onSelectSong={(song) => onSelectSong(song, dailySongs)}
+        onSelectSong={(song) => onSelectSong(song, dataManager.dailySongs)}
       />
 
       {/* 退出登录 */}
@@ -215,4 +136,3 @@ export const HomePage: FC<HomePageProps> = ({
     </>
   );
 };
-

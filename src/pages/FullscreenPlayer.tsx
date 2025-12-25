@@ -10,8 +10,9 @@ import {
   FaSearch, FaList, FaHistory, FaHeart, FaCompactDisc
 } from "react-icons/fa";
 
-import { getLoginStatus, getGuessLike } from "../api";
+import { getLoginStatus } from "../api";
 import { usePlayer } from "../hooks/usePlayer";
+import { useDataManager } from "../hooks/useDataManager";
 import { SongItem } from "../components/SongItem";
 import { LoginPage, SearchPage, PlaylistsPage, PlaylistDetailPage, HistoryPage } from "../components";
 import type { SongInfo, PlaylistInfo } from "../types";
@@ -41,11 +42,10 @@ export const FullscreenPlayer: FC = () => {
   const [checking, setChecking] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
-  const [guessLikeSongs, setGuessLikeSongs] = useState<SongInfo[]>([]);
-  const [loadingGuessLike, setLoadingGuessLike] = useState(false);
   const mountedRef = useRef(true);
 
   const player = usePlayer();
+  const dataManager = useDataManager();
   
   // 保存最新状态到 ref，用于手柄快捷键
   const playerRef = useRef(player);
@@ -102,9 +102,7 @@ export const FullscreenPlayer: FC = () => {
       const result = await getLoginStatus();
       if (!mountedRef.current) return;
       setIsLoggedIn(result.logged_in);
-      if (result.logged_in) {
-        loadGuessLike();
-      }
+      // 数据由 dataManager 预加载，这里不需要额外加载
     } catch (e) {
       console.error("检查登录状态失败:", e);
     }
@@ -114,45 +112,14 @@ export const FullscreenPlayer: FC = () => {
   const handleLoginSuccess = () => {
     setIsLoggedIn(true);
     setCurrentPage('player');
-    loadGuessLike();
-  };
-
-  // 加载猜你喜欢
-  const loadGuessLike = async () => {
-    if (loadingGuessLike) return;
-    setLoadingGuessLike(true);
-    try {
-      const result = await getGuessLike();
-      if (result.success && result.songs.length > 0) {
-        setGuessLikeSongs(result.songs);
-      }
-    } catch (e) {
-      console.error("加载猜你喜欢失败:", e);
-    }
-    setLoadingGuessLike(false);
-  };
-
-  // 刷新猜你喜欢
-  const refreshGuessLike = async () => {
-    setLoadingGuessLike(true);
-    try {
-      const result = await getGuessLike();
-      if (result.success && result.songs.length > 0) {
-        setGuessLikeSongs(result.songs);
-      }
-    } catch (e) {
-      console.error("刷新猜你喜欢失败:", e);
-    }
-    setLoadingGuessLike(false);
+    // 预加载数据
+    dataManager.preloadData();
   };
 
   // 获取更多猜你喜欢歌曲的回调
   const fetchMoreGuessLikeSongs = async (): Promise<SongInfo[]> => {
-    const result = await getGuessLike();
-    if (result.success && result.songs.length > 0) {
-      return result.songs;
-    }
-    return [];
+    const songs = await dataManager.refreshGuessLike();
+    return songs;
   };
 
   // 选择歌曲
@@ -498,23 +465,23 @@ export const FullscreenPlayer: FC = () => {
         <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff' }}>
           猜你喜欢
         </div>
-        <ButtonItem layout="below" onClick={refreshGuessLike} disabled={loadingGuessLike}>
-          {loadingGuessLike ? '加载中...' : '换一批'}
+        <ButtonItem layout="below" onClick={() => dataManager.refreshGuessLike()} disabled={dataManager.guessLoading}>
+          {dataManager.guessLoading ? '加载中...' : '换一批'}
         </ButtonItem>
       </div>
       
       <Focusable style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        {loadingGuessLike && guessLikeSongs.length === 0 ? (
+        {dataManager.guessLoading && dataManager.guessLikeSongs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <Spinner />
           </div>
-        ) : guessLikeSongs.length > 0 ? (
-          guessLikeSongs.map((song, index) => (
+        ) : dataManager.guessLikeSongs.length > 0 ? (
+          dataManager.guessLikeSongs.map((song, index) => (
             <SongItem
               key={`${song.mid}-${index}`}
               song={song}
               isPlaying={song.mid === player.currentSong?.mid}
-              onClick={() => handleSelectSong(song, guessLikeSongs, 'guess-like')}
+              onClick={() => handleSelectSong(song, dataManager.guessLikeSongs, 'guess-like')}
             />
           ))
         ) : (

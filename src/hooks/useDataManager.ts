@@ -1,0 +1,283 @@
+/**
+ * 全局数据管理器
+ * 用于预加载和共享数据（猜你喜欢、每日推荐、歌单等）
+ * 在插件初始化时预加载，左侧全屏页面和右侧侧边栏共享
+ */
+
+import { getGuessLike, getDailyRecommend, getUserPlaylists } from "../api";
+import type { SongInfo, PlaylistInfo } from "../types";
+
+// ==================== 数据缓存 ====================
+
+interface DataCache {
+  // 猜你喜欢
+  guessLikeSongs: SongInfo[];
+  guessLoaded: boolean;
+  guessLoading: boolean;
+  
+  // 每日推荐
+  dailySongs: SongInfo[];
+  dailyLoaded: boolean;
+  dailyLoading: boolean;
+  
+  // 用户歌单
+  createdPlaylists: PlaylistInfo[];
+  collectedPlaylists: PlaylistInfo[];
+  playlistsLoaded: boolean;
+  playlistsLoading: boolean;
+}
+
+const cache: DataCache = {
+  guessLikeSongs: [],
+  guessLoaded: false,
+  guessLoading: false,
+  
+  dailySongs: [],
+  dailyLoaded: false,
+  dailyLoading: false,
+  
+  createdPlaylists: [],
+  collectedPlaylists: [],
+  playlistsLoaded: false,
+  playlistsLoading: false,
+};
+
+// 监听器列表
+type Listener = () => void;
+const listeners: Set<Listener> = new Set();
+
+// 通知所有监听器
+const notifyListeners = () => {
+  listeners.forEach(listener => listener());
+};
+
+// ==================== 数据加载函数 ====================
+
+/**
+ * 加载猜你喜欢
+ */
+export const loadGuessLike = async (forceRefresh = false): Promise<SongInfo[]> => {
+  if (cache.guessLoading) {
+    // 等待当前加载完成
+    return new Promise((resolve) => {
+      const check = () => {
+        if (!cache.guessLoading) {
+          resolve(cache.guessLikeSongs);
+        } else {
+          setTimeout(check, 100);
+        }
+      };
+      check();
+    });
+  }
+
+  if (cache.guessLoaded && !forceRefresh) {
+    return cache.guessLikeSongs;
+  }
+
+  cache.guessLoading = true;
+  notifyListeners();
+
+  try {
+    const result = await getGuessLike();
+    if (result.success && result.songs.length > 0) {
+      cache.guessLikeSongs = result.songs;
+      cache.guessLoaded = true;
+    }
+  } catch (e) {
+    console.error("[DataManager] 加载猜你喜欢失败:", e);
+  }
+
+  cache.guessLoading = false;
+  notifyListeners();
+  return cache.guessLikeSongs;
+};
+
+/**
+ * 刷新猜你喜欢（换一批）
+ */
+export const refreshGuessLike = async (): Promise<SongInfo[]> => {
+  return loadGuessLike(true);
+};
+
+/**
+ * 加载每日推荐
+ */
+export const loadDailyRecommend = async (): Promise<SongInfo[]> => {
+  if (cache.dailyLoading) {
+    return new Promise((resolve) => {
+      const check = () => {
+        if (!cache.dailyLoading) {
+          resolve(cache.dailySongs);
+        } else {
+          setTimeout(check, 100);
+        }
+      };
+      check();
+    });
+  }
+
+  if (cache.dailyLoaded) {
+    return cache.dailySongs;
+  }
+
+  cache.dailyLoading = true;
+  notifyListeners();
+
+  try {
+    const result = await getDailyRecommend();
+    if (result.success && result.songs.length > 0) {
+      cache.dailySongs = result.songs;
+      cache.dailyLoaded = true;
+    }
+  } catch (e) {
+    console.error("[DataManager] 加载每日推荐失败:", e);
+  }
+
+  cache.dailyLoading = false;
+  notifyListeners();
+  return cache.dailySongs;
+};
+
+/**
+ * 加载用户歌单
+ */
+export const loadPlaylists = async (): Promise<{ created: PlaylistInfo[], collected: PlaylistInfo[] }> => {
+  if (cache.playlistsLoading) {
+    return new Promise((resolve) => {
+      const check = () => {
+        if (!cache.playlistsLoading) {
+          resolve({ created: cache.createdPlaylists, collected: cache.collectedPlaylists });
+        } else {
+          setTimeout(check, 100);
+        }
+      };
+      check();
+    });
+  }
+
+  if (cache.playlistsLoaded) {
+    return { created: cache.createdPlaylists, collected: cache.collectedPlaylists };
+  }
+
+  cache.playlistsLoading = true;
+  notifyListeners();
+
+  try {
+    const result = await getUserPlaylists();
+    if (result.success) {
+      cache.createdPlaylists = result.created || [];
+      cache.collectedPlaylists = result.collected || [];
+      cache.playlistsLoaded = true;
+    }
+  } catch (e) {
+    console.error("[DataManager] 加载歌单失败:", e);
+  }
+
+  cache.playlistsLoading = false;
+  notifyListeners();
+  return { created: cache.createdPlaylists, collected: cache.collectedPlaylists };
+};
+
+// ==================== 预加载 ====================
+
+/**
+ * 预加载所有数据（在插件初始化时调用）
+ */
+export const preloadData = async () => {
+  console.log("[DataManager] 开始预加载数据...");
+  
+  // 并行加载
+  await Promise.all([
+    loadGuessLike(),
+    loadDailyRecommend(),
+    loadPlaylists(),
+  ]);
+  
+  console.log("[DataManager] 预加载完成");
+};
+
+// ==================== 清理 ====================
+
+/**
+ * 清除所有缓存（退出登录时调用）
+ */
+export const clearDataCache = () => {
+  cache.guessLikeSongs = [];
+  cache.guessLoaded = false;
+  cache.guessLoading = false;
+  
+  cache.dailySongs = [];
+  cache.dailyLoaded = false;
+  cache.dailyLoading = false;
+  
+  cache.createdPlaylists = [];
+  cache.collectedPlaylists = [];
+  cache.playlistsLoaded = false;
+  cache.playlistsLoading = false;
+  
+  notifyListeners();
+  console.log("[DataManager] 缓存已清除");
+};
+
+// ==================== Getter ====================
+
+export const getGuessLikeSongs = () => cache.guessLikeSongs;
+export const getDailySongs = () => cache.dailySongs;
+export const getCreatedPlaylists = () => cache.createdPlaylists;
+export const getCollectedPlaylists = () => cache.collectedPlaylists;
+
+export const isGuessLoading = () => cache.guessLoading;
+export const isDailyLoading = () => cache.dailyLoading;
+export const isPlaylistsLoading = () => cache.playlistsLoading;
+
+export const isGuessLoaded = () => cache.guessLoaded;
+export const isDailyLoaded = () => cache.dailyLoaded;
+export const isPlaylistsLoaded = () => cache.playlistsLoaded;
+
+// ==================== Hook ====================
+
+import { useState, useEffect } from "react";
+
+/**
+ * 使用数据管理器的 Hook
+ * 自动订阅数据变化
+ */
+export function useDataManager() {
+  const [, forceUpdate] = useState({});
+
+  useEffect(() => {
+    const listener = () => forceUpdate({});
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
+
+  return {
+    // 猜你喜欢
+    guessLikeSongs: cache.guessLikeSongs,
+    guessLoading: cache.guessLoading,
+    guessLoaded: cache.guessLoaded,
+    loadGuessLike,
+    refreshGuessLike,
+    
+    // 每日推荐
+    dailySongs: cache.dailySongs,
+    dailyLoading: cache.dailyLoading,
+    dailyLoaded: cache.dailyLoaded,
+    loadDailyRecommend,
+    
+    // 歌单
+    createdPlaylists: cache.createdPlaylists,
+    collectedPlaylists: cache.collectedPlaylists,
+    playlistsLoading: cache.playlistsLoading,
+    playlistsLoaded: cache.playlistsLoaded,
+    loadPlaylists,
+    
+    // 其他
+    preloadData,
+    clearDataCache,
+  };
+}
+

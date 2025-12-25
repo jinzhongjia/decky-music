@@ -8,6 +8,7 @@ import { definePlugin, toaster, routerHook } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
 import { getLoginStatus, logout, getGuessLike } from "./api";
+import { preloadData, clearDataCache } from "./hooks/useDataManager";
 import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
 import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, clearRecommendCache } from "./components";
 import { FullscreenPlayer } from "./pages";
@@ -115,14 +116,16 @@ function Content() {
 
   const handleLoginSuccess = () => {
     setCurrentPage('home');
-    // 登录成功后启用左侧菜单
+    // 登录成功后启用左侧菜单并预加载数据
     menuManager.enable();
+    preloadData();
   };
 
   const handleLogout = async () => {
     await logout();
     player.stop();
-    clearRecommendCache(); // 清除推荐缓存
+    clearRecommendCache(); // 清除推荐缓存（旧版兼容）
+    clearDataCache(); // 清除数据管理器缓存
     // 退出登录后禁用左侧菜单
     menuManager.disable();
     setCurrentPage('login');
@@ -340,11 +343,13 @@ export default definePlugin(() => {
   routerHook.addRoute(ROUTE_PATH, FullscreenPlayer);
   console.log(`[QQMusic] 路由已注册: ${ROUTE_PATH}`);
 
-  // 插件初始化时检查登录状态，已登录则启用左侧菜单
+  // 插件初始化时检查登录状态，已登录则启用左侧菜单并预加载数据
   getLoginStatus().then(result => {
     if (result.logged_in) {
-      console.log("[QQMusic] 用户已登录，启用左侧菜单");
+      console.log("[QQMusic] 用户已登录，启用左侧菜单并预加载数据");
       menuManager.enable();
+      // 预加载数据
+      preloadData();
     } else {
       console.log("[QQMusic] 用户未登录，不启用左侧菜单");
     }

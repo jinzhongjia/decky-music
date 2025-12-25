@@ -1,13 +1,14 @@
 /**
  * 歌单列表页面
+ * 使用全局数据管理器，与全屏页面共享数据
  */
 
-import { FC, useState, useEffect, useRef } from "react";
+import { FC } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Field } from "@decky/ui";
 import { FaArrowLeft } from "react-icons/fa";
-import { getUserPlaylists } from "../api";
 import type { PlaylistInfo } from "../types";
 import { formatPlayCount, getDefaultCover } from "../utils/format";
+import { useDataManager } from "../hooks/useDataManager";
 
 interface PlaylistsPageProps {
   onSelectPlaylist: (playlist: PlaylistInfo) => void;
@@ -83,32 +84,9 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
   onSelectPlaylist,
   onBack,
 }) => {
-  const [createdPlaylists, setCreatedPlaylists] = useState<PlaylistInfo[]>([]);
-  const [collectedPlaylists, setCollectedPlaylists] = useState<PlaylistInfo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const mountedRef = useRef(true);
+  const dataManager = useDataManager();
 
-  useEffect(() => {
-    mountedRef.current = true;
-    loadPlaylists();
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const loadPlaylists = async () => {
-    setLoading(true);
-    const result = await getUserPlaylists();
-    if (!mountedRef.current) return;
-    
-    if (result.success) {
-      setCreatedPlaylists(result.created);
-      setCollectedPlaylists(result.collected);
-    }
-    setLoading(false);
-  };
-
-  if (loading) {
+  if (dataManager.playlistsLoading && dataManager.createdPlaylists.length === 0) {
     return (
       <PanelSection title="📂 我的歌单">
         <PanelSectionRow>
@@ -133,8 +111,8 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
       </PanelSection>
 
       {/* 创建的歌单 */}
-      <PanelSection title={`💿 创建的歌单 (${createdPlaylists.length})`}>
-        {createdPlaylists.length === 0 ? (
+      <PanelSection title={`💿 创建的歌单 (${dataManager.createdPlaylists.length})`}>
+        {dataManager.createdPlaylists.length === 0 ? (
           <PanelSectionRow>
             <div style={{ textAlign: 'center', color: '#8b929a', padding: '20px' }}>
               暂无创建的歌单
@@ -142,7 +120,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
           </PanelSectionRow>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {createdPlaylists.map((playlist) => (
+            {dataManager.createdPlaylists.map((playlist) => (
               <PlaylistItem
                 key={playlist.id}
                 playlist={playlist}
@@ -154,8 +132,8 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
       </PanelSection>
 
       {/* 收藏的歌单 */}
-      <PanelSection title={`❤️ 收藏的歌单 (${collectedPlaylists.length})`}>
-        {collectedPlaylists.length === 0 ? (
+      <PanelSection title={`❤️ 收藏的歌单 (${dataManager.collectedPlaylists.length})`}>
+        {dataManager.collectedPlaylists.length === 0 ? (
           <PanelSectionRow>
             <div style={{ textAlign: 'center', color: '#8b929a', padding: '20px' }}>
               暂无收藏的歌单
@@ -163,7 +141,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
           </PanelSectionRow>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {collectedPlaylists.map((playlist) => (
+            {dataManager.collectedPlaylists.map((playlist) => (
               <PlaylistItem
                 key={playlist.id}
                 playlist={playlist}
@@ -176,4 +154,3 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
     </>
   );
 };
-
