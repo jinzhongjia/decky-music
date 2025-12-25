@@ -16,6 +16,8 @@ interface SongListProps {
   currentPlayingMid?: string;
   emptyText?: string;
   onSelectSong: (song: SongInfo) => void;
+  onAddToQueue?: (song: SongInfo) => void;
+  onRemoveFromQueue?: (song: SongInfo) => void;
 }
 
 const SongListComponent: FC<SongListProps> = ({
@@ -25,6 +27,8 @@ const SongListComponent: FC<SongListProps> = ({
   currentPlayingMid,
   emptyText = "暂无歌曲",
   onSelectSong,
+  onAddToQueue,
+  onRemoveFromQueue,
 }) => {
   if (loading) {
     return (
@@ -50,6 +54,8 @@ const SongListComponent: FC<SongListProps> = ({
           song={song}
           isPlaying={currentPlayingMid === song.mid}
           onClick={onSelectSong}
+          onAddToQueue={onAddToQueue}
+          onRemoveFromQueue={onRemoveFromQueue}
         />
       ))}
     </PanelSection>
@@ -59,4 +65,3 @@ const SongListComponent: FC<SongListProps> = ({
 SongListComponent.displayName = 'SongList';
 
 export const SongList = memo(SongListComponent);
-

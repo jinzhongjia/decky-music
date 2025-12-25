@@ -369,16 +369,15 @@ const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong }) =
 KaraokeLyrics.displayName = 'KaraokeLyrics';
 
 // 全屏页面内的子页面类型
-type FullscreenPageType = 'player' | 'guess-like' | 'playlists' | 'playlist-detail' | 'history' | 'search' | 'queue' | 'login';
+type FullscreenPageType = 'player' | 'guess-like' | 'playlists' | 'playlist-detail' | 'history' | 'search' | 'login';
 
 // 底部导航项
 const NAV_ITEMS = [
   { id: 'player', label: '播放', icon: FaCompactDisc },
   { id: 'guess-like', label: '推荐', icon: FaHeart },
   { id: 'playlists', label: '歌单', icon: FaList },
-  { id: 'history', label: '历史', icon: FaHistory },
+  { id: 'history', label: '队列', icon: FaHistory },
   { id: 'search', label: '搜索', icon: FaSearch },
-  { id: 'queue', label: '队列', icon: FaMusic },
 ] as const;
 
 // Steam Deck 系统顶栏高度
@@ -807,42 +806,15 @@ export const FullscreenPlayer: FC = () => {
           </div>
         ) : dataManager.guessLikeSongs.length > 0 ? (
           dataManager.guessLikeSongs.map((song, index) => (
-            <SongItem
-              key={`${song.mid}-${index}`}
-              song={song}
-              isPlaying={song.mid === player.currentSong?.mid}
-              onClick={() => handleSelectSong(song, dataManager.guessLikeSongs, 'guess-like')}
-            />
-          ))
-        ) : (
+              <SongItem
+                key={`${song.mid}-${index}`}
+                song={song}
+                onClick={() => handleSelectSong(song, dataManager.guessLikeSongs, 'guess-like')}
+              />
+            ))
+          ) : (
           <div style={{ textAlign: 'center', color: '#8b929a', padding: '40px' }}>
             暂无推荐
-          </div>
-        )}
-      </Focusable>
-    </div>
-  );
-
-  // 渲染播放队列
-  const renderQueue = () => (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '0 16px' }}>
-      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', padding: '12px 0', flexShrink: 0 }}>
-        播放队列 ({player.playlist.length})
-      </div>
-      
-      <Focusable style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        {player.playlist.length > 0 ? (
-          player.playlist.map((song, index) => (
-            <SongItem
-              key={`${song.mid}-${index}`}
-              song={song}
-              isPlaying={song.mid === player.currentSong?.mid}
-              onClick={() => handleSelectSong(song, player.playlist)}
-            />
-          ))
-        ) : (
-          <div style={{ textAlign: 'center', color: '#8b929a', padding: '40px' }}>
-            播放队列为空
           </div>
         )}
       </Focusable>
@@ -877,7 +849,7 @@ export const FullscreenPlayer: FC = () => {
             <PlaylistDetailPage
               playlist={selectedPlaylist}
               onSelectSong={handleSelectSong}
-              onAddToQueue={handleAddPlaylistToQueue}
+              onAddPlaylistToQueue={handleAddPlaylistToQueue}
               onBack={() => setCurrentPage('playlists')}
               currentPlayingMid={player.currentSong?.mid}
             />
@@ -887,15 +859,15 @@ export const FullscreenPlayer: FC = () => {
         return (
           <div style={{ height: '100%', overflow: 'auto' }}>
             <HistoryPage
-              history={player.playHistory}
-              onSelectSong={handleSelectSong}
-              onClearHistory={player.clearPlayHistory}
-              onRefreshHistory={player.refreshPlayHistory}
-              onBack={() => setCurrentPage('player')}
-              currentPlayingMid={player.currentSong?.mid}
-            />
-          </div>
-        );
+            playlist={player.playlist}
+            currentIndex={player.currentIndex}
+            onSelectIndex={player.playAtIndex}
+            onBack={() => setCurrentPage('player')}
+            currentPlayingMid={player.currentSong?.mid}
+            onRemoveFromQueue={player.removeFromQueue}
+          />
+        </div>
+      );
       default:
         return null;
     }
@@ -908,8 +880,6 @@ export const FullscreenPlayer: FC = () => {
         return renderPlayerPage();
       case 'guess-like':
         return renderGuessLike();
-      case 'queue':
-        return renderQueue();
       default:
         return renderSubPage();
     }
