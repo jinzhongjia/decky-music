@@ -330,6 +330,7 @@ export interface UsePlayerReturn {
   // 方法
   playSong: (song: SongInfo) => Promise<void>;
   playPlaylist: (songs: SongInfo[], startIndex?: number) => Promise<void>;
+  addToQueue: (songs: SongInfo[]) => Promise<void>;
   togglePlay: () => void;
   seek: (time: number) => void;
   stop: () => void;
@@ -612,6 +613,28 @@ export function usePlayer(): UsePlayerReturn {
     }
   }, [playSongInternal]);
 
+  // 追加歌曲到队列（不打断当前播放；无播放时自动开始）
+  const addToQueue = useCallback(async (songs: SongInfo[]) => {
+    if (songs.length === 0) return;
+
+    const uniqueToAdd = songs.filter(
+      song => !globalPlaylist.some(existing => existing.mid === song.mid)
+    );
+
+    if (uniqueToAdd.length === 0) return;
+
+    const newPlaylist = [...globalPlaylist, ...uniqueToAdd];
+    globalPlaylist = newPlaylist;
+    setPlaylist(newPlaylist);
+
+    // 如果当前没有播放，自动开始播放追加的第一首
+    if (!globalCurrentSong || globalCurrentIndex < 0) {
+      globalCurrentIndex = newPlaylist.length - uniqueToAdd.length;
+      setCurrentIndex(globalCurrentIndex);
+      await playSongInternal(newPlaylist[globalCurrentIndex], globalCurrentIndex);
+    }
+  }, [playSongInternal]);
+
   const togglePlay = useCallback(() => {
     const audio = getGlobalAudio();
 
@@ -710,6 +733,7 @@ export function usePlayer(): UsePlayerReturn {
     playHistory,
     playSong,
     playPlaylist,
+    addToQueue,
     togglePlay,
     seek,
     stop,

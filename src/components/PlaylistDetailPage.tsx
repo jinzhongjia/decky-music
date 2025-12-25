@@ -3,7 +3,8 @@
  */
 
 import { FC, useState, useEffect, useCallback, memo, useRef } from "react";
-import { PanelSection, PanelSectionRow } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
+import { FaPlus } from "react-icons/fa";
 import { getPlaylistSongs } from "../api";
 import type { PlaylistInfo, SongInfo } from "../types";
 import { BackButton } from "./BackButton";
@@ -16,6 +17,7 @@ import { TEXT_ELLIPSIS_2_LINES, COLORS } from "../utils/styles";
 interface PlaylistDetailPageProps {
   playlist: PlaylistInfo;
   onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
+  onAddToQueue?: (songs: SongInfo[]) => void;
   onBack: () => void;
   currentPlayingMid?: string;
 }
@@ -23,6 +25,7 @@ interface PlaylistDetailPageProps {
 const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
   playlist,
   onSelectSong,
+  onAddToQueue,
   onBack,
   currentPlayingMid,
 }) => {
@@ -52,6 +55,11 @@ const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
       onSelectSong(songs[0], songs);
     }
   }, [songs, onSelectSong]);
+
+  const handleAddToQueue = useCallback(() => {
+    if (!onAddToQueue || songs.length === 0) return;
+    onAddToQueue(songs);
+  }, [onAddToQueue, songs]);
 
   const handleSongSelect = useCallback(
     (song: SongInfo) => {
@@ -102,6 +110,16 @@ const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
 
         {/* 播放全部按钮 */}
         <PlayAllButton onClick={handlePlayAll} show={!loading && songs.length > 0} />
+
+        {/* 添加到队列 */}
+        {!loading && songs.length > 0 && onAddToQueue && (
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={handleAddToQueue}>
+              <FaPlus style={{ marginRight: "8px" }} />
+              添加到播放队列
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
       </PanelSection>
 
       {/* 歌曲列表 */}

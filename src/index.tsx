@@ -217,6 +217,15 @@ function Content() {
     setCurrentPage('playlist-detail');
   }, []);
 
+  const handleAddPlaylistToQueue = useCallback(async (songs: SongInfo[]) => {
+    if (!songs || songs.length === 0) return;
+    await player.addToQueue(songs);
+    toaster.toast({
+      title: "已添加到播放队列",
+      body: `加入 ${songs.length} 首歌曲`
+    });
+  }, [player]);
+
   // 加载中
   if (checking) {
     return (
@@ -282,6 +291,7 @@ function Content() {
           <PlaylistDetailPage
             playlist={selectedPlaylist}
             onSelectSong={handleSelectSong}
+            onAddToQueue={handleAddPlaylistToQueue}
             onBack={handleBackToPlaylists}
             currentPlayingMid={player.currentSong?.mid}
           />

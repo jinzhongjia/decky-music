@@ -11,6 +11,7 @@ import {
 } from "react-icons/fa";
 
 import { getLoginStatus } from "../api";
+import { toaster } from "@decky/api";
 import { usePlayer, getAudioCurrentTime } from "../hooks/usePlayer";
 import { useDataManager } from "../hooks/useDataManager";
 import { useMountedRef } from "../hooks/useMountedRef";
@@ -516,6 +517,15 @@ export const FullscreenPlayer: FC = () => {
     setCurrentPage('playlist-detail');
   };
 
+  const handleAddPlaylistToQueue = async (songs: SongInfo[]) => {
+    if (!songs || songs.length === 0) return;
+    await player.addToQueue(songs);
+    toaster.toast({
+      title: "已添加到播放队列",
+      body: `加入 ${songs.length} 首歌曲`,
+    });
+  };
+
   // 格式化时间
   const formatTime = (seconds: number): string => {
     if (!seconds || !isFinite(seconds)) return "0:00";
@@ -867,6 +877,7 @@ export const FullscreenPlayer: FC = () => {
             <PlaylistDetailPage
               playlist={selectedPlaylist}
               onSelectSong={handleSelectSong}
+              onAddToQueue={handleAddPlaylistToQueue}
               onBack={() => setCurrentPage('playlists')}
               currentPlayingMid={player.currentSong?.mid}
             />
