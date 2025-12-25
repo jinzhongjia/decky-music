@@ -84,6 +84,17 @@ function parseLrcLine(line: string): Array<{ time: number; text: string }> {
 }
 
 /**
+ * 检查是否是无效的歌词文本（纯符号、间奏标记等）
+ */
+function isInvalidLyricText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  // 纯斜线、符号等
+  if (/^[\/\-\*\~\s\\：:\.。，,]+$/.test(trimmed)) return true;
+  return false;
+}
+
+/**
  * 解析完整 LRC 歌词
  */
 function parseLrc(lrc: string): Map<number, string> {
@@ -96,7 +107,8 @@ function parseLrc(lrc: string): Map<number, string> {
   for (const line of lines) {
     const parsed = parseLrcLine(line);
     for (const { time, text } of parsed) {
-      if (text) {  // 只保留有内容的行
+      // 过滤空行和纯符号行（如 "//"）
+      if (text && !isInvalidLyricText(text)) {
         map.set(time, text);
       }
     }
@@ -135,25 +147,55 @@ function parseQrc(qrc: string): QrcLyricLine[] {
     const words: LyricWord[] = [];
     let fullText = '';
     
-    // 匹配逐字：字词(start,duration)
-    const wordRegex = /([^(]+)\((\d+),(\d+)\)/g;
-    let match;
+    // 找到所有时间标记的位置 (数字,数字)
+    const timeRegex = /\((\d+),(\d+)\)/g;
+    const timeMatches: Array<{ index: number; start: number; duration: number; length: number }> = [];
+    let timeMatch;
     
-    while ((match = wordRegex.exec(content)) !== null) {
-      const text = match[1];
-      const start = parseInt(match[2], 10) / 1000;  // 转为秒
-      const duration = parseInt(match[3], 10) / 1000;  // 转为秒
-      
-      words.push({ text, start, duration });
-      fullText += text;
+    while ((timeMatch = timeRegex.exec(content)) !== null) {
+      timeMatches.push({
+        index: timeMatch.index,
+        start: parseInt(timeMatch[1], 10) / 1000,
+        duration: parseInt(timeMatch[2], 10) / 1000,
+        length: timeMatch[0].length
+      });
+    }
+    
+    // 根据时间标记位置提取文本
+    let lastEnd = 0;
+    for (const tm of timeMatches) {
+      const text = content.substring(lastEnd, tm.index);
+      if (text) {  // 可能有空文本
+        words.push({ text, start: tm.start, duration: tm.duration });
+        fullText += text;
+      }
+      lastEnd = tm.index + tm.length;
     }
     
     if (words.length > 0) {
-      result.push({
-        time: lineStart / 1000,  // 转为秒
-        words,
-        text: fullText
-      });
+      // 过滤无效行
+      const cleanText = fullText.trim();
+      
+      // 1. 过滤间奏行（纯斜线、纯符号等）
+      const isInterlude = /^[\/\-\*\~\s\\：:]+$/.test(cleanText) || cleanText.length === 0;
+      
+      // 2. 过滤元信息行（歌曲标题、作词作曲等）
+      const isMetaInfo = /^(Writtenby|Composedby|Producedby|Arrangedby|词|曲|编曲|制作|演唱|原唱|翻唱)[\s：:]/i.test(cleanText) ||
+                         /[\-\–]\s*(Artist|Singer|Band|作词|作曲|编曲)/i.test(cleanText);
+      
+      // 3. 检查是否整行都是符号（包括每个 word）
+      const allSymbols = words.every(w => /^[\/\-\*\~\s\\：:\.。，,\(\)（）]+$/.test(w.text.trim()));
+      
+      // 4. 过滤第一行如果是歌曲标题格式（包含 " - " 分隔符且在开头）
+      const isTitleLine = result.length === 0 && cleanText.includes(' - ') && lineStart < 60000;
+      
+      if (!isInterlude && !isMetaInfo && !allSymbols && !isTitleLine) {
+        result.push({
+          time: lineStart / 1000,  // 转为秒
+          words,
+          text: fullText
+        });
+      }
     }
   }
   
@@ -181,7 +223,10 @@ export function parseLyric(lyric: string, trans?: string): ParsedLyric {
       const lineTimeMs = line.time * 1000;
       for (const [transTime, transText] of transMap) {
         if (Math.abs(transTime - lineTimeMs) < 500) {
-          line.trans = transText;
+          // 确保翻译不是纯符号
+          if (!isInvalidLyricText(transText)) {
+            line.trans = transText;
+          }
           break;
         }
       }

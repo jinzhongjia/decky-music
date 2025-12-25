@@ -265,10 +265,42 @@ export const FullscreenPlayer: FC = () => {
     return 0;
   }, []);
 
+  // 检查是否是间奏/纯符号行（如 "//"、"////" 等）
+  const isInterludeLine = (text: string): boolean => {
+    const trimmed = text.trim();
+    // 纯斜线、纯空格、或者非常短的纯符号
+    return /^[\/\-\*\~\s]+$/.test(trimmed) || trimmed.length === 0;
+  };
+
   // Spotify 风格：渲染 QRC 逐字歌词行
   const renderQrcLyricLine = (line: QrcLyricLine, index: number, isActive: boolean, isPast: boolean) => {
     // 直接从 Audio 元素获取实时时间，实现流畅填充
     const currentTime = getAudioCurrentTime();
+    
+    // 检查是否是间奏行
+    const isInterlude = isInterludeLine(line.text);
+    
+    // 间奏行显示音符符号
+    if (isInterlude) {
+      return (
+        <div
+          key={index}
+          ref={index === currentLyricIndex ? currentLyricRef : null}
+          style={{
+            padding: '14px 16px',
+            marginBottom: '8px',
+            fontSize: isActive ? '20px' : '16px',
+            fontWeight: 500,
+            lineHeight: 1.4,
+            transition: 'font-size 0.3s ease, opacity 0.3s ease',
+            color: isActive ? 'rgba(29, 185, 84, 0.6)' : 'rgba(255,255,255,0.25)',
+            textAlign: 'center',
+          }}
+        >
+          ♪ ♪ ♪
+        </div>
+      );
+    }
     
     return (
       <div

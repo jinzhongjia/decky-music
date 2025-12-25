@@ -525,10 +525,24 @@ class Plugin:
         """
         try:
             result = await lyric.get_lyric(mid, qrc=qrc, trans=True)
+            
+            lyric_text = result.get("lyric", "")
+            # 打印原始歌词用于调试
+            decky.logger.info(f"=== 原始歌词 (mid={mid}, qrc={qrc}) ===")
+            # 查找 // 的位置
+            if '//' in lyric_text:
+                decky.logger.info(f"发现 // 在原始歌词中！")
+                # 打印包含 // 的行
+                for i, line in enumerate(lyric_text.split('\n')):
+                    if '//' in line:
+                        decky.logger.info(f"第{i}行包含//: {line[:100]}")
+            else:
+                decky.logger.info("原始歌词中没有 //")
+            decky.logger.info("=== 原始歌词结束 ===")
 
             return {
                 "success": True,
-                "lyric": result.get("lyric", ""),
+                "lyric": lyric_text,
                 "trans": result.get("trans", ""),
                 "mid": mid,
                 "qrc": qrc  # 标记返回的是否是 QRC 格式
