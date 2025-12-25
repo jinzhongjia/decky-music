@@ -3,7 +3,7 @@
  * 使用全局数据管理器，与全屏页面共享数据
  */
 
-import { FC } from "react";
+import { FC, useCallback } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory } from "react-icons/fa";
 import type { SongInfo } from "../types";
@@ -39,20 +39,31 @@ export const HomePage: FC<HomePageProps> = ({
 }) => {
   const dataManager = useDataManager();
 
+  const handleRefreshGuessLike = useCallback(() => {
+    dataManager.refreshGuessLike();
+  }, [dataManager]);
+
+  const handleSongClick = useCallback(
+    (song: SongInfo) => {
+      onSelectSong(song, dataManager.guessLikeSongs, "guess-like");
+    },
+    [dataManager, onSelectSong]
+  );
+
   return (
     <>
       {/* 操作按钮 */}
       <PanelSection>
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={onGoToSearch}>
-            <FaSearch style={{ marginRight: '8px' }} />
+            <FaSearch style={{ marginRight: "8px" }} />
             搜索歌曲
           </ButtonItem>
         </PanelSectionRow>
         {onGoToPlaylists && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={onGoToPlaylists}>
-              <FaListUl style={{ marginRight: '8px' }} />
+              <FaListUl style={{ marginRight: "8px" }} />
               我的歌单
             </ButtonItem>
           </PanelSectionRow>
@@ -60,7 +71,7 @@ export const HomePage: FC<HomePageProps> = ({
         {onGoToHistory && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={onGoToHistory}>
-              <FaHistory style={{ marginRight: '8px' }} />
+              <FaHistory style={{ marginRight: "8px" }} />
               播放历史
             </ButtonItem>
           </PanelSectionRow>
@@ -70,17 +81,17 @@ export const HomePage: FC<HomePageProps> = ({
       {/* 猜你喜欢 */}
       <PanelSection title="💡 猜你喜欢">
         <PanelSectionRow>
-          <ButtonItem 
-            layout="below" 
-            onClick={() => dataManager.refreshGuessLike()}
+          <ButtonItem
+            layout="below"
+            onClick={handleRefreshGuessLike}
             disabled={dataManager.guessLoading}
           >
-            <FaSyncAlt 
-              size={12} 
-              style={{ 
-                marginRight: '8px',
-                animation: dataManager.guessLoading ? 'spin 1s linear infinite' : 'none' 
-              }} 
+            <FaSyncAlt
+              size={12}
+              style={{
+                marginRight: "8px",
+                animation: dataManager.guessLoading ? "spin 1s linear infinite" : "none",
+              }}
             />
             换一批
           </ButtonItem>
@@ -96,7 +107,7 @@ export const HomePage: FC<HomePageProps> = ({
               key={song.mid || idx}
               song={song}
               isPlaying={currentPlayingMid === song.mid}
-              onClick={(s) => onSelectSong(s, dataManager.guessLikeSongs, 'guess-like')}
+              onClick={handleSongClick}
             />
           ))
         )}
@@ -116,12 +127,11 @@ export const HomePage: FC<HomePageProps> = ({
       <PanelSection>
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={onLogout}>
-            <FaSignOutAlt style={{ marginRight: '8px' }} />
+            <FaSignOutAlt style={{ marginRight: "8px" }} />
             退出登录
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
-
     </>
   );
 };

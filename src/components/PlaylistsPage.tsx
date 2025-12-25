@@ -3,7 +3,7 @@
  * 使用全局数据管理器，与全屏页面共享数据
  */
 
-import { FC } from "react";
+import { FC, useCallback } from "react";
 import { PanelSection, Field } from "@decky/ui";
 import type { PlaylistInfo } from "../types";
 import { formatPlayCount } from "../utils/format";
@@ -23,11 +23,13 @@ const PlaylistItem: FC<{
   playlist: PlaylistInfo;
   onClick: () => void;
 }> = ({ playlist, onClick }) => (
-  <div style={{
-    background: COLORS.backgroundLight,
-    borderRadius: '8px',
-    marginBottom: '4px',
-  }}>
+  <div
+    style={{
+      background: COLORS.backgroundLight,
+      borderRadius: "8px",
+      marginBottom: "4px",
+    }}
+  >
     <Field
       focusable
       highlightOnFocus
@@ -36,42 +38,49 @@ const PlaylistItem: FC<{
       bottomSeparator="none"
       padding="none"
       label={
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '10px 12px',
-        }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            padding: "10px 12px",
+          }}
+        >
           <SafeImage
             src={playlist.cover}
             alt={playlist.name}
             size={48}
             style={{
-              width: '48px',
-              height: '48px',
-              borderRadius: '6px',
-              objectFit: 'cover',
+              width: "48px",
+              height: "48px",
+              borderRadius: "6px",
+              objectFit: "cover",
               background: COLORS.backgroundDarkBase,
               flexShrink: 0,
             }}
           />
           <div style={TEXT_CONTAINER}>
-            <div style={{
-              fontSize: '14px',
-              fontWeight: 500,
-              color: COLORS.textPrimary,
-              ...TEXT_ELLIPSIS,
-            }}>
-              {playlist.name || '未命名歌单'}
+            <div
+              style={{
+                fontSize: "14px",
+                fontWeight: 500,
+                color: COLORS.textPrimary,
+                ...TEXT_ELLIPSIS,
+              }}
+            >
+              {playlist.name || "未命名歌单"}
             </div>
-            <div style={{
-              fontSize: '12px',
-              color: COLORS.textSecondary,
-              marginTop: '2px',
-            }}>
-              {playlist.songCount || 0} 首
-              {playlist.creator && ` · ${playlist.creator}`}
-              {playlist.playCount && playlist.playCount > 0 && ` · ${formatPlayCount(playlist.playCount)}次播放`}
+            <div
+              style={{
+                fontSize: "12px",
+                color: COLORS.textSecondary,
+                marginTop: "2px",
+              }}
+            >
+              {playlist.songCount || 0} 首{playlist.creator && ` · ${playlist.creator}`}
+              {playlist.playCount &&
+                playlist.playCount > 0 &&
+                ` · ${formatPlayCount(playlist.playCount)}次播放`}
             </div>
           </div>
         </div>
@@ -80,11 +89,15 @@ const PlaylistItem: FC<{
   </div>
 );
 
-export const PlaylistsPage: FC<PlaylistsPageProps> = ({
-  onSelectPlaylist,
-  onBack,
-}) => {
+export const PlaylistsPage: FC<PlaylistsPageProps> = ({ onSelectPlaylist, onBack }) => {
   const dataManager = useDataManager();
+
+  const handlePlaylistClick = useCallback(
+    (playlist: PlaylistInfo) => {
+      onSelectPlaylist(playlist);
+    },
+    [onSelectPlaylist]
+  );
 
   if (dataManager.playlistsLoading && dataManager.createdPlaylists.length === 0) {
     return (
@@ -103,12 +116,12 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
         {dataManager.createdPlaylists.length === 0 ? (
           <EmptyState message="暂无创建的歌单" />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: "flex", flexDirection: "column" }}>
             {dataManager.createdPlaylists.map((playlist) => (
               <PlaylistItem
                 key={playlist.id}
                 playlist={playlist}
-                onClick={() => onSelectPlaylist(playlist)}
+                onClick={() => handlePlaylistClick(playlist)}
               />
             ))}
           </div>
@@ -120,12 +133,12 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
         {dataManager.collectedPlaylists.length === 0 ? (
           <EmptyState message="暂无收藏的歌单" />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: "flex", flexDirection: "column" }}>
             {dataManager.collectedPlaylists.map((playlist) => (
               <PlaylistItem
                 key={playlist.id}
                 playlist={playlist}
-                onClick={() => onSelectPlaylist(playlist)}
+                onClick={() => handlePlaylistClick(playlist)}
               />
             ))}
           </div>
