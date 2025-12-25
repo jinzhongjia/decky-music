@@ -10,6 +10,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { toaster } from "@decky/api";
 import { getSongUrl, getSongLyric } from "../api";
 import type { SongInfo } from "../types";
+import { parseLyric, type ParsedLyric } from "../utils/lyricParser";
 
 // ==================== 休眠控制 ====================
 // 参考 DeckyInhibitScreenSaver 实现
@@ -177,7 +178,7 @@ function addToPlayHistory(song: SongInfo) {
 // 全局状态 - 在模块级别创建，不会因组件卸载而销毁
 let globalAudio: HTMLAudioElement | null = null;
 let globalCurrentSong: SongInfo | null = null;
-let globalLyric: string = "";
+let globalLyric: ParsedLyric | null = null;
 let globalPlaylist: SongInfo[] = [];
 let globalCurrentIndex: number = -1;
 
@@ -227,7 +228,7 @@ export function cleanupPlayer() {
   
   // 清理全局状态
   globalCurrentSong = null;
-  globalLyric = "";
+  globalLyric = null;
   globalPlaylist = [];
   globalCurrentIndex = -1;
   onPlayNextCallback = null;
@@ -247,7 +248,7 @@ export interface UsePlayerReturn {
   duration: number;
   loading: boolean;
   error: string;
-  lyric: string;
+  lyric: ParsedLyric | null;
   playlist: SongInfo[];
   currentIndex: number;
   playHistory: SongInfo[];
@@ -273,7 +274,7 @@ export function usePlayer(): UsePlayerReturn {
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [lyric, setLyric] = useState(globalLyric);
+  const [lyric, setLyric] = useState<ParsedLyric | null>(globalLyric);
   const [playlist, setPlaylist] = useState<SongInfo[]>(globalPlaylist);
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
   const [playHistory, setPlayHistory] = useState<SongInfo[]>(loadPlayHistory);
@@ -300,7 +301,8 @@ export function usePlayer(): UsePlayerReturn {
     
     // 更新全局状态
     globalCurrentSong = song;
-    globalLyric = "";
+    globalLyric = null;
+    setLyric(null);
     if (index >= 0) {
       globalCurrentIndex = index;
       setCurrentIndex(index);
@@ -376,9 +378,11 @@ export function usePlayer(): UsePlayerReturn {
       // 异步获取歌词
       getSongLyric(song.mid)
         .then(lyricResult => {
-          if (lyricResult.success) {
-            setLyric(lyricResult.lyric);
-            globalLyric = lyricResult.lyric;
+          if (lyricResult.success && lyricResult.lyric) {
+            // 解析歌词（原文 + 翻译）
+            const parsed = parseLyric(lyricResult.lyric, lyricResult.trans);
+            setLyric(parsed);
+            globalLyric = parsed;
           }
         })
         .catch(() => {

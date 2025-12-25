@@ -3,7 +3,7 @@
  * 从左侧菜单进入的独立页面
  */
 
-import { FC, useState, useEffect, useRef } from "react";
+import { FC, useState, useEffect, useRef, useCallback } from "react";
 import { Focusable, ButtonItem, Spinner } from "@decky/ui";
 import { 
   FaPlay, FaPause, FaStepForward, FaStepBackward, FaMusic, 
@@ -154,11 +154,47 @@ export const FullscreenPlayer: FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 歌词行类型
-  interface LyricLine {
-    time: number;
-    text: string;
-  }
+  // 歌词容器引用（用于自动滚动）
+  const lyricContainerRef = useRef<HTMLDivElement>(null);
+  const currentLyricRef = useRef<HTMLDivElement>(null);
+
+  // 计算当前歌词索引
+  const getCurrentLyricIndex = useCallback(() => {
+    const lyricLines = player.lyric?.lines || [];
+    if (lyricLines.length === 0) return -1;
+    
+    const currentTimeMs = player.currentTime * 1000;
+    
+    // 找到最后一个时间小于等于当前时间的歌词
+    for (let i = lyricLines.length - 1; i >= 0; i--) {
+      if (lyricLines[i].time <= currentTimeMs) {
+        return i;
+      }
+    }
+    return -1;
+  }, [player.lyric, player.currentTime]);
+
+  const currentLyricIndex = getCurrentLyricIndex();
+
+  // 自动滚动到当前歌词
+  useEffect(() => {
+    if (currentLyricRef.current && lyricContainerRef.current) {
+      const container = lyricContainerRef.current;
+      const current = currentLyricRef.current;
+      
+      // 计算需要滚动的位置（让当前歌词在容器中央）
+      const containerHeight = container.clientHeight;
+      const currentTop = current.offsetTop;
+      const currentHeight = current.clientHeight;
+      
+      const targetScroll = currentTop - containerHeight / 2 + currentHeight / 2;
+      
+      container.scrollTo({
+        top: Math.max(0, targetScroll),
+        behavior: 'smooth'
+      });
+    }
+  }, [currentLyricIndex]);
 
   // 加载中
   if (checking) {
@@ -199,15 +235,7 @@ export const FullscreenPlayer: FC = () => {
   // 渲染播放详细页（带歌词）
   const renderPlayerPage = () => {
     const song = player.currentSong;
-    const lyricData = player.lyric as { lines?: LyricLine[] } | null;
-    const lyricLines: LyricLine[] = lyricData?.lines || [];
-    
-    // 找到当前播放的歌词行
-    const currentLyricIndex = lyricLines.findIndex((line: LyricLine, index: number) => {
-      const nextLine = lyricLines[index + 1];
-      const currentTime = player.currentTime * 1000;
-      return currentTime >= line.time && (!nextLine || currentTime < nextLine.time);
-    });
+    const lyricLines = player.lyric?.lines || [];
 
     return (
       <div style={{ 
@@ -413,27 +441,42 @@ export const FullscreenPlayer: FC = () => {
             歌词
           </div>
           
-          <div style={{ 
-            flex: 1, 
-            overflow: 'auto',
-            paddingRight: '8px'
-          }}>
+          <div 
+            ref={lyricContainerRef}
+            style={{ 
+              flex: 1, 
+              overflow: 'auto',
+              paddingRight: '8px'
+            }}
+          >
             {lyricLines.length > 0 ? (
-              <div style={{ padding: '8px 0' }}>
+              <div style={{ padding: '40px 0' }}>
                 {lyricLines.map((line, index) => (
                   <div
                     key={index}
+                    ref={index === currentLyricIndex ? currentLyricRef : null}
                     style={{
-                      padding: '6px 8px',
-                      fontSize: index === currentLyricIndex ? '15px' : '13px',
-                      color: index === currentLyricIndex ? '#1db954' : '#666',
+                      padding: '8px 12px',
+                      marginBottom: '4px',
+                      fontSize: index === currentLyricIndex ? '16px' : '14px',
+                      color: index === currentLyricIndex ? '#1db954' : '#888',
                       fontWeight: index === currentLyricIndex ? 'bold' : 'normal',
-                      transition: 'all 0.2s ease',
-                      borderRadius: '4px',
-                      background: index === currentLyricIndex ? 'rgba(29, 185, 84, 0.1)' : 'transparent'
+                      transition: 'all 0.3s ease',
+                      borderRadius: '6px',
+                      background: index === currentLyricIndex ? 'rgba(29, 185, 84, 0.15)' : 'transparent',
+                      transform: index === currentLyricIndex ? 'scale(1.02)' : 'scale(1)',
                     }}
                   >
-                    {line.text || '♪'}
+                    <div>{line.text || '♪'}</div>
+                    {line.trans && (
+                      <div style={{
+                        fontSize: index === currentLyricIndex ? '13px' : '12px',
+                        color: index === currentLyricIndex ? 'rgba(29, 185, 84, 0.8)' : '#666',
+                        marginTop: '2px'
+                      }}>
+                        {line.trans}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
