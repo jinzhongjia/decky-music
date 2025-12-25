@@ -6,10 +6,11 @@
 import { FC, useState, useEffect, useRef, useCallback } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, TextField, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
-import { FaSearch, FaArrowLeft, FaTimes } from "react-icons/fa";
+import { FaSearch, FaTimes } from "react-icons/fa";
 import { searchSongs, getHotSearch, getSearchSuggest } from "../api";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
+import { BackButton } from "./BackButton";
 
 // 搜索历史存储 key
 const SEARCH_HISTORY_KEY = "qqmusic_search_history";
@@ -178,15 +179,7 @@ export const SearchPage: FC<SearchPageProps> = ({
 
   return (
     <>
-      {/* 返回按钮 */}
-      <PanelSection>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={onBack}>
-            <FaArrowLeft style={{ marginRight: '8px' }} />
-            返回首页
-          </ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
+      <BackButton onClick={onBack} label="返回首页" />
 
       {/* 搜索框 */}
       <PanelSection title="🔍 搜索音乐">

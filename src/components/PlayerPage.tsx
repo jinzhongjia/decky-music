@@ -5,9 +5,10 @@
 
 import { FC } from "react";
 import { PanelSection, PanelSectionRow, Spinner, Focusable, ButtonItem } from "@decky/ui";
-import { FaPlay, FaPause, FaStepForward, FaStepBackward, FaArrowLeft } from "react-icons/fa";
+import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { formatDuration, getDefaultCover } from "../utils/format";
+import { BackButton } from "./BackButton";
 
 interface PlayerPageProps {
   song: SongInfo;
@@ -59,13 +60,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
 
   return (
     <PanelSection title="🎵 正在播放">
-      {/* 返回按钮 */}
-      <PanelSectionRow>
-        <ButtonItem layout="below" onClick={onBack}>
-          <FaArrowLeft style={{ marginRight: '8px' }} />
-          返回
-        </ButtonItem>
-      </PanelSectionRow>
+      <BackButton onClick={onBack} />
 
       {/* 封面 */}
       <PanelSectionRow>

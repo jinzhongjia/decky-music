@@ -5,10 +5,10 @@
 
 import { FC } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Field } from "@decky/ui";
-import { FaArrowLeft } from "react-icons/fa";
 import type { PlaylistInfo } from "../types";
 import { formatPlayCount, getDefaultCover } from "../utils/format";
 import { useDataManager } from "../hooks/useDataManager";
+import { BackButton } from "./BackButton";
 
 interface PlaylistsPageProps {
   onSelectPlaylist: (playlist: PlaylistInfo) => void;
@@ -100,15 +100,7 @@ export const PlaylistsPage: FC<PlaylistsPageProps> = ({
 
   return (
     <>
-      {/* 返回按钮 */}
-      <PanelSection>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={onBack}>
-            <FaArrowLeft style={{ marginRight: '8px' }} />
-            返回首页
-          </ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
+      <BackButton onClick={onBack} label="返回首页" />
 
       {/* 创建的歌单 */}
       <PanelSection title={`💿 创建的歌单 (${dataManager.createdPlaylists.length})`}>

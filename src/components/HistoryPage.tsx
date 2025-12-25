@@ -4,9 +4,10 @@
 
 import { FC, useEffect } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui";
-import { FaArrowLeft, FaTrash, FaPlay } from "react-icons/fa";
+import { FaTrash, FaPlay } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { SongItem } from "./SongItem";
+import { BackButton } from "./BackButton";
 
 interface HistoryPageProps {
   history: SongInfo[];
@@ -38,15 +39,7 @@ export const HistoryPage: FC<HistoryPageProps> = ({
 
   return (
     <>
-      {/* 返回按钮 */}
-      <PanelSection>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={onBack}>
-            <FaArrowLeft style={{ marginRight: '8px' }} />
-            返回首页
-          </ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
+      <BackButton onClick={onBack} label="返回首页" />
 
       {/* 标题和操作 */}
       <PanelSection title={`🕐 播放历史 (${history.length})`}>
