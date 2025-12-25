@@ -6,11 +6,12 @@
 import { FC } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Field } from "@decky/ui";
 import type { PlaylistInfo } from "../types";
-import { formatPlayCount, getDefaultCover } from "../utils/format";
+import { formatPlayCount } from "../utils/format";
 import { useDataManager } from "../hooks/useDataManager";
 import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { EmptyState } from "./EmptyState";
+import { SafeImage } from "./SafeImage";
 
 interface PlaylistsPageProps {
   onSelectPlaylist: (playlist: PlaylistInfo) => void;
@@ -40,9 +41,10 @@ const PlaylistItem: FC<{
           gap: '12px',
           padding: '10px 12px',
         }}>
-          <img
-            src={playlist.cover || getDefaultCover(48)}
+          <SafeImage
+            src={playlist.cover}
             alt={playlist.name}
+            size={48}
             style={{
               width: '48px',
               height: '48px',
@@ -50,9 +52,6 @@ const PlaylistItem: FC<{
               objectFit: 'cover',
               background: '#2a2a2a',
               flexShrink: 0,
-            }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = getDefaultCover(48);
             }}
           />
           <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>

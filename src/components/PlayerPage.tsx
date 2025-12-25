@@ -7,9 +7,10 @@ import { FC } from "react";
 import { PanelSection, PanelSectionRow, Focusable, ButtonItem } from "@decky/ui";
 import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { SongInfo } from "../types";
-import { formatDuration, getDefaultCover } from "../utils/format";
+import { formatDuration } from "../utils/format";
 import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { SafeImage } from "./SafeImage";
 
 interface PlayerPageProps {
   song: SongInfo;
@@ -66,9 +67,10 @@ export const PlayerPage: FC<PlayerPageProps> = ({
       {/* 封面 */}
       <PanelSectionRow>
         <div style={{ textAlign: 'center', padding: '15px' }}>
-          <img 
+          <SafeImage 
             src={song.cover}
             alt={song.name}
+            size={180}
             style={{
               width: '180px',
               height: '180px',
@@ -76,9 +78,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               objectFit: 'cover',
               boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
               animation: isPlaying ? 'spin 12s linear infinite' : 'none',
-            }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = getDefaultCover(180);
             }}
           />
         </div>

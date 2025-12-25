@@ -6,7 +6,8 @@
 import { FC } from "react";
 import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { SongInfo } from "../types";
-import { formatDuration, getDefaultCover } from "../utils/format";
+import { formatDuration } from "../utils/format";
+import { SafeImage } from "./SafeImage";
 
 interface PlayerBarProps {
   song: SongInfo;
@@ -86,18 +87,16 @@ export const PlayerBar: FC<PlayerBarProps> = ({
             borderRadius: '8px',
           }}
         >
-          <img 
+          <SafeImage 
             src={song.cover}
             alt={song.name}
+            size={44}
             style={{
               width: '44px',
               height: '44px',
               borderRadius: '6px',
               objectFit: 'cover',
               background: '#2a2a2a',
-            }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = getDefaultCover(44);
             }}
           />
           <div style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
