@@ -7,8 +7,8 @@ import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui
 import { definePlugin, toaster, routerHook } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
-import { getLoginStatus, logout, getGuessLike } from "./api";
-import { preloadData, clearDataCache } from "./hooks/useDataManager";
+import { getLoginStatus, logout } from "./api";
+import { preloadData, clearDataCache, refreshGuessLike } from "./hooks/useDataManager";
 import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
 import { useMountedRef } from "./hooks/useMountedRef";
 import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, clearRecommendCache } from "./components";
@@ -28,6 +28,8 @@ function Content() {
   // 使用 ref 保存最新的 player 和页面状态，避免闭包问题
   const playerRef = useRef(player);
   const currentPageRef = useRef(currentPage);
+  const nextGuessLikeRef = useRef<SongInfo[] | null>(null);
+  const nextGuessLikePromiseRef = useRef<Promise<void> | null>(null);
   
   // 每次渲染时更新 ref
   useEffect(() => {
@@ -136,11 +138,31 @@ function Content() {
 
   // 获取更多猜你喜欢歌曲的回调
   const fetchMoreGuessLikeSongs = async (): Promise<SongInfo[]> => {
-    const result = await getGuessLike();
-    if (result.success && result.songs.length > 0) {
-      return result.songs;
+    if (nextGuessLikeRef.current && nextGuessLikeRef.current.length > 0) {
+      const cached = nextGuessLikeRef.current;
+      nextGuessLikeRef.current = null;
+      // 继续预拉取下一批
+      prefetchNextGuessLikeBatch();
+      return cached;
     }
-    return [];
+
+    const songs = await refreshGuessLike();
+    // 拉取后立即预取下一批，保持连续
+    prefetchNextGuessLikeBatch();
+    return songs;
+  };
+
+  // 预取下一批猜你喜欢
+  const prefetchNextGuessLikeBatch = () => {
+    if (nextGuessLikePromiseRef.current) return;
+    nextGuessLikePromiseRef.current = refreshGuessLike()
+      .then((songs) => {
+        nextGuessLikeRef.current = songs;
+      })
+      .catch(() => { })
+      .finally(() => {
+        nextGuessLikePromiseRef.current = null;
+      });
   };
 
   // 从列表中选择歌曲时，设置整个列表为播放列表
@@ -153,6 +175,7 @@ function Content() {
       // 如果是猜你喜欢，设置自动刷新回调
       if (source === 'guess-like') {
         player.setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
+        prefetchNextGuessLikeBatch();
       } else {
         player.setOnNeedMoreSongs(null);
       }

@@ -396,6 +396,8 @@ export const FullscreenPlayer: FC = () => {
 
   const player = usePlayer();
   const dataManager = useDataManager();
+  const nextGuessLikeRef = useRef<SongInfo[] | null>(null);
+  const nextGuessLikePromiseRef = useRef<Promise<void> | null>(null);
   
   // 保存最新状态到 ref，用于手柄快捷键
   const playerRef = useRef(player);
@@ -466,8 +468,27 @@ export const FullscreenPlayer: FC = () => {
 
   // 获取更多猜你喜欢歌曲的回调
   const fetchMoreGuessLikeSongs = async (): Promise<SongInfo[]> => {
+    if (nextGuessLikeRef.current && nextGuessLikeRef.current.length > 0) {
+      const cached = nextGuessLikeRef.current;
+      nextGuessLikeRef.current = null;
+      prefetchNextGuessLikeBatch();
+      return cached;
+    }
     const songs = await dataManager.refreshGuessLike();
+    prefetchNextGuessLikeBatch();
     return songs;
+  };
+
+  const prefetchNextGuessLikeBatch = () => {
+    if (nextGuessLikePromiseRef.current) return;
+    nextGuessLikePromiseRef.current = dataManager.refreshGuessLike()
+      .then((songs) => {
+        nextGuessLikeRef.current = songs;
+      })
+      .catch(() => { })
+      .finally(() => {
+        nextGuessLikePromiseRef.current = null;
+      });
   };
 
   // 选择歌曲
@@ -478,6 +499,7 @@ export const FullscreenPlayer: FC = () => {
       
       if (source === 'guess-like') {
         player.setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
+        prefetchNextGuessLikeBatch();
       } else {
         player.setOnNeedMoreSongs(null);
       }
