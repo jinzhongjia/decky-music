@@ -60,20 +60,24 @@ function parseTime(timeStr: string): number {
 function parseLrcLine(line: string): Array<{ time: number; text: string }> {
   const results: Array<{ time: number; text: string }> = [];
   
+  // 移除行尾空白字符
+  const trimmedLine = line.trimEnd();
+  if (!trimmedLine) return results;
+  
   // 匹配所有时间标签
   const timeRegex = /\[(\d+:\d+[.:]\d+)\]/g;
   const times: number[] = [];
   let match;
   
-  while ((match = timeRegex.exec(line)) !== null) {
+  while ((match = timeRegex.exec(trimmedLine)) !== null) {
     const time = parseTime(match[1]);
-    if (time >= 0) {
+    if (time >= 0 && !isNaN(time)) {
       times.push(time);
     }
   }
   
   // 获取歌词文本（移除所有时间标签）
-  const text = line.replace(/\[\d+:\d+[.:]\d+\]/g, '').trim();
+  const text = trimmedLine.replace(/\[\d+:\d+[.:]\d+\]/g, '').trim();
   
   // 为每个时间创建一条记录
   for (const time of times) {
@@ -100,9 +104,12 @@ function isInvalidLyricText(text: string): boolean {
 function parseLrc(lrc: string): Map<number, string> {
   const map = new Map<number, string>();
   
-  if (!lrc) return map;
+  if (!lrc || typeof lrc !== 'string') return map;
   
-  const lines = lrc.split('\n');
+  // 移除 UTF-8 BOM 和 Windows 换行符 \r，避免干扰正则匹配
+  // 同时移除行尾空白字符（空格、制表符等）
+  const cleaned = lrc.replace(/^\uFEFF/, '').replace(/\r/g, '');
+  const lines = cleaned.split('\n');
   
   for (const line of lines) {
     const parsed = parseLrcLine(line);
@@ -133,30 +140,45 @@ function isQrcFormat(lyric: string): boolean {
 function parseQrc(qrc: string): QrcLyricLine[] {
   const result: QrcLyricLine[] = [];
   
-  if (!qrc) return result;
+  if (!qrc || typeof qrc !== 'string') return result;
   
-  const lines = qrc.split('\n');
+  // 移除 UTF-8 BOM 和 Windows 换行符 \r，避免干扰正则匹配
+  const cleaned = qrc.replace(/^\uFEFF/, '').replace(/\r/g, '');
+  const lines = cleaned.split('\n');
   
   for (const line of lines) {
+    // 移除行尾空白字符，避免干扰匹配
+    const trimmedLine = line.trimEnd();
+    if (!trimmedLine) continue;
+    
     // 匹配行格式：[lineStart,lineDuration]content
-    const lineMatch = line.match(/^\[(\d+),(\d+)\](.+)$/);
+    const lineMatch = trimmedLine.match(/^\[(\d+),(\d+)\](.+)$/);
     if (!lineMatch) continue;
     
     const lineStart = parseInt(lineMatch[1], 10);
+    // 验证时间戳有效性
+    if (isNaN(lineStart) || lineStart < 0) continue;
+    
     const content = lineMatch[3];
     const words: LyricWord[] = [];
     let fullText = '';
     
     // 找到所有时间标记的位置 (数字,数字)
+    // 注意：使用新的正则实例避免全局标志的重用问题
     const timeRegex = /\((\d+),(\d+)\)/g;
     const timeMatches: Array<{ index: number; start: number; duration: number; length: number }> = [];
     let timeMatch;
     
     while ((timeMatch = timeRegex.exec(content)) !== null) {
+      const start = parseInt(timeMatch[1], 10);
+      const duration = parseInt(timeMatch[2], 10);
+      // 验证时间有效性
+      if (isNaN(start) || isNaN(duration) || start < 0 || duration <= 0) continue;
+      
       timeMatches.push({
         index: timeMatch.index,
-        start: parseInt(timeMatch[1], 10) / 1000,
-        duration: parseInt(timeMatch[2], 10) / 1000,
+        start: start / 1000,
+        duration: duration / 1000,
         length: timeMatch[0].length
       });
     }
@@ -170,6 +192,23 @@ function parseQrc(qrc: string): QrcLyricLine[] {
         fullText += text;
       }
       lastEnd = tm.index + tm.length;
+    }
+    
+    // 处理最后一个时间标记后的文本（如果有）
+    if (lastEnd < content.length) {
+      const remainingText = content.substring(lastEnd);
+      if (remainingText.trim()) {
+        // 如果还有文本，使用最后一个时间标记的结束时间
+        if (timeMatches.length > 0) {
+          const lastTime = timeMatches[timeMatches.length - 1];
+          words.push({ 
+            text: remainingText, 
+            start: lastTime.start + lastTime.duration, 
+            duration: 0.1 // 给一个很小的持续时间
+          });
+          fullText += remainingText;
+        }
+      }
     }
     
     if (words.length > 0) {
@@ -207,6 +246,11 @@ function parseQrc(qrc: string): QrcLyricLine[] {
  * 自动检测 QRC 或 LRC 格式
  */
 export function parseLyric(lyric: string, trans?: string): ParsedLyric {
+  // 输入验证
+  if (!lyric || typeof lyric !== 'string') {
+    return { lines: [], isQrc: false };
+  }
+  
   // 检测是否是 QRC 格式
   const isQrc = isQrcFormat(lyric);
   
