@@ -3,16 +3,14 @@
  */
 
 import { FC, useState, useEffect } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { FaPlay } from "react-icons/fa";
 import { getPlaylistSongs } from "../api";
 import type { PlaylistInfo, SongInfo } from "../types";
-import { SongItem } from "./SongItem";
 import { BackButton } from "./BackButton";
-import { LoadingSpinner } from "./LoadingSpinner";
-import { EmptyState } from "./EmptyState";
-import { useMountedRef } from "../hooks/useMountedRef";
 import { SafeImage } from "./SafeImage";
+import { SongList } from "./SongList";
+import { useMountedRef } from "../hooks/useMountedRef";
 
 interface PlaylistDetailPageProps {
   playlist: PlaylistInfo;
@@ -106,24 +104,14 @@ export const PlaylistDetailPage: FC<PlaylistDetailPageProps> = ({
       </PanelSection>
 
       {/* 歌曲列表 */}
-      <PanelSection title={`歌曲列表${songs.length > 0 ? ` (${songs.length})` : ''}`}>
-        {loading ? (
-          <LoadingSpinner />
-        ) : songs.length === 0 ? (
-          <EmptyState message="歌单暂无歌曲" />
-        ) : (
-          <Focusable style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {songs.map((song, idx) => (
-              <SongItem
-                key={song.mid || idx}
-                song={song}
-                isPlaying={currentPlayingMid === song.mid}
-                onClick={(s) => onSelectSong(s, songs)}
-              />
-            ))}
-          </Focusable>
-        )}
-      </PanelSection>
+      <SongList
+        title={`歌曲列表${songs.length > 0 ? ` (${songs.length})` : ''}`}
+        songs={songs}
+        loading={loading}
+        currentPlayingMid={currentPlayingMid}
+        emptyText="歌单暂无歌曲"
+        onSelectSong={(song) => onSelectSong(song, songs)}
+      />
     </>
   );
 };

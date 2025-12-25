@@ -10,7 +10,7 @@ import { LoadingSpinner } from "./LoadingSpinner";
 import { EmptyState } from "./EmptyState";
 
 interface SongListProps {
-  title: string;
+  title?: string;
   songs: SongInfo[];
   loading?: boolean;
   currentPlayingMid?: string;
@@ -28,7 +28,7 @@ export const SongList: FC<SongListProps> = ({
 }) => {
   if (loading) {
     return (
-      <PanelSection title={title}>
+      <PanelSection title={title || undefined}>
         <LoadingSpinner />
       </PanelSection>
     );
@@ -36,14 +36,14 @@ export const SongList: FC<SongListProps> = ({
 
   if (songs.length === 0) {
     return (
-      <PanelSection title={title}>
+      <PanelSection title={title || undefined}>
         <EmptyState message={emptyText} />
       </PanelSection>
     );
   }
 
   return (
-    <PanelSection title={title}>
+    <PanelSection title={title || undefined}>
       {songs.map((song, idx) => (
         <SongItem
           key={song.mid || idx}

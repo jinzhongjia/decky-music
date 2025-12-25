@@ -3,11 +3,11 @@
  */
 
 import { FC, useEffect } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { FaTrash, FaPlay } from "react-icons/fa";
 import type { SongInfo } from "../types";
-import { SongItem } from "./SongItem";
 import { BackButton } from "./BackButton";
+import { SongList } from "./SongList";
 import { EmptyState } from "./EmptyState";
 
 interface HistoryPageProps {
@@ -75,18 +75,13 @@ export const HistoryPage: FC<HistoryPageProps> = ({
           />
         </PanelSection>
       ) : (
-        <PanelSection>
-          <Focusable style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {history.map((song, idx) => (
-              <SongItem
-                key={`${song.mid}-${idx}`}
-                song={song}
-                isPlaying={currentPlayingMid === song.mid}
-                onClick={(s) => onSelectSong(s, history)}
-              />
-            ))}
-          </Focusable>
-        </PanelSection>
+        <SongList
+          title=""
+          songs={history}
+          currentPlayingMid={currentPlayingMid}
+          emptyText="暂无播放历史"
+          onSelectSong={(song) => onSelectSong(song, history)}
+        />
       )}
     </>
   );
