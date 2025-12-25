@@ -4,12 +4,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui";
-import { definePlugin, toaster } from "@decky/api";
+import { definePlugin, toaster, routerHook } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
 import { getLoginStatus, logout, getGuessLike } from "./api";
 import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
 import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, clearRecommendCache } from "./components";
+import { FullscreenPlayer } from "./pages";
+import { ROUTE_PATH, menuManager } from "./patches";
 import type { PageType, SongInfo, PlaylistInfo } from "./types";
 
 // 主内容组件
@@ -98,6 +100,11 @@ function Content() {
       const result = await getLoginStatus();
       if (!mountedRef.current) return;
       setCurrentPage(result.logged_in ? 'home' : 'login');
+      
+      // 已登录时启用左侧菜单
+      if (result.logged_in) {
+        menuManager.enable();
+      }
     } catch (e) {
       console.error("检查登录状态失败:", e);
       if (!mountedRef.current) return;
@@ -108,12 +115,16 @@ function Content() {
 
   const handleLoginSuccess = () => {
     setCurrentPage('home');
+    // 登录成功后启用左侧菜单
+    menuManager.enable();
   };
 
   const handleLogout = async () => {
     await logout();
     player.stop();
     clearRecommendCache(); // 清除推荐缓存
+    // 退出登录后禁用左侧菜单
+    menuManager.disable();
     setCurrentPage('login');
     toaster.toast({
       title: "已退出登录",
@@ -325,6 +336,22 @@ export default definePlugin(() => {
   `;
   document.head.appendChild(style);
 
+  // 注册全屏路由
+  routerHook.addRoute(ROUTE_PATH, FullscreenPlayer);
+  console.log(`[QQMusic] 路由已注册: ${ROUTE_PATH}`);
+
+  // 插件初始化时检查登录状态，已登录则启用左侧菜单
+  getLoginStatus().then(result => {
+    if (result.logged_in) {
+      console.log("[QQMusic] 用户已登录，启用左侧菜单");
+      menuManager.enable();
+    } else {
+      console.log("[QQMusic] 用户未登录，不启用左侧菜单");
+    }
+  }).catch(e => {
+    console.error("[QQMusic] 检查登录状态失败:", e);
+  });
+
   return {
     name: "QQ音乐",
     titleView: (
@@ -337,6 +364,12 @@ export default definePlugin(() => {
     icon: <FaMusic />,
     onDismount() {
       console.log("Decky QQ Music 插件已卸载");
+      
+      // 清理菜单 patch
+      menuManager.cleanup();
+      
+      // 移除路由
+      routerHook.removeRoute(ROUTE_PATH);
       
       // 清理播放器（停止播放、恢复休眠）
       cleanupPlayer();
