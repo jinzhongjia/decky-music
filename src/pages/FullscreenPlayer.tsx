@@ -546,6 +546,12 @@ export const FullscreenPlayer: FC = () => {
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
   const [historyVisited, setHistoryVisited] = useState(false);
   const mountedRef = useMountedRef();
+  const playerPageRef = useRef<HTMLDivElement>(null);
+  const guessLikePageRef = useRef<HTMLDivElement>(null);
+  const searchPageRef = useRef<HTMLDivElement>(null);
+  const playlistsPageRef = useRef<HTMLDivElement>(null);
+  const playlistDetailPageRef = useRef<HTMLDivElement>(null);
+  const historyPageRef = useRef<HTMLDivElement>(null);
 
   const player = usePlayer();
   const dataManager = useDataManager();
@@ -726,16 +732,18 @@ export const FullscreenPlayer: FC = () => {
   const handleRefreshGuessLike = useCallback(() => refreshGuessLike(), [refreshGuessLike]);
 
   const guessLikeContent = useMemo(() => (
-    <GuessLikePage
-      songs={guessLikeSongs}
-      loading={guessLoading}
-      onRefresh={handleRefreshGuessLike}
-      onSelectSong={(song) => handleSelectSong(song, guessLikeSongs, 'guess-like')}
-    />
+    <div ref={guessLikePageRef} tabIndex={-1} style={{ height: '100%' }}>
+      <GuessLikePage
+        songs={guessLikeSongs}
+        loading={guessLoading}
+        onRefresh={handleRefreshGuessLike}
+        onSelectSong={(song) => handleSelectSong(song, guessLikeSongs, 'guess-like')}
+      />
+    </div>
   ), [guessLikeSongs, guessLoading, handleRefreshGuessLike, handleSelectSong]);
 
   const searchPageContent = useMemo(() => (
-    <div style={{ height: '100%', overflow: 'auto' }}>
+    <div ref={searchPageRef} tabIndex={-1} style={{ height: '100%', overflow: 'auto' }}>
       <MemoSearchPage
         onSelectSong={handleSelectSong}
         onBack={goBackToPlayer}
@@ -745,7 +753,7 @@ export const FullscreenPlayer: FC = () => {
   ), [currentPlayingMid, goBackToPlayer, handleSelectSong]);
 
   const playlistsContent = useMemo(() => (
-    <div style={{ height: '100%', overflow: 'auto' }}>
+    <div ref={playlistsPageRef} tabIndex={-1} style={{ height: '100%', overflow: 'auto' }}>
       <MemoPlaylistsPage
         onSelectPlaylist={handleSelectPlaylist}
         onBack={goBackToPlayer}
@@ -756,7 +764,7 @@ export const FullscreenPlayer: FC = () => {
   const playlistDetailContent = useMemo(() => {
     if (!selectedPlaylist) return null;
     return (
-      <div style={{ height: '100%', overflow: 'auto' }}>
+      <div ref={playlistDetailPageRef} tabIndex={-1} style={{ height: '100%', overflow: 'auto' }}>
         <MemoPlaylistDetailPage
           playlist={selectedPlaylist}
           onSelectSong={handleSelectSong}
@@ -769,7 +777,7 @@ export const FullscreenPlayer: FC = () => {
   }, [currentPlayingMid, goBackToPlaylists, handleAddPlaylistToQueue, handleSelectSong, selectedPlaylist]);
 
   const historyContent = useMemo(() => (
-    <div style={{ height: '100%', overflow: 'auto' }}>
+    <div ref={historyPageRef} tabIndex={-1} style={{ height: '100%', overflow: 'auto' }}>
       <MemoHistoryPage
         playlist={playlist}
         currentIndex={currentIndex}
@@ -781,11 +789,48 @@ export const FullscreenPlayer: FC = () => {
     </div>
   ), [currentIndex, currentPlayingMid, goBackToPlayer, playAtIndex, playlist, removeFromQueue]);
 
+  const focusCurrentPage = useCallback((page: FullscreenPageType) => {
+    let target: HTMLElement | null = null;
+    switch (page) {
+      case 'player':
+        target = playerPageRef.current;
+        break;
+      case 'guess-like':
+        target = guessLikePageRef.current;
+        break;
+      case 'search':
+        target = searchPageRef.current;
+        break;
+      case 'playlists':
+        target = playlistsPageRef.current;
+        break;
+      case 'playlist-detail':
+        target = selectedPlaylist ? playlistDetailPageRef.current : null;
+        break;
+      case 'history':
+        target = historyPageRef.current;
+        break;
+      default:
+        break;
+    }
+    if (!target) return;
+    const focusFn = () => target?.focus({ preventScroll: true });
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(focusFn);
+    } else {
+      setTimeout(focusFn, 0);
+    }
+  }, [selectedPlaylist]);
+
   useEffect(() => {
     if (currentPage === 'history' && !historyVisited) {
       setHistoryVisited(true);
     }
   }, [currentPage, historyVisited]);
+
+  useEffect(() => {
+    focusCurrentPage(currentPage);
+  }, [currentPage, focusCurrentPage]);
 
   // 加载中
   if (checking) {
@@ -828,7 +873,10 @@ export const FullscreenPlayer: FC = () => {
     const song = currentSong;
 
     return (
-      <div style={{ 
+      <div
+        ref={playerPageRef}
+        tabIndex={-1}
+        style={{ 
         display: 'flex', 
         height: '100%',
         padding: '16px 24px',
