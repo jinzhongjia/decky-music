@@ -9,6 +9,9 @@ import { BackButton } from "./BackButton";
 import { SongItem } from "./SongItem";
 import { EmptyState } from "./EmptyState";
 
+const HISTORY_COVER_PRELOAD_RADIUS = 12;
+const preloadedHistoryCovers = new Set<string>();
+
 interface HistoryPageProps {
   playlist: SongInfo[];
   currentIndex: number;
@@ -39,6 +42,20 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
       currentRef.current.scrollIntoView({ block: "center", behavior: "auto" });
     }
   }, [currentIndex, playlist.length]);
+
+  useEffect(() => {
+    if (playlist.length === 0) return;
+    const start = Math.max(0, currentIndex - HISTORY_COVER_PRELOAD_RADIUS);
+    const end = Math.min(playlist.length, currentIndex + HISTORY_COVER_PRELOAD_RADIUS + 1);
+    const candidates = playlist.slice(start, end);
+
+    candidates.forEach((song) => {
+      if (!song.cover || preloadedHistoryCovers.has(song.cover)) return;
+      preloadedHistoryCovers.add(song.cover);
+      const img = new window.Image();
+      img.src = song.cover;
+    });
+  }, [playlist, currentIndex]);
 
   return (
     <>
