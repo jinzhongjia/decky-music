@@ -1,7 +1,5 @@
 # Decky QQ Music 插件
 
-[![Chat](https://img.shields.io/badge/chat-on%20discord-7289da.svg)](https://deckbrew.xyz/discord)
-
 在 Steam Deck 上享受 QQ 音乐的 Decky Loader 插件。
 
 ## ✨ 功能特性
@@ -72,6 +70,9 @@ mise run build
 - 点击歌曲开始播放
 - 底部播放条显示当前播放歌曲
 - 支持播放/暂停、快进/快退
+- 支持使用 x 控制暂停/播放
+- 支持使用 L1/R1 切换上一首/下一首
+- 全屏播放器支持显示歌词
 
 ## 🛠️ 开发
 
@@ -190,8 +191,8 @@ mise run dev
 
 ## 📋 待办事项
 
-- [ ] 歌词同步滚动显示
 - [ ] 音质选择
+- [ ] 悬浮歌词
 
 ## ⚠️ 注意事项
 
