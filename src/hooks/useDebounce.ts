@@ -63,7 +63,7 @@ export function useDebounce<T>(value: T, delay: number = 300): T {
  * };
  * ```
  */
-export function useDebounceCallback<T extends (...args: any[]) => any>(
+export function useDebounceCallback<T extends (...args: unknown[]) => unknown>(
   callback: T,
   delay: number = 300
 ): T {
@@ -96,4 +96,3 @@ export function useDebounceCallback<T extends (...args: any[]) => any>(
 
   return debouncedFn;
 }
-

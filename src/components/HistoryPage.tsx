@@ -1,6 +1,7 @@
 /**
  * 播放队列/历史合并视图
  */
+/* global HTMLDivElement */
 
 import { FC, useCallback, memo, useEffect, useMemo, useRef, useState } from "react";
 import { PanelSection, Focusable, NavEntryPositionPreferences } from "@decky/ui";

@@ -6,7 +6,7 @@
 import React, { FC, CSSProperties } from "react";
 import { getDefaultCover } from "../utils/format";
 
-interface SafeImageProps {
+type SafeImageProps = {
   /** 图片源地址 */
   src?: string;
   /** 图片描述 */
@@ -15,9 +15,7 @@ interface SafeImageProps {
   size: number;
   /** 自定义样式 */
   style?: CSSProperties;
-  /** 其他 img 标签属性 */
-  [key: string]: any;
-}
+} & Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src" | "alt" | "style">;
 
 const failedImages = new Set<string>();
 

@@ -2,6 +2,7 @@
  * 左侧主菜单注入 Patch
  * 参考 DeckWebBrowser 实现，使用新版 @decky/ui API
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { FC, ReactElement, ReactNode } from "react";
 import { afterPatch, findInReactTree, getReactRoot } from "@decky/ui";

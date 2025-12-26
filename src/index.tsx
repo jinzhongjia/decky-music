@@ -137,7 +137,19 @@ function Content() {
   }, [player]);
 
   // 获取更多猜你喜欢歌曲的回调
-  const fetchMoreGuessLikeSongs = async (): Promise<SongInfo[]> => {
+  const prefetchNextGuessLikeBatch = useCallback(() => {
+    if (nextGuessLikePromiseRef.current) return;
+    nextGuessLikePromiseRef.current = fetchGuessLikeRaw()
+      .then((songs) => {
+        nextGuessLikeRef.current = songs;
+      })
+      .catch(() => { })
+      .finally(() => {
+        nextGuessLikePromiseRef.current = null;
+      });
+  }, []);
+
+  const fetchMoreGuessLikeSongs = useCallback(async (): Promise<SongInfo[]> => {
     if (nextGuessLikeRef.current && nextGuessLikeRef.current.length > 0) {
       const cached = nextGuessLikeRef.current;
       nextGuessLikeRef.current = null;
@@ -150,20 +162,7 @@ function Content() {
     // 拉取后立即预取下一批，保持连续
     prefetchNextGuessLikeBatch();
     return songs;
-  };
-
-  // 预取下一批猜你喜欢
-  const prefetchNextGuessLikeBatch = () => {
-    if (nextGuessLikePromiseRef.current) return;
-    nextGuessLikePromiseRef.current = fetchGuessLikeRaw()
-      .then((songs) => {
-        nextGuessLikeRef.current = songs;
-      })
-      .catch(() => { })
-      .finally(() => {
-        nextGuessLikePromiseRef.current = null;
-      });
-  };
+  }, [prefetchNextGuessLikeBatch]);
 
   // 从列表中选择歌曲时，设置整个列表为播放列表
   // source: 'guess-like' 表示来自猜你喜欢，播放完后会自动刷新
@@ -182,7 +181,7 @@ function Content() {
       await player.playSong(song);
       player.setOnNeedMoreSongs(null);
     }
-  }, [player]);
+  }, [fetchMoreGuessLikeSongs, player]);
 
   const handleGoToPlayer = useCallback(() => {
     if (player.currentSong) {
