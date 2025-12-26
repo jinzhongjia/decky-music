@@ -401,9 +401,13 @@ export const FullscreenPlayer: FC = () => {
   
   // 保存最新状态到 ref，用于手柄快捷键
   const playerRef = useRef(player);
+  const currentPageRef = useRef(currentPage);
   useEffect(() => {
     playerRef.current = player;
   });
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
 
   // 检查登录状态
   useEffect(() => {
@@ -425,11 +429,11 @@ export const FullscreenPlayer: FC = () => {
         if (!pressed) return;
         
         const p = playerRef.current;
-        if (!p.currentSong) return;
+        const page = currentPageRef.current;
 
         switch (button) {
           case 2: // X - 播放/暂停
-            p.togglePlay();
+            if (p.currentSong) p.togglePlay();
             break;
           case 30: // L1 - 上一曲
             if (p.playlist.length > 1) p.playPrev();
@@ -437,6 +441,17 @@ export const FullscreenPlayer: FC = () => {
           case 31: // R1 - 下一曲
             if (p.playlist.length > 1) p.playNext();
             break;
+          case 28: // LT - 底部导航左切换
+          case 29: { // RT - 底部导航右切换
+            const activeId = page === 'playlist-detail' ? 'playlists' : page;
+            const currentIndex = NAV_ITEMS.findIndex((item) => item.id === activeId);
+            if (currentIndex === -1) break;
+            const delta = button === 28 ? -1 : 1;
+            const nextIndex =
+              (currentIndex + delta + NAV_ITEMS.length) % NAV_ITEMS.length;
+            setCurrentPage(NAV_ITEMS[nextIndex].id as FullscreenPageType);
+            break;
+          }
         }
       }
     );
