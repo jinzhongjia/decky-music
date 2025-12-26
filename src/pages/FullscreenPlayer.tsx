@@ -500,6 +500,7 @@ export const FullscreenPlayer: FC = () => {
   const [checking, setChecking] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
+  const [historyVisited, setHistoryVisited] = useState(false);
   const mountedRef = useMountedRef();
 
   const player = usePlayer();
@@ -735,6 +736,12 @@ export const FullscreenPlayer: FC = () => {
       />
     </div>
   ), [currentIndex, currentPlayingMid, goBackToPlayer, playAtIndex, playlist, removeFromQueue]);
+
+  useEffect(() => {
+    if (currentPage === 'history' && !historyVisited) {
+      setHistoryVisited(true);
+    }
+  }, [currentPage, historyVisited]);
 
   // 格式化时间
   const formatTime = (seconds: number): string => {
@@ -1030,9 +1037,21 @@ export const FullscreenPlayer: FC = () => {
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        minHeight: 0
+        minHeight: 0,
+        position: 'relative'
       }}>
         {renderContent()}
+        {historyVisited && currentPage !== 'history' && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            visibility: 'hidden',
+            pointerEvents: 'none',
+            overflow: 'hidden',
+          }}>
+            {historyContent}
+          </div>
+        )}
       </div>
 
       {/* 底部导航栏 - 固定高度 */}
