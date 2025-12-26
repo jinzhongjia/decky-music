@@ -62,6 +62,7 @@ interface KaraokeLyricsProps {
   lyric: ParsedLyric | null;
   isPlaying: boolean;
   hasSong: boolean;
+  onSeek: (timeSec: number) => void;
 }
 
 interface QrcLineProps {
@@ -70,13 +71,15 @@ interface QrcLineProps {
   activeIndex: number;
   currentTimeSec: number | null;
   activeRef: React.RefObject<HTMLDivElement | null>;
+  onSeek: (timeSec: number) => void;
 }
 
 interface LrcLineProps {
-  line: { text: string; trans?: string };
+  line: { text: string; trans?: string; time: number };
   index: number;
   activeIndex: number;
   activeRef: React.RefObject<HTMLDivElement | null>;
+  onSeek: (timeSec: number) => void;
 }
 
 const getWordProgress = (word: LyricWord, timeSec: number): number => {
@@ -90,10 +93,17 @@ const isInterludeLine = (text: string): boolean => {
   return /^[/\-*~\s]+$/.test(trimmed) || trimmed.length === 0;
 };
 
-const QrcLine = memo<QrcLineProps>(({ line, index, activeIndex, currentTimeSec, activeRef }) => {
+const QrcLine = memo<QrcLineProps>(({ line, index, activeIndex, currentTimeSec, activeRef, onSeek }) => {
   const isActive = index === activeIndex;
   const isPast = index < activeIndex;
   const isInterlude = isInterludeLine(line.text);
+  const handleActivate = useCallback(() => onSeek(line.time), [line.time, onSeek]);
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleActivate();
+    }
+  }, [handleActivate]);
 
   if (isInterlude) {
     return (
@@ -116,26 +126,31 @@ const QrcLine = memo<QrcLineProps>(({ line, index, activeIndex, currentTimeSec, 
   }
 
   return (
-    <div
-      ref={isActive ? activeRef : null}
-      style={{
-        padding: '14px 16px',
-        marginBottom: '8px',
-        fontSize: isActive ? '24px' : '18px',
-        fontWeight: 700,
-        lineHeight: 1.4,
-        transition: 'font-size 0.3s ease, transform 0.3s ease, background 0.3s ease',
-        borderRadius: '8px',
-        background: isActive ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
-        transform: isActive ? 'scale(1.02)' : 'scale(1)',
-        transformOrigin: 'left center',
-      }}
-    >
-      <div style={{ lineHeight: 1.6 }}>
-        {line.words.map((word, wordIndex) => {
-          const progress = isActive && currentTimeSec !== null
-            ? getWordProgress(word, currentTimeSec)
-            : (isPast ? 100 : 0);
+      <Focusable
+        focusable
+        onActivate={handleActivate}
+        onClick={handleActivate}
+        onKeyDown={handleKeyDown}
+        style={{
+          padding: '14px 16px',
+          marginBottom: '8px',
+          fontSize: isActive ? '24px' : '18px',
+          fontWeight: 700,
+          lineHeight: 1.4,
+          transition: 'font-size 0.3s ease, transform 0.3s ease, background 0.3s ease',
+          borderRadius: '8px',
+          background: isActive ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
+          transform: isActive ? 'scale(1.02)' : 'scale(1)',
+          transformOrigin: 'left center',
+          outline: 'none',
+        }}
+        ref={isActive ? activeRef : null}
+      >
+        <div style={{ lineHeight: 1.6 }}>
+          {line.words.map((word, wordIndex) => {
+            const progress = isActive && currentTimeSec !== null
+              ? getWordProgress(word, currentTimeSec)
+              : (isPast ? 100 : 0);
           return (
             <span key={wordIndex} style={{ position: 'relative', display: 'inline-block', whiteSpace: 'pre' }}>
               <span style={{
@@ -171,17 +186,28 @@ const QrcLine = memo<QrcLineProps>(({ line, index, activeIndex, currentTimeSec, 
           {line.trans}
         </div>
       )}
-    </div>
-  );
-});
+      </Focusable>
+    );
+  });
 
 QrcLine.displayName = "QrcLine";
 
-const LrcLine = memo<LrcLineProps>(({ line, index, activeIndex, activeRef }) => {
+const LrcLine = memo<LrcLineProps>(({ line, index, activeIndex, activeRef, onSeek }) => {
   const isActive = index === activeIndex;
   const isPast = index < activeIndex;
+  const handleActivate = useCallback(() => onSeek(line.time / 1000), [line.time, onSeek]);
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleActivate();
+    }
+  }, [handleActivate]);
   return (
-    <div
+    <Focusable
+      focusable
+      onActivate={handleActivate}
+      onClick={handleActivate}
+      onKeyDown={handleKeyDown}
       ref={isActive ? activeRef : null}
       style={{
         padding: '14px 16px',
@@ -195,6 +221,7 @@ const LrcLine = memo<LrcLineProps>(({ line, index, activeIndex, activeRef }) => 
         transform: isActive ? 'scale(1.02)' : 'scale(1)',
         transformOrigin: 'left center',
         color: isActive ? '#1DB954' : (isPast ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.35)'),
+        outline: 'none',
       }}
     >
       <div>{line.text || '♪'}</div>
@@ -209,7 +236,7 @@ const LrcLine = memo<LrcLineProps>(({ line, index, activeIndex, activeRef }) => 
           {line.trans}
         </div>
       )}
-    </div>
+    </Focusable>
   );
 });
 
@@ -219,7 +246,7 @@ LrcLine.displayName = "LrcLine";
  * 独立的歌词组件，只有这个组件需要高频刷新
  * 使用 memo 避免父组件重渲染时不必要的更新
  */
-const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong }) => {
+const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong, onSeek }) => {
   // 高频更新时间（仅用于 QRC 卡拉OK效果）
   const [currentTime, setCurrentTime] = useState(0);
   const animationFrameRef = useRef<number | null>(null);
@@ -349,6 +376,7 @@ const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong }) =
               activeIndex={currentLyricIndex}
               currentTimeSec={index === currentLyricIndex ? effectiveTime : null}
               activeRef={currentLyricRef}
+              onSeek={onSeek}
             />
           ))}
         </div>
@@ -361,6 +389,7 @@ const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong }) =
               index={index}
               activeIndex={currentLyricIndex}
               activeRef={currentLyricRef}
+              onSeek={onSeek}
             />
           ))}
         </div>
@@ -581,6 +610,16 @@ export const FullscreenPlayer: FC = () => {
     preloadData,
   } = dataManager;
   const currentPlayingMid = currentSong?.mid;
+  const handleLyricSeek = useCallback((timeSec: number) => {
+    if (!currentSong) return;
+    const total = duration || currentSong.duration || 0;
+    if (!total || !isFinite(total)) return;
+    const clamped = Math.max(0, Math.min(timeSec, total));
+    seek(clamped);
+    if (!isPlaying) {
+      togglePlay();
+    }
+  }, [currentSong?.duration, duration, isPlaying, seek, togglePlay]);
   const navigateToPage = useCallback((page: FullscreenPageType) => {
     setCurrentPage(page);
   }, []);
@@ -989,6 +1028,7 @@ export const FullscreenPlayer: FC = () => {
             lyric={lyric} 
             isPlaying={isPlaying} 
             hasSong={!!song} 
+            onSeek={handleLyricSeek}
           />
         </div>
       </div>
