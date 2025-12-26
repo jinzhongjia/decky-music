@@ -59,6 +59,11 @@ const notifyListeners = () => {
 
 // ==================== 图片预加载 ====================
 
+const MAX_PRELOAD_COVERS = 80;
+const PRELOAD_BATCH_SIZE = 5;
+const PRELOAD_IDLE_TIMEOUT = 1000;
+const preloadedCoverUrls = new Set<string>();
+
 /**
  * 预加载图片
  */
@@ -74,32 +79,50 @@ const preloadImage = (url: string): Promise<void> => {
 /**
  * 批量预加载歌曲封面
  */
-const preloadSongCovers = async (songs: SongInfo[]) => {
+const schedulePreloadImages = (covers: string[]) => {
+  const pending = covers.filter((cover) => cover && !preloadedCoverUrls.has(cover));
+  if (pending.length === 0) return;
+
+  const capped = pending.slice(0, MAX_PRELOAD_COVERS);
+  capped.forEach((cover) => preloadedCoverUrls.add(cover));
+
+  let index = 0;
+  const runBatch = () => {
+    const batch = capped.slice(index, index + PRELOAD_BATCH_SIZE);
+    if (batch.length === 0) return;
+    index += PRELOAD_BATCH_SIZE;
+    Promise.all(batch.map(preloadImage)).finally(() => scheduleNext());
+  };
+
+  const scheduleNext = () => {
+    if (index >= capped.length) return;
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(runBatch, { timeout: PRELOAD_IDLE_TIMEOUT });
+    } else {
+      setTimeout(runBatch, 0);
+    }
+  };
+
+  scheduleNext();
+};
+
+const preloadSongCovers = (songs: SongInfo[]) => {
   const covers = songs
     .filter(song => song.cover)
     .map(song => song.cover as string);
-  
-  // 并行预加载，但限制并发数
-  const batchSize = 5;
-  for (let i = 0; i < covers.length; i += batchSize) {
-    const batch = covers.slice(i, i + batchSize);
-    await Promise.all(batch.map(preloadImage));
-  }
+
+  schedulePreloadImages(covers);
 };
 
 /**
  * 批量预加载歌单封面
  */
-const preloadPlaylistCovers = async (playlists: PlaylistInfo[]) => {
+const preloadPlaylistCovers = (playlists: PlaylistInfo[]) => {
   const covers = playlists
     .filter(p => p.cover)
     .map(p => p.cover as string);
-  
-  const batchSize = 5;
-  for (let i = 0; i < covers.length; i += batchSize) {
-    const batch = covers.slice(i, i + batchSize);
-    await Promise.all(batch.map(preloadImage));
-  }
+
+  schedulePreloadImages(covers);
 };
 
 // ==================== 数据加载函数 ====================
