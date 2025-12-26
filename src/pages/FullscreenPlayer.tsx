@@ -999,8 +999,7 @@ export const FullscreenPlayer: FC = () => {
     );
   };
 
-  // 渲染内容
-  const renderContent = () => {
+  const renderNonHistoryContent = () => {
     switch (currentPage) {
       case 'player':
         return renderPlayerPage();
@@ -1012,8 +1011,6 @@ export const FullscreenPlayer: FC = () => {
         return playlistsContent;
       case 'playlist-detail':
         return playlistDetailContent;
-      case 'history':
-        return historyContent;
       default:
         return null;
     }
@@ -1040,13 +1037,23 @@ export const FullscreenPlayer: FC = () => {
         minHeight: 0,
         position: 'relative'
       }}>
-        {renderContent()}
-        {historyVisited && currentPage !== 'history' && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: currentPage === 'history' ? 'none' : 'auto',
+          opacity: currentPage === 'history' ? 0 : 1,
+          transition: 'opacity 140ms ease-out',
+          overflow: 'hidden',
+        }}>
+          {renderNonHistoryContent()}
+        </div>
+        {(historyVisited || currentPage === 'history') && (
           <div style={{
             position: 'absolute',
             inset: 0,
-            visibility: 'hidden',
-            pointerEvents: 'none',
+            pointerEvents: currentPage === 'history' ? 'auto' : 'none',
+            opacity: currentPage === 'history' ? 1 : 0,
+            transition: 'opacity 140ms ease-out',
             overflow: 'hidden',
           }}>
             {historyContent}
