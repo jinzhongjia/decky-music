@@ -2,7 +2,7 @@
  * 歌曲列表组件
  */
 
-import { FC, memo } from "react";
+import { FC, memo, useEffect, useRef, useState } from "react";
 import { PanelSection } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { SongItem } from "./SongItem";
@@ -18,6 +18,10 @@ interface SongListProps {
   onSelectSong: (song: SongInfo) => void;
   onAddToQueue?: (song: SongInfo) => void;
   onRemoveFromQueue?: (song: SongInfo) => void;
+  progressiveRender?: boolean;
+  initialRenderCount?: number;
+  renderChunkSize?: number;
+  renderChunkDelay?: number;
 }
 
 const SongListComponent: FC<SongListProps> = ({
@@ -29,7 +33,44 @@ const SongListComponent: FC<SongListProps> = ({
   onSelectSong,
   onAddToQueue,
   onRemoveFromQueue,
+  progressiveRender = false,
+  initialRenderCount = 60,
+  renderChunkSize = 40,
+  renderChunkDelay = 30,
 }) => {
+  const [visibleCount, setVisibleCount] = useState(songs.length);
+  const chunkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!progressiveRender || songs.length <= initialRenderCount) {
+      setVisibleCount(songs.length);
+      return;
+    }
+
+    setVisibleCount(initialRenderCount);
+
+    const scheduleNext = () => {
+      chunkTimerRef.current = setTimeout(() => {
+        setVisibleCount((prev) => {
+          const next = Math.min(prev + renderChunkSize, songs.length);
+          if (next < songs.length) {
+            scheduleNext();
+          }
+          return next;
+        });
+      }, renderChunkDelay);
+    };
+
+    scheduleNext();
+
+    return () => {
+      if (chunkTimerRef.current) {
+        clearTimeout(chunkTimerRef.current);
+        chunkTimerRef.current = null;
+      }
+    };
+  }, [progressiveRender, songs.length, initialRenderCount, renderChunkSize, renderChunkDelay]);
+
   if (loading) {
     return (
       <PanelSection title={title || undefined}>
@@ -48,7 +89,7 @@ const SongListComponent: FC<SongListProps> = ({
 
   return (
     <PanelSection title={title || undefined}>
-      {songs.map((song, idx) => (
+      {songs.slice(0, visibleCount).map((song, idx) => (
         <SongItem
           key={song.mid || idx}
           song={song}
@@ -58,6 +99,11 @@ const SongListComponent: FC<SongListProps> = ({
           onRemoveFromQueue={onRemoveFromQueue}
         />
       ))}
+      {visibleCount < songs.length && (
+        <div style={{ padding: "6px 0", fontSize: "12px", opacity: 0.7 }}>
+          正在加载更多歌曲...
+        </div>
+      )}
     </PanelSection>
   );
 };

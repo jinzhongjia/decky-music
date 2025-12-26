@@ -133,6 +133,10 @@ const PlaylistDetailPageComponent: FC<PlaylistDetailPageProps> = ({
         emptyText="歌单暂无歌曲"
         onSelectSong={handleSongSelect}
         onAddToQueue={onAddSongToQueue}
+        progressiveRender={songs.length >= 120}
+        initialRenderCount={80}
+        renderChunkSize={50}
+        renderChunkDelay={30}
       />
     </>
   );
