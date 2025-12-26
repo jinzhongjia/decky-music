@@ -164,15 +164,12 @@ const doPatchMenu = (): (() => void) => {
       menuNode.return.alternate.type = menuNode.return.type;
     }
 
-    console.log('[QQMusic] 主菜单 Patch 成功');
-
     // 返回取消 patch 的函数
     return () => {
       menuNode.return.type = orig;
       if (menuNode.return.alternate) {
         menuNode.return.alternate.type = menuNode.return.type;
       }
-      console.log('[QQMusic] 主菜单 Patch 已移除');
     };
   } catch (error) {
     console.error('[QQMusic] 菜单 Patch 失败:', error);
@@ -188,13 +185,9 @@ export const menuManager = {
    * 启用菜单（登录后调用）
    */
   enable: () => {
-    if (isPatched) {
-      console.log('[QQMusic] 菜单已启用，跳过');
-      return;
-    }
+    if (isPatched) return;
     unpatchFn = doPatchMenu();
     isPatched = true;
-    console.log('[QQMusic] 菜单已启用');
   },
 
   /**
@@ -202,13 +195,11 @@ export const menuManager = {
    */
   disable: () => {
     if (!isPatched || !unpatchFn) {
-      console.log('[QQMusic] 菜单未启用，跳过');
       return;
     }
     unpatchFn();
     unpatchFn = null;
     isPatched = false;
-    console.log('[QQMusic] 菜单已禁用');
   },
 
   /**

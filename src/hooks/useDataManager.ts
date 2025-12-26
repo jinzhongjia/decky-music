@@ -282,16 +282,7 @@ export const loadPlaylists = async (): Promise<{ created: PlaylistInfo[], collec
  * 预加载所有数据（在插件初始化时调用）
  */
 export const preloadData = async () => {
-  console.log("[DataManager] 开始预加载数据...");
-  
-  // 并行加载
-  await Promise.all([
-    loadGuessLike(),
-    loadDailyRecommend(),
-    loadPlaylists(),
-  ]);
-  
-  console.log("[DataManager] 预加载完成");
+  await Promise.all([loadGuessLike(), loadDailyRecommend(), loadPlaylists()]);
 };
 
 // ==================== 清理 ====================
@@ -317,7 +308,6 @@ export const clearDataCache = () => {
   playlistsPromise = null;
   
   notifyListeners();
-  console.log("[DataManager] 缓存已清除");
 };
 
 // ==================== Getter ====================

@@ -368,8 +368,6 @@ function Content() {
 
 // 插件导出
 export default definePlugin(() => {
-  console.log("Decky QQ Music 插件已初始化");
-
   // 添加全局样式
   const style = document.createElement('style');
   style.id = 'decky-qqmusic-styles';
@@ -403,17 +401,13 @@ export default definePlugin(() => {
 
   // 注册全屏路由
   routerHook.addRoute(ROUTE_PATH, FullscreenPlayer);
-  console.log(`[QQMusic] 路由已注册: ${ROUTE_PATH}`);
 
   // 插件初始化时检查登录状态，已登录则启用左侧菜单并预加载数据
   getLoginStatus().then(result => {
     if (result.logged_in) {
-      console.log("[QQMusic] 用户已登录，启用左侧菜单并预加载数据");
       menuManager.enable();
       // 预加载数据
       preloadData();
-    } else {
-      console.log("[QQMusic] 用户未登录，不启用左侧菜单");
     }
   }).catch(e => {
     console.error("[QQMusic] 检查登录状态失败:", e);
@@ -430,8 +424,6 @@ export default definePlugin(() => {
     content: <Content />,
     icon: <FaMusic />,
     onDismount() {
-      console.log("Decky QQ Music 插件已卸载");
-      
       // 清理菜单 patch
       menuManager.cleanup();
       
