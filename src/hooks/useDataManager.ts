@@ -46,6 +46,7 @@ const cache: DataCache = {
 let guessLikePromise: Promise<SongInfo[]> | null = null;
 let dailyRecommendPromise: Promise<SongInfo[]> | null = null;
 let playlistsPromise: Promise<{ created: PlaylistInfo[]; collected: PlaylistInfo[] }> | null = null;
+let guessLikeRawPromise: Promise<SongInfo[]> | null = null;
 
 // 监听器列表
 type Listener = () => void;
@@ -146,6 +147,33 @@ export const loadGuessLike = async (forceRefresh = false): Promise<SongInfo[]> =
  */
 export const refreshGuessLike = async (): Promise<SongInfo[]> => {
   return loadGuessLike(true);
+};
+
+/**
+ * 获取猜你喜欢但不更新缓存
+ * 用于预取，避免影响首页列表
+ */
+export const fetchGuessLikeRaw = async (): Promise<SongInfo[]> => {
+  if (guessLikeRawPromise) {
+    return guessLikeRawPromise;
+  }
+
+  guessLikeRawPromise = (async () => {
+    try {
+      const result = await getGuessLike();
+      if (result.success && result.songs.length > 0) {
+        return result.songs;
+      }
+    } catch (e) {
+      console.error("[DataManager] 预取猜你喜欢失败:", e);
+    } finally {
+      guessLikeRawPromise = null;
+    }
+
+    return [];
+  })();
+
+  return guessLikeRawPromise;
 };
 
 /**
@@ -310,6 +338,7 @@ export function useDataManager() {
     guessLoaded: cache.guessLoaded,
     loadGuessLike,
     refreshGuessLike,
+    fetchGuessLikeRaw,
     
     // 每日推荐
     dailySongs: cache.dailySongs,

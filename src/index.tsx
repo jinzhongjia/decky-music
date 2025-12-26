@@ -8,7 +8,7 @@ import { definePlugin, toaster, routerHook } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
 import { getLoginStatus, logout } from "./api";
-import { preloadData, clearDataCache, refreshGuessLike } from "./hooks/useDataManager";
+import { preloadData, clearDataCache, fetchGuessLikeRaw } from "./hooks/useDataManager";
 import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
 import { useMountedRef } from "./hooks/useMountedRef";
 import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, clearRecommendCache } from "./components";
@@ -146,7 +146,7 @@ function Content() {
       return cached;
     }
 
-    const songs = await refreshGuessLike();
+    const songs = await fetchGuessLikeRaw();
     // 拉取后立即预取下一批，保持连续
     prefetchNextGuessLikeBatch();
     return songs;
@@ -155,7 +155,7 @@ function Content() {
   // 预取下一批猜你喜欢
   const prefetchNextGuessLikeBatch = () => {
     if (nextGuessLikePromiseRef.current) return;
-    nextGuessLikePromiseRef.current = refreshGuessLike()
+    nextGuessLikePromiseRef.current = fetchGuessLikeRaw()
       .then((songs) => {
         nextGuessLikeRef.current = songs;
       })
@@ -297,19 +297,6 @@ function Content() {
           <PlaylistsPage
             onSelectPlaylist={handleSelectPlaylist}
             onBack={handleBackToHome}
-          />
-        );
-
-      case 'history':
-        return (
-          <HistoryPage
-            playlist={player.playlist}
-            currentIndex={player.currentIndex}
-            onSelectIndex={player.playAtIndex}
-            onBack={handleBackToHome}
-            currentPlayingMid={player.currentSong?.mid}
-            onRemoveFromQueue={player.removeFromQueue}
-            onRemoveHistory={player.removeFromQueue} // 复用删除逻辑
           />
         );
 

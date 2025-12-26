@@ -16,7 +16,6 @@ interface HistoryPageProps {
   onBack: () => void;
   currentPlayingMid?: string;
   onRemoveFromQueue?: (index: number) => void;
-  onRemoveHistory?: (index: number) => void;
 }
 
 const HistoryPageComponent: FC<HistoryPageProps> = ({
@@ -25,7 +24,6 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
   onSelectIndex,
   onBack,
   onRemoveFromQueue,
-  onRemoveHistory,
 }) => {
   const currentRef = useRef<HTMLDivElement | null>(null);
 
@@ -66,9 +64,7 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
                     onRemoveFromQueue={
                       onRemoveFromQueue && idx > currentIndex
                         ? () => onRemoveFromQueue(idx)
-                        : onRemoveHistory && idx < currentIndex
-                          ? () => onRemoveHistory(idx)
-                          : undefined
+                        : undefined
                     }
                   />
                 </div>
