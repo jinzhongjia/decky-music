@@ -17,6 +17,7 @@ import { useDataManager } from "../hooks/useDataManager";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { SongItem } from "../components/SongItem";
 import { SafeImage } from "../components/SafeImage";
+import { formatDuration } from "../utils/format";
 import { LoginPage, SearchPage, PlaylistsPage, PlaylistDetailPage, HistoryPage } from "../components";
 import type { SongInfo, PlaylistInfo } from "../types";
 import type { QrcLyricLine, LyricWord, ParsedLyric } from "../utils/lyricParser";
@@ -786,14 +787,6 @@ export const FullscreenPlayer: FC = () => {
     }
   }, [currentPage, historyVisited]);
 
-  // 格式化时间
-  const formatTime = (seconds: number): string => {
-    if (!seconds || !isFinite(seconds)) return "0:00";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   // 加载中
   if (checking) {
     return (
@@ -853,67 +846,14 @@ export const FullscreenPlayer: FC = () => {
         }}>
           <PlayerCover song={song} />
 
-          {/* 歌曲信息 */}
-          <div style={{ textAlign: 'center', marginBottom: '12px', width: '100%' }}>
-            <div style={{ 
-              fontSize: '16px', 
-              fontWeight: 'bold',
-              marginBottom: '4px',
-              color: '#fff',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }}>
-              {song?.name || '未播放'}
-            </div>
-            <div style={{ 
-              fontSize: '13px', 
-              color: '#8b929a',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }}>
-              {song?.singer || '选择一首歌曲'}
-            </div>
-          </div>
+          <PlayerMeta song={song} />
 
-          {/* 进度条 */}
-          {song && (
-            <div style={{ width: '100%', maxWidth: '240px', marginBottom: '12px' }}>
-              <div style={{
-                width: '100%',
-                height: '3px',
-                background: 'rgba(255,255,255,0.1)',
-                borderRadius: '2px',
-                overflow: 'hidden',
-                cursor: 'pointer'
-              }}
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const percent = (e.clientX - rect.left) / rect.width;
-                const newTime = percent * (duration || 0);
-                seek(newTime);
-              }}
-              >
-                <div style={{
-                  width: `${duration ? (currentTime / duration) * 100 : 0}%`,
-                  height: '100%',
-                  background: '#1db954',
-                  borderRadius: '2px'
-                }} />
-              </div>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                fontSize: '10px',
-                color: '#666',
-                marginTop: '4px'
-              }}>
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration || song?.duration || 0)}</span>
-              </div>
-            </div>
-          )}
+          <PlayerProgress
+            hasSong={!!song}
+            currentTime={currentTime}
+            duration={duration || song?.duration || 0}
+            onSeek={seek}
+          />
 
           {/* 控制按钮 */}
           <div style={{ 
@@ -1081,3 +1021,92 @@ export const FullscreenPlayer: FC = () => {
     </div>
   );
 };
+interface PlayerMetaProps {
+  song: SongInfo | null;
+}
+
+const PLAYER_TITLE_STYLE: React.CSSProperties = { 
+  fontSize: '16px', 
+  fontWeight: 'bold',
+  marginBottom: '4px',
+  color: '#fff',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap'
+};
+
+const PLAYER_SUBTITLE_STYLE: React.CSSProperties = { 
+  fontSize: '13px', 
+  color: '#8b929a',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap'
+};
+
+const PlayerMeta = memo<PlayerMetaProps>(({ song }) => (
+  <div style={{ textAlign: 'center', marginBottom: '12px', width: '100%' }}>
+    <div style={PLAYER_TITLE_STYLE}>
+      {song?.name || '未播放'}
+    </div>
+    <div style={PLAYER_SUBTITLE_STYLE}>
+      {song?.singer || '选择一首歌曲'}
+    </div>
+  </div>
+));
+
+PlayerMeta.displayName = 'PlayerMeta';
+
+interface PlayerProgressProps {
+  hasSong: boolean;
+  currentTime: number;
+  duration: number;
+  onSeek: (time: number) => void;
+}
+
+const progressContainerStyle: React.CSSProperties = { width: '100%', maxWidth: '240px', marginBottom: '12px' };
+const progressBarOuterStyle: React.CSSProperties = {
+  width: '100%',
+  height: '3px',
+  background: 'rgba(255,255,255,0.1)',
+  borderRadius: '2px',
+  overflow: 'hidden',
+  cursor: 'pointer'
+};
+const progressTimeStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  fontSize: '10px',
+  color: '#666',
+  marginTop: '4px'
+};
+
+const PlayerProgress = memo<PlayerProgressProps>(({ hasSong, currentTime, duration, onSeek }) => {
+  if (!hasSong) return null;
+  const percent = duration ? (currentTime / duration) * 100 : 0;
+  return (
+    <div style={progressContainerStyle}>
+      <div
+        style={progressBarOuterStyle}
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const percentClick = (e.clientX - rect.left) / rect.width;
+          const newTime = percentClick * (duration || 0);
+          onSeek(newTime);
+        }}
+      >
+        <div style={{
+          width: `${percent}%`,
+          height: '100%',
+          background: '#1db954',
+          borderRadius: '2px'
+        }} />
+      </div>
+      <div style={progressTimeStyle}>
+        <span>{formatDuration(currentTime)}</span>
+        <span>{formatDuration(duration)}</span>
+      </div>
+    </div>
+  );
+});
+
+PlayerProgress.displayName = 'PlayerProgress';
