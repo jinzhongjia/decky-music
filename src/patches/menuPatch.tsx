@@ -133,15 +133,45 @@ const doPatchMenu = (): (() => void) => {
             />
           );
 
+          const normalize = (value: unknown): string | null => {
+            if (typeof value === 'string') {
+              return value.toLowerCase();
+            }
+            if (typeof value === 'object' && value && 'props' in (value as Record<string, unknown>)) {
+              const props = (value as { props?: { children?: unknown } }).props;
+              return normalize(props?.children ?? null);
+            }
+            return null;
+          };
+
+          const targetIndex = menuItems.findIndex((item) => {
+            if (!isMenuItemElt(item)) {
+              return false;
+            }
+            const route = normalize(item.props.route ?? null);
+            if (route && (route.includes('friend') || route.includes('chat'))) {
+              return true;
+            }
+            const labelText = normalize(item.props.label ?? null);
+            return !!labelText && (labelText.includes('friend') || labelText.includes('chat') || labelText.includes('好友') || labelText.includes('聊天'));
+          });
+
           // 获取菜单项索引
-          const itemIndexes = menuItems.flatMap((item, index) => 
-            (item && item.$$typeof && item.type !== 'div') ? index : []
+          const itemIndexes = menuItems.flatMap((item, index) =>
+            item && item.$$typeof && item.type !== 'div' ? index : []
           );
 
-          // 在倒数第二个位置插入（设置之前）
-          const insertIndex = itemIndexes.length > 1 
-            ? itemIndexes[itemIndexes.length - 2] + 1 
-            : itemIndexes[itemIndexes.length - 1] + 1;
+          if (!itemIndexes.length) {
+            console.warn('[QQMusic] 菜单项索引为空');
+            return innerRet;
+          }
+
+          const insertIndex =
+            targetIndex >= 0
+              ? targetIndex + 1
+              : itemIndexes.length > 1
+              ? itemIndexes[itemIndexes.length - 2] + 1
+              : itemIndexes[itemIndexes.length - 1] + 1;
           
           menuItems.splice(insertIndex, 0, newItem);
 
