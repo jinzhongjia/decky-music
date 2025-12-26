@@ -3,7 +3,7 @@
  */
 
 import { FC, useCallback, memo, useEffect, useRef } from "react";
-import { PanelSection } from "@decky/ui";
+import { PanelSection, Focusable, NavEntryPositionPreferences } from "@decky/ui";
 import type { SongInfo } from "../types";
 import { BackButton } from "./BackButton";
 import { SongItem } from "./SongItem";
@@ -65,7 +65,11 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
         {playlist.length === 0 ? (
           <EmptyState message="还没有播放过歌曲" padding="40px 20px" />
         ) : (
-          <div style={{ maxHeight: "70vh", overflow: "auto", paddingRight: "6px" }}>
+          <Focusable
+            navEntryPreferPosition={NavEntryPositionPreferences.PREFERRED_CHILD}
+            flow-children="column"
+            style={{ maxHeight: "70vh", overflow: "auto", paddingRight: "6px" }}
+          >
             {playlist.map((song, idx) => {
               const isPlaying = idx === currentIndex;
               return (
@@ -77,6 +81,7 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
                   <SongItem
                     song={song}
                     isPlaying={isPlaying}
+                    preferredFocus={isPlaying}
                     onClick={() => handleSelectFromTimeline(idx)}
                     onRemoveFromQueue={
                       onRemoveFromQueue && idx > currentIndex
@@ -87,7 +92,7 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
                 </div>
               );
             })}
-          </div>
+          </Focusable>
         )}
       </PanelSection>
     </>

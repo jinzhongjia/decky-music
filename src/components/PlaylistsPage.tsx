@@ -44,6 +44,8 @@ const PlaylistItemComponent: FC<{
             alignItems: "center",
             gap: "12px",
             padding: "10px 12px",
+            width: "100%",
+            minWidth: 0,
           }}
         >
           <SafeImage
@@ -59,7 +61,7 @@ const PlaylistItemComponent: FC<{
               flexShrink: 0,
             }}
           />
-          <div style={TEXT_CONTAINER}>
+          <div style={{ ...TEXT_CONTAINER, maxWidth: "100%" }}>
             <div
               style={{
                 fontSize: "14px",

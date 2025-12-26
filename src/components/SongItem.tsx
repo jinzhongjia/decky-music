@@ -17,6 +17,7 @@ interface SongItemProps {
   onClick: (song: SongInfo) => void;
   onAddToQueue?: (song: SongInfo) => void;
   onRemoveFromQueue?: (song: SongInfo) => void;
+  preferredFocus?: boolean;
 }
 
 const SongItemComponent: FC<SongItemProps> = ({
@@ -25,6 +26,7 @@ const SongItemComponent: FC<SongItemProps> = ({
   onClick,
   onAddToQueue,
   onRemoveFromQueue,
+  preferredFocus = false,
 }) => {
   const handleClick = () => onClick(song);
   const handleAdd = (e: React.MouseEvent) => {
@@ -49,6 +51,7 @@ const SongItemComponent: FC<SongItemProps> = ({
       <Field
         focusable
         highlightOnFocus
+        preferredFocus={preferredFocus}
         onActivate={handleClick}
         onClick={handleClick}
         bottomSeparator="none"
