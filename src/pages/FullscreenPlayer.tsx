@@ -2,6 +2,8 @@
  * 全屏音乐播放器页面
  * 从左侧菜单进入的独立页面
  */
+/* global HTMLDivElement, HTMLElement, requestAnimationFrame, cancelAnimationFrame */
+/* global performance */
 
 import React, { FC, useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import { Focusable, ButtonItem, Spinner } from "@decky/ui";
@@ -253,9 +255,7 @@ const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong, onS
   const lastUpdateTimeRef = useRef(0);
   const lastAudioTimeRef = useRef(0);
   
-  // eslint-disable-next-line no-undef
   const lyricContainerRef = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line no-undef
   const currentLyricRef = useRef<HTMLDivElement>(null);
   const lastComputedIndexRef = useRef(-1);
   const lastComputedTimeRef = useRef(0);
@@ -264,39 +264,34 @@ const KaraokeLyrics = memo<KaraokeLyricsProps>(({ lyric, isPlaying, hasSong, onS
   // 高频时间更新（约60fps，仅在播放 QRC 歌词时）
   useEffect(() => {
     if (!isPlaying || !lyric?.isQrc) {
-      if (animationFrameRef.current) {
-        // eslint-disable-next-line no-undef
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      return;
-    }
-
-    const updateLoop = () => {
-      // eslint-disable-next-line no-undef
-      const now = performance.now();
-      if (now - lastUpdateTimeRef.current >= 16) {
-        lastUpdateTimeRef.current = now;
-        const audioTime = getAudioCurrentTime();
-        if (audioTime !== lastAudioTimeRef.current) {
-          lastAudioTimeRef.current = audioTime;
-          setCurrentTime(audioTime);
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
         }
+        return;
       }
-      // eslint-disable-next-line no-undef
-      animationFrameRef.current = requestAnimationFrame(updateLoop);
-    };
+
+      const updateLoop = () => {
+        const now = performance.now();
+        if (now - lastUpdateTimeRef.current >= 16) {
+          lastUpdateTimeRef.current = now;
+          const audioTime = getAudioCurrentTime();
+          if (audioTime !== lastAudioTimeRef.current) {
+            lastAudioTimeRef.current = audioTime;
+            setCurrentTime(audioTime);
+          }
+        }
+        animationFrameRef.current = requestAnimationFrame(updateLoop);
+      };
 
     const initialTime = getAudioCurrentTime();
     lastAudioTimeRef.current = initialTime;
     setCurrentTime(initialTime);
 
-    // eslint-disable-next-line no-undef
     animationFrameRef.current = requestAnimationFrame(updateLoop);
 
     return () => {
       if (animationFrameRef.current) {
-        // eslint-disable-next-line no-undef
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
@@ -619,7 +614,7 @@ export const FullscreenPlayer: FC = () => {
     if (!isPlaying) {
       togglePlay();
     }
-  }, [currentSong?.duration, duration, isPlaying, seek, togglePlay]);
+  }, [currentSong, duration, isPlaying, seek, togglePlay]);
   const navigateToPage = useCallback((page: FullscreenPageType) => {
     setCurrentPage(page);
   }, []);
@@ -636,10 +631,23 @@ export const FullscreenPlayer: FC = () => {
     currentPageRef.current = currentPage;
   }, [currentPage]);
 
+  const checkLoginStatus = useCallback(async () => {
+    setChecking(true);
+    try {
+      const result = await getLoginStatus();
+      if (!mountedRef.current) return;
+      setIsLoggedIn(result.logged_in);
+      // 数据由 dataManager 预加载，这里不需要额外加载
+    } catch (e) {
+      console.error("检查登录状态失败:", e);
+    }
+    setChecking(false);
+  }, [mountedRef]);
+
   // 检查登录状态
   useEffect(() => {
     checkLoginStatus();
-  }, []);
+  }, [checkLoginStatus]);
 
   // 手柄快捷键绑定
   useEffect(() => {
@@ -687,19 +695,6 @@ export const FullscreenPlayer: FC = () => {
       unregister?.unregister?.();
     };
   }, [navigateToPage]);
-
-  const checkLoginStatus = async () => {
-    setChecking(true);
-    try {
-      const result = await getLoginStatus();
-      if (!mountedRef.current) return;
-      setIsLoggedIn(result.logged_in);
-      // 数据由 dataManager 预加载，这里不需要额外加载
-    } catch (e) {
-      console.error("检查登录状态失败:", e);
-    }
-    setChecking(false);
-  };
 
   const handleLoginSuccess = useCallback(() => {
     setIsLoggedIn(true);

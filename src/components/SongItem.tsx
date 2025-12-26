@@ -3,7 +3,7 @@
  * 使用 Field 组件获得焦点高亮效果
  */
 
-import { FC, memo } from "react";
+import React, { FC, memo } from "react";
 import { Field } from "@decky/ui";
 import { FaPlus, FaTrash, FaVolumeUp } from "react-icons/fa";
 import type { SongInfo } from "../types";

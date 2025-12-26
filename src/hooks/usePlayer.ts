@@ -896,7 +896,7 @@ export function usePlayer(): UsePlayerReturn {
         });
       });
     }
-  }, [isPlaying]);
+  }, [isPlaying, playSongInternal]);
 
   const seek = useCallback((time: number) => {
     const audio = getGlobalAudio();
