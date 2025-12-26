@@ -27,9 +27,7 @@
 ### 从 Release 安装（推荐）
 
 1. 从 [Releases](https://github.com/jinzhongjia/decky-qqmusic/releases) 下载最新的 `QQMusic.zip`
-2. 将 zip 文件传输到 Steam Deck
-3. 解压到 `~/homebrew/plugins/`
-4. 重启 Decky Loader
+2. 使用 Steam Decky 的开发者模式安装本插件
 
 ### 从源码构建
 
