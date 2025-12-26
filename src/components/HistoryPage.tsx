@@ -13,6 +13,7 @@ const HISTORY_COVER_PRELOAD_RADIUS = 12;
 const preloadedHistoryCovers = new Set<string>();
 const HISTORY_WINDOW_RADIUS = 35;
 const HISTORY_MAX_RENDER = 90;
+let lastHistoryScrollTop = 0;
 
 interface HistoryPageProps {
   playlist: SongInfo[];
@@ -31,6 +32,7 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
   onRemoveFromQueue,
 }) => {
   const currentRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [renderAll, setRenderAll] = useState(false);
 
   const handleSelectFromTimeline = useCallback(
@@ -72,6 +74,17 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
     });
   }, [currentIndex, playlist, visiblePlaylist.length]);
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (lastHistoryScrollTop > 0) {
+      el.scrollTop = lastHistoryScrollTop;
+    }
+    return () => {
+      lastHistoryScrollTop = el.scrollTop;
+    };
+  }, []);
+
   return (
     <>
       <BackButton onClick={onBack} label="返回首页" />
@@ -81,6 +94,7 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
           <EmptyState message="还没有播放过歌曲" padding="40px 20px" />
         ) : (
           <Focusable
+            ref={scrollRef}
             navEntryPreferPosition={NavEntryPositionPreferences.PREFERRED_CHILD}
             flow-children="column"
             style={{ maxHeight: "70vh", overflow: "auto", paddingRight: "6px" }}

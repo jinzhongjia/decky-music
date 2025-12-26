@@ -544,7 +544,6 @@ export const FullscreenPlayer: FC = () => {
   const [checking, setChecking] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
-  const [historyVisited, setHistoryVisited] = useState(false);
   const mountedRef = useMountedRef();
   const playerPageRef = useRef<HTMLDivElement>(null);
   const guessLikePageRef = useRef<HTMLDivElement>(null);
@@ -823,12 +822,6 @@ export const FullscreenPlayer: FC = () => {
   }, [selectedPlaylist]);
 
   useEffect(() => {
-    if (currentPage === 'history' && !historyVisited) {
-      setHistoryVisited(true);
-    }
-  }, [currentPage, historyVisited]);
-
-  useEffect(() => {
     focusCurrentPage(currentPage);
   }, [currentPage, focusCurrentPage]);
 
@@ -1043,19 +1036,19 @@ export const FullscreenPlayer: FC = () => {
         <div style={{
           position: 'absolute',
           inset: 0,
-          pointerEvents: currentPage === 'history' ? 'none' : 'auto',
+          pointerEvents: 'auto',
           opacity: currentPage === 'history' ? 0 : 1,
           transition: 'opacity 140ms ease-out',
           overflow: 'hidden',
         }}>
           {renderNonHistoryContent()}
         </div>
-        {(historyVisited || currentPage === 'history') && (
+        {currentPage === 'history' && (
           <div style={{
             position: 'absolute',
             inset: 0,
-            pointerEvents: currentPage === 'history' ? 'auto' : 'none',
-            opacity: currentPage === 'history' ? 1 : 0,
+            pointerEvents: 'auto',
+            opacity: 1,
             transition: 'opacity 140ms ease-out',
             overflow: 'hidden',
           }}>
