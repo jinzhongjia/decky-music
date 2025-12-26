@@ -3,7 +3,7 @@
  * 从左侧菜单进入的独立页面
  */
 
-import React, { FC, useState, useEffect, useRef, useCallback, memo } from "react";
+import React, { FC, useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import { Focusable, ButtonItem, Spinner } from "@decky/ui";
 import { 
   FaPlay, FaPause, FaStepForward, FaStepBackward, FaMusic, 
@@ -19,6 +19,11 @@ import { SongItem } from "../components/SongItem";
 import { LoginPage, SearchPage, PlaylistsPage, PlaylistDetailPage, HistoryPage } from "../components";
 import type { SongInfo, PlaylistInfo } from "../types";
 import type { QrcLyricLine, LyricWord, ParsedLyric } from "../utils/lyricParser";
+
+const MemoSearchPage = memo(SearchPage);
+const MemoPlaylistsPage = memo(PlaylistsPage);
+const MemoPlaylistDetailPage = memo(PlaylistDetailPage);
+const MemoHistoryPage = memo(HistoryPage);
 
 // =====================================================================
 // 常量样式 - 提取到组件外部避免每次渲染创建新对象
@@ -387,6 +392,109 @@ const SYSTEM_BOTTOM_BAR_HEIGHT = 40;
 // 底部导航栏高度
 const NAV_BAR_HEIGHT = 56;
 
+interface NavBarProps {
+  currentPage: FullscreenPageType;
+  onNavigate: (page: FullscreenPageType) => void;
+}
+
+const NavBar: FC<NavBarProps> = memo(({ currentPage, onNavigate }) => (
+  <Focusable style={{
+    height: `${NAV_BAR_HEIGHT}px`,
+    flexShrink: 0,
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '0 12px',
+    background: 'rgba(0,0,0,0.6)',
+    borderTop: '1px solid rgba(255,255,255,0.1)'
+  }}>
+    {NAV_ITEMS.map((item) => {
+      const Icon = item.icon;
+      const isActive = currentPage === item.id || 
+        (item.id === 'playlists' && currentPage === 'playlist-detail');
+      
+      return (
+        <Focusable
+          key={item.id}
+          onActivate={() => onNavigate(item.id as FullscreenPageType)}
+          onClick={() => onNavigate(item.id as FullscreenPageType)}
+          style={{
+            padding: '6px 12px',
+            borderRadius: '6px',
+            background: isActive ? 'rgba(29, 185, 84, 0.2)' : 'transparent',
+            border: isActive ? '1px solid #1db954' : '1px solid transparent',
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '2px',
+            minWidth: '50px'
+          }}
+        >
+          <Icon size={16} color={isActive ? '#1db954' : '#8b929a'} />
+          <span style={{ 
+            fontSize: '10px', 
+            color: isActive ? '#1db954' : '#8b929a'
+          }}>
+            {item.label}
+          </span>
+        </Focusable>
+      );
+    })}
+  </Focusable>
+));
+
+NavBar.displayName = 'NavBar';
+
+interface GuessLikePageProps {
+  songs: SongInfo[];
+  loading: boolean;
+  onRefresh: () => void;
+  onSelectSong: (song: SongInfo) => void;
+}
+
+const GuessLikePage: FC<GuessLikePageProps> = memo(({ songs, loading, onRefresh, onSelectSong }) => (
+  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '0 16px' }}>
+    <div style={{ 
+      display: 'flex', 
+      justifyContent: 'space-between', 
+      alignItems: 'center',
+      padding: '12px 0',
+      flexShrink: 0
+    }}>
+      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff' }}>
+        猜你喜欢
+      </div>
+      <ButtonItem layout="below" onClick={onRefresh} disabled={loading}>
+        {loading ? '加载中...' : '换一批'}
+      </ButtonItem>
+    </div>
+    
+    <Focusable style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      {loading && songs.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px' }}>
+          <Spinner />
+        </div>
+      ) : songs.length > 0 ? (
+        songs.map((song, index) => (
+            <SongItem
+              key={`${song.mid}-${index}`}
+              song={song}
+              onClick={() => onSelectSong(song)}
+            />
+          ))
+        ) : (
+        <div style={{ textAlign: 'center', color: '#8b929a', padding: '40px' }}>
+          暂无推荐
+        </div>
+      )}
+    </Focusable>
+  </div>
+));
+
+GuessLikePage.displayName = 'GuessLikePage';
+
 export const FullscreenPlayer: FC = () => {
   const [currentPage, setCurrentPage] = useState<FullscreenPageType>('player');
   const [checking, setChecking] = useState(true);
@@ -396,6 +504,36 @@ export const FullscreenPlayer: FC = () => {
 
   const player = usePlayer();
   const dataManager = useDataManager();
+  const {
+    currentSong,
+    isPlaying,
+    currentTime,
+    duration,
+    loading: playerLoading,
+    lyric,
+    playlist,
+    currentIndex,
+    playSong,
+    playPlaylist,
+    addToQueue,
+    removeFromQueue,
+    playAtIndex,
+    togglePlay,
+    seek,
+    playNext,
+    playPrev,
+    setOnNeedMoreSongs,
+  } = player;
+  const {
+    guessLikeSongs,
+    guessLoading,
+    refreshGuessLike,
+    preloadData,
+  } = dataManager;
+  const currentPlayingMid = currentSong?.mid;
+  const navigateToPage = useCallback((page: FullscreenPageType) => {
+    setCurrentPage(page);
+  }, []);
   const nextGuessLikeRef = useRef<SongInfo[] | null>(null);
   const nextGuessLikePromiseRef = useRef<Promise<void> | null>(null);
   
@@ -449,7 +587,7 @@ export const FullscreenPlayer: FC = () => {
             const delta = button === 28 ? -1 : 1;
             const nextIndex =
               (currentIndex + delta + NAV_ITEMS.length) % NAV_ITEMS.length;
-            setCurrentPage(NAV_ITEMS[nextIndex].id as FullscreenPageType);
+            navigateToPage(NAV_ITEMS[nextIndex].id as FullscreenPageType);
             break;
           }
         }
@@ -459,7 +597,7 @@ export const FullscreenPlayer: FC = () => {
     return () => {
       unregister?.unregister?.();
     };
-  }, []);
+  }, [navigateToPage]);
 
   const checkLoginStatus = async () => {
     setChecking(true);
@@ -474,29 +612,16 @@ export const FullscreenPlayer: FC = () => {
     setChecking(false);
   };
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = useCallback(() => {
     setIsLoggedIn(true);
-    setCurrentPage('player');
-    // 预加载数据
-    dataManager.preloadData();
-  };
+    navigateToPage('player');
+    preloadData();
+  }, [navigateToPage, preloadData]);
 
   // 获取更多猜你喜欢歌曲的回调
-  const fetchMoreGuessLikeSongs = async (): Promise<SongInfo[]> => {
-    if (nextGuessLikeRef.current && nextGuessLikeRef.current.length > 0) {
-      const cached = nextGuessLikeRef.current;
-      nextGuessLikeRef.current = null;
-      prefetchNextGuessLikeBatch();
-      return cached;
-    }
-    const songs = await dataManager.refreshGuessLike();
-    prefetchNextGuessLikeBatch();
-    return songs;
-  };
-
-  const prefetchNextGuessLikeBatch = () => {
+  const prefetchNextGuessLikeBatch = useCallback(() => {
     if (nextGuessLikePromiseRef.current) return;
-    nextGuessLikePromiseRef.current = dataManager.refreshGuessLike()
+    nextGuessLikePromiseRef.current = refreshGuessLike()
       .then((songs) => {
         nextGuessLikeRef.current = songs;
       })
@@ -504,40 +629,112 @@ export const FullscreenPlayer: FC = () => {
       .finally(() => {
         nextGuessLikePromiseRef.current = null;
       });
-  };
+  }, [refreshGuessLike]);
+
+  const fetchMoreGuessLikeSongs = useCallback(async (): Promise<SongInfo[]> => {
+    if (nextGuessLikeRef.current && nextGuessLikeRef.current.length > 0) {
+      const cached = nextGuessLikeRef.current;
+      nextGuessLikeRef.current = null;
+      prefetchNextGuessLikeBatch();
+      return cached;
+    }
+    const songs = await refreshGuessLike();
+    prefetchNextGuessLikeBatch();
+    return songs;
+  }, [prefetchNextGuessLikeBatch, refreshGuessLike]);
 
   // 选择歌曲
-  const handleSelectSong = async (song: SongInfo, playlist?: SongInfo[], source?: string) => {
-    if (playlist && playlist.length > 0) {
-      const index = playlist.findIndex(s => s.mid === song.mid);
-      await player.playPlaylist(playlist, index >= 0 ? index : 0);
+  const handleSelectSong = useCallback(async (song: SongInfo, songList?: SongInfo[], source?: string) => {
+    if (songList && songList.length > 0) {
+      const index = songList.findIndex(s => s.mid === song.mid);
+      await playPlaylist(songList, index >= 0 ? index : 0);
       
       if (source === 'guess-like') {
-        player.setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
+        setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
       } else {
-        player.setOnNeedMoreSongs(null);
+        setOnNeedMoreSongs(null);
       }
     } else {
-      await player.playSong(song);
-      player.setOnNeedMoreSongs(null);
+      await playSong(song);
+      setOnNeedMoreSongs(null);
     }
-    // 播放后跳转到播放页
-    setCurrentPage('player');
-  };
+    navigateToPage('player');
+  }, [fetchMoreGuessLikeSongs, navigateToPage, playPlaylist, playSong, setOnNeedMoreSongs]);
 
-  const handleSelectPlaylist = (playlist: PlaylistInfo) => {
-    setSelectedPlaylist(playlist);
-    setCurrentPage('playlist-detail');
-  };
+  const handleSelectPlaylist = useCallback((playlistInfo: PlaylistInfo) => {
+    setSelectedPlaylist(playlistInfo);
+    navigateToPage('playlist-detail');
+  }, [navigateToPage]);
 
-  const handleAddPlaylistToQueue = async (songs: SongInfo[]) => {
+  const handleAddPlaylistToQueue = useCallback(async (songs: SongInfo[]) => {
     if (!songs || songs.length === 0) return;
-    await player.addToQueue(songs);
+    await addToQueue(songs);
     toaster.toast({
       title: "已添加到播放队列",
       body: `加入 ${songs.length} 首歌曲`,
     });
-  };
+  }, [addToQueue]);
+
+  const goBackToPlayer = useCallback(() => navigateToPage('player'), [navigateToPage]);
+  const goBackToPlaylists = useCallback(() => navigateToPage('playlists'), [navigateToPage]);
+
+  const handleRefreshGuessLike = useCallback(() => refreshGuessLike(), [refreshGuessLike]);
+
+  const guessLikeContent = useMemo(() => (
+    <GuessLikePage
+      songs={guessLikeSongs}
+      loading={guessLoading}
+      onRefresh={handleRefreshGuessLike}
+      onSelectSong={(song) => handleSelectSong(song, guessLikeSongs, 'guess-like')}
+    />
+  ), [guessLikeSongs, guessLoading, handleRefreshGuessLike, handleSelectSong]);
+
+  const searchPageContent = useMemo(() => (
+    <div style={{ height: '100%', overflow: 'auto' }}>
+      <MemoSearchPage
+        onSelectSong={handleSelectSong}
+        onBack={goBackToPlayer}
+        currentPlayingMid={currentPlayingMid}
+      />
+    </div>
+  ), [currentPlayingMid, goBackToPlayer, handleSelectSong]);
+
+  const playlistsContent = useMemo(() => (
+    <div style={{ height: '100%', overflow: 'auto' }}>
+      <MemoPlaylistsPage
+        onSelectPlaylist={handleSelectPlaylist}
+        onBack={goBackToPlayer}
+      />
+    </div>
+  ), [goBackToPlayer, handleSelectPlaylist]);
+
+  const playlistDetailContent = useMemo(() => {
+    if (!selectedPlaylist) return null;
+    return (
+      <div style={{ height: '100%', overflow: 'auto' }}>
+        <MemoPlaylistDetailPage
+          playlist={selectedPlaylist}
+          onSelectSong={handleSelectSong}
+          onAddPlaylistToQueue={handleAddPlaylistToQueue}
+          onBack={goBackToPlaylists}
+          currentPlayingMid={currentPlayingMid}
+        />
+      </div>
+    );
+  }, [currentPlayingMid, goBackToPlaylists, handleAddPlaylistToQueue, handleSelectSong, selectedPlaylist]);
+
+  const historyContent = useMemo(() => (
+    <div style={{ height: '100%', overflow: 'auto' }}>
+      <MemoHistoryPage
+        playlist={playlist}
+        currentIndex={currentIndex}
+        onSelectIndex={playAtIndex}
+        onBack={goBackToPlayer}
+        currentPlayingMid={currentPlayingMid}
+        onRemoveFromQueue={removeFromQueue}
+      />
+    </div>
+  ), [currentIndex, currentPlayingMid, goBackToPlayer, playAtIndex, playlist, removeFromQueue]);
 
   // 格式化时间
   const formatTime = (seconds: number): string => {
@@ -585,7 +782,7 @@ export const FullscreenPlayer: FC = () => {
 
   // 渲染播放详细页（带歌词）
   const renderPlayerPage = () => {
-    const song = player.currentSong;
+    const song = currentSong;
 
     return (
       <div style={{ 
@@ -672,12 +869,12 @@ export const FullscreenPlayer: FC = () => {
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const percent = (e.clientX - rect.left) / rect.width;
-                const newTime = percent * (player.duration || 0);
-                player.seek(newTime);
+                const newTime = percent * (duration || 0);
+                seek(newTime);
               }}
               >
                 <div style={{
-                  width: `${player.duration ? (player.currentTime / player.duration) * 100 : 0}%`,
+                  width: `${duration ? (currentTime / duration) * 100 : 0}%`,
                   height: '100%',
                   background: '#1db954',
                   borderRadius: '2px'
@@ -690,8 +887,8 @@ export const FullscreenPlayer: FC = () => {
                 color: '#666',
                 marginTop: '4px'
               }}>
-                <span>{formatTime(player.currentTime)}</span>
-                <span>{formatTime(player.duration || song?.duration || 0)}</span>
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration || song?.duration || 0)}</span>
               </div>
             </div>
           )}
@@ -704,7 +901,7 @@ export const FullscreenPlayer: FC = () => {
             marginBottom: '8px'
           }}>
             <div
-              onClick={() => player.playlist.length > 1 && player.playPrev()}
+              onClick={() => playlist.length > 1 && playPrev()}
               style={{
                 width: '36px',
                 height: '36px',
@@ -713,15 +910,15 @@ export const FullscreenPlayer: FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: player.playlist.length > 1 ? 'pointer' : 'not-allowed',
-                opacity: player.playlist.length > 1 ? 1 : 0.4
+                cursor: playlist.length > 1 ? 'pointer' : 'not-allowed',
+                opacity: playlist.length > 1 ? 1 : 0.4
               }}
             >
               <FaStepBackward size={14} />
             </div>
 
             <div
-              onClick={() => song && player.togglePlay()}
+              onClick={() => song && togglePlay()}
               style={{
                 width: '50px',
                 height: '50px',
@@ -734,9 +931,9 @@ export const FullscreenPlayer: FC = () => {
                 boxShadow: song ? '0 2px 12px rgba(29, 185, 84, 0.4)' : 'none'
               }}
             >
-              {player.loading ? (
+              {playerLoading ? (
                 <Spinner style={{ width: '20px', height: '20px' }} />
-              ) : player.isPlaying ? (
+              ) : isPlaying ? (
                 <FaPause size={18} />
               ) : (
                 <FaPlay size={18} style={{ marginLeft: '2px' }} />
@@ -744,7 +941,7 @@ export const FullscreenPlayer: FC = () => {
             </div>
 
             <div
-              onClick={() => player.playlist.length > 1 && player.playNext()}
+              onClick={() => playlist.length > 1 && playNext()}
               style={{
                 width: '36px',
                 height: '36px',
@@ -753,8 +950,8 @@ export const FullscreenPlayer: FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: player.playlist.length > 1 ? 'pointer' : 'not-allowed',
-                opacity: player.playlist.length > 1 ? 1 : 0.4
+                cursor: playlist.length > 1 ? 'pointer' : 'not-allowed',
+                opacity: playlist.length > 1 ? 1 : 0.4
               }}
             >
               <FaStepForward size={14} />
@@ -786,105 +983,13 @@ export const FullscreenPlayer: FC = () => {
         }}>
           {/* 使用独立的歌词组件 - 高频刷新隔离在这里 */}
           <KaraokeLyrics 
-            lyric={player.lyric} 
-            isPlaying={player.isPlaying} 
+            lyric={lyric} 
+            isPlaying={isPlaying} 
             hasSong={!!song} 
           />
         </div>
       </div>
     );
-  };
-
-  // 渲染猜你喜欢
-  const renderGuessLike = () => (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '0 16px' }}>
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        padding: '12px 0',
-        flexShrink: 0
-      }}>
-        <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff' }}>
-          猜你喜欢
-        </div>
-        <ButtonItem layout="below" onClick={() => dataManager.refreshGuessLike()} disabled={dataManager.guessLoading}>
-          {dataManager.guessLoading ? '加载中...' : '换一批'}
-        </ButtonItem>
-      </div>
-      
-      <Focusable style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        {dataManager.guessLoading && dataManager.guessLikeSongs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px' }}>
-            <Spinner />
-          </div>
-        ) : dataManager.guessLikeSongs.length > 0 ? (
-          dataManager.guessLikeSongs.map((song, index) => (
-              <SongItem
-                key={`${song.mid}-${index}`}
-                song={song}
-                onClick={() => handleSelectSong(song, dataManager.guessLikeSongs, 'guess-like')}
-              />
-            ))
-          ) : (
-          <div style={{ textAlign: 'center', color: '#8b929a', padding: '40px' }}>
-            暂无推荐
-          </div>
-        )}
-      </Focusable>
-    </div>
-  );
-
-  // 渲染子页面（搜索、歌单等需要特殊处理高度）
-  const renderSubPage = () => {
-    switch (currentPage) {
-      case 'search':
-        return (
-          <div style={{ height: '100%', overflow: 'auto' }}>
-            <SearchPage
-              onSelectSong={handleSelectSong}
-              onBack={() => setCurrentPage('player')}
-              currentPlayingMid={player.currentSong?.mid}
-            />
-          </div>
-        );
-      case 'playlists':
-        return (
-          <div style={{ height: '100%', overflow: 'auto' }}>
-            <PlaylistsPage
-              onSelectPlaylist={handleSelectPlaylist}
-              onBack={() => setCurrentPage('player')}
-            />
-          </div>
-        );
-      case 'playlist-detail':
-        return selectedPlaylist ? (
-          <div style={{ height: '100%', overflow: 'auto' }}>
-            <PlaylistDetailPage
-              playlist={selectedPlaylist}
-              onSelectSong={handleSelectSong}
-              onAddPlaylistToQueue={handleAddPlaylistToQueue}
-              onBack={() => setCurrentPage('playlists')}
-              currentPlayingMid={player.currentSong?.mid}
-            />
-          </div>
-        ) : null;
-      case 'history':
-        return (
-          <div style={{ height: '100%', overflow: 'auto' }}>
-            <HistoryPage
-            playlist={player.playlist}
-            currentIndex={player.currentIndex}
-            onSelectIndex={player.playAtIndex}
-            onBack={() => setCurrentPage('player')}
-            currentPlayingMid={player.currentSong?.mid}
-            onRemoveFromQueue={player.removeFromQueue}
-          />
-        </div>
-      );
-      default:
-        return null;
-    }
   };
 
   // 渲染内容
@@ -893,9 +998,17 @@ export const FullscreenPlayer: FC = () => {
       case 'player':
         return renderPlayerPage();
       case 'guess-like':
-        return renderGuessLike();
+        return guessLikeContent;
+      case 'search':
+        return searchPageContent;
+      case 'playlists':
+        return playlistsContent;
+      case 'playlist-detail':
+        return playlistDetailContent;
+      case 'history':
+        return historyContent;
       default:
-        return renderSubPage();
+        return null;
     }
   };
 
@@ -923,51 +1036,7 @@ export const FullscreenPlayer: FC = () => {
       </div>
 
       {/* 底部导航栏 - 固定高度 */}
-      <Focusable style={{
-        height: `${NAV_BAR_HEIGHT}px`,
-        flexShrink: 0,
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: '4px',
-        padding: '0 12px',
-        background: 'rgba(0,0,0,0.6)',
-        borderTop: '1px solid rgba(255,255,255,0.1)'
-      }}>
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentPage === item.id || 
-            (item.id === 'playlists' && currentPage === 'playlist-detail');
-          
-          return (
-            <Focusable
-              key={item.id}
-              onActivate={() => setCurrentPage(item.id as FullscreenPageType)}
-              onClick={() => setCurrentPage(item.id as FullscreenPageType)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '6px',
-                background: isActive ? 'rgba(29, 185, 84, 0.2)' : 'transparent',
-                border: isActive ? '1px solid #1db954' : '1px solid transparent',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '2px',
-                minWidth: '50px'
-              }}
-            >
-              <Icon size={16} color={isActive ? '#1db954' : '#8b929a'} />
-              <span style={{ 
-                fontSize: '10px', 
-                color: isActive ? '#1db954' : '#8b929a'
-              }}>
-                {item.label}
-              </span>
-            </Focusable>
-          );
-        })}
-      </Focusable>
+      <NavBar currentPage={currentPage} onNavigate={navigateToPage} />
     </div>
   );
 };
