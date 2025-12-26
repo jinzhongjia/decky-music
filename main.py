@@ -90,6 +90,9 @@ class Plugin:
                 if await self.credential.can_refresh():
                     refreshed = await self.credential.refresh()
                     if refreshed:
+                        # 刷新成功后更新全局 session 与缓存的 uin，避免后续请求继续使用旧凭证
+                        get_session().credential = self.credential
+                        self.encrypt_uin = self.credential.encrypt_uin
                         self._save_credential()
                         decky.logger.info("凭证刷新成功")
                         return True
@@ -407,7 +410,9 @@ class Plugin:
         # 确保凭证有效
         has_credential = self.credential is not None and self.credential.has_musicid()
         if has_credential:
-            await self._ensure_credential_valid()
+            is_valid = await self._ensure_credential_valid()
+            if not is_valid:
+                has_credential = False  # 刷新失败时按未登录处理，避免无效高码率重试
         
         # 按优先级尝试不同音质：未登录时跳过高品质，减少无效请求
         if has_credential:

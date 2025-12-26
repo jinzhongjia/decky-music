@@ -43,6 +43,51 @@ const DEFAULT_SLEEP_SETTINGS: OriginalSleepSettings = {
   acSuspend: 600,        // 10 分钟
 };
 
+const SLEEP_SETTINGS_STORAGE_KEY = "qqmusic_sleep_settings_backup";
+
+function loadStoredSleepSettings(): OriginalSleepSettings | null {
+  try {
+    // eslint-disable-next-line no-undef
+    const raw = localStorage.getItem(SLEEP_SETTINGS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<OriginalSleepSettings>;
+    if (
+      typeof parsed.batteryIdle === "number" &&
+      typeof parsed.acIdle === "number" &&
+      typeof parsed.batterySuspend === "number" &&
+      typeof parsed.acSuspend === "number"
+    ) {
+      return {
+        batteryIdle: parsed.batteryIdle,
+        acIdle: parsed.acIdle,
+        batterySuspend: parsed.batterySuspend,
+        acSuspend: parsed.acSuspend,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function saveStoredSleepSettings(settings: OriginalSleepSettings) {
+  try {
+    // eslint-disable-next-line no-undef
+    localStorage.setItem(SLEEP_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // ignore
+  }
+}
+
+function clearStoredSleepSettings() {
+  try {
+    // eslint-disable-next-line no-undef
+    localStorage.removeItem(SLEEP_SETTINGS_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 // 原始设置（在第一次禁用休眠时保存）
 let originalSleepSettings: OriginalSleepSettings | null = null;
 
@@ -129,6 +174,7 @@ async function inhibitSleep() {
   // 第一次禁用时保存原始设置
   if (!originalSleepSettings) {
     originalSleepSettings = await getCurrentSleepSettings();
+    saveStoredSleepSettings(originalSleepSettings);
     console.log("保存原始休眠设置:", originalSleepSettings);
   }
 
@@ -141,6 +187,7 @@ async function uninhibitSleep() {
   const settings = originalSleepSettings || DEFAULT_SLEEP_SETTINGS;
   console.log("恢复系统休眠:", settings);
   await updateSleepSettings(settings.batteryIdle, settings.acIdle, settings.batterySuspend, settings.acSuspend);
+  clearStoredSleepSettings();
 }
 
 // 全局休眠状态
@@ -220,6 +267,14 @@ let globalCurrentIndex: number = -1;
     globalCurrentIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
     globalCurrentSong = globalPlaylist[globalCurrentIndex] || null;
   }
+})();
+
+// 插件非正常退出后尝试恢复系统休眠设置
+void (async () => {
+  const storedSettings = loadStoredSleepSettings();
+  if (!storedSettings) return;
+  originalSleepSettings = storedSettings;
+  await uninhibitSleep();
 })();
 
 // 播放下一首的回调（用于在 ended 事件中调用）
@@ -407,6 +462,7 @@ export function cleanupPlayer() {
     skipTimeoutId = null;
   }
 
+  clearStoredSleepSettings();
   clearQueueState();
 }
 
@@ -754,10 +810,19 @@ export function usePlayer(): UsePlayerReturn {
       return true;
     });
 
+    if (songsToInsert.length === 0) {
+      globalPlaylist = cleaned;
+      setPlaylist([...cleaned]);
+      saveQueueState(globalPlaylist, globalCurrentIndex);
+      broadcastPlayerState();
+      return;
+    }
+
     const past = cleaned.slice(0, globalCurrentIndex + 1); // 含当前曲
     const future = cleaned.slice(globalCurrentIndex + 1);
+    const clampedStartIndex = Math.min(Math.max(startIndex, 0), songsToInsert.length - 1);
     globalPlaylist = [...past, ...songsToInsert, ...future];
-    const newIndex = past.length + startIndex;
+    const newIndex = past.length + clampedStartIndex;
     globalCurrentIndex = newIndex;
     setPlaylist([...globalPlaylist]);
     setCurrentIndex(newIndex);
