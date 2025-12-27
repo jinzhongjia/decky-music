@@ -1,6 +1,6 @@
 {
   "name": "decky-qqmusic",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Decky Loader plugin for QQ Music - Listen to QQ Music on Steam Deck",
   "type": "module",
   "scripts": {
