@@ -257,6 +257,11 @@ if (typeof SteamClient === 'undefined') return;
 
 ## 常见任务指南
 
+### 数据持久化
+
+- 前端设置统一走 Decky SettingsManager（参考 `main.py` 的 `get_frontend_settings/save_frontend_settings` 和前端 `usePlayer` 的调用），不要再使用 `localStorage`。
+- 需要迁移旧 `localStorage` 数据时，可参考项目中已有的迁移按钮与逻辑。
+
 ### 添加新 API 接口
 
 1. 在 `src/api/index.ts` 定义 callable：
