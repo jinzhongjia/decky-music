@@ -41,6 +41,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
   const [dragTime, setDragTime] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const draggingIdRef = useRef<number | null>(null);
+  const pendingDragTimeRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   const getTimeFromClientX = useCallback(
     (clientX: number) => {
@@ -57,7 +59,15 @@ export const PlayerBar: FC<PlayerBarProps> = ({
     (clientX: number) => {
       const next = getTimeFromClientX(clientX);
       if (next === null) return;
-      setDragTime(next);
+      pendingDragTimeRef.current = next;
+      if (rafRef.current === null) {
+        rafRef.current = window.requestAnimationFrame(() => {
+          rafRef.current = null;
+          if (pendingDragTimeRef.current !== null) {
+            setDragTime(pendingDragTimeRef.current);
+          }
+        });
+      }
     },
     [getTimeFromClientX]
   );
@@ -73,6 +83,11 @@ export const PlayerBar: FC<PlayerBarProps> = ({
       }
       setIsDragging(false);
       draggingIdRef.current = null;
+      pendingDragTimeRef.current = null;
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     },
     [getTimeFromClientX, onSeek]
   );
@@ -113,6 +128,15 @@ export const PlayerBar: FC<PlayerBarProps> = ({
     () => (duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0),
     [displayTime, duration]
   );
+
+  React.useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, []);
 
   // 使用 ref 追踪最新值，避免 callback 依赖变化导致子组件重渲染
   const currentTimeRef = React.useRef(currentTime);

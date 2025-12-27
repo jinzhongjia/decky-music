@@ -1,6 +1,6 @@
 /* global HTMLDivElement */
 
-import { FC, memo, useCallback, useRef, useState } from "react";
+import { FC, memo, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
 import { formatDuration } from "../../utils/format";
@@ -52,6 +52,8 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
     const barRef = useRef<HTMLDivElement | null>(null);
     const [dragTime, setDragTime] = useState<number | null>(null);
     const activePointerRef = useRef<number | null>(null);
+    const pendingDragTimeRef = useRef<number | null>(null);
+    const rafRef = useRef<number | null>(null);
 
     const getTimeFromClientX = useCallback(
       (clientX: number) => {
@@ -68,7 +70,15 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
       (clientX: number) => {
         const nextTime = getTimeFromClientX(clientX);
         if (nextTime === null) return;
-        setDragTime(nextTime);
+        pendingDragTimeRef.current = nextTime;
+        if (rafRef.current === null) {
+          rafRef.current = window.requestAnimationFrame(() => {
+            rafRef.current = null;
+            if (pendingDragTimeRef.current !== null) {
+              setDragTime(pendingDragTimeRef.current);
+            }
+          });
+        }
       },
       [getTimeFromClientX]
     );
@@ -83,6 +93,11 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
         }
         setDragTime(null);
         activePointerRef.current = null;
+        pendingDragTimeRef.current = null;
+        if (rafRef.current !== null) {
+          window.cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
       },
       [getTimeFromClientX, onSeek]
     );
@@ -123,6 +138,15 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
       },
       [endDrag]
     );
+
+    useEffect(() => {
+      return () => {
+        if (rafRef.current !== null) {
+          window.cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
+      };
+    }, []);
 
     if (!hasSong) return null;
 
