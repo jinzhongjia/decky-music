@@ -5,52 +5,62 @@
 
 // LRC 格式的歌词行
 export interface LyricLine {
-  time: number;  // 毫秒
-  text: string;  // 原文
+  time: number; // 毫秒
+  text: string; // 原文
   trans?: string; // 翻译
 }
 
 // QRC 格式的逐字信息
 export interface LyricWord {
-  text: string;      // 字/词文本
-  start: number;     // 开始时间（秒）
-  duration: number;  // 持续时间（秒）
+  text: string; // 字/词文本
+  start: number; // 开始时间（秒）
+  duration: number; // 持续时间（秒）
 }
 
 // QRC 格式的歌词行（带逐字时间）
 export interface QrcLyricLine {
-  time: number;      // 行开始时间（秒）
+  time: number; // 行开始时间（秒）
   words: LyricWord[]; // 逐字数组
-  text: string;      // 完整文本（用于回退显示）
-  trans?: string;    // 翻译
+  text: string; // 完整文本（用于回退显示）
+  trans?: string; // 翻译
 }
 
 // 解析后的歌词
 export interface ParsedLyric {
-  lines: LyricLine[];      // LRC 格式行
+  lines: LyricLine[]; // LRC 格式行
   qrcLines?: QrcLyricLine[]; // QRC 格式行（如果有）
-  isQrc: boolean;          // 是否是 QRC 格式
+  isQrc: boolean; // 是否是 QRC 格式
 }
 
 /**
- * 解析时间标签 [mm:ss.xx] 或 [mm:ss:xx]
+ * 解析时间标签 [mm:ss.xx] 或 [mm:ss:xx] 或 [mm:ss]
  * @returns 毫秒数
  */
 function parseTime(timeStr: string): number {
-  // 支持 [mm:ss.xx] 和 [mm:ss:xx] 格式
-  const match = timeStr.match(/(\d+):(\d+)[.:](\d+)/);
-  if (!match) return -1;
-  
-  const minutes = parseInt(match[1], 10);
-  const seconds = parseInt(match[2], 10);
-  let milliseconds = parseInt(match[3], 10);
-  
-  // 如果是两位数，补齐到三位（10 -> 100）
-  if (match[3].length === 2) {
-    milliseconds *= 10;
+  // 支持 [mm:ss.xx]、[mm:ss:xx] 和 [mm:ss] 格式
+  const matchWithMs = timeStr.match(/(\d+):(\d+)[.:](\d+)/);
+  if (matchWithMs) {
+    const minutes = parseInt(matchWithMs[1], 10);
+    const seconds = parseInt(matchWithMs[2], 10);
+    let milliseconds = parseInt(matchWithMs[3], 10);
+
+    // 如果是两位数，补齐到三位（10 -> 100）
+    if (matchWithMs[3].length === 2) {
+      milliseconds *= 10;
+    }
+
+    return minutes * 60 * 1000 + seconds * 1000 + milliseconds;
   }
-  
-  return minutes * 60 * 1000 + seconds * 1000 + milliseconds;
+
+  // 支持无毫秒格式 [mm:ss]
+  const matchNoMs = timeStr.match(/(\d+):(\d+)$/);
+  if (matchNoMs) {
+    const minutes = parseInt(matchNoMs[1], 10);
+    const seconds = parseInt(matchNoMs[2], 10);
+    return minutes * 60 * 1000 + seconds * 1000;
+  }
+
+  return -1;
 }
 
 /**
@@ -59,31 +69,29 @@ function parseTime(timeStr: string): number {
  */
 function parseLrcLine(line: string): Array<{ time: number; text: string }> {
   const results: Array<{ time: number; text: string }> = [];
-  
-  // 移除行尾空白字符
+
   const trimmedLine = line.trimEnd();
   if (!trimmedLine) return results;
-  
-  // 匹配所有时间标签
-  const timeRegex = /\[(\d+:\d+[.:]\d+)\]/g;
+
+  // 匹配所有时间标签：[mm:ss.xx]、[mm:ss:xx] 或 [mm:ss]
+  const timeRegex = /\[(\d+:\d+(?:[.:]\d+)?)\]/g;
   const times: number[] = [];
   let match;
-  
+
   while ((match = timeRegex.exec(trimmedLine)) !== null) {
     const time = parseTime(match[1]);
     if (time >= 0 && !isNaN(time)) {
       times.push(time);
     }
   }
-  
-  // 获取歌词文本（移除所有时间标签）
-  const text = trimmedLine.replace(/\[\d+:\d+[.:]\d+\]/g, '').trim();
-  
-  // 为每个时间创建一条记录
+
+  // 移除所有时间标签格式
+  const text = trimmedLine.replace(/\[\d+:\d+(?:[.:]\d+)?\]/g, "").trim();
+
   for (const time of times) {
     results.push({ time, text });
   }
-  
+
   return results;
 }
 
@@ -103,14 +111,14 @@ function isInvalidLyricText(text: string): boolean {
  */
 function parseLrc(lrc: string): Map<number, string> {
   const map = new Map<number, string>();
-  
-  if (!lrc || typeof lrc !== 'string') return map;
-  
+
+  if (!lrc || typeof lrc !== "string") return map;
+
   // 移除 UTF-8 BOM 和 Windows 换行符 \r，避免干扰正则匹配
   // 同时移除行尾空白字符（空格、制表符等）
-  const cleaned = lrc.replace(/^\uFEFF/, '').replace(/\r/g, '');
-  const lines = cleaned.split('\n');
-  
+  const cleaned = lrc.replace(/^\uFEFF/, "").replace(/\r/g, "");
+  const lines = cleaned.split("\n");
+
   for (const line of lines) {
     const parsed = parseLrcLine(line);
     for (const { time, text } of parsed) {
@@ -120,7 +128,7 @@ function parseLrc(lrc: string): Map<number, string> {
       }
     }
   }
-  
+
   return map;
 }
 
@@ -129,8 +137,37 @@ function parseLrc(lrc: string): Map<number, string> {
  * QRC 格式特征：[lineStart,lineDuration]word(start,duration)...
  */
 function isQrcFormat(lyric: string): boolean {
-  // 检查是否包含 QRC 特征：[数字,数字] 后跟 字词(数字,数字)
-  return /^\[\d+,\d+\]/.test(lyric.trim()) || /\(\d+,\d+\)/.test(lyric);
+  const trimmed = lyric.trim();
+  const lines = trimmed.split("\n").slice(0, 10);
+
+  let qrcLineCount = 0;
+  let lrcLineCount = 0;
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+
+    // QRC 行首格式：[数字,数字]
+    if (/^\[\d+,\d+\]/.test(trimmedLine)) {
+      qrcLineCount++;
+    }
+    // LRC 行首格式：[mm:ss.xx] 或 [mm:ss]
+    else if (/^\[\d+:\d+/.test(trimmedLine)) {
+      lrcLineCount++;
+    }
+  }
+
+  // 只有当 QRC 特征行数明显多于 LRC 时才判定为 QRC
+  return qrcLineCount > 0 && qrcLineCount > lrcLineCount;
+}
+
+// 表示所有时间标记位置（用于从文本中移除）
+interface TimeMarkerPosition {
+  index: number;
+  length: number;
+  start: number;
+  duration: number;
+  isValid: boolean; // duration > 0 为有效
 }
 
 /**
@@ -139,105 +176,123 @@ function isQrcFormat(lyric: string): boolean {
  */
 function parseQrc(qrc: string): QrcLyricLine[] {
   const result: QrcLyricLine[] = [];
-  
-  if (!qrc || typeof qrc !== 'string') return result;
-  
-  // 移除 UTF-8 BOM 和 Windows 换行符 \r，避免干扰正则匹配
-  const cleaned = qrc.replace(/^\uFEFF/, '').replace(/\r/g, '');
-  const lines = cleaned.split('\n');
-  
+
+  if (!qrc || typeof qrc !== "string") return result;
+
+  const cleaned = qrc.replace(/^\uFEFF/, "").replace(/\r/g, "");
+  const lines = cleaned.split("\n");
+
   for (const line of lines) {
-    // 移除行尾空白字符，避免干扰匹配
     const trimmedLine = line.trimEnd();
     if (!trimmedLine) continue;
-    
-    // 匹配行格式：[lineStart,lineDuration]content
+
     const lineMatch = trimmedLine.match(/^\[(\d+),(\d+)\](.+)$/);
     if (!lineMatch) continue;
-    
+
     const lineStart = parseInt(lineMatch[1], 10);
-    // 验证时间戳有效性
     if (isNaN(lineStart) || lineStart < 0) continue;
-    
+
     const content = lineMatch[3];
     const words: LyricWord[] = [];
-    let fullText = '';
-    
-    // 找到所有时间标记的位置 (数字,数字)
-    // 注意：使用新的正则实例避免全局标志的重用问题
+    let fullText = "";
+
+    // 找到所有时间标记位置，包括无效的（duration<=0）
     const timeRegex = /\((\d+),(\d+)\)/g;
-    const timeMatches: Array<{ index: number; start: number; duration: number; length: number }> = [];
+    const allMarkers: TimeMarkerPosition[] = [];
     let timeMatch;
-    
+
     while ((timeMatch = timeRegex.exec(content)) !== null) {
       const start = parseInt(timeMatch[1], 10);
       const duration = parseInt(timeMatch[2], 10);
-      // 验证时间有效性
-      if (isNaN(start) || isNaN(duration) || start < 0 || duration <= 0) continue;
-      
-      timeMatches.push({
+
+      if (isNaN(start) || isNaN(duration) || start < 0) continue;
+
+      allMarkers.push({
         index: timeMatch.index,
+        length: timeMatch[0].length,
         start: start / 1000,
         duration: duration / 1000,
-        length: timeMatch[0].length
+        isValid: duration > 0,
       });
     }
-    
-    // 根据时间标记位置提取文本
+
+    // 提取文本，移除所有时间标记（包括无效的）
     let lastEnd = 0;
-    for (const tm of timeMatches) {
-      const text = content.substring(lastEnd, tm.index);
-      if (text) {  // 可能有空文本
-        words.push({ text, start: tm.start, duration: tm.duration });
+    let lastValidMarker: TimeMarkerPosition | null = null;
+
+    for (const marker of allMarkers) {
+      const text = content.substring(lastEnd, marker.index);
+      if (text) {
+        if (marker.isValid) {
+          words.push({ text, start: marker.start, duration: marker.duration });
+          lastValidMarker = marker;
+        } else if (lastValidMarker) {
+          // duration<=0 时，使用上一个有效时间
+          words.push({
+            text,
+            start: lastValidMarker.start + lastValidMarker.duration,
+            duration: 0.1,
+          });
+        } else {
+          // 没有有效时间标记，使用行开始时间
+          words.push({ text, start: lineStart / 1000, duration: 0.1 });
+        }
         fullText += text;
       }
-      lastEnd = tm.index + tm.length;
-    }
-    
-    // 处理最后一个时间标记后的文本（如果有）
-    if (lastEnd < content.length) {
-      const remainingText = content.substring(lastEnd);
-      if (remainingText.trim()) {
-        // 如果还有文本，使用最后一个时间标记的结束时间
-        if (timeMatches.length > 0) {
-          const lastTime = timeMatches[timeMatches.length - 1];
-          words.push({ 
-            text: remainingText, 
-            start: lastTime.start + lastTime.duration, 
-            duration: 0.1 // 给一个很小的持续时间
-          });
-          fullText += remainingText;
-        }
+      lastEnd = marker.index + marker.length;
+
+      if (marker.isValid) {
+        lastValidMarker = marker;
       }
     }
-    
+
+    // 处理最后一个时间标记后的文本
+    if (lastEnd < content.length) {
+      const remainingText = content.substring(lastEnd);
+      // 清理可能残留的非标准时间标记格式
+      const cleanedRemaining = remainingText.replace(/\(\d+\)|\(\d+,\d+,\d+\)/g, "");
+      if (cleanedRemaining.trim()) {
+        const startTime = lastValidMarker
+          ? lastValidMarker.start + lastValidMarker.duration
+          : lineStart / 1000;
+        words.push({ text: cleanedRemaining, start: startTime, duration: 0.1 });
+        fullText += cleanedRemaining;
+      }
+    }
+
+    // 如果没有时间标记但有内容，整行作为一个词
+    if (words.length === 0 && content.trim()) {
+      const cleanedContent = content.replace(/\(\d+\)|\(\d+,\d+,\d+\)/g, "").trim();
+      if (cleanedContent) {
+        words.push({ text: cleanedContent, start: lineStart / 1000, duration: 0.1 });
+        fullText = cleanedContent;
+      }
+    }
+
     if (words.length > 0) {
-      // 过滤无效行
       const cleanText = fullText.trim();
-      
-      // 1. 过滤间奏行（纯斜线、纯符号等）
+
       const isInterlude = /^[/\-*~\s\\：:]+$/.test(cleanText) || cleanText.length === 0;
-      
-      // 2. 过滤元信息行（歌曲标题、作词作曲等）
-      const isMetaInfo = /^(Writtenby|Composedby|Producedby|Arrangedby|词|曲|编曲|制作|演唱|原唱|翻唱)[\s：:]/i.test(cleanText) ||
-                         /[-–]\s*(Artist|Singer|Band|作词|作曲|编曲)/i.test(cleanText);
-      
-      // 3. 检查是否整行都是符号（包括每个 word）
-      const allSymbols = words.every(w => /^[/\-*~\s\\：:.。，,()（）]+$/.test(w.text.trim()));
-      
-      // 4. 过滤第一行如果是歌曲标题格式（包含 " - " 分隔符且在开头）
-      const isTitleLine = result.length === 0 && cleanText.includes(' - ') && lineStart < 60000;
-      
+
+      const isMetaInfo =
+        /^(Writtenby|Composedby|Producedby|Arrangedby|词|曲|编曲|制作|演唱|原唱|翻唱)[\s：:]/i.test(
+          cleanText
+        ) || /[-–]\s*(Artist|Singer|Band|作词|作曲|编曲)/i.test(cleanText);
+
+      const allSymbols = words.every((w) => /^[/\-*~\s\\：:.。，,()（）]+$/.test(w.text.trim()));
+
+      const isTitleLine = result.length === 0 && cleanText.includes(" - ") && lineStart < 60000;
+
       if (!isInterlude && !isMetaInfo && !allSymbols && !isTitleLine) {
         result.push({
-          time: lineStart / 1000,  // 转为秒
+          time: lineStart / 1000,
           words,
-          text: fullText
+          text: fullText,
         });
       }
     }
   }
-  
+
   return result.sort((a, b) => a.time - b.time);
 }
 
@@ -247,20 +302,20 @@ function parseQrc(qrc: string): QrcLyricLine[] {
  */
 export function parseLyric(lyric: string, trans?: string): ParsedLyric {
   // 输入验证
-  if (!lyric || typeof lyric !== 'string') {
+  if (!lyric || typeof lyric !== "string") {
     return { lines: [], isQrc: false };
   }
-  
+
   // 检测是否是 QRC 格式
   const isQrc = isQrcFormat(lyric);
-  
+
   if (isQrc) {
     // 解析 QRC 格式
     const qrcLines = parseQrc(lyric);
-    
+
     // 解析翻译（翻译通常是 LRC 格式）
     const transMap = trans ? parseLrc(trans) : new Map<number, string>();
-    
+
     // 为 QRC 行添加翻译
     for (const line of qrcLines) {
       // 找到最接近的翻译（时间差在 500ms 内）
@@ -275,38 +330,38 @@ export function parseLyric(lyric: string, trans?: string): ParsedLyric {
         }
       }
     }
-    
+
     // 同时生成 LRC 格式的 lines（用于回退）
-    const lines: LyricLine[] = qrcLines.map(qrcLine => ({
-      time: qrcLine.time * 1000,  // 转为毫秒
+    const lines: LyricLine[] = qrcLines.map((qrcLine) => ({
+      time: qrcLine.time * 1000, // 转为毫秒
       text: qrcLine.text,
-      trans: qrcLine.trans
+      trans: qrcLine.trans,
     }));
-    
+
     return { lines, qrcLines, isQrc: true };
   }
-  
+
   // LRC 格式解析
   const lyricMap = parseLrc(lyric);
   const transMap = trans ? parseLrc(trans) : new Map<number, string>();
-  
+
   const lines: LyricLine[] = [];
   const allTimes = new Set([...lyricMap.keys(), ...transMap.keys()]);
   const sortedTimes = Array.from(allTimes).sort((a, b) => a - b);
-  
+
   for (const time of sortedTimes) {
-    const text = lyricMap.get(time) || '';
+    const text = lyricMap.get(time) || "";
     const transText = transMap.get(time);
-    
+
     if (text) {
       lines.push({
         time,
         text,
-        trans: transText
+        trans: transText,
       });
     }
   }
-  
+
   return { lines, isQrc: false };
 }
 
@@ -315,14 +370,13 @@ export function parseLyric(lyric: string, trans?: string): ParsedLyric {
  */
 export function findCurrentLyricIndex(lines: LyricLine[], currentTimeMs: number): number {
   if (lines.length === 0) return -1;
-  
+
   // 找到最后一个时间小于等于当前时间的歌词
   for (let i = lines.length - 1; i >= 0; i--) {
     if (lines[i].time <= currentTimeMs) {
       return i;
     }
   }
-  
+
   return -1;
 }
-
