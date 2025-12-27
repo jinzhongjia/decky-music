@@ -3,7 +3,9 @@
  * 不可获取焦点，只响应点击
  */
 
-import React, { FC, useCallback } from "react";
+/* global HTMLDivElement */
+
+import React, { FC, useCallback, useMemo, useRef, useState } from "react";
 import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { formatDuration } from "../utils/format";
@@ -35,7 +37,82 @@ export const PlayerBar: FC<PlayerBarProps> = ({
   onNext,
   onPrev,
 }) => {
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [dragTime, setDragTime] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const draggingIdRef = useRef<number | null>(null);
+
+  const getTimeFromClientX = useCallback(
+    (clientX: number) => {
+      if (!duration || !barRef.current) return null;
+      const rect = barRef.current.getBoundingClientRect();
+      const ratio = (clientX - rect.left) / rect.width;
+      const clamped = Math.min(1, Math.max(0, ratio));
+      return clamped * duration;
+    },
+    [duration]
+  );
+
+  const handleSeek = useCallback(
+    (clientX: number) => {
+      const next = getTimeFromClientX(clientX);
+      if (next === null) return;
+      setDragTime(next);
+    },
+    [getTimeFromClientX]
+  );
+
+  const commitSeek = useCallback(
+    (clientX?: number) => {
+      if (clientX !== undefined) {
+        const final = getTimeFromClientX(clientX);
+        if (final !== null) {
+          onSeek(final);
+          setDragTime(final);
+        }
+      }
+      setIsDragging(false);
+      draggingIdRef.current = null;
+    },
+    [getTimeFromClientX, onSeek]
+  );
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!duration) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      draggingIdRef.current = event.pointerId;
+      barRef.current?.setPointerCapture(event.pointerId);
+      setIsDragging(true);
+      handleSeek(event.clientX);
+    },
+    [duration, handleSeek]
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isDragging || event.pointerId !== draggingIdRef.current) return;
+      handleSeek(event.clientX);
+    },
+    [handleSeek, isDragging]
+  );
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.pointerId !== draggingIdRef.current) return;
+      if (barRef.current?.hasPointerCapture(event.pointerId)) {
+        barRef.current.releasePointerCapture(event.pointerId);
+      }
+      commitSeek(event.clientX);
+    },
+    [commitSeek]
+  );
+
+  const displayTime = dragTime ?? currentTime;
+  const progress = useMemo(
+    () => (duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0),
+    [displayTime, duration]
+  );
 
   // 使用 ref 追踪最新值，避免 callback 依赖变化导致子组件重渲染
   const currentTimeRef = React.useRef(currentTime);
@@ -86,13 +163,20 @@ export const PlayerBar: FC<PlayerBarProps> = ({
     >
       {/* 进度条（仅显示，不可聚焦） */}
       <div
+        ref={barRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         style={{
           position: "absolute",
           top: 0,
           left: 0,
           right: 0,
-          height: "6px",
+          height: "10px",
           background: COLORS.backgroundDark,
+          touchAction: "none",
+          cursor: "pointer",
         }}
       >
         <div
@@ -100,7 +184,7 @@ export const PlayerBar: FC<PlayerBarProps> = ({
             height: "100%",
             width: `${progress}%`,
             background: COLORS.primary,
-            transition: "width 0.1s linear",
+            transition: isDragging ? "none" : "width 0.1s linear",
           }}
         />
       </div>
