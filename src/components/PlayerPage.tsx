@@ -20,12 +20,14 @@ interface PlayerPageProps {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
+  volume: number;
   loading: boolean;
   error: string;
   hasPlaylist?: boolean;
   playMode: PlayMode;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
+  onVolumeChange: (volume: number, options?: { commit?: boolean }) => void;
   onNext?: () => void;
   onPrev?: () => void;
   onTogglePlayMode: () => void;
@@ -47,6 +49,8 @@ export const PlayerPage: FC<PlayerPageProps> = ({
   onPrev,
   onTogglePlayMode,
   onBack,
+  volume,
+  onVolumeChange,
 }) => {
   const actualDuration = duration > 0 ? duration : song.duration;
   const progressBarRef = useRef<HTMLDivElement | null>(null);
@@ -55,6 +59,12 @@ export const PlayerPage: FC<PlayerPageProps> = ({
   const activePointerRef = useRef<number | null>(null);
   const pendingDragTimeRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
+  const volumeBarRef = useRef<HTMLDivElement | null>(null);
+  const [volumeDraft, setVolumeDraft] = useState<number | null>(null);
+  const [isVolumeDragging, setIsVolumeDragging] = useState(false);
+  const volumePointerRef = useRef<number | null>(null);
+  const pendingVolumeRef = useRef<number | null>(null);
+  const volumeRafRef = useRef<number | null>(null);
 
   const getTimeFromClientX = useCallback(
     (clientX: number) => {
@@ -143,12 +153,18 @@ export const PlayerPage: FC<PlayerPageProps> = ({
         window.cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
+      if (volumeRafRef.current !== null) {
+        window.cancelAnimationFrame(volumeRafRef.current);
+        volumeRafRef.current = null;
+      }
     };
   }, []);
 
   const displayTime = dragTime ?? currentTime;
   const progress =
     actualDuration > 0 ? Math.min(100, Math.max(0, (displayTime / actualDuration) * 100)) : 0;
+  const displayVolume = volumeDraft ?? volume;
+  const volumePercent = Math.round(displayVolume * 100);
   const modeConfig = useMemo(() => {
     switch (playMode) {
       case "shuffle":
@@ -159,6 +175,94 @@ export const PlayerPage: FC<PlayerPageProps> = ({
         return { icon: <FaListOl size={18} />, label: "顺序播放" };
     }
   }, [playMode]);
+
+  const getVolumeFromClientX = useCallback(
+    (clientX: number) => {
+      if (!volumeBarRef.current) return null;
+      const rect = volumeBarRef.current.getBoundingClientRect();
+      const ratio = (clientX - rect.left) / rect.width;
+      return Math.min(1, Math.max(0, ratio));
+    },
+    []
+  );
+
+  const updateVolumeDrag = useCallback(
+    (clientX: number, immediate?: boolean) => {
+      const next = getVolumeFromClientX(clientX);
+      if (next === null) return;
+      pendingVolumeRef.current = next;
+      if (immediate) {
+        setVolumeDraft(next);
+        onVolumeChange(next);
+        return;
+      }
+      if (volumeRafRef.current === null) {
+        volumeRafRef.current = window.requestAnimationFrame(() => {
+          volumeRafRef.current = null;
+          if (pendingVolumeRef.current !== null) {
+            const value = pendingVolumeRef.current;
+            setVolumeDraft(value);
+            onVolumeChange(value);
+          }
+        });
+      }
+    },
+    [getVolumeFromClientX, onVolumeChange]
+  );
+
+  const finishVolumeDrag = useCallback(
+    (clientX?: number) => {
+      let finalVolume: number | null = null;
+      if (clientX !== undefined) {
+        finalVolume = getVolumeFromClientX(clientX);
+      } else if (volumeDraft !== null) {
+        finalVolume = volumeDraft;
+      }
+      if (finalVolume !== null) {
+        onVolumeChange(finalVolume, { commit: true });
+      }
+      setIsVolumeDragging(false);
+      setVolumeDraft(null);
+      volumePointerRef.current = null;
+      pendingVolumeRef.current = null;
+      if (volumeRafRef.current !== null) {
+        window.cancelAnimationFrame(volumeRafRef.current);
+        volumeRafRef.current = null;
+      }
+    },
+    [getVolumeFromClientX, onVolumeChange, volumeDraft]
+  );
+
+  const handleVolumePointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      if (!volumeBarRef.current) return;
+      volumePointerRef.current = event.pointerId;
+      volumeBarRef.current.setPointerCapture(event.pointerId);
+      setIsVolumeDragging(true);
+      updateVolumeDrag(event.clientX, true);
+    },
+    [updateVolumeDrag]
+  );
+
+  const handleVolumePointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!isVolumeDragging || event.pointerId !== volumePointerRef.current) return;
+      updateVolumeDrag(event.clientX);
+    },
+    [isVolumeDragging, updateVolumeDrag]
+  );
+
+  const handleVolumePointerUp = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.pointerId !== volumePointerRef.current) return;
+      if (volumeBarRef.current?.hasPointerCapture(event.pointerId)) {
+        volumeBarRef.current.releasePointerCapture(event.pointerId);
+      }
+      finishVolumeDrag(event.clientX);
+    },
+    [finishVolumeDrag]
+  );
 
   const handlePrev = () => {
     if (hasPlaylist && onPrev) {
@@ -288,6 +392,50 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                   borderRadius: '4px',
                   transition: isDragging ? 'none' : 'width 0.1s linear',
                 }} />
+              </div>
+            </div>
+          </PanelSectionRow>
+
+          {/* 音量控制 */}
+          <PanelSectionRow>
+            <div style={{ padding: '4px 0' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '12px',
+                  color: COLORS.textSecondary,
+                  marginBottom: '6px',
+                }}
+              >
+                <span>音量</span>
+                <span>{volumePercent}%</span>
+              </div>
+              <div
+                ref={volumeBarRef}
+                onPointerDown={handleVolumePointerDown}
+                onPointerMove={handleVolumePointerMove}
+                onPointerUp={handleVolumePointerUp}
+                onPointerCancel={handleVolumePointerUp}
+                style={{
+                  height: '12px',
+                  background: COLORS.backgroundDarker,
+                  borderRadius: '6px',
+                  overflow: 'hidden',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  touchAction: 'none',
+                }}
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${volumePercent}%`,
+                    background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.primaryLight})`,
+                    borderRadius: '6px',
+                    transition: isVolumeDragging ? 'none' : 'width 0.1s linear',
+                  }}
+                />
               </div>
             </div>
           </PanelSectionRow>
