@@ -41,6 +41,51 @@ class Plugin:
         """获取设置文件路径"""
         return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "credential.json"
 
+    def _get_frontend_settings_path(self) -> Path:
+        """获取前端设置文件路径"""
+        return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "frontend_settings.json"
+
+    def _load_frontend_settings(self) -> dict[str, Any]:
+        """加载前端设置"""
+        try:
+            settings_path = self._get_frontend_settings_path()
+            if settings_path.exists():
+                with open(settings_path, encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            decky.logger.error(f"加载前端设置失败: {e}")
+        return {}
+
+    def _save_frontend_settings(self, settings: dict[str, Any]) -> bool:
+        """保存前端设置"""
+        try:
+            settings_path = self._get_frontend_settings_path()
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(settings_path, "w", encoding="utf-8") as f:
+                json.dump(settings, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            decky.logger.error(f"保存前端设置失败: {e}")
+            return False
+
+    # 提供给前端调用的设置接口
+    async def get_frontend_settings(self) -> dict[str, Any]:
+        try:
+            return {"success": True, "settings": self._load_frontend_settings()}
+        except Exception as e:
+            decky.logger.error(f"获取前端设置失败: {e}")
+            return {"success": False, "settings": {}, "error": str(e)}
+
+    async def save_frontend_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+        try:
+            existing = self._load_frontend_settings()
+            merged = {**existing, **(settings or {})}
+            ok = self._save_frontend_settings(merged)
+            return {"success": ok}
+        except Exception as e:
+            decky.logger.error(f"保存前端设置失败: {e}")
+            return {"success": False, "error": str(e)}
+
     def _save_credential(self) -> bool:
         """保存凭证到文件"""
         if not self.credential:
@@ -614,6 +659,9 @@ class Plugin:
             settings_path = self._get_settings_path()
             if settings_path.exists():
                 settings_path.unlink()
+            frontend_path = self._get_frontend_settings_path()
+            if frontend_path.exists():
+                frontend_path.unlink()
         except Exception:
             pass
 

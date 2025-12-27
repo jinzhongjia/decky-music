@@ -8,8 +8,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { toaster } from "@decky/api";
-import { getSongUrl, getSongLyric } from "../api";
-import type { PlayMode, SongInfo } from "../types";
+import { getSongUrl, getSongLyric, getFrontendSettings, saveFrontendSettings } from "../api";
+import type { FrontendSettings, PlayMode, SongInfo } from "../types";
 import { parseLyric, type ParsedLyric } from "../utils/lyricParser";
 
 // ==================== 休眠控制 ====================
@@ -43,53 +43,29 @@ const DEFAULT_SLEEP_SETTINGS: OriginalSleepSettings = {
   acSuspend: 600,        // 10 分钟
 };
 
-const SLEEP_SETTINGS_STORAGE_KEY = "qqmusic_sleep_settings_backup";
-
+// 原始设置（在第一次禁用休眠时保存）
+let originalSleepSettings: OriginalSleepSettings | null = null;
 function loadStoredSleepSettings(): OriginalSleepSettings | null {
-  try {
-    // eslint-disable-next-line no-undef
-    const raw = localStorage.getItem(SLEEP_SETTINGS_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<OriginalSleepSettings>;
-    if (
-      typeof parsed.batteryIdle === "number" &&
-      typeof parsed.acIdle === "number" &&
-      typeof parsed.batterySuspend === "number" &&
-      typeof parsed.acSuspend === "number"
-    ) {
-      return {
-        batteryIdle: parsed.batteryIdle,
-        acIdle: parsed.acIdle,
-        batterySuspend: parsed.batterySuspend,
-        acSuspend: parsed.acSuspend,
-      };
-    }
-  } catch {
-    // ignore
+  const stored = frontendSettings.sleepBackup;
+  if (
+    stored &&
+    typeof stored.batteryIdle === "number" &&
+    typeof stored.acIdle === "number" &&
+    typeof stored.batterySuspend === "number" &&
+    typeof stored.acSuspend === "number"
+  ) {
+    return stored;
   }
   return null;
 }
 
 function saveStoredSleepSettings(settings: OriginalSleepSettings) {
-  try {
-    // eslint-disable-next-line no-undef
-    localStorage.setItem(SLEEP_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    // ignore
-  }
+  updateFrontendSettingsCache({ sleepBackup: settings });
 }
 
 function clearStoredSleepSettings() {
-  try {
-    // eslint-disable-next-line no-undef
-    localStorage.removeItem(SLEEP_SETTINGS_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
+  updateFrontendSettingsCache({ sleepBackup: undefined });
 }
-
-// 原始设置（在第一次禁用休眠时保存）
-let originalSleepSettings: OriginalSleepSettings | null = null;
 
 // 生成 Protobuf 格式的设置数据
 function genSettings(fieldDef: SettingDef, value: number): string {
@@ -193,27 +169,121 @@ async function uninhibitSleep() {
 // 全局休眠状态
 let sleepInhibited = false;
 
-// 播放队列持久化
-const PLAYLIST_STORAGE_KEY = "qqmusic_playlist_state";
-const PLAY_MODE_STORAGE_KEY = "qqmusic_play_mode";
-const VOLUME_STORAGE_KEY = "qqmusic_volume";
-
 interface StoredQueueState {
   playlist: SongInfo[];
   currentIndex: number;
   currentMid?: string;
 }
 
-function loadQueueState(): StoredQueueState {
+type FrontendSettingsCache = FrontendSettings & {
+  playlistState?: StoredQueueState;
+};
+
+let frontendSettings: FrontendSettingsCache = {};
+let frontendSettingsLoaded = false;
+let frontendSettingsPromise: Promise<void> | null = null;
+let legacySnapshotCache: LegacySnapshot | null = null;
+
+// 旧版 localStorage 键，用于迁移
+const LEGACY_PLAYLIST_KEY = "qqmusic_playlist_state";
+const LEGACY_PLAY_MODE_KEY = "qqmusic_play_mode";
+const LEGACY_VOLUME_KEY = "qqmusic_volume";
+const LEGACY_SLEEP_KEY = "qqmusic_sleep_settings_backup";
+
+async function ensureFrontendSettingsLoaded() {
+  if (frontendSettingsLoaded) return;
+  if (frontendSettingsPromise) {
+    await frontendSettingsPromise;
+    return;
+  }
+  frontendSettingsPromise = getFrontendSettings()
+    .then((res) => {
+      if (res?.success && res.settings) {
+        frontendSettings = { ...res.settings };
+      }
+      frontendSettingsLoaded = true;
+    })
+    .catch(() => {
+      frontendSettingsLoaded = true;
+    })
+    .finally(() => {
+      frontendSettingsPromise = null;
+    });
+  await frontendSettingsPromise;
+}
+
+function updateFrontendSettingsCache(partial: Partial<FrontendSettingsCache>, commit: boolean = true) {
+  frontendSettings = { ...frontendSettings, ...partial };
+  if (commit) {
+    void saveFrontendSettings(frontendSettings);
+  }
+}
+
+function loadQueueStateFromSettings(): StoredQueueState {
+  const stored = frontendSettings.playlistState;
+  if (!stored) return { playlist: [], currentIndex: -1 };
+  const playlist = Array.isArray(stored.playlist) ? stored.playlist : [];
+  const currentIndex = typeof stored.currentIndex === "number" ? stored.currentIndex : -1;
+  const currentMid = stored.currentMid;
+  if (currentMid) {
+    const idx = playlist.findIndex((s) => s.mid === currentMid);
+    if (idx >= 0) {
+      return { playlist, currentIndex: idx, currentMid };
+    }
+  }
+  return {
+    playlist,
+    currentIndex: Math.min(Math.max(currentIndex, -1), Math.max(playlist.length - 1, -1)),
+  };
+}
+
+function saveQueueState(playlist: SongInfo[], currentIndex: number) {
+  updateFrontendSettingsCache({
+    playlistState: {
+      playlist,
+      currentIndex,
+      currentMid: playlist[currentIndex]?.mid,
+    },
+  });
+}
+
+function clearQueueState() {
+  updateFrontendSettingsCache({ playlistState: { playlist: [], currentIndex: -1 } });
+}
+
+function loadPlayMode(): PlayMode {
+  const raw = frontendSettings.playMode;
+  if (raw === "order" || raw === "single" || raw === "shuffle") {
+    return raw;
+  }
+  return "order";
+}
+
+function savePlayMode(mode: PlayMode) {
+  updateFrontendSettingsCache({ playMode: mode });
+}
+
+function loadVolume(): number {
+  const value = frontendSettings.volume;
+  if (typeof value === "number") {
+    return Math.min(1, Math.max(0, value));
+  }
+  return 1;
+}
+
+function saveVolume(volume: number) {
+  updateFrontendSettingsCache({ volume });
+}
+
+function parseLegacyQueue(): StoredQueueState | null {
   try {
     // eslint-disable-next-line no-undef
-    const raw = localStorage.getItem(PLAYLIST_STORAGE_KEY);
-    if (!raw) return { playlist: [], currentIndex: -1 };
+    const raw = localStorage.getItem(LEGACY_PLAYLIST_KEY);
+    if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredQueueState;
     if (!Array.isArray(parsed.playlist) || typeof parsed.currentIndex !== "number") {
-      return { playlist: [], currentIndex: -1 };
+      return null;
     }
-    // 若有 currentMid，优先定位到对应索引
     if (parsed.currentMid) {
       const idx = parsed.playlist.findIndex((s) => s.mid === parsed.currentMid);
       if (idx >= 0) {
@@ -223,64 +293,31 @@ function loadQueueState(): StoredQueueState {
     return {
       playlist: parsed.playlist,
       currentIndex: Math.min(Math.max(parsed.currentIndex, -1), parsed.playlist.length - 1),
+      currentMid: parsed.playlist[parsed.currentIndex]?.mid,
     };
   } catch {
-    return { playlist: [], currentIndex: -1 };
+    return null;
   }
 }
 
-function saveQueueState(playlist: SongInfo[], currentIndex: number) {
+function parseLegacyPlayMode(): PlayMode | null {
   try {
     // eslint-disable-next-line no-undef
-    localStorage.setItem(
-      PLAYLIST_STORAGE_KEY,
-      JSON.stringify({
-        playlist,
-        currentIndex,
-        currentMid: playlist[currentIndex]?.mid,
-      })
-    );
-  } catch {
-    // ignore
-  }
-}
-
-function clearQueueState() {
-  try {
-    // eslint-disable-next-line no-undef
-    localStorage.removeItem(PLAYLIST_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
-
-function loadPlayMode(): PlayMode {
-  try {
-    // eslint-disable-next-line no-undef
-    const raw = localStorage.getItem(PLAY_MODE_STORAGE_KEY);
+    const raw = localStorage.getItem(LEGACY_PLAY_MODE_KEY);
     if (raw === "order" || raw === "single" || raw === "shuffle") {
       return raw;
     }
   } catch {
     // ignore
   }
-  return "order";
+  return null;
 }
 
-function savePlayMode(mode: PlayMode) {
+function parseLegacyVolume(): number | null {
   try {
     // eslint-disable-next-line no-undef
-    localStorage.setItem(PLAY_MODE_STORAGE_KEY, mode);
-  } catch {
-    // ignore
-  }
-}
-
-function loadVolume(): number {
-  try {
-    // eslint-disable-next-line no-undef
-    const raw = localStorage.getItem(VOLUME_STORAGE_KEY);
-    if (!raw) return 1;
+    const raw = localStorage.getItem(LEGACY_VOLUME_KEY);
+    if (!raw) return null;
     const parsed = Number(raw);
     if (Number.isFinite(parsed)) {
       return Math.min(1, Math.max(0, parsed));
@@ -288,13 +325,63 @@ function loadVolume(): number {
   } catch {
     // ignore
   }
-  return 1;
+  return null;
 }
 
-function saveVolume(volume: number) {
+function parseLegacySleepBackup(): OriginalSleepSettings | null {
   try {
     // eslint-disable-next-line no-undef
-    localStorage.setItem(VOLUME_STORAGE_KEY, String(volume));
+    const raw = localStorage.getItem(LEGACY_SLEEP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<OriginalSleepSettings>;
+    if (
+      typeof parsed.batteryIdle === "number" &&
+      typeof parsed.acIdle === "number" &&
+      typeof parsed.batterySuspend === "number" &&
+      typeof parsed.acSuspend === "number"
+    ) {
+      return {
+        batteryIdle: parsed.batteryIdle,
+        acIdle: parsed.acIdle,
+        batterySuspend: parsed.batterySuspend,
+        acSuspend: parsed.acSuspend,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+interface LegacySnapshot {
+  queue: StoredQueueState | null;
+  mode: PlayMode | null;
+  volume: number | null;
+  sleep: OriginalSleepSettings | null;
+  hasAny: boolean;
+}
+
+function getLegacySnapshot(forceRefresh: boolean = false): LegacySnapshot {
+  if (legacySnapshotCache && !forceRefresh) return legacySnapshotCache;
+  const queue = parseLegacyQueue();
+  const mode = parseLegacyPlayMode();
+  const volume = parseLegacyVolume();
+  const sleep = parseLegacySleepBackup();
+  const hasAny = Boolean(queue || mode || volume !== null || sleep);
+  legacySnapshotCache = { queue, mode, volume, sleep, hasAny };
+  return legacySnapshotCache;
+}
+
+function clearLegacyStorage() {
+  try {
+    // eslint-disable-next-line no-undef
+    localStorage.removeItem(LEGACY_PLAYLIST_KEY);
+    // eslint-disable-next-line no-undef
+    localStorage.removeItem(LEGACY_PLAY_MODE_KEY);
+    // eslint-disable-next-line no-undef
+    localStorage.removeItem(LEGACY_VOLUME_KEY);
+    // eslint-disable-next-line no-undef
+    localStorage.removeItem(LEGACY_SLEEP_KEY);
   } catch {
     // ignore
   }
@@ -315,14 +402,7 @@ let shuffleCursor: number = -1;
 let shufflePool: number[] = [];
 
 // 初始化时从本地存储恢复队列
-(() => {
-  const stored = loadQueueState();
-  if (stored.playlist.length > 0) {
-    globalPlaylist = stored.playlist;
-    globalCurrentIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
-    globalCurrentSong = globalPlaylist[globalCurrentIndex] || null;
-  }
-})();
+// 将在 usePlayer 中通过 ensureFrontendSettingsLoaded 后再恢复
 
 function buildShufflePoolFromHistory(currentIndex: number): number[] {
   const blocked = new Set<number>(shuffleHistory);
@@ -628,6 +708,8 @@ export interface UsePlayerReturn {
   currentIndex: number;
   playMode: PlayMode;
   volume: number;
+  settingsRestored: boolean;
+  hasLegacyData: boolean;
 
   // 方法
   playSong: (song: SongInfo) => Promise<void>; // 插入当前位置并立刻播放
@@ -644,6 +726,7 @@ export interface UsePlayerReturn {
   cyclePlayMode: () => void;
   setPlayMode: (mode: PlayMode) => void;
   setVolume: (volume: number, options?: { commit?: boolean }) => void;
+  migrateLegacySettings: () => Promise<boolean>;
 }
 
 export function usePlayer(): UsePlayerReturn {
@@ -659,6 +742,8 @@ export function usePlayer(): UsePlayerReturn {
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
   const [playMode, setPlayModeState] = useState<PlayMode>(globalPlayMode);
   const [volume, setVolumeState] = useState(globalVolume);
+  const [settingsRestored, setSettingsRestored] = useState(false);
+  const [hasLegacyData, setHasLegacyData] = useState(false);
 
   const syncFromGlobals = useCallback(() => {
     const audio = getGlobalAudio();
@@ -679,6 +764,113 @@ export function usePlayer(): UsePlayerReturn {
       playerSubscribers.delete(syncFromGlobals);
     };
   }, [syncFromGlobals]);
+
+  // 恢复前端持久化设置
+  useEffect(() => {
+    if (settingsRestored) return;
+    let cancelled = false;
+    void (async () => {
+      await ensureFrontendSettingsLoaded();
+      if (cancelled) return;
+
+      // 恢复播放队列
+      if (globalPlaylist.length === 0) {
+        const stored = loadQueueStateFromSettings();
+        if (stored.playlist.length > 0) {
+          globalPlaylist = stored.playlist;
+          globalCurrentIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
+          globalCurrentSong = globalPlaylist[globalCurrentIndex] || null;
+          setPlaylist([...globalPlaylist]);
+          setCurrentIndex(globalCurrentIndex);
+          setCurrentSong(globalCurrentSong);
+        }
+      }
+
+      // 恢复播放模式
+      globalPlayMode = loadPlayMode();
+      setPlayModeState(globalPlayMode);
+
+      // 恢复音量
+      const restoredVolume = loadVolume();
+      globalVolume = restoredVolume;
+      const audio = getGlobalAudio();
+      audio.volume = restoredVolume;
+      setVolumeState(restoredVolume);
+
+      const snapshot = getLegacySnapshot();
+      setHasLegacyData(snapshot.hasAny);
+      setSettingsRestored(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsRestored]);
+
+  const migrateLegacySettings = useCallback(async () => {
+    await ensureFrontendSettingsLoaded();
+    const updates: Partial<FrontendSettingsCache> = {};
+    const snapshot = getLegacySnapshot(true);
+    const legacyQueue = snapshot.queue;
+    const legacyMode = snapshot.mode;
+    const legacyVolume = snapshot.volume;
+    const legacySleep = snapshot.sleep;
+
+    if (legacyQueue && legacyQueue.playlist.length > 0) {
+      updates.playlistState = legacyQueue;
+    }
+    if (legacyMode) {
+      updates.playMode = legacyMode;
+    }
+    if (legacyVolume !== null) {
+      updates.volume = legacyVolume;
+    }
+    if (legacySleep) {
+      updates.sleepBackup = legacySleep;
+    }
+
+    const hasUpdates = Object.keys(updates).length > 0;
+    if (hasUpdates) {
+      updateFrontendSettingsCache(updates, true);
+
+      // 同步队列：以旧数据为主，必要时会暂停当前播放避免状态错乱
+      const storedQueue = updates.playlistState || loadQueueStateFromSettings();
+      if (storedQueue && storedQueue.playlist.length > 0) {
+        const audio = getGlobalAudio();
+        if (!audio.paused) {
+          audio.pause();
+        }
+        globalPlaylist = storedQueue.playlist;
+        globalCurrentIndex =
+          storedQueue.currentIndex >= 0 ? storedQueue.currentIndex : Math.min(0, storedQueue.playlist.length - 1);
+        globalCurrentSong = globalPlaylist[globalCurrentIndex] || null;
+        setPlaylist([...globalPlaylist]);
+        setCurrentIndex(globalCurrentIndex);
+        setCurrentSong(globalCurrentSong);
+        setIsPlaying(false);
+        setCurrentTime(0);
+        setDuration(globalCurrentSong?.duration ?? 0);
+      }
+
+      if (updates.playMode) {
+        globalPlayMode = updates.playMode;
+        setPlayModeState(globalPlayMode);
+      }
+      if (updates.volume !== undefined) {
+        const audio = getGlobalAudio();
+        globalVolume = updates.volume;
+        audio.volume = globalVolume;
+        setVolumeState(globalVolume);
+      }
+
+      broadcastPlayerState();
+    }
+
+    clearLegacyStorage();
+    legacySnapshotCache = { queue: null, mode: null, volume: null, sleep: null, hasAny: false };
+    setHasLegacyData(false);
+    return hasUpdates;
+  }, []);
 
   const updatePlayMode = useCallback((mode: PlayMode) => {
     globalPlayMode = mode;
@@ -1247,5 +1439,8 @@ export function usePlayer(): UsePlayerReturn {
     cyclePlayMode,
     setPlayMode: updatePlayMode,
     setVolume,
+    settingsRestored,
+    hasLegacyData,
+    migrateLegacySettings,
   };
 }

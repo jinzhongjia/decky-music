@@ -28,6 +28,9 @@ interface HomePageProps {
   onLogout: () => void;
   currentPlayingMid?: string;
   onAddSongToQueue?: (song: SongInfo) => void;
+  onMigrateLegacyData?: () => void;
+  migratingLegacy?: boolean;
+  hasLegacyData?: boolean;
 }
 
 const HomePageComponent: FC<HomePageProps> = ({
@@ -38,6 +41,9 @@ const HomePageComponent: FC<HomePageProps> = ({
   onLogout,
   currentPlayingMid,
   onAddSongToQueue,
+  onMigrateLegacyData,
+  migratingLegacy = false,
+  hasLegacyData = false,
 }) => {
   const dataManager = useDataManager();
 
@@ -82,6 +88,14 @@ const HomePageComponent: FC<HomePageProps> = ({
             <ButtonItem layout="below" onClick={onGoToHistory}>
               <FaHistory style={{ marginRight: "8px" }} />
               播放队列
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
+        {onMigrateLegacyData && hasLegacyData && (
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={onMigrateLegacyData} disabled={migratingLegacy}>
+              <FaSyncAlt style={{ marginRight: "8px" }} />
+              {migratingLegacy ? "迁移中..." : "迁移旧数据"}
             </ButtonItem>
           </PanelSectionRow>
         )}

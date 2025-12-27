@@ -18,6 +18,7 @@ import type {
   RecommendPlaylistResponse,
   UserPlaylistsResponse,
   PlaylistSongsResponse,
+  FrontendSettingsResponse,
 } from "../types";
 
 // ==================== 登录相关 ====================
@@ -88,3 +89,12 @@ export const getUserPlaylists = callable<[], UserPlaylistsResponse>("get_user_pl
 /** 获取歌单中的歌曲 */
 export const getPlaylistSongs = callable<[playlist_id: number, dirid: number], PlaylistSongsResponse>("get_playlist_songs");
 
+// ==================== 设置相关 ====================
+
+/** 获取前端持久化设置 */
+export const getFrontendSettings = callable<[], FrontendSettingsResponse>("get_frontend_settings");
+
+/** 保存前端持久化设置 */
+export const saveFrontendSettings = callable<[settings: Record<string, unknown>], { success: boolean }>(
+  "save_frontend_settings"
+);

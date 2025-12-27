@@ -21,6 +21,7 @@ function Content() {
   const [currentPage, setCurrentPage] = useState<PageType>('login');
   const [checking, setChecking] = useState(true);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
+  const [migratingLegacy, setMigratingLegacy] = useState(false);
   const mountedRef = useMountedRef();
   
   const player = usePlayer();
@@ -232,6 +233,25 @@ function Content() {
     });
   }, [player]);
 
+  const handleMigrateLegacy = useCallback(async () => {
+    if (migratingLegacy) return;
+    setMigratingLegacy(true);
+    try {
+      const migrated = await player.migrateLegacySettings();
+      toaster.toast({
+        title: migrated ? "迁移完成" : "没有发现可迁移数据",
+        body: migrated ? "旧数据已写入设置并清理" : undefined,
+      });
+    } catch (e) {
+      toaster.toast({
+        title: "迁移失败",
+        body: (e as Error).message,
+      });
+    } finally {
+      setMigratingLegacy(false);
+    }
+  }, [migratingLegacy, player]);
+
   // 加载中
   if (checking) {
     return (
@@ -261,6 +281,9 @@ function Content() {
             onLogout={handleLogout}
             currentPlayingMid={player.currentSong?.mid}
             onAddSongToQueue={handleAddSongToQueue}
+            onMigrateLegacyData={handleMigrateLegacy}
+            migratingLegacy={migratingLegacy}
+            hasLegacyData={player.hasLegacyData}
           />
         );
       

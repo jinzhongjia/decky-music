@@ -135,6 +135,27 @@ export interface PlaylistSongsResponse {
   error?: string;
 }
 
+export interface FrontendSettings {
+  playlistState?: {
+    playlist: SongInfo[];
+    currentIndex: number;
+    currentMid?: string;
+  };
+  playMode?: PlayMode;
+  volume?: number;
+  sleepBackup?: {
+    batteryIdle: number;
+    acIdle: number;
+    batterySuspend: number;
+    acSuspend: number;
+  };
+}
+
+export interface FrontendSettingsResponse {
+  success: boolean;
+  settings: FrontendSettings;
+}
+
 /** 播放状态 */
 export interface PlayerState {
   currentSong: SongInfo | null;
