@@ -3,10 +3,10 @@
  * 用方向键导航到控制按钮，按A键激活
  */
 
-import { FC } from "react";
+import { FC, useMemo } from "react";
 import { PanelSection, PanelSectionRow, Focusable } from "@decky/ui";
-import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
-import type { SongInfo } from "../types";
+import { FaListOl, FaPlay, FaPause, FaRandom, FaRedo, FaStepForward, FaStepBackward } from "react-icons/fa";
+import type { PlayMode, SongInfo } from "../types";
 import { formatDuration } from "../utils/format";
 import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
@@ -21,10 +21,12 @@ interface PlayerPageProps {
   loading: boolean;
   error: string;
   hasPlaylist?: boolean;
+  playMode: PlayMode;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
   onNext?: () => void;
   onPrev?: () => void;
+  onTogglePlayMode: () => void;
   onBack: () => void;
 }
 
@@ -36,14 +38,26 @@ export const PlayerPage: FC<PlayerPageProps> = ({
   loading,
   error,
   hasPlaylist = false,
+  playMode,
   onTogglePlay,
   onSeek,
   onNext,
   onPrev,
+  onTogglePlayMode,
   onBack,
 }) => {
   const actualDuration = duration > 0 ? duration : song.duration;
   const progress = actualDuration > 0 ? (currentTime / actualDuration) * 100 : 0;
+  const modeConfig = useMemo(() => {
+    switch (playMode) {
+      case "shuffle":
+        return { icon: <FaRandom size={18} />, label: "随机播放" };
+      case "single":
+        return { icon: <FaRedo size={18} />, label: "单曲循环" };
+      default:
+        return { icon: <FaListOl size={18} />, label: "顺序播放" };
+    }
+  }, [playMode]);
 
   const handlePrev = () => {
     if (hasPlaylist && onPrev) {
@@ -173,9 +187,28 @@ export const PlayerPage: FC<PlayerPageProps> = ({
           <PanelSectionRow>
             <div style={{ 
               ...FLEX_CENTER,
-              gap: '20px',
+              gap: '16px',
               padding: '15px 0',
             }}>
+              {/* 播放模式 */}
+              <div
+                onClick={onTogglePlayMode}
+                title={modeConfig.label}
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  background: COLORS.backgroundDark,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: COLORS.textSecondary,
+                }}
+              >
+                {modeConfig.icon}
+              </div>
+
               {/* 上一首按钮 */}
               <div
                 onClick={handlePrev}

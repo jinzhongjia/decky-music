@@ -9,7 +9,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { toaster } from "@decky/api";
 import { getSongUrl, getSongLyric } from "../api";
-import type { SongInfo } from "../types";
+import type { PlayMode, SongInfo } from "../types";
 import { parseLyric, type ParsedLyric } from "../utils/lyricParser";
 
 // ==================== 休眠控制 ====================
@@ -195,6 +195,7 @@ let sleepInhibited = false;
 
 // 播放队列持久化
 const PLAYLIST_STORAGE_KEY = "qqmusic_playlist_state";
+const PLAY_MODE_STORAGE_KEY = "qqmusic_play_mode";
 
 interface StoredQueueState {
   playlist: SongInfo[];
@@ -252,12 +253,40 @@ function clearQueueState() {
   }
 }
 
+function loadPlayMode(): PlayMode {
+  try {
+    // eslint-disable-next-line no-undef
+    const raw = localStorage.getItem(PLAY_MODE_STORAGE_KEY);
+    if (raw === "order" || raw === "single" || raw === "shuffle") {
+      return raw;
+    }
+  } catch {
+    // ignore
+  }
+  return "order";
+}
+
+function savePlayMode(mode: PlayMode) {
+  try {
+    // eslint-disable-next-line no-undef
+    localStorage.setItem(PLAY_MODE_STORAGE_KEY, mode);
+  } catch {
+    // ignore
+  }
+}
+
 // 全局状态 - 在模块级别创建，不会因组件卸载而销毁
 let globalAudio: HTMLAudioElement | null = null;
 let globalCurrentSong: SongInfo | null = null;
 let globalLyric: ParsedLyric | null = null;
 let globalPlaylist: SongInfo[] = [];
 let globalCurrentIndex: number = -1;
+let globalPlayMode: PlayMode = loadPlayMode();
+
+// 随机播放状态
+let shuffleHistory: number[] = [];
+let shuffleCursor: number = -1;
+let shufflePool: number[] = [];
 
 // 初始化时从本地存储恢复队列
 (() => {
@@ -268,6 +297,92 @@ let globalCurrentIndex: number = -1;
     globalCurrentSong = globalPlaylist[globalCurrentIndex] || null;
   }
 })();
+
+function buildShufflePoolFromHistory(currentIndex: number): number[] {
+  const blocked = new Set<number>(shuffleHistory);
+  const pool: number[] = [];
+  for (let i = 0; i < globalPlaylist.length; i += 1) {
+    if (i === currentIndex) continue;
+    if (blocked.has(i)) continue;
+    pool.push(i);
+  }
+  return pool;
+}
+
+function resetShuffleState(currentIndex: number) {
+  if (globalPlaylist.length === 0 || currentIndex < 0) {
+    shuffleHistory = [];
+    shuffleCursor = -1;
+    shufflePool = [];
+    return;
+  }
+  shuffleHistory = [currentIndex];
+  shuffleCursor = 0;
+  shufflePool = buildShufflePoolFromHistory(currentIndex);
+}
+
+function syncShuffleAfterPlaylistChange(currentIndex: number) {
+  if (globalPlaylist.length === 0 || currentIndex < 0) {
+    resetShuffleState(currentIndex);
+    return;
+  }
+
+  // 清理无效索引并去重，保证 currentIndex 在历史中
+  shuffleHistory = shuffleHistory.filter((idx) => idx >= 0 && idx < globalPlaylist.length);
+  const seen = new Set<number>();
+  shuffleHistory = shuffleHistory.filter((idx) => {
+    if (seen.has(idx)) return false;
+    seen.add(idx);
+    return true;
+  });
+
+  const existingPos = shuffleHistory.indexOf(currentIndex);
+  if (existingPos === -1) {
+    shuffleHistory = [currentIndex];
+    shuffleCursor = 0;
+  } else {
+    shuffleHistory = shuffleHistory.slice(0, existingPos + 1);
+    shuffleCursor = existingPos;
+  }
+
+  shufflePool = buildShufflePoolFromHistory(currentIndex);
+}
+
+function getShuffleNextIndex(): number | null {
+  if (globalPlaylist.length === 0) return null;
+
+  if (shuffleCursor < 0 || shuffleHistory.length === 0) {
+    resetShuffleState(globalCurrentIndex >= 0 ? globalCurrentIndex : 0);
+  }
+
+  if (shuffleCursor < shuffleHistory.length - 1) {
+    shuffleCursor += 1;
+    return shuffleHistory[shuffleCursor] ?? null;
+  }
+
+  if (shufflePool.length === 0) {
+    shufflePool = buildShufflePoolFromHistory(globalCurrentIndex);
+  }
+  if (shufflePool.length === 0) {
+    return globalCurrentIndex >= 0 ? globalCurrentIndex : null;
+  }
+
+  const pickedIdx = Math.floor(Math.random() * shufflePool.length);
+  const picked = shufflePool.splice(pickedIdx, 1)[0];
+  shuffleHistory.push(picked);
+  shuffleCursor = shuffleHistory.length - 1;
+  return picked ?? null;
+}
+
+function getShufflePrevIndex(): number | null {
+  if (shuffleCursor > 0) {
+    shuffleCursor -= 1;
+    return shuffleHistory[shuffleCursor] ?? null;
+  }
+  return shuffleHistory[0] ?? (globalCurrentIndex >= 0 ? globalCurrentIndex : null);
+}
+
+resetShuffleState(globalCurrentIndex);
 
 // 插件非正常退出后尝试恢复系统休眠设置
 void (async () => {
@@ -364,9 +479,13 @@ function getGlobalAudio(): HTMLAudioElement {
 
     // 设置全局的 ended 事件处理
     globalAudio.addEventListener('ended', () => {
-      const hasNext = (globalPlaylist.length > 1) || Boolean(onNeedMoreSongsCallback);
+      const shouldAutoContinue =
+        globalPlayMode === "single" ||
+        globalPlayMode === "shuffle" ||
+        globalPlaylist.length > 1 ||
+        Boolean(onNeedMoreSongsCallback);
 
-      if (onPlayNextCallback && hasNext) {
+      if (onPlayNextCallback && shouldAutoContinue) {
         onPlayNextCallback();
         return;
       }
@@ -454,6 +573,9 @@ export function cleanupPlayer() {
   globalLyric = null;
   globalPlaylist = [];
   globalCurrentIndex = -1;
+  shuffleHistory = [];
+  shuffleCursor = -1;
+  shufflePool = [];
   onPlayNextCallback = null;
   onNeedMoreSongsCallback = null;
 
@@ -477,6 +599,7 @@ export interface UsePlayerReturn {
   lyric: ParsedLyric | null;
   playlist: SongInfo[]; // 作为“时间线”：currentIndex 前为历史，之后为未来队列
   currentIndex: number;
+  playMode: PlayMode;
 
   // 方法
   playSong: (song: SongInfo) => Promise<void>; // 插入当前位置并立刻播放
@@ -490,6 +613,8 @@ export interface UsePlayerReturn {
   playNext: () => void;
   playPrev: () => void;
   setOnNeedMoreSongs: (callback: (() => Promise<SongInfo[]>) | null) => void;
+  cyclePlayMode: () => void;
+  setPlayMode: (mode: PlayMode) => void;
 }
 
 export function usePlayer(): UsePlayerReturn {
@@ -503,6 +628,7 @@ export function usePlayer(): UsePlayerReturn {
   const [lyric, setLyric] = useState<ParsedLyric | null>(globalLyric);
   const [playlist, setPlaylist] = useState<SongInfo[]>(globalPlaylist);
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
+  const [playMode, setPlayModeState] = useState<PlayMode>(globalPlayMode);
 
   const syncFromGlobals = useCallback(() => {
     const audio = getGlobalAudio();
@@ -510,6 +636,7 @@ export function usePlayer(): UsePlayerReturn {
     setLyric(globalLyric);
     setPlaylist([...globalPlaylist]);
     setCurrentIndex(globalCurrentIndex);
+    setPlayModeState(globalPlayMode);
     setIsPlaying(!audio.paused);
     setCurrentTime(audio.currentTime);
     setDuration(audio.duration || globalCurrentSong?.duration || 0);
@@ -521,6 +648,22 @@ export function usePlayer(): UsePlayerReturn {
       playerSubscribers.delete(syncFromGlobals);
     };
   }, [syncFromGlobals]);
+
+  const updatePlayMode = useCallback((mode: PlayMode) => {
+    globalPlayMode = mode;
+    setPlayModeState(mode);
+    savePlayMode(mode);
+    if (mode === "shuffle") {
+      syncShuffleAfterPlaylistChange(globalCurrentIndex);
+    }
+    broadcastPlayerState();
+  }, []);
+
+  const cyclePlayMode = useCallback(() => {
+    const nextMode: PlayMode =
+      globalPlayMode === "order" ? "single" : globalPlayMode === "single" ? "shuffle" : "order";
+    updatePlayMode(nextMode);
+  }, [updatePlayMode]);
 
   // 内部播放歌曲方法
   const playSongInternal = useCallback(async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true): Promise<boolean> => {
@@ -647,35 +790,52 @@ export function usePlayer(): UsePlayerReturn {
   const playNext = useCallback(async () => {
     if (globalPlaylist.length === 0) return;
 
-    let nextIndex = globalCurrentIndex + 1;
-
-    // 如果已经是最后一首，尝试获取更多歌曲，否则停止
-    if (nextIndex >= globalPlaylist.length) {
-      if (onNeedMoreSongsCallback) {
-        try {
-          const moreSongs = await onNeedMoreSongsCallback();
-          if (moreSongs && moreSongs.length > 0) {
-            const insertPos = globalCurrentIndex + 1;
-            globalPlaylist.splice(insertPos, 0, ...moreSongs);
-            setPlaylist([...globalPlaylist]);
-            nextIndex = insertPos;
-          } else {
-            return; // 没有更多歌曲，停止
+    const resolveOrderNext = async (): Promise<number | null> => {
+      let nextIndex = globalCurrentIndex + 1;
+      if (nextIndex >= globalPlaylist.length) {
+        if (onNeedMoreSongsCallback) {
+          try {
+            const moreSongs = await onNeedMoreSongsCallback();
+            if (moreSongs && moreSongs.length > 0) {
+              const insertPos = globalCurrentIndex + 1;
+              globalPlaylist.splice(insertPos, 0, ...moreSongs);
+              setPlaylist([...globalPlaylist]);
+              nextIndex = insertPos;
+            } else {
+              return null; // 没有更多歌曲，停止
+            }
+          } catch (e) {
+            console.error("获取更多歌曲失败:", e);
+            return null;
           }
-        } catch (e) {
-          console.error("获取更多歌曲失败:", e);
-          return;
+        } else {
+          return null; // 队列结束，停止
         }
-      } else {
-        return; // 队列结束，停止
       }
+      return nextIndex;
+    };
+
+    let targetIndex: number | null = null;
+    if (globalPlayMode === "single") {
+      targetIndex = globalCurrentIndex;
+    } else if (globalPlayMode === "shuffle") {
+      targetIndex = getShuffleNextIndex();
+    } else {
+      targetIndex = await resolveOrderNext();
     }
 
-    const nextSong = globalPlaylist[nextIndex];
+    if (targetIndex === null || targetIndex < 0 || targetIndex >= globalPlaylist.length) {
+      return;
+    }
+
+    const nextSong = globalPlaylist[targetIndex];
+    if (globalPlayMode === "shuffle") {
+      syncShuffleAfterPlaylistChange(targetIndex);
+    }
     if (nextSong) {
       // 播放下一首时，如果失败也自动跳过
-      playSongInternal(nextSong, nextIndex, true);
-      prefetchSongAssets(globalPlaylist[nextIndex + 1] || nextSong);
+      playSongInternal(nextSong, targetIndex, true);
+      prefetchSongAssets(globalPlaylist[targetIndex + 1] || nextSong);
       saveQueueState(globalPlaylist, globalCurrentIndex);
       broadcastPlayerState();
     }
@@ -685,14 +845,27 @@ export function usePlayer(): UsePlayerReturn {
   const playPrev = useCallback(() => {
     if (globalPlaylist.length === 0) return;
 
-    let prevIndex = globalCurrentIndex - 1;
-    if (prevIndex < 0) {
-      prevIndex = globalPlaylist.length - 1; // 循环播放
+    let targetIndex: number | null = null;
+    if (globalPlayMode === "single") {
+      targetIndex = globalCurrentIndex;
+    } else if (globalPlayMode === "shuffle") {
+      targetIndex = getShufflePrevIndex();
+    } else {
+      const prevIndex = globalCurrentIndex - 1;
+      targetIndex = prevIndex >= 0 ? prevIndex : null;
     }
 
-    const prevSong = globalPlaylist[prevIndex];
+    if (targetIndex === null || targetIndex < 0 || targetIndex >= globalPlaylist.length) {
+      return;
+    }
+
+    if (globalPlayMode === "shuffle") {
+      syncShuffleAfterPlaylistChange(targetIndex);
+    }
+
+    const prevSong = globalPlaylist[targetIndex];
     if (prevSong) {
-      playSongInternal(prevSong, prevIndex, true);
+      playSongInternal(prevSong, targetIndex, true);
     }
   }, [playSongInternal]);
 
@@ -760,6 +933,7 @@ export function usePlayer(): UsePlayerReturn {
       globalCurrentIndex = 0;
       setPlaylist([song]);
       setCurrentIndex(0);
+      syncShuffleAfterPlaylistChange(0);
       await playSongInternal(song, 0);
       return;
     }
@@ -774,6 +948,7 @@ export function usePlayer(): UsePlayerReturn {
     globalCurrentIndex = newIndex;
     setPlaylist([...globalPlaylist]);
     setCurrentIndex(newIndex);
+    syncShuffleAfterPlaylistChange(newIndex);
     saveQueueState(globalPlaylist, globalCurrentIndex);
     await playSongInternal(song, newIndex);
     prefetchSongAssets(globalPlaylist[newIndex + 1] || globalPlaylist[newIndex]);
@@ -789,6 +964,7 @@ export function usePlayer(): UsePlayerReturn {
       globalCurrentIndex = startIndex;
       setPlaylist([...songs]);
       setCurrentIndex(startIndex);
+      syncShuffleAfterPlaylistChange(startIndex);
       await playSongInternal(songs[startIndex], startIndex);
       prefetchSongAssets(songs[startIndex + 1] || songs[startIndex]);
       return;
@@ -826,6 +1002,7 @@ export function usePlayer(): UsePlayerReturn {
     globalCurrentIndex = newIndex;
     setPlaylist([...globalPlaylist]);
     setCurrentIndex(newIndex);
+    syncShuffleAfterPlaylistChange(newIndex);
     saveQueueState(globalPlaylist, globalCurrentIndex);
     await playSongInternal(globalPlaylist[newIndex], newIndex);
     prefetchSongAssets(globalPlaylist[newIndex + 1] || globalPlaylist[newIndex]);
@@ -839,9 +1016,19 @@ export function usePlayer(): UsePlayerReturn {
     const songsToAdd = songs.filter((s) => !existingMids.has(s.mid));
     if (songsToAdd.length === 0) return;
 
+    const prevLength = globalPlaylist.length;
     const newPlaylist = [...globalPlaylist, ...songsToAdd];
     globalPlaylist = newPlaylist;
     setPlaylist(newPlaylist);
+    if (globalPlayMode === "shuffle") {
+      const blocked = new Set(shuffleHistory);
+      songsToAdd.forEach((_, idx) => {
+        const newIndex = prevLength + idx;
+        if (!blocked.has(newIndex) && !shufflePool.includes(newIndex) && newIndex !== globalCurrentIndex) {
+          shufflePool.push(newIndex);
+        }
+      });
+    }
     saveQueueState(globalPlaylist, globalCurrentIndex);
     broadcastPlayerState();
 
@@ -849,6 +1036,7 @@ export function usePlayer(): UsePlayerReturn {
     if (!globalCurrentSong || globalCurrentIndex < 0) {
       globalCurrentIndex = 0;
       setCurrentIndex(globalCurrentIndex);
+      syncShuffleAfterPlaylistChange(0);
       await playSongInternal(newPlaylist[0], 0);
       broadcastPlayerState();
     }
@@ -859,6 +1047,16 @@ export function usePlayer(): UsePlayerReturn {
     if (index <= globalCurrentIndex) return; // 不删除当前/历史
     if (index < 0 || index >= globalPlaylist.length) return;
     globalPlaylist.splice(index, 1);
+    if (globalPlayMode === "shuffle") {
+      shuffleHistory = shuffleHistory
+        .filter((idx) => idx !== index)
+        .map((idx) => (idx > index ? idx - 1 : idx));
+      shufflePool = shufflePool
+        .filter((idx) => idx !== index)
+        .map((idx) => (idx > index ? idx - 1 : idx));
+      shuffleCursor = Math.min(shuffleCursor, shuffleHistory.length - 1);
+      syncShuffleAfterPlaylistChange(globalCurrentIndex);
+    }
     setPlaylist([...globalPlaylist]);
     saveQueueState(globalPlaylist, globalCurrentIndex);
     broadcastPlayerState();
@@ -946,6 +1144,18 @@ export function usePlayer(): UsePlayerReturn {
   // 跳转到当前队列中的指定索引播放
   const playAtIndex = useCallback(async (index: number) => {
     if (index < 0 || index >= globalPlaylist.length) return;
+    if (globalPlayMode === "shuffle") {
+      const existingPos = shuffleHistory.indexOf(index);
+      if (existingPos >= 0) {
+        shuffleHistory = shuffleHistory.slice(0, existingPos + 1);
+        shuffleCursor = existingPos;
+      } else {
+        shuffleHistory = shuffleHistory.slice(0, Math.max(shuffleCursor, 0) + 1);
+        shuffleHistory.push(index);
+        shuffleCursor = shuffleHistory.length - 1;
+      }
+      shufflePool = buildShufflePoolFromHistory(index);
+    }
     globalCurrentIndex = index;
     setCurrentIndex(index);
     saveQueueState(globalPlaylist, globalCurrentIndex);
@@ -971,6 +1181,7 @@ export function usePlayer(): UsePlayerReturn {
     lyric,
     playlist,
     currentIndex,
+    playMode,
     playSong,
     playPlaylist,
     addToQueue,
@@ -982,5 +1193,7 @@ export function usePlayer(): UsePlayerReturn {
     playPrev,
     removeFromQueue,
     setOnNeedMoreSongs,
+    cyclePlayMode,
+    setPlayMode: updatePlayMode,
   };
 }

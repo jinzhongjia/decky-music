@@ -316,17 +316,19 @@ function Content() {
           <PlayerPage
             song={player.currentSong}
             isPlaying={player.isPlaying}
-            currentTime={player.currentTime}
-            duration={player.duration}
-            loading={player.loading}
-            error={player.error}
-            hasPlaylist={player.playlist.length > 1}
-            onTogglePlay={player.togglePlay}
-            onSeek={player.seek}
-            onNext={player.playNext}
-            onPrev={player.playPrev}
-            onBack={handleBackToHome}
-          />
+          currentTime={player.currentTime}
+          duration={player.duration}
+          loading={player.loading}
+          error={player.error}
+          hasPlaylist={player.playlist.length > 1}
+          playMode={player.playMode}
+          onTogglePlay={player.togglePlay}
+          onTogglePlayMode={player.cyclePlayMode}
+          onSeek={player.seek}
+          onNext={player.playNext}
+          onPrev={player.playPrev}
+          onBack={handleBackToHome}
+        />
         ) : (
           <HomePage
             onSelectSong={handleSelectSong}
@@ -360,6 +362,8 @@ function Content() {
           onClick={handleGoToPlayer}
           onNext={player.playlist.length > 1 ? player.playNext : undefined}
           onPrev={player.playlist.length > 1 ? player.playPrev : undefined}
+          playMode={player.playMode}
+          onTogglePlayMode={player.cyclePlayMode}
         />
       )}
     </div>

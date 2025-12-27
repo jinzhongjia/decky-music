@@ -6,7 +6,7 @@
 
 import { FC, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Spinner } from "@decky/ui";
-import { FaPause, FaPlay, FaStepBackward, FaStepForward } from "react-icons/fa";
+import { FaListOl, FaPause, FaPlay, FaRandom, FaRedo, FaStepBackward, FaStepForward } from "react-icons/fa";
 
 import { toaster } from "@decky/api";
 import { HistoryPage, LoginPage, PlaylistDetailPage, PlaylistsPage, SearchPage } from "../components";
@@ -66,6 +66,8 @@ export const FullscreenPlayer: FC = () => {
     playNext,
     playPrev,
     setOnNeedMoreSongs,
+    playMode,
+    cyclePlayMode,
   } = player;
   const {
     guessLikeSongs,
@@ -74,6 +76,16 @@ export const FullscreenPlayer: FC = () => {
     preloadData,
   } = dataManager;
   const currentPlayingMid = currentSong?.mid;
+  const playModeConfig = useMemo(() => {
+    switch (playMode) {
+      case "shuffle":
+        return { icon: <FaRandom size={14} />, title: "随机播放" };
+      case "single":
+        return { icon: <FaRedo size={14} />, title: "单曲循环" };
+      default:
+        return { icon: <FaListOl size={14} />, title: "顺序播放" };
+    }
+  }, [playMode]);
   const handleLyricSeek = useCallback((timeSec: number) => {
     if (!currentSong) return;
     const total = duration || currentSong.duration || 0;
@@ -406,6 +418,23 @@ export const FullscreenPlayer: FC = () => {
             gap: '16px',
             marginBottom: '8px'
           }}>
+            <div
+              onClick={cyclePlayMode}
+              title={playModeConfig.title}
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+            >
+              {playModeConfig.icon}
+            </div>
+
             <div
               onClick={() => playlist.length > 1 && playPrev()}
               style={{
