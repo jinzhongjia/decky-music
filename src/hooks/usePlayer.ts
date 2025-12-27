@@ -807,6 +807,14 @@ export function usePlayer(): UsePlayerReturn {
     };
   }, [settingsRestored]);
 
+  // 重启后从存储恢复歌曲时自动拉取歌词
+  useEffect(() => {
+    if (!settingsRestored) return;
+    if (!currentSong) return;
+    if (lyric) return;
+    fetchLyricWithCache(currentSong.mid, setLyric);
+  }, [currentSong, lyric, settingsRestored]);
+
   const migrateLegacySettings = useCallback(async () => {
     await ensureFrontendSettingsLoaded();
     const updates: Partial<FrontendSettingsCache> = {};
@@ -915,6 +923,8 @@ export function usePlayer(): UsePlayerReturn {
     }
 
     const wasSameSong = globalCurrentSong?.mid === song.mid;
+    const cachedLyric = lyricCache.get(song.mid) || null;
+    const hasAnyLyric = Boolean(globalLyric) || Boolean(cachedLyric);
 
     setLoading(true);
     setError("");
@@ -984,12 +994,12 @@ export function usePlayer(): UsePlayerReturn {
         setIsPlaying(true);
 
         if (!sleepInhibited) {
-          sleepInhibited = true;
-          inhibitSleep();
-        }
+        sleepInhibited = true;
+        inhibitSleep();
+      }
 
-        setLoading(false);
-      } catch (e) {
+      setLoading(false);
+    } catch (e) {
         // 播放失败处理 (精简版，复用现有逻辑)
         const errorMsg = (e as Error).message;
         setError(errorMsg);
@@ -1010,8 +1020,11 @@ export function usePlayer(): UsePlayerReturn {
       }
 
       // 2. 获取歌词 (带缓存/并发复用)
-      if (!wasSameSong || !globalLyric) {
+      if (!hasAnyLyric) {
         fetchLyricWithCache(song.mid, setLyric);
+      } else if (!globalLyric && cachedLyric) {
+        globalLyric = cachedLyric;
+        setLyric(cachedLyric);
       }
 
       broadcastPlayerState();
