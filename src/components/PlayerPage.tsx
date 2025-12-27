@@ -2,8 +2,10 @@
  * 全屏播放器页面
  * 用方向键导航到控制按钮，按A键激活
  */
+/* global HTMLDivElement */
 
-import { FC, useMemo } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent } from "react";
 import { PanelSection, PanelSectionRow, Focusable } from "@decky/ui";
 import { FaListOl, FaPlay, FaPause, FaRandom, FaRedo, FaStepForward, FaStepBackward } from "react-icons/fa";
 import type { PlayMode, SongInfo } from "../types";
@@ -47,7 +49,106 @@ export const PlayerPage: FC<PlayerPageProps> = ({
   onBack,
 }) => {
   const actualDuration = duration > 0 ? duration : song.duration;
-  const progress = actualDuration > 0 ? (currentTime / actualDuration) * 100 : 0;
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
+  const [dragTime, setDragTime] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const activePointerRef = useRef<number | null>(null);
+  const pendingDragTimeRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const getTimeFromClientX = useCallback(
+    (clientX: number) => {
+      if (!actualDuration || !progressBarRef.current) return null;
+      const rect = progressBarRef.current.getBoundingClientRect();
+      const ratio = (clientX - rect.left) / rect.width;
+      const clamped = Math.min(1, Math.max(0, ratio));
+      return clamped * actualDuration;
+    },
+    [actualDuration]
+  );
+
+  const updateDrag = useCallback(
+    (clientX: number) => {
+      const nextTime = getTimeFromClientX(clientX);
+      if (nextTime === null) return;
+      pendingDragTimeRef.current = nextTime;
+      if (rafRef.current === null) {
+        rafRef.current = window.requestAnimationFrame(() => {
+          rafRef.current = null;
+          if (pendingDragTimeRef.current !== null) {
+            setDragTime(pendingDragTimeRef.current);
+          }
+        });
+      }
+    },
+    [getTimeFromClientX]
+  );
+
+  const endDrag = useCallback(
+    (clientX?: number) => {
+      if (clientX !== undefined) {
+        const finalTime = getTimeFromClientX(clientX);
+        if (finalTime !== null) {
+          onSeek(finalTime);
+        }
+      }
+      setIsDragging(false);
+      setDragTime(null);
+      activePointerRef.current = null;
+      pendingDragTimeRef.current = null;
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    },
+    [getTimeFromClientX, onSeek]
+  );
+
+  const handlePointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!actualDuration) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      if (!progressBarRef.current) return;
+
+      activePointerRef.current = event.pointerId;
+      progressBarRef.current.setPointerCapture(event.pointerId);
+      setIsDragging(true);
+      updateDrag(event.clientX);
+    },
+    [actualDuration, updateDrag]
+  );
+
+  const handlePointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!isDragging || event.pointerId !== activePointerRef.current) return;
+      updateDrag(event.clientX);
+    },
+    [isDragging, updateDrag]
+  );
+
+  const handlePointerUp = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.pointerId !== activePointerRef.current) return;
+      if (progressBarRef.current?.hasPointerCapture(event.pointerId)) {
+        progressBarRef.current.releasePointerCapture(event.pointerId);
+      }
+      endDrag(event.clientX);
+    },
+    [endDrag]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, []);
+
+  const displayTime = dragTime ?? currentTime;
+  const progress =
+    actualDuration > 0 ? Math.min(100, Math.max(0, (displayTime / actualDuration) * 100)) : 0;
   const modeConfig = useMemo(() => {
     switch (playMode) {
       case "shuffle":
@@ -161,23 +262,31 @@ export const PlayerPage: FC<PlayerPageProps> = ({
                 color: COLORS.textSecondary,
                 marginBottom: '8px',
               }}>
-                <span>{formatDuration(Math.floor(currentTime))}</span>
+                <span>{formatDuration(Math.floor(displayTime))}</span>
                 <span>{formatDuration(actualDuration)}</span>
               </div>
               <div
                 style={{
-                  height: '8px',
+                  height: '12px',
                   background: COLORS.backgroundDarker,
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   overflow: 'hidden',
+                  position: 'relative',
+                  cursor: actualDuration ? 'pointer' : 'default',
+                  touchAction: 'none',
                 }}
+                ref={progressBarRef}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
               >
                 <div style={{
                   height: '100%',
                   width: `${progress}%`,
                   background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.primaryLight})`,
                   borderRadius: '4px',
-                  transition: 'width 0.1s linear',
+                  transition: isDragging ? 'none' : 'width 0.1s linear',
                 }} />
               </div>
             </div>
