@@ -196,6 +196,7 @@ let sleepInhibited = false;
 // 播放队列持久化
 const PLAYLIST_STORAGE_KEY = "qqmusic_playlist_state";
 const PLAY_MODE_STORAGE_KEY = "qqmusic_play_mode";
+const VOLUME_STORAGE_KEY = "qqmusic_volume";
 
 interface StoredQueueState {
   playlist: SongInfo[];
@@ -275,6 +276,30 @@ function savePlayMode(mode: PlayMode) {
   }
 }
 
+function loadVolume(): number {
+  try {
+    // eslint-disable-next-line no-undef
+    const raw = localStorage.getItem(VOLUME_STORAGE_KEY);
+    if (!raw) return 1;
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) {
+      return Math.min(1, Math.max(0, parsed));
+    }
+  } catch {
+    // ignore
+  }
+  return 1;
+}
+
+function saveVolume(volume: number) {
+  try {
+    // eslint-disable-next-line no-undef
+    localStorage.setItem(VOLUME_STORAGE_KEY, String(volume));
+  } catch {
+    // ignore
+  }
+}
+
 // 全局状态 - 在模块级别创建，不会因组件卸载而销毁
 let globalAudio: HTMLAudioElement | null = null;
 let globalCurrentSong: SongInfo | null = null;
@@ -282,6 +307,7 @@ let globalLyric: ParsedLyric | null = null;
 let globalPlaylist: SongInfo[] = [];
 let globalCurrentIndex: number = -1;
 let globalPlayMode: PlayMode = loadPlayMode();
+let globalVolume: number = loadVolume();
 
 // 随机播放状态
 let shuffleHistory: number[] = [];
@@ -476,6 +502,7 @@ function getGlobalAudio(): HTMLAudioElement {
   if (!globalAudio) {
     globalAudio = new Audio();
     globalAudio.preload = "auto";
+    globalAudio.volume = globalVolume;
 
     // 设置全局的 ended 事件处理
     globalAudio.addEventListener('ended', () => {
@@ -600,6 +627,7 @@ export interface UsePlayerReturn {
   playlist: SongInfo[]; // 作为“时间线”：currentIndex 前为历史，之后为未来队列
   currentIndex: number;
   playMode: PlayMode;
+  volume: number;
 
   // 方法
   playSong: (song: SongInfo) => Promise<void>; // 插入当前位置并立刻播放
@@ -615,6 +643,7 @@ export interface UsePlayerReturn {
   setOnNeedMoreSongs: (callback: (() => Promise<SongInfo[]>) | null) => void;
   cyclePlayMode: () => void;
   setPlayMode: (mode: PlayMode) => void;
+  setVolume: (volume: number, options?: { commit?: boolean }) => void;
 }
 
 export function usePlayer(): UsePlayerReturn {
@@ -629,6 +658,7 @@ export function usePlayer(): UsePlayerReturn {
   const [playlist, setPlaylist] = useState<SongInfo[]>(globalPlaylist);
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
   const [playMode, setPlayModeState] = useState<PlayMode>(globalPlayMode);
+  const [volume, setVolumeState] = useState(globalVolume);
 
   const syncFromGlobals = useCallback(() => {
     const audio = getGlobalAudio();
@@ -637,6 +667,7 @@ export function usePlayer(): UsePlayerReturn {
     setPlaylist([...globalPlaylist]);
     setCurrentIndex(globalCurrentIndex);
     setPlayModeState(globalPlayMode);
+    setVolumeState(globalVolume);
     setIsPlaying(!audio.paused);
     setCurrentTime(audio.currentTime);
     setDuration(audio.duration || globalCurrentSong?.duration || 0);
@@ -664,6 +695,22 @@ export function usePlayer(): UsePlayerReturn {
       globalPlayMode === "order" ? "single" : globalPlayMode === "single" ? "shuffle" : "order";
     updatePlayMode(nextMode);
   }, [updatePlayMode]);
+
+  const setVolume = useCallback((value: number, options?: { commit?: boolean }) => {
+    const clamped = Math.min(1, Math.max(0, value));
+    globalVolume = clamped;
+    const audio = getGlobalAudio();
+    if (audio.volume !== clamped) {
+      audio.volume = clamped;
+    }
+
+    // 仅在 commit 时写存储/广播，避免拖动时频繁开销
+    if (options?.commit) {
+      saveVolume(clamped);
+      broadcastPlayerState();
+    }
+    setVolumeState(clamped);
+  }, []);
 
   // 内部播放歌曲方法
   const playSongInternal = useCallback(async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true): Promise<boolean> => {
@@ -907,6 +954,7 @@ export function usePlayer(): UsePlayerReturn {
     };
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
+    const handleVolumeChange = () => setVolumeState(audio.volume);
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('durationchange', handleDurationChange);
@@ -914,6 +962,7 @@ export function usePlayer(): UsePlayerReturn {
     audio.addEventListener('error', handleError);
     audio.addEventListener('play', handlePlay);
     audio.addEventListener('pause', handlePause);
+    audio.addEventListener('volumechange', handleVolumeChange);
 
     // 清理时只移除事件监听，不停止播放
     return () => {
@@ -923,6 +972,7 @@ export function usePlayer(): UsePlayerReturn {
       audio.removeEventListener('error', handleError);
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('volumechange', handleVolumeChange);
     };
   }, []);
 
@@ -1182,6 +1232,7 @@ export function usePlayer(): UsePlayerReturn {
     playlist,
     currentIndex,
     playMode,
+    volume,
     playSong,
     playPlaylist,
     addToQueue,
@@ -1195,5 +1246,6 @@ export function usePlayer(): UsePlayerReturn {
     setOnNeedMoreSongs,
     cyclePlayMode,
     setPlayMode: updatePlayMode,
+    setVolume,
   };
 }

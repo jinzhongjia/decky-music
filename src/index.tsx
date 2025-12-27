@@ -318,6 +318,7 @@ function Content() {
             isPlaying={player.isPlaying}
           currentTime={player.currentTime}
           duration={player.duration}
+          volume={player.volume}
           loading={player.loading}
           error={player.error}
           hasPlaylist={player.playlist.length > 1}
@@ -325,6 +326,7 @@ function Content() {
           onTogglePlay={player.togglePlay}
           onTogglePlayMode={player.cyclePlayMode}
           onSeek={player.seek}
+          onVolumeChange={player.setVolume}
           onNext={player.playNext}
           onPrev={player.playPrev}
           onBack={handleBackToHome}
