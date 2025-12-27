@@ -6,8 +6,8 @@
 /* global HTMLDivElement */
 
 import React, { FC, useCallback, useMemo, useRef, useState } from "react";
-import { FaPlay, FaPause, FaStepForward, FaStepBackward } from "react-icons/fa";
-import type { SongInfo } from "../types";
+import { FaPlay, FaPause, FaStepForward, FaStepBackward, FaRandom, FaRedo, FaListOl } from "react-icons/fa";
+import type { PlayMode, SongInfo } from "../types";
 import { formatDuration } from "../utils/format";
 import { SafeImage } from "./SafeImage";
 import { TEXT_ELLIPSIS, TEXT_CONTAINER, FLEX_CENTER, COLORS } from "../utils/styles";
@@ -23,6 +23,8 @@ interface PlayerBarProps {
   onClick: () => void;
   onNext?: () => void;
   onPrev?: () => void;
+  playMode?: PlayMode;
+  onTogglePlayMode?: () => void;
 }
 
 export const PlayerBar: FC<PlayerBarProps> = ({
@@ -36,6 +38,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
   onClick,
   onNext,
   onPrev,
+  playMode,
+  onTogglePlayMode,
 }) => {
   const barRef = useRef<HTMLDivElement | null>(null);
   const [dragTime, setDragTime] = useState<number | null>(null);
@@ -137,6 +141,18 @@ export const PlayerBar: FC<PlayerBarProps> = ({
       }
     };
   }, []);
+
+  const modeConfig = useMemo(() => {
+    if (!playMode) return null;
+    switch (playMode) {
+      case "shuffle":
+        return { icon: <FaRandom size={14} />, title: "随机播放" };
+      case "single":
+        return { icon: <FaRedo size={14} />, title: "单曲循环" };
+      default:
+        return { icon: <FaListOl size={14} />, title: "顺序播放" };
+    }
+  }, [playMode]);
 
   // 使用 ref 追踪最新值，避免 callback 依赖变化导致子组件重渲染
   const currentTimeRef = React.useRef(currentTime);
@@ -277,6 +293,8 @@ export const PlayerBar: FC<PlayerBarProps> = ({
           onPrevClick={handlePrevClick}
           onPlayPauseClick={handlePlayPauseClick}
           onNextClick={handleNextClick}
+          modeConfig={modeConfig || undefined}
+          onModeClick={onTogglePlayMode}
         />
       </div>
     </div>
@@ -290,9 +308,29 @@ const PlayerControls = React.memo<{
   onPrevClick: (e: React.MouseEvent) => void;
   onPlayPauseClick: (e: React.MouseEvent) => void;
   onNextClick: (e: React.MouseEvent) => void;
-}>(({ isPlaying, loading, onPrevClick, onPlayPauseClick, onNextClick }) => {
+  modeConfig?: { icon: React.ReactNode; title: string };
+  onModeClick?: (e: React.MouseEvent) => void;
+}>(({ isPlaying, loading, onPrevClick, onPlayPauseClick, onNextClick, modeConfig, onModeClick }) => {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+      {/* 播放模式切换 */}
+      <div
+        onClick={onModeClick}
+        title={modeConfig?.title}
+        style={{
+          cursor: onModeClick ? "pointer" : "default",
+          width: "30px",
+          height: "30px",
+          borderRadius: "50%",
+          background: COLORS.backgroundDark,
+          ...FLEX_CENTER,
+          flexShrink: 0,
+          opacity: modeConfig ? 1 : 0.6,
+        }}
+      >
+        {modeConfig?.icon}
+      </div>
+
       {/* 上一首/后退按钮 */}
       <div
         onClick={onPrevClick}

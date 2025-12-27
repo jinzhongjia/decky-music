@@ -143,3 +143,5 @@ export interface PlayerState {
   duration: number;
   volume: number;
 }
+
+export type PlayMode = "order" | "single" | "shuffle";
