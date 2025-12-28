@@ -11,6 +11,7 @@ import { FaListOl, FaPause, FaPlay, FaRandom, FaRedo, FaStepBackward, FaStepForw
 import { toaster } from "@decky/api";
 import { HistoryPage, LoginPage, PlaylistDetailPage, PlaylistsPage, SearchPage } from "../components";
 import { getLoginStatus } from "../api";
+import { setAuthLoggedIn, useAuthStatus } from "../state/authState";
 import { GuessLikePage } from "./fullscreen/GuessLikePage";
 import { KaraokeLyrics } from "./fullscreen/KaraokeLyrics";
 import { NavBar } from "./fullscreen/NavBar";
@@ -34,9 +35,8 @@ const SYSTEM_BOTTOM_BAR_HEIGHT = 40;
 
 export const FullscreenPlayer: FC = () => {
   const [currentPage, setCurrentPage] = useState<FullscreenPageType>('player');
-  const [checking, setChecking] = useState(true);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
+  const isLoggedIn = useAuthStatus();
   const mountedRef = useMountedRef();
   const playerPageRef = useRef<HTMLDivElement>(null);
   const guessLikePageRef = useRef<HTMLDivElement>(null);
@@ -113,22 +113,22 @@ export const FullscreenPlayer: FC = () => {
   }, [currentPage]);
 
   const checkLoginStatus = useCallback(async () => {
-    setChecking(true);
     try {
       const result = await getLoginStatus();
       if (!mountedRef.current) return;
-      setIsLoggedIn(result.logged_in);
+      setAuthLoggedIn(Boolean(result.logged_in));
       // 数据由 dataManager 预加载，这里不需要额外加载
     } catch (e) {
       console.error("检查登录状态失败:", e);
     }
-    setChecking(false);
   }, [mountedRef]);
 
-  // 检查登录状态
+  // 如果首次没有登录状态（初始渲染时 auth 状态未知），进行一次检查
   useEffect(() => {
+    if (isLoggedIn === false || isLoggedIn === true) return;
     checkLoginStatus();
-  }, [checkLoginStatus]);
+  }, [isLoggedIn, checkLoginStatus]);
+
 
   // 手柄快捷键绑定
   useEffect(() => {
@@ -178,7 +178,7 @@ export const FullscreenPlayer: FC = () => {
   }, [navigateToPage]);
 
   const handleLoginSuccess = useCallback(() => {
-    setIsLoggedIn(true);
+    setAuthLoggedIn(true);
     navigateToPage('player');
     preloadData();
   }, [navigateToPage, preloadData]);
@@ -339,25 +339,6 @@ export const FullscreenPlayer: FC = () => {
   useEffect(() => {
     focusCurrentPage(currentPage);
   }, [currentPage, focusCurrentPage]);
-
-  // 加载中
-  if (checking) {
-    return (
-      <div style={{ 
-        position: 'fixed',
-        top: `${SYSTEM_TOP_BAR_HEIGHT}px`,
-        left: 0,
-        right: 0,
-        bottom: `${SYSTEM_BOTTOM_BAR_HEIGHT}px`,
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        background: '#0e1419'
-      }}>
-        <Spinner />
-      </div>
-    );
-  }
 
   // 未登录
   if (!isLoggedIn) {

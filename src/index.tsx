@@ -7,7 +7,8 @@ import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui
 import { definePlugin, toaster, routerHook } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
-import { getLoginStatus, logout } from "./api";
+import { getLoginStatus, logout, clearAllData } from "./api";
+import { setAuthLoggedIn } from "./state/authState";
 import { preloadData, clearDataCache, fetchGuessLikeRaw } from "./hooks/useDataManager";
 import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
 import { useMountedRef } from "./hooks/useMountedRef";
@@ -44,6 +45,7 @@ function Content() {
       const result = await getLoginStatus();
       if (!mountedRef.current) return;
       setCurrentPage(result.logged_in ? 'home' : 'login');
+      setAuthLoggedIn(Boolean(result.logged_in));
       
       // 已登录时启用左侧菜单
       if (result.logged_in) {
@@ -53,6 +55,7 @@ function Content() {
       console.error("检查登录状态失败:", e);
       if (!mountedRef.current) return;
       setCurrentPage('login');
+      setAuthLoggedIn(false);
     }
     setChecking(false);
   }, [mountedRef]);
@@ -117,20 +120,24 @@ function Content() {
   }, []); // 只注册一次，通过 ref 访问最新状态
 
   const handleLoginSuccess = useCallback(() => {
+    player.enableSettingsSave(true);
+    setAuthLoggedIn(true);
     setCurrentPage('home');
     // 登录成功后启用左侧菜单并预加载数据
     menuManager.enable();
     preloadData();
-  }, []);
+  }, [player]);
 
   const handleLogout = useCallback(async () => {
     await logout();
     player.stop();
+    player.enableSettingsSave(false);
     clearRecommendCache(); // 清除推荐缓存（旧版兼容）
     clearDataCache(); // 清除数据管理器缓存
     // 退出登录后禁用左侧菜单
     menuManager.disable();
     setCurrentPage('login');
+    setAuthLoggedIn(false);
     toaster.toast({
       title: "已退出登录",
       body: "期待下次见面！"
@@ -213,6 +220,22 @@ function Content() {
   const handleBackToPlaylists = useCallback(() => {
     setCurrentPage('playlists');
   }, []);
+
+  const handleClearAllData = useCallback(async () => {
+    const res = await clearAllData();
+    if (!res.success) {
+      throw new Error(res.error || "清除失败");
+    }
+
+    player.enableSettingsSave(false);
+    player.resetAllState();
+    clearDataCache();
+    menuManager.disable();
+    setSelectedPlaylist(null);
+    setCurrentPage('login');
+    setAuthLoggedIn(false);
+    return true;
+  }, [player]);
 
   // 选择歌单
   const handleSelectPlaylist = useCallback((playlist: PlaylistInfo) => {
@@ -372,7 +395,7 @@ function Content() {
         );
 
       case 'settings':
-        return <SettingsPage onBack={handleBackToHome} />;
+        return <SettingsPage onBack={handleBackToHome} onClearAllData={handleClearAllData} />;
       
       default:
         return <LoginPage onLoginSuccess={handleLoginSuccess} />;
@@ -442,6 +465,7 @@ export default definePlugin(() => {
 
   // 插件初始化时检查登录状态，已登录则启用左侧菜单并预加载数据
   getLoginStatus().then(result => {
+    setAuthLoggedIn(Boolean(result.logged_in));
     if (result.logged_in) {
       menuManager.enable();
       // 预加载数据

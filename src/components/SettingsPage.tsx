@@ -3,7 +3,7 @@ import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Navigation } from "
 import { toaster } from "@decky/api";
 import { FaDownload, FaExternalLinkAlt, FaInfoCircle, FaSyncAlt, FaTrash } from "react-icons/fa";
 
-import { checkUpdate, downloadUpdate, getPluginVersion, getFrontendSettings, saveFrontendSettings, clearAllData } from "../api";
+import { checkUpdate, downloadUpdate, getPluginVersion, getFrontendSettings, saveFrontendSettings } from "../api";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { setPreferredQuality } from "../hooks/usePlayer";
 import type { PreferredQuality, UpdateInfo } from "../types";
@@ -11,6 +11,7 @@ import { BackButton } from "./BackButton";
 
 interface SettingsPageProps {
   onBack: () => void;
+  onClearAllData?: () => Promise<boolean>;
 }
 
 const REPO_URL = "https://github.com/jinzhongjia/decky-qqmusic";
@@ -21,7 +22,7 @@ const QUALITY_OPTIONS: Array<{ value: PreferredQuality; label: string; desc: str
   { value: "compat", label: "兼容/低延迟", desc: "128kbps 及以下优先，适合不稳定网络或节省流量" },
 ];
 
-export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
+export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) => {
   const mountedRef = useMountedRef();
   const [checking, setChecking] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -126,17 +127,14 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
 
   const handleClearData = useCallback(async () => {
     if (clearing) return;
-    const confirmed = window.confirm("确定要清除插件所有数据（登录凭证和设置）吗？此操作无法撤销。");
-    if (!confirmed) return;
     setClearing(true);
     try {
-      const res = await clearAllData();
+      const success = await (onClearAllData ? onClearAllData() : Promise.resolve(false));
       if (!mountedRef.current) return;
-      if (res.success) {
-        toaster.toast({ title: "已清除数据", body: "请重新登录" });
-      } else {
-        toaster.toast({ title: "清除失败", body: res.error || "未知错误" });
-      }
+      toaster.toast({
+        title: success ? "已清除数据" : "清除失败",
+        body: success ? "请重新登录" : "未知错误",
+      });
     } catch (e) {
       if (!mountedRef.current) return;
       toaster.toast({ title: "清除失败", body: (e as Error).message });
@@ -145,7 +143,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
         setClearing(false);
       }
     }
-  }, [clearing, mountedRef]);
+  }, [clearing, mountedRef, onClearAllData]);
 
   useEffect(() => {
     void loadLocalVersion();

@@ -185,6 +185,7 @@ let frontendSettings: FrontendSettingsCache = {};
 let frontendSettingsLoaded = false;
 let frontendSettingsPromise: Promise<void> | null = null;
 let legacySnapshotCache: LegacySnapshot | null = null;
+let frontendSaveEnabled = true;
 
 // 旧版 localStorage 键，用于迁移
 const LEGACY_PLAYLIST_KEY = "qqmusic_playlist_state";
@@ -219,7 +220,7 @@ async function ensureFrontendSettingsLoaded() {
 
 function updateFrontendSettingsCache(partial: Partial<FrontendSettingsCache>, commit: boolean = true) {
   frontendSettings = { ...frontendSettings, ...partial };
-  if (commit) {
+  if (commit && frontendSaveEnabled) {
     void saveFrontendSettings(frontendSettings as Record<string, unknown>);
   }
 }
@@ -739,6 +740,8 @@ export interface UsePlayerReturn {
   cyclePlayMode: () => void;
   setPlayMode: (mode: PlayMode) => void;
   setVolume: (volume: number, options?: { commit?: boolean }) => void;
+  enableSettingsSave: (enabled: boolean) => void; // 控制是否允许写入前端设置
+  resetAllState: () => void; // 清空内存状态和设置缓存
   migrateLegacySettings: () => Promise<boolean>;
 }
 
@@ -1428,6 +1431,35 @@ export function usePlayer(): UsePlayerReturn {
     broadcastPlayerState();
   }, []);
 
+  // 清空所有内存状态及设置缓存（用于手动清除数据后恢复初始状态）
+  const resetAllState = useCallback(() => {
+    frontendSaveEnabled = false;
+    stop();
+    globalPlayMode = "order";
+    globalVolume = 1;
+    shuffleHistory = [];
+    shuffleCursor = -1;
+    shufflePool = [];
+    originalSleepSettings = null;
+    frontendSettings = {};
+    frontendSettingsLoaded = false;
+    frontendSettingsPromise = null;
+    legacySnapshotCache = null;
+    sleepInhibited = false;
+
+    const audio = getGlobalAudio();
+    audio.volume = globalVolume;
+
+    setPlayModeState(globalPlayMode);
+    setVolumeState(globalVolume);
+    setSettingsRestored(false);
+    setHasLegacyData(false);
+  }, [stop]);
+
+  const enableSettingsSave = useCallback((enabled: boolean) => {
+    frontendSaveEnabled = enabled;
+  }, []);
+
   // 跳转到当前队列中的指定索引播放
   const playAtIndex = useCallback(async (index: number) => {
     if (index < 0 || index >= globalPlaylist.length) return;
@@ -1484,6 +1516,8 @@ export function usePlayer(): UsePlayerReturn {
     cyclePlayMode,
     setPlayMode: updatePlayMode,
     setVolume,
+    enableSettingsSave,
+    resetAllState,
     settingsRestored,
     hasLegacyData,
     migrateLegacySettings,
