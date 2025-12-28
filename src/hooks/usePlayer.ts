@@ -1255,9 +1255,28 @@ export function usePlayer(): UsePlayerReturn {
     });
 
     if (songsToInsert.length === 0) {
+      // 所有歌曲已在队列中，仅切换到目标曲目
+      const clampedStartIndex = Math.min(Math.max(startIndex, 0), songs.length - 1);
+      const targetMid = songs[clampedStartIndex]?.mid;
+      const targetIndex = cleaned.findIndex((s) => s.mid === targetMid);
+
+      // 如果找不到，保持当前曲目不变
+      if (targetIndex < 0) {
+        globalPlaylist = cleaned;
+        setPlaylist([...cleaned]);
+        saveQueueState(globalPlaylist, globalCurrentIndex);
+        broadcastPlayerState();
+        return;
+      }
+
       globalPlaylist = cleaned;
+      globalCurrentIndex = targetIndex;
       setPlaylist([...cleaned]);
+      setCurrentIndex(targetIndex);
+      syncShuffleAfterPlaylistChange(targetIndex);
       saveQueueState(globalPlaylist, globalCurrentIndex);
+      await playSongInternal(globalPlaylist[targetIndex], targetIndex);
+      prefetchSongAssets(globalPlaylist[targetIndex + 1] || globalPlaylist[targetIndex]);
       broadcastPlayerState();
       return;
     }
