@@ -1,9 +1,8 @@
-name: Release
+name: Release Assets
 
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -30,28 +29,14 @@ jobs:
         id: plugin_info
         run: |
           PLUGIN_NAME=$(jq -r '.name' plugin.json)
-          TAG_MESSAGE=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
           echo "name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
-          echo "tag_message<<EOF" >> $GITHUB_OUTPUT
-          echo "$TAG_MESSAGE" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ steps.plugin_info.outputs.name }} ${{ github.ref_name }}
-          body: |
-            ## 更新内容
-            
-            ${{ steps.plugin_info.outputs.tag_message }}
-
-            ## 安装方法
-
-            1. 下载 `${{ steps.plugin_info.outputs.name }}.zip`
-            2. 使用 Steam Decky 的开发者模式安装插件
-          files: |
-            out/${{ steps.plugin_info.outputs.name }}.zip
-          draft: false
-          prerelease: false
+      - name: Upload artifact to release
+        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: out/${{ steps.plugin_info.outputs.name }}.zip
+          asset_name: ${{ steps.plugin_info.outputs.name }}.zip
+          asset_content_type: application/zip
