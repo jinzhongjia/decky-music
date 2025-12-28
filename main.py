@@ -8,9 +8,8 @@ import base64
 import json
 import os
 import sys
-import ssl
-import urllib.request
-from urllib.error import URLError
+import requests
+from requests import exceptions as req_exc
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -105,67 +104,30 @@ class Plugin:
             return None
         return tuple(parts)
 
-    @staticmethod
-    def _create_ssl_context() -> ssl.SSLContext:
-        """尝试使用系统证书路径创建 SSL 上下文，找不到则使用默认"""
-        cafile_candidates = [
-            "/etc/ssl/certs/ca-certificates.crt",  # Debian/Ubuntu/SteamOS
-            "/etc/ssl/cert.pem",  # Alpine
-        ]
-        for cafile in cafile_candidates:
-            if Path(cafile).exists():
-                try:
-                    return ssl.create_default_context(cafile=cafile)
-                except Exception:
-                    continue
-        return ssl.create_default_context()
-
-    def _open_url(self,
-                  request: urllib.request.Request,
-                  timeout: float = 15.0):
-        """打开链接，优先使用系统 CA，失败时回退到不校验证书"""
-        context = self._create_ssl_context()
-        try:
-            return urllib.request.urlopen(request,
-                                          timeout=timeout,
-                                          context=context)
-        except ssl.SSLError:
-            insecure_ctx = ssl._create_unverified_context()
-            return urllib.request.urlopen(request,
-                                          timeout=timeout,
-                                          context=insecure_ctx)
-        except URLError as e:
-            if isinstance(e.reason, ssl.SSLError):
-                insecure_ctx = ssl._create_unverified_context()
-                return urllib.request.urlopen(request,
-                                              timeout=timeout,
-                                              context=insecure_ctx)
-            raise
-
     def _http_get_json(self, url: str) -> dict[str, Any]:
-        """同步获取 JSON 数据"""
-        request = urllib.request.Request(
+        """同步获取 JSON 数据，使用 requests（内置 certifi 证书）"""
+        resp = requests.get(
             url,
             headers={
                 "User-Agent": "decky-qqmusic",
                 "Accept": "application/vnd.github+json",
             },
+            timeout=15,
+            verify=True,
         )
-        with self._open_url(request, timeout=15) as resp:
-            content = resp.read().decode("utf-8")
-            return json.loads(content)
+        resp.raise_for_status()
+        return resp.json()
 
     def _download_file(self, url: str, dest: Path) -> None:
         """同步下载文件到指定路径"""
-        request = urllib.request.Request(
-            url, headers={"User-Agent": "decky-qqmusic"})
-        with self._open_url(request,
-                            timeout=120) as resp, dest.open("wb") as f:
-            while True:
-                chunk = resp.read(8192)
-                if not chunk:
-                    break
-                f.write(chunk)
+        with requests.get(
+            url, headers={"User-Agent": "decky-qqmusic"}, timeout=120, stream=True, verify=True
+        ) as resp:
+            resp.raise_for_status()
+            with dest.open("wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
 
     # 提供给前端调用的设置接口
     async def get_frontend_settings(self) -> dict[str, Any]:
@@ -656,8 +618,8 @@ class Plugin:
 
     # ==================== 播放相关 API ====================
 
-    async def get_song_url(self, mid: str) -> dict[str, Any]:
-        """获取歌曲播放链接，自动尝试多种音质"""
+    async def get_song_url(self, mid: str, preferred_quality: str | None = None) -> dict[str, Any]:
+        """获取歌曲播放链接，支持音质偏好"""
         # 确保凭证有效
         has_credential = self.credential is not None and self.credential.has_musicid(
         )
@@ -666,24 +628,45 @@ class Plugin:
             if not is_valid:
                 has_credential = False  # 刷新失败时按未登录处理，避免无效高码率重试
 
-        # 按优先级尝试不同音质：未登录时跳过高品质，减少无效请求
-        if has_credential:
-            file_types = [
-                song.SongFileType.MP3_320,  # 320kbps MP3 (VIP)
-                song.SongFileType.OGG_192,  # 192kbps OGG
-                song.SongFileType.MP3_128,  # 128kbps MP3
-                song.SongFileType.ACC_192,  # 192kbps AAC
-                song.SongFileType.ACC_96,  # 96kbps AAC
-                song.SongFileType.ACC_48,  # 48kbps AAC (最低质量)
+        def pick_order(pref: str | None, logged_in: bool) -> list[song.SongFileType]:
+            pref_normalized = (pref or "auto").lower()
+            if pref_normalized not in {"auto", "high", "balanced", "compat"}:
+                pref_normalized = "auto"
+
+            # 音质定义（从高到低）
+            high_profile = [
+                song.SongFileType.MP3_320,
+                song.SongFileType.OGG_192,
+                song.SongFileType.MP3_128,
+                song.SongFileType.ACC_192,
+                song.SongFileType.ACC_96,
+                song.SongFileType.ACC_48,
             ]
-        else:
-            file_types = [
-                song.SongFileType.OGG_192,  # 192kbps OGG
-                song.SongFileType.MP3_128,  # 128kbps MP3
-                song.SongFileType.ACC_192,  # 192kbps AAC
-                song.SongFileType.ACC_96,  # 96kbps AAC
-                song.SongFileType.ACC_48,  # 48kbps AAC
+            balanced_profile = [
+                song.SongFileType.OGG_192,
+                song.SongFileType.MP3_128,
+                song.SongFileType.ACC_192,
+                song.SongFileType.ACC_96,
+                song.SongFileType.ACC_48,
             ]
+            compat_profile = [
+                song.SongFileType.MP3_128,
+                song.SongFileType.ACC_96,
+                song.SongFileType.ACC_48,
+                song.SongFileType.OGG_192,
+            ]
+
+            if pref_normalized == "high":
+                return high_profile if logged_in else balanced_profile
+            if pref_normalized == "balanced":
+                return balanced_profile
+            if pref_normalized == "compat":
+                return compat_profile
+
+            # auto：已登录试高码率，未登录跳过会员专属
+            return high_profile if logged_in else balanced_profile
+
+        file_types = pick_order(preferred_quality, has_credential)
 
         last_error = ""
 
@@ -710,11 +693,11 @@ class Plugin:
 
         # 所有方法都失败，生成错误消息
         if not has_credential:
-            error_msg = "请先登录以播放会员歌曲"
+            error_msg = "登录状态异常，请重新登录后重试"
         elif "vip" in last_error.lower() or "付费" in last_error:
-            error_msg = "该歌曲需要付费购买"
+            error_msg = "该歌曲需要付费购买或会员"
         else:
-            error_msg = "歌曲暂不可用，可能是版权限制"
+            error_msg = "歌曲暂不可用，可能是版权或会员限制"
 
         decky.logger.warning(f"无法获取歌曲 {mid}: {error_msg}")
         return {"success": False, "url": "", "mid": mid, "error": error_msg}

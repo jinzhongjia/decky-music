@@ -5,6 +5,7 @@ description = "Decky Loader plugin for QQ Music"
 requires-python = ">=3.11"
 dependencies = [
     "qqmusic-api-python>=0.3.6",
+    "requests>=2.32.3",
 ]
 
 [project.optional-dependencies]
@@ -99,4 +100,3 @@ extraPaths = ["."]
 
 # 忽略缺失的导入（decky 是运行时提供的）
 reportMissingModuleSource = "none"
-

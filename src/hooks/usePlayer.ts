@@ -9,7 +9,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { toaster } from "@decky/api";
 import { getSongUrl, getSongLyric, getFrontendSettings, saveFrontendSettings } from "../api";
-import type { FrontendSettings, PlayMode, SongInfo } from "../types";
+import type { FrontendSettings, PlayMode, SongInfo, PreferredQuality } from "../types";
 import { parseLyric, type ParsedLyric } from "../utils/lyricParser";
 
 // ==================== 休眠控制 ====================
@@ -42,6 +42,8 @@ const DEFAULT_SLEEP_SETTINGS: OriginalSleepSettings = {
   batterySuspend: 600,   // 10 分钟
   acSuspend: 600,        // 10 分钟
 };
+
+const DEFAULT_PREFERRED_QUALITY: PreferredQuality = "auto";
 
 // 原始设置（在第一次禁用休眠时保存）
 let originalSleepSettings: OriginalSleepSettings | null = null;
@@ -201,6 +203,9 @@ async function ensureFrontendSettingsLoaded() {
       if (res?.success && res.settings) {
         frontendSettings = { ...res.settings };
       }
+      if (!frontendSettings.preferredQuality) {
+        frontendSettings.preferredQuality = DEFAULT_PREFERRED_QUALITY;
+      }
       frontendSettingsLoaded = true;
     })
     .catch(() => {
@@ -217,6 +222,14 @@ function updateFrontendSettingsCache(partial: Partial<FrontendSettingsCache>, co
   if (commit) {
     void saveFrontendSettings(frontendSettings as Record<string, unknown>);
   }
+}
+
+function getPreferredQuality(): PreferredQuality {
+  const pref = frontendSettings.preferredQuality;
+  if (pref === "high" || pref === "balanced" || pref === "compat" || pref === "auto") {
+    return pref;
+  }
+  return DEFAULT_PREFERRED_QUALITY;
 }
 
 function loadQueueStateFromSettings(): StoredQueueState {
@@ -621,7 +634,7 @@ async function prefetchSongAssets(song: SongInfo) {
   const cachedUrl = songUrlCache.get(song.mid);
   const urlStale = !cachedUrl || Date.now() - cachedUrl.timestamp >= CACHE_TTL;
   if (urlStale && !prefetchingUrlPromises.has(song.mid)) {
-    const urlPromise = getSongUrl(song.mid)
+    const urlPromise = getSongUrl(song.mid, getPreferredQuality())
       .then((urlResult) => {
         if (urlResult.success && urlResult.url) {
           songUrlCache.set(song.mid, { url: urlResult.url, timestamp: Date.now() });
@@ -958,7 +971,7 @@ export function usePlayer(): UsePlayerReturn {
         playUrl = cachedUrl.url;
       } else {
         // 无缓存或已过期，请求 API
-        const urlResult = await getSongUrl(song.mid);
+        const urlResult = await getSongUrl(song.mid, getPreferredQuality());
 
         if (!urlResult.success || !urlResult.url) {
           const errorMsg = urlResult.error || "该歌曲暂时无法播放";
@@ -1456,4 +1469,8 @@ export function usePlayer(): UsePlayerReturn {
     hasLegacyData,
     migrateLegacySettings,
   };
+}
+
+export function setPreferredQuality(quality: PreferredQuality) {
+  updateFrontendSettingsCache({ preferredQuality: quality }, true);
 }
