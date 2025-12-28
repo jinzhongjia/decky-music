@@ -1,5 +1,5 @@
 import { FC, useCallback, useEffect, useMemo, useState } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Navigation } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Navigation, Field } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaDownload, FaExternalLinkAlt, FaInfoCircle, FaSyncAlt, FaTrash } from "react-icons/fa";
 
@@ -167,41 +167,60 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
     <>
       <PanelSection title="音质偏好">
         <PanelSectionRow>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              width: "100%",
+              maxWidth: 480,
+              margin: "0 auto",
+            }}
+          >
             {QUALITY_OPTIONS.map((option) => {
               const active = preferredQuality === option.value;
               return (
-                <button
+                <Field
                   key={option.value}
+                  focusable
+                  highlightOnFocus
+                  focusClassName="qqmusic-control-btn-focused"
+                  bottomSeparator="none"
+                  onActivate={() => handleQualityChange(option.value)}
                   onClick={() => handleQualityChange(option.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: active ? "2px solid #1DB954" : "1px solid rgba(255,255,255,0.12)",
-                    background: active ? "rgba(29,185,84,0.16)" : "rgba(255,255,255,0.04)",
-                    color: "inherit",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    cursor: "pointer",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      border: "2px solid #1DB954",
-                      background: active ? "#1DB954" : "transparent",
-                    }}
-                  />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-                    <div style={{ fontWeight: 700 }}>{option.label}</div>
-                    <div style={{ fontSize: 12, opacity: 0.9 }}>{option.desc}</div>
-                  </div>
-                </button>
+                  padding="none"
+                  label={
+                    <div
+                      style={{
+                        width: "100%",
+                        padding: "12px 14px",
+                        borderRadius: 14,
+                        border: active ? "2px solid #1DB954" : "1px solid rgba(255,255,255,0.12)",
+                        background: active ? "rgba(29,185,84,0.16)" : "rgba(255,255,255,0.05)",
+                        color: "inherit",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        boxShadow: "none",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: "50%",
+                          border: "2px solid #1DB954",
+                          background: active ? "#1DB954" : "transparent",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{option.label}</div>
+                        <div style={{ fontSize: 12, opacity: 0.9, lineHeight: "18px" }}>{option.desc}</div>
+                      </div>
+                    </div>
+                  }
+                />
               );
             })}
           </div>
