@@ -200,7 +200,8 @@ class Plugin:
         if not url:
             return {"success": False, "error": "缺少下载链接"}
         try:
-            download_dir = Path.home() / "Download"
+            # 使用标准 Downloads 目录，避免误认为已下载但找不到文件
+            download_dir = Path.home() / "Downloads"
             download_dir.mkdir(parents=True, exist_ok=True)
             parsed = urlparse(url)
             target_name = filename or Path(parsed.path).name or "QQMusic.zip"
@@ -423,6 +424,27 @@ class Plugin:
 
         except Exception as e:
             decky.logger.error(f"退出登录失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def clear_all_settings(self) -> dict[str, Any]:
+        """手动清除插件数据（凭证和前端设置），供设置页调用"""
+        try:
+            self.credential = None
+            self.current_qr = None
+            self.encrypt_uin = None
+
+            settings_path = self._get_settings_path()
+            if settings_path.exists():
+                settings_path.unlink()
+
+            frontend_path = self._get_frontend_settings_path()
+            if frontend_path.exists():
+                frontend_path.unlink()
+
+            decky.logger.info("已清除插件数据")
+            return {"success": True}
+        except Exception as e:
+            decky.logger.error(f"清除插件数据失败: {e}")
             return {"success": False, "error": str(e)}
 
     # ==================== 搜索相关 API ====================
@@ -890,15 +912,6 @@ class Plugin:
     async def _uninstall(self):
         """插件删除时执行"""
         decky.logger.info("Decky QQ Music 插件已删除")
-        try:
-            settings_path = self._get_settings_path()
-            if settings_path.exists():
-                settings_path.unlink()
-            frontend_path = self._get_frontend_settings_path()
-            if frontend_path.exists():
-                frontend_path.unlink()
-        except Exception:
-            pass
 
     async def _migration(self):
         """迁移旧数据"""

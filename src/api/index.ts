@@ -105,6 +105,9 @@ export const saveFrontendSettings = callable<[settings: Record<string, unknown>]
   "save_frontend_settings"
 );
 
+/** 手动清除插件数据（凭证与前端设置） */
+export const clearAllData = callable<[], { success: boolean; error?: string }>("clear_all_settings");
+
 // ==================== 更新相关 ====================
 
 /** 检查更新 */

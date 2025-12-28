@@ -1,9 +1,9 @@
 import { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Navigation } from "@decky/ui";
 import { toaster } from "@decky/api";
-import { FaDownload, FaExternalLinkAlt, FaInfoCircle, FaSyncAlt } from "react-icons/fa";
+import { FaDownload, FaExternalLinkAlt, FaInfoCircle, FaSyncAlt, FaTrash } from "react-icons/fa";
 
-import { checkUpdate, downloadUpdate, getPluginVersion, getFrontendSettings, saveFrontendSettings } from "../api";
+import { checkUpdate, downloadUpdate, getPluginVersion, getFrontendSettings, saveFrontendSettings, clearAllData } from "../api";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { setPreferredQuality } from "../hooks/usePlayer";
 import type { PreferredQuality, UpdateInfo } from "../types";
@@ -29,6 +29,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
   const [downloadPath, setDownloadPath] = useState<string | null>(null);
   const [localVersion, setLocalVersion] = useState<string>("");
   const [preferredQuality, setPreferredQualityState] = useState<PreferredQuality>("auto");
+  const [clearing, setClearing] = useState(false);
 
   const handleCheckUpdate = useCallback(async () => {
     setChecking(true);
@@ -122,6 +123,29 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
     },
     []
   );
+
+  const handleClearData = useCallback(async () => {
+    if (clearing) return;
+    const confirmed = window.confirm("确定要清除插件所有数据（登录凭证和设置）吗？此操作无法撤销。");
+    if (!confirmed) return;
+    setClearing(true);
+    try {
+      const res = await clearAllData();
+      if (!mountedRef.current) return;
+      if (res.success) {
+        toaster.toast({ title: "已清除数据", body: "请重新登录" });
+      } else {
+        toaster.toast({ title: "清除失败", body: res.error || "未知错误" });
+      }
+    } catch (e) {
+      if (!mountedRef.current) return;
+      toaster.toast({ title: "清除失败", body: (e as Error).message });
+    } finally {
+      if (mountedRef.current) {
+        setClearing(false);
+      }
+    }
+  }, [clearing, mountedRef]);
 
   useEffect(() => {
     void loadLocalVersion();
@@ -227,6 +251,20 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
             </div>
           </PanelSectionRow>
         )}
+      </PanelSection>
+
+      <PanelSection title="数据管理">
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={handleClearData} disabled={clearing}>
+            <FaTrash style={{ marginRight: 8 }} />
+            {clearing ? "清除中..." : "清除所有数据"}
+          </ButtonItem>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <div style={{ fontSize: 12, lineHeight: "18px", opacity: 0.9 }}>
+            将清除登录凭证和前端设置，操作不可撤销。
+          </div>
+        </PanelSectionRow>
       </PanelSection>
 
       <PanelSection title="项目说明">
