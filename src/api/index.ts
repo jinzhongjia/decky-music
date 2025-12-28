@@ -22,6 +22,7 @@ import type {
   UpdateInfo,
   DownloadResult,
   PluginVersionResponse,
+  PreferredQuality,
 } from "../types";
 
 // ==================== 登录相关 ====================
@@ -59,8 +60,10 @@ export const getSearchSuggest = callable<[keyword: string], {
 
 // ==================== 播放相关 ====================
 
-/** 获取歌曲播放链接 */
-export const getSongUrl = callable<[mid: string], SongUrlResponse>("get_song_url");
+/** 获取歌曲播放链接，可传递偏好音质 */
+export const getSongUrl = callable<[mid: string, preferredQuality?: PreferredQuality], SongUrlResponse>(
+  "get_song_url"
+);
 
 /** 获取歌词 (qrc=true 时获取 QRC 逐字格式) */
 export const getSongLyric = callable<[mid: string, qrc?: boolean], SongLyricResponse>("get_song_lyric");

@@ -4,3 +4,4 @@
 # 从 GitHub 拉取指定 commit 的代码
 # 使用 L-1124/QQMusicApi 仓库的 3ccc5daaf0b3d35a4b7375824b213c07687fa992 commit
 git+https://github.com/L-1124/QQMusicApi.git@3ccc5daaf0b3d35a4b7375824b213c07687fa992
+requests>=2.32.3

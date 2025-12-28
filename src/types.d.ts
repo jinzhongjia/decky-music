@@ -76,6 +76,7 @@ export interface SongUrlResponse {
   success: boolean;
   url: string;
   mid: string;
+  quality?: string;
   error?: string;
 }
 
@@ -157,6 +158,7 @@ export interface FrontendSettings {
     batterySuspend: number;
     acSuspend: number;
   };
+  preferredQuality?: PreferredQuality;
 }
 
 // ==================== 更新相关 ====================
@@ -184,6 +186,8 @@ export interface PluginVersionResponse {
   version?: string;
   error?: string;
 }
+
+export type PreferredQuality = "auto" | "high" | "balanced" | "compat";
 
 export interface FrontendSettingsResponse {
   success: boolean;

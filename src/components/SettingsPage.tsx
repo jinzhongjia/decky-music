@@ -3,9 +3,10 @@ import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Navigation } from "
 import { toaster } from "@decky/api";
 import { FaDownload, FaExternalLinkAlt, FaInfoCircle, FaSyncAlt } from "react-icons/fa";
 
-import { checkUpdate, downloadUpdate, getPluginVersion } from "../api";
+import { checkUpdate, downloadUpdate, getPluginVersion, getFrontendSettings, saveFrontendSettings } from "../api";
 import { useMountedRef } from "../hooks/useMountedRef";
-import type { UpdateInfo } from "../types";
+import { setPreferredQuality } from "../hooks/usePlayer";
+import type { PreferredQuality, UpdateInfo } from "../types";
 import { BackButton } from "./BackButton";
 
 interface SettingsPageProps {
@@ -13,6 +14,12 @@ interface SettingsPageProps {
 }
 
 const REPO_URL = "https://github.com/jinzhongjia/decky-qqmusic";
+const QUALITY_OPTIONS: Array<{ value: PreferredQuality; label: string; desc: string }> = [
+  { value: "auto", label: "自动（推荐）", desc: "优先高码率，若不可用自动降级" },
+  { value: "high", label: "高音质优先", desc: "320kbps/192kbps 优先，可能需要会员，不可用时自动降级" },
+  { value: "balanced", label: "均衡", desc: "192kbps / 128kbps 优先，兼顾质量与稳定性" },
+  { value: "compat", label: "兼容/低延迟", desc: "128kbps 及以下优先，适合不稳定网络或节省流量" },
+];
 
 export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
   const mountedRef = useMountedRef();
@@ -21,6 +28,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [downloadPath, setDownloadPath] = useState<string | null>(null);
   const [localVersion, setLocalVersion] = useState<string>("");
+  const [preferredQuality, setPreferredQualityState] = useState<PreferredQuality>("auto");
 
   const handleCheckUpdate = useCallback(async () => {
     setChecking(true);
@@ -88,9 +96,37 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
     }
   }, [mountedRef]);
 
+  const loadPreferredQuality = useCallback(async () => {
+    try {
+      const res = await getFrontendSettings();
+      if (!mountedRef.current) return;
+      const value = res.settings?.preferredQuality;
+      if (value === "auto" || value === "high" || value === "balanced" || value === "compat") {
+        setPreferredQualityState(value);
+      }
+    } catch {
+      // ignore
+    }
+  }, [mountedRef]);
+
+  const handleQualityChange = useCallback(
+    async (value: PreferredQuality) => {
+      setPreferredQualityState(value);
+      setPreferredQuality(value);
+      try {
+        await saveFrontendSettings({ preferredQuality: value });
+        toaster.toast({ title: "音质偏好已更新", body: QUALITY_OPTIONS.find((o) => o.value === value)?.label });
+      } catch (e) {
+        toaster.toast({ title: "保存失败", body: (e as Error).message });
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     void loadLocalVersion();
-  }, [loadLocalVersion]);
+    void loadPreferredQuality();
+  }, [loadLocalVersion, loadPreferredQuality]);
 
   const updateStatus = useMemo(() => {
     if (!updateInfo) return "尚未检查";
@@ -107,6 +143,49 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack }) => {
 
   return (
     <>
+      <PanelSection title="音质偏好">
+        <PanelSectionRow>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+            {QUALITY_OPTIONS.map((option) => {
+              const active = preferredQuality === option.value;
+              return (
+                <button
+                  key={option.value}
+                  onClick={() => handleQualityChange(option.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: active ? "2px solid #1DB954" : "1px solid rgba(255,255,255,0.12)",
+                    background: active ? "rgba(29,185,84,0.16)" : "rgba(255,255,255,0.04)",
+                    color: "inherit",
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      border: "2px solid #1DB954",
+                      background: active ? "#1DB954" : "transparent",
+                    }}
+                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+                    <div style={{ fontWeight: 700 }}>{option.label}</div>
+                    <div style={{ fontSize: 12, opacity: 0.9 }}>{option.desc}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </PanelSectionRow>
+      </PanelSection>
+
       <PanelSection title="版本信息">
         <PanelSectionRow>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
