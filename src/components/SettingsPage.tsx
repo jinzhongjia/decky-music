@@ -239,26 +239,26 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
         </PanelSectionRow>
         <PanelSectionRow>
           <ButtonItem layout="below" onClick={handleCheckUpdate} disabled={checking}>
-            <FaSyncAlt style={{ marginRight: 8 }} />
+            <FaSyncAlt
+              style={{
+                marginRight: 8,
+                animation: checking ? "spin 1s linear infinite" : "none",
+              }}
+            />
             {checking ? "检查中..." : "检查更新"}
           </ButtonItem>
         </PanelSectionRow>
-        {checking && (
-          <PanelSectionRow>
-            <Spinner />
-          </PanelSectionRow>
-        )}
         {updateInfo?.hasUpdate && updateInfo.downloadUrl && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={handleDownload} disabled={downloading}>
-              <FaDownload style={{ marginRight: 8 }} />
+              <FaDownload
+                style={{
+                  marginRight: 8,
+                  animation: downloading ? "spin 1s linear infinite" : "none",
+                }}
+              />
               {downloading ? "下载中..." : `下载 ${updateInfo.assetName || "更新包"}`}
             </ButtonItem>
-          </PanelSectionRow>
-        )}
-        {downloading && (
-          <PanelSectionRow>
-            <Spinner />
           </PanelSectionRow>
         )}
         {downloadPath && (
