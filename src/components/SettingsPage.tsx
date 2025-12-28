@@ -1,5 +1,5 @@
 import { FC, useCallback, useEffect, useMemo, useState } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Navigation, Field } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Navigation, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaDownload, FaExternalLinkAlt, FaInfoCircle, FaSyncAlt, FaTrash } from "react-icons/fa";
 
@@ -31,6 +31,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
   const [localVersion, setLocalVersion] = useState<string>("");
   const [preferredQuality, setPreferredQualityState] = useState<PreferredQuality>("auto");
   const [clearing, setClearing] = useState(false);
+  const [focusedQuality, setFocusedQuality] = useState<PreferredQuality | null>(null);
 
   const handleCheckUpdate = useCallback(async () => {
     setChecking(true);
@@ -169,58 +170,70 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
         <PanelSectionRow>
           <div
             style={{
+              width: "100%",
+              maxWidth: 520,
+              margin: "0 auto",
               display: "flex",
               flexDirection: "column",
               gap: 12,
-              width: "100%",
-              maxWidth: 480,
-              margin: "0 auto",
+              boxSizing: "border-box",
             }}
           >
             {QUALITY_OPTIONS.map((option) => {
               const active = preferredQuality === option.value;
+              const focused = focusedQuality === option.value;
+              const borderColor = active || focused ? "#1DB954" : "rgba(255,255,255,0.16)";
+              const background = active
+                ? "rgba(29,185,84,0.16)"
+                : focused
+                ? "rgba(255,255,255,0.07)"
+                : "rgba(255,255,255,0.05)";
               return (
-                <Field
+                <Focusable
                   key={option.value}
                   focusable
-                  highlightOnFocus
-                  focusClassName="qqmusic-control-btn-focused"
-                  bottomSeparator="none"
                   onActivate={() => handleQualityChange(option.value)}
                   onClick={() => handleQualityChange(option.value)}
-                  padding="none"
-                  label={
+                  onFocus={() => setFocusedQuality(option.value)}
+                  onBlur={() => setFocusedQuality(null)}
+                  style={{
+                    width: "100%",
+                    padding: "0",
+                    border: "none",
+                    background: "transparent",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "100%",
+                      padding: "12px 14px",
+                      borderRadius: 14,
+                      border: `2px solid ${borderColor}`,
+                      background,
+                      color: "inherit",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      boxShadow: "none",
+                      boxSizing: "border-box",
+                    }}
+                  >
                     <div
                       style={{
-                        width: "100%",
-                        padding: "12px 14px",
-                        borderRadius: 14,
-                        border: active ? "2px solid #1DB954" : "1px solid rgba(255,255,255,0.12)",
-                        background: active ? "rgba(29,185,84,0.16)" : "rgba(255,255,255,0.05)",
-                        color: "inherit",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        boxShadow: "none",
+                        width: 12,
+                        height: 12,
+                        borderRadius: "50%",
+                        border: "2px solid #1DB954",
+                        background: active ? "#1DB954" : "transparent",
+                        flexShrink: 0,
                       }}
-                    >
-                      <div
-                        style={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: "50%",
-                          border: "2px solid #1DB954",
-                          background: active ? "#1DB954" : "transparent",
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{option.label}</div>
-                        <div style={{ fontSize: 12, opacity: 0.9, lineHeight: "18px" }}>{option.desc}</div>
-                      </div>
+                    />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{option.label}</div>
+                      <div style={{ fontSize: 12, opacity: 0.9, lineHeight: "18px" }}>{option.desc}</div>
                     </div>
-                  }
-                />
+                  </div>
+                </Focusable>
               );
             })}
           </div>

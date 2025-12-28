@@ -21,7 +21,11 @@ export const BackButton: FC<BackButtonProps> = ({
   return (
     <PanelSection>
       <PanelSectionRow>
-        <ButtonItem layout="below" onClick={onClick}>
+        <ButtonItem
+          layout="below"
+          onClick={onClick}
+          style={{ marginBottom: "14px" }}
+        >
           <FaArrowLeft style={{ marginRight: '8px' }} />
           {label}
         </ButtonItem>
@@ -29,4 +33,3 @@ export const BackButton: FC<BackButtonProps> = ({
     </PanelSection>
   );
 };
-
