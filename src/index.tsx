@@ -11,7 +11,7 @@ import { getLoginStatus, logout } from "./api";
 import { preloadData, clearDataCache, fetchGuessLikeRaw } from "./hooks/useDataManager";
 import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
 import { useMountedRef } from "./hooks/useMountedRef";
-import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, clearRecommendCache } from "./components";
+import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, SettingsPage, clearRecommendCache } from "./components";
 import { FullscreenPlayer } from "./pages";
 import { ROUTE_PATH, menuManager } from "./patches";
 import type { PageType, SongInfo, PlaylistInfo } from "./types";
@@ -202,6 +202,10 @@ function Content() {
     setCurrentPage('history');
   }, []);
 
+  const handleGoToSettings = useCallback(() => {
+    setCurrentPage('settings');
+  }, []);
+
   const handleBackToHome = useCallback(() => {
     setCurrentPage('home');
   }, []);
@@ -278,6 +282,7 @@ function Content() {
             onGoToSearch={handleGoToSearch}
             onGoToPlaylists={handleGoToPlaylists}
             onGoToHistory={handleGoToHistory}
+            onGoToSettings={handleGoToSettings}
             onLogout={handleLogout}
             currentPlayingMid={player.currentSong?.mid}
             onAddSongToQueue={handleAddSongToQueue}
@@ -360,10 +365,14 @@ function Content() {
             onGoToSearch={handleGoToSearch}
             onGoToPlaylists={handleGoToPlaylists}
             onGoToHistory={handleGoToHistory}
+            onGoToSettings={handleGoToSettings}
             onLogout={handleLogout}
             onAddSongToQueue={handleAddSongToQueue}
           />
         );
+
+      case 'settings':
+        return <SettingsPage onBack={handleBackToHome} />;
       
       default:
         return <LoginPage onLoginSuccess={handleLoginSuccess} />;

@@ -215,7 +215,7 @@ async function ensureFrontendSettingsLoaded() {
 function updateFrontendSettingsCache(partial: Partial<FrontendSettingsCache>, commit: boolean = true) {
   frontendSettings = { ...frontendSettings, ...partial };
   if (commit) {
-    void saveFrontendSettings(frontendSettings);
+    void saveFrontendSettings(frontendSettings as Record<string, unknown>);
   }
 }
 

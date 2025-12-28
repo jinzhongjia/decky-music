@@ -8,9 +8,13 @@ import base64
 import json
 import os
 import sys
+import ssl
+import urllib.request
+from urllib.error import URLError
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 # 添加 py_modules 到 Python 路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "py_modules"))
@@ -34,8 +38,25 @@ class Plugin:
     loop: asyncio.AbstractEventLoop | None = None
     # 用户加密 uin
     encrypt_uin: str | None = None
+    # 当前版本
+    current_version: str
+
+    def __init__(self) -> None:
+        self.current_version = self._load_plugin_version()
 
     # ==================== 工具方法 ====================
+
+    def _load_plugin_version(self) -> str:
+        """读取 plugin.json 中的版本号"""
+        try:
+            plugin_path = Path(__file__).with_name("plugin.json")
+            if plugin_path.exists():
+                with open(plugin_path, encoding="utf-8") as f:
+                    data = json.load(f)
+                return str(data.get("version", "")).strip()
+        except Exception as e:
+            decky.logger.warning(f"读取版本号失败: {e}")
+        return ""
 
     def _get_settings_path(self) -> Path:
         """获取设置文件路径"""
@@ -68,15 +89,97 @@ class Plugin:
             decky.logger.error(f"保存前端设置失败: {e}")
             return False
 
+    @staticmethod
+    def _normalize_version(version: str) -> tuple[int, ...] | None:
+        """将版本字符串转为可比较的数字元组"""
+        if not version:
+            return None
+        cleaned = version.strip().lstrip("vV")
+        parts: list[int] = []
+        for part in cleaned.replace("-", ".").split("."):
+            try:
+                parts.append(int(part))
+            except ValueError:
+                continue
+        if not parts:
+            return None
+        return tuple(parts)
+
+    @staticmethod
+    def _create_ssl_context() -> ssl.SSLContext:
+        """尝试使用系统证书路径创建 SSL 上下文，找不到则使用默认"""
+        cafile_candidates = [
+            "/etc/ssl/certs/ca-certificates.crt",  # Debian/Ubuntu/SteamOS
+            "/etc/ssl/cert.pem",  # Alpine
+        ]
+        for cafile in cafile_candidates:
+            if Path(cafile).exists():
+                try:
+                    return ssl.create_default_context(cafile=cafile)
+                except Exception:
+                    continue
+        return ssl.create_default_context()
+
+    def _open_url(self,
+                  request: urllib.request.Request,
+                  timeout: float = 15.0):
+        """打开链接，优先使用系统 CA，失败时回退到不校验证书"""
+        context = self._create_ssl_context()
+        try:
+            return urllib.request.urlopen(request,
+                                          timeout=timeout,
+                                          context=context)
+        except ssl.SSLError:
+            insecure_ctx = ssl._create_unverified_context()
+            return urllib.request.urlopen(request,
+                                          timeout=timeout,
+                                          context=insecure_ctx)
+        except URLError as e:
+            if isinstance(e.reason, ssl.SSLError):
+                insecure_ctx = ssl._create_unverified_context()
+                return urllib.request.urlopen(request,
+                                              timeout=timeout,
+                                              context=insecure_ctx)
+            raise
+
+    def _http_get_json(self, url: str) -> dict[str, Any]:
+        """同步获取 JSON 数据"""
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "decky-qqmusic",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+        with self._open_url(request, timeout=15) as resp:
+            content = resp.read().decode("utf-8")
+            return json.loads(content)
+
+    def _download_file(self, url: str, dest: Path) -> None:
+        """同步下载文件到指定路径"""
+        request = urllib.request.Request(
+            url, headers={"User-Agent": "decky-qqmusic"})
+        with self._open_url(request,
+                            timeout=120) as resp, dest.open("wb") as f:
+            while True:
+                chunk = resp.read(8192)
+                if not chunk:
+                    break
+                f.write(chunk)
+
     # 提供给前端调用的设置接口
     async def get_frontend_settings(self) -> dict[str, Any]:
         try:
-            return {"success": True, "settings": self._load_frontend_settings()}
+            return {
+                "success": True,
+                "settings": self._load_frontend_settings()
+            }
         except Exception as e:
             decky.logger.error(f"获取前端设置失败: {e}")
             return {"success": False, "settings": {}, "error": str(e)}
 
-    async def save_frontend_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+    async def save_frontend_settings(
+            self, settings: dict[str, Any]) -> dict[str, Any]:
         try:
             existing = self._load_frontend_settings()
             merged = {**existing, **(settings or {})}
@@ -84,6 +187,67 @@ class Plugin:
             return {"success": ok}
         except Exception as e:
             decky.logger.error(f"保存前端设置失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def get_plugin_version(self) -> dict[str, Any]:
+        """提供前端获取当前插件版本，不依赖网络"""
+        return {"success": True, "version": self.current_version}
+
+    # ==================== 版本与更新 ====================
+
+    async def check_update(self) -> dict[str, Any]:
+        """从 GitHub 获取最新版本信息"""
+        api_url = "https://api.github.com/repos/jinzhongjia/decky-qqmusic/releases/latest"
+        try:
+            release = await asyncio.to_thread(self._http_get_json, api_url)
+            latest_version = str(
+                release.get("tag_name") or release.get("name") or "").strip()
+            assets = release.get("assets") or []
+            asset = next(
+                (item for item in assets
+                 if str(item.get("name", "")).lower().endswith(".zip")), None)
+            if not asset and assets:
+                asset = assets[0]
+
+            download_url = asset.get("browser_download_url") if asset else None
+            asset_name = asset.get("name") if asset else None
+
+            current_norm = self._normalize_version(self.current_version)
+            latest_norm = self._normalize_version(latest_version)
+            has_update = (current_norm is not None and latest_norm is not None
+                          and latest_norm > current_norm)
+
+            return {
+                "success": True,
+                "currentVersion": self.current_version,
+                "latestVersion": latest_version,
+                "hasUpdate": has_update,
+                "downloadUrl": download_url,
+                "releasePage": release.get("html_url"),
+                "assetName": asset_name,
+                "notes": release.get("body", ""),
+            }
+        except Exception as e:
+            decky.logger.error(f"检查更新失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def download_update(self,
+                              url: str,
+                              filename: str | None = None) -> dict[str, Any]:
+        """下载更新包到 ~/Download"""
+        if not url:
+            return {"success": False, "error": "缺少下载链接"}
+        try:
+            download_dir = Path.home() / "Download"
+            download_dir.mkdir(parents=True, exist_ok=True)
+            parsed = urlparse(url)
+            target_name = filename or Path(parsed.path).name or "QQMusic.zip"
+            dest = download_dir / target_name
+
+            await asyncio.to_thread(self._download_file, url, dest)
+            return {"success": True, "path": str(dest)}
+        except Exception as e:
+            decky.logger.error(f"下载更新失败: {e}")
             return {"success": False, "error": str(e)}
 
     def _save_credential(self) -> bool:
@@ -127,7 +291,7 @@ class Plugin:
         """
         if not self.credential or not self.credential.has_musicid():
             return False
-        
+
         try:
             is_expired = await self.credential.is_expired()
             if is_expired:
@@ -155,7 +319,8 @@ class Plugin:
         # 处理歌手信息
         singers = item.get("singer", [])
         if isinstance(singers, list):
-            singer_name = ", ".join([s.get("name", "") for s in singers if s.get("name")])
+            singer_name = ", ".join(
+                [s.get("name", "") for s in singers if s.get("name")])
         else:
             singer_name = str(singers)
 
@@ -172,14 +337,24 @@ class Plugin:
         mid = item.get("mid", "") or item.get("songmid", "")
 
         return {
-            "id": item.get("id", 0) or item.get("songid", 0),
-            "mid": mid,
-            "name": item.get("name", "") or item.get("title", "") or item.get("songname", ""),
-            "singer": singer_name,
-            "album": album_name,
-            "albumMid": album_mid,
-            "duration": item.get("interval", 0),
-            "cover": f"https://y.qq.com/music/photo_new/T002R300x300M000{album_mid}.jpg" if album_mid else "",
+            "id":
+            item.get("id", 0) or item.get("songid", 0),
+            "mid":
+            mid,
+            "name":
+            item.get("name", "") or item.get("title", "")
+            or item.get("songname", ""),
+            "singer":
+            singer_name,
+            "album":
+            album_name,
+            "albumMid":
+            album_mid,
+            "duration":
+            item.get("interval", 0),
+            "cover":
+            f"https://y.qq.com/music/photo_new/T002R300x300M000{album_mid}.jpg"
+            if album_mid else "",
         }
 
     # ==================== 登录相关 API ====================
@@ -195,7 +370,8 @@ class Plugin:
             decky.logger.info(f"获取{login_type}二维码成功")
             return {
                 "success": True,
-                "qr_data": f"data:{self.current_qr.mimetype};base64,{qr_base64}",
+                "qr_data":
+                f"data:{self.current_qr.mimetype};base64,{qr_base64}",
                 "login_type": login_type,
             }
         except Exception as e:
@@ -247,9 +423,10 @@ class Plugin:
 
             if self.credential and self.credential.has_musicid():
                 # 检查并刷新凭证
-                was_expired = await self.credential.is_expired() if self.credential else False
+                was_expired = await self.credential.is_expired(
+                ) if self.credential else False
                 is_valid = await self._ensure_credential_valid()
-                
+
                 if is_valid:
                     result = {
                         "logged_in": True,
@@ -288,17 +465,27 @@ class Plugin:
 
     # ==================== 搜索相关 API ====================
 
-    async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> dict[str, Any]:
+    async def search_songs(self,
+                           keyword: str,
+                           page: int = 1,
+                           num: int = 20) -> dict[str, Any]:
         """搜索歌曲"""
         try:
             results = await search.search_by_type(
-                keyword=keyword, search_type=search.SearchType.SONG, num=num, page=page
-            )
+                keyword=keyword,
+                search_type=search.SearchType.SONG,
+                num=num,
+                page=page)
 
             songs = [self._format_song(item) for item in results]
 
             decky.logger.info(f"搜索'{keyword}'找到 {len(songs)} 首歌曲")
-            return {"success": True, "songs": songs, "keyword": keyword, "page": page}
+            return {
+                "success": True,
+                "songs": songs,
+                "keyword": keyword,
+                "page": page
+            }
 
         except Exception as e:
             decky.logger.error(f"搜索失败: {e}")
@@ -310,7 +497,10 @@ class Plugin:
             result = await search.hotkey()
             hotkeys = []
             for item in result.get("hotkey", []):
-                hotkeys.append({"keyword": item.get("query", item.get("k", "")), "score": item.get("score", 0)})
+                hotkeys.append({
+                    "keyword": item.get("query", item.get("k", "")),
+                    "score": item.get("score", 0)
+                })
 
             return {"success": True, "hotkeys": hotkeys[:20]}  # 返回更多热搜词
         except Exception as e:
@@ -361,7 +551,8 @@ class Plugin:
             result = await recommend.get_guess_recommend()
 
             songs = []
-            track_list = result.get("tracks", []) or result.get("data", {}).get("tracks", [])
+            track_list = result.get("tracks", []) or result.get(
+                "data", {}).get("tracks", [])
 
             for item in track_list:
                 songs.append(self._format_song(item))
@@ -380,7 +571,8 @@ class Plugin:
             result = await recommend.get_radar_recommend()
 
             songs = []
-            song_list = result.get("SongList", []) or result.get("data", {}).get("SongList", [])
+            song_list = result.get("SongList", []) or result.get(
+                "data", {}).get("SongList", [])
 
             for item in song_list:
                 songs.append(self._format_song(item))
@@ -388,7 +580,8 @@ class Plugin:
             # 如果个性化推荐为空，尝试获取新歌推荐
             if not songs:
                 result = await recommend.get_recommend_newsong()
-                song_list = result.get("songlist", []) or result.get("data", {}).get("songlist", [])
+                song_list = result.get("songlist", []) or result.get(
+                    "data", {}).get("songlist", [])
                 for item in song_list:
                     if isinstance(item, dict):
                         songs.append(self._format_song(item))
@@ -410,19 +603,18 @@ class Plugin:
             result = await recommend.get_recommend_songlist()
 
             playlists = []
-            playlist_list = result.get("v_hot", []) or result.get("data", {}).get("v_hot", [])
+            playlist_list = result.get("v_hot", []) or result.get(
+                "data", {}).get("v_hot", [])
 
             for item in playlist_list:
-                playlists.append(
-                    {
-                        "id": item.get("content_id", 0),
-                        "name": item.get("title", ""),
-                        "cover": item.get("cover", ""),
-                        "songCount": item.get("song_cnt", 0),
-                        "playCount": item.get("listen_num", 0),
-                        "creator": item.get("username", ""),
-                    }
-                )
+                playlists.append({
+                    "id": item.get("content_id", 0),
+                    "name": item.get("title", ""),
+                    "cover": item.get("cover", ""),
+                    "songCount": item.get("song_cnt", 0),
+                    "playCount": item.get("listen_num", 0),
+                    "creator": item.get("username", ""),
+                })
 
             return {"success": True, "playlists": playlists}
 
@@ -430,19 +622,33 @@ class Plugin:
             decky.logger.error(f"获取推荐歌单失败: {e}")
             return {"success": False, "error": str(e), "playlists": []}
 
-    async def get_fav_songs(self, page: int = 1, num: int = 20) -> dict[str, Any]:
+    async def get_fav_songs(self,
+                            page: int = 1,
+                            num: int = 20) -> dict[str, Any]:
         """获取收藏歌曲"""
         try:
             if not self.credential or not self.encrypt_uin:
-                return {"success": False, "error": "未登录", "songs": [], "total": 0}
+                return {
+                    "success": False,
+                    "error": "未登录",
+                    "songs": [],
+                    "total": 0
+                }
 
-            result = await user.get_fav_song(self.encrypt_uin, page=page, num=num, credential=self.credential)
+            result = await user.get_fav_song(self.encrypt_uin,
+                                             page=page,
+                                             num=num,
+                                             credential=self.credential)
 
             songs = []
             for item in result.get("songlist", []):
                 songs.append(self._format_song(item))
 
-            return {"success": True, "songs": songs, "total": result.get("total_song_num", 0)}
+            return {
+                "success": True,
+                "songs": songs,
+                "total": result.get("total_song_num", 0)
+            }
 
         except Exception as e:
             decky.logger.error(f"获取收藏歌曲失败: {e}")
@@ -453,12 +659,13 @@ class Plugin:
     async def get_song_url(self, mid: str) -> dict[str, Any]:
         """获取歌曲播放链接，自动尝试多种音质"""
         # 确保凭证有效
-        has_credential = self.credential is not None and self.credential.has_musicid()
+        has_credential = self.credential is not None and self.credential.has_musicid(
+        )
         if has_credential:
             is_valid = await self._ensure_credential_valid()
             if not is_valid:
                 has_credential = False  # 刷新失败时按未登录处理，避免无效高码率重试
-        
+
         # 按优先级尝试不同音质：未登录时跳过高品质，减少无效请求
         if has_credential:
             file_types = [
@@ -466,38 +673,41 @@ class Plugin:
                 song.SongFileType.OGG_192,  # 192kbps OGG
                 song.SongFileType.MP3_128,  # 128kbps MP3
                 song.SongFileType.ACC_192,  # 192kbps AAC
-                song.SongFileType.ACC_96,   # 96kbps AAC
-                song.SongFileType.ACC_48,   # 48kbps AAC (最低质量)
+                song.SongFileType.ACC_96,  # 96kbps AAC
+                song.SongFileType.ACC_48,  # 48kbps AAC (最低质量)
             ]
         else:
             file_types = [
                 song.SongFileType.OGG_192,  # 192kbps OGG
                 song.SongFileType.MP3_128,  # 128kbps MP3
                 song.SongFileType.ACC_192,  # 192kbps AAC
-                song.SongFileType.ACC_96,   # 96kbps AAC
-                song.SongFileType.ACC_48,   # 48kbps AAC
+                song.SongFileType.ACC_96,  # 96kbps AAC
+                song.SongFileType.ACC_48,  # 48kbps AAC
             ]
-        
+
         last_error = ""
-        
+
         for file_type in file_types:
             try:
-                urls = await song.get_song_urls(
-                    mid=[mid], 
-                    file_type=file_type, 
-                    credential=self.credential
-                )
-                
+                urls = await song.get_song_urls(mid=[mid],
+                                                file_type=file_type,
+                                                credential=self.credential)
+
                 url = urls.get(mid, "")
                 if url:
                     decky.logger.debug(f"获取歌曲 {mid} 成功，音质: {file_type.name}")
-                    return {"success": True, "url": url, "mid": mid, "quality": file_type.name}
-                    
+                    return {
+                        "success": True,
+                        "url": url,
+                        "mid": mid,
+                        "quality": file_type.name
+                    }
+
             except Exception as e:
                 last_error = str(e)
                 decky.logger.debug(f"尝试 {file_type.name} 失败: {e}")
                 continue
-        
+
         # 所有方法都失败，生成错误消息
         if not has_credential:
             error_msg = "请先登录以播放会员歌曲"
@@ -505,19 +715,17 @@ class Plugin:
             error_msg = "该歌曲需要付费购买"
         else:
             error_msg = "歌曲暂不可用，可能是版权限制"
-            
+
         decky.logger.warning(f"无法获取歌曲 {mid}: {error_msg}")
-        return {
-            "success": False, 
-            "url": "", 
-            "mid": mid,
-            "error": error_msg
-        }
+        return {"success": False, "url": "", "mid": mid, "error": error_msg}
 
     async def get_song_urls_batch(self, mids: list[str]) -> dict[str, Any]:
         """批量获取歌曲播放链接"""
         try:
-            urls = await song.get_song_urls(mid=mids, file_type=song.SongFileType.MP3_128, credential=self.credential)
+            urls = await song.get_song_urls(
+                mid=mids,
+                file_type=song.SongFileType.MP3_128,
+                credential=self.credential)
 
             return {"success": True, "urls": urls}
 
@@ -525,7 +733,9 @@ class Plugin:
             decky.logger.error(f"批量获取播放链接失败: {e}")
             return {"success": False, "error": str(e), "urls": {}}
 
-    async def get_song_lyric(self, mid: str, qrc: bool = True) -> dict[str, Any]:
+    async def get_song_lyric(self,
+                             mid: str,
+                             qrc: bool = True) -> dict[str, Any]:
         """获取歌词
         
         Args:
@@ -534,7 +744,7 @@ class Plugin:
         """
         try:
             result = await lyric.get_lyric(mid, qrc=qrc, trans=True)
-            
+
             lyric_text = result.get("lyric", "")
 
             return {
@@ -547,7 +757,12 @@ class Plugin:
 
         except Exception as e:
             decky.logger.error(f"获取歌词失败: {e}")
-            return {"success": False, "error": str(e), "lyric": "", "trans": ""}
+            return {
+                "success": False,
+                "error": str(e),
+                "lyric": "",
+                "trans": ""
+            }
 
     async def get_song_info(self, mid: str) -> dict[str, Any]:
         """获取歌曲详细信息"""
@@ -560,7 +775,9 @@ class Plugin:
 
     # ==================== 歌单相关 API ====================
 
-    def _format_playlist_item(self, item: dict[str, Any], is_collected: bool = False) -> dict[str, Any]:
+    def _format_playlist_item(self,
+                              item: dict[str, Any],
+                              is_collected: bool = False) -> dict[str, Any]:
         """格式化歌单项为统一格式"""
         # 提取创建者信息
         creator = item.get("creator", {})
@@ -568,22 +785,37 @@ class Plugin:
             creator_name = creator.get("nick", "")
         else:
             creator_name = item.get("creator_name", "")
-        
+
         return {
-            "id": item.get("tid", 0) or item.get("dissid", 0),
-            "dirid": item.get("dirid", 0),
-            "name": item.get("dirName", "") or item.get("diss_name", "") or item.get("name", "") or item.get("title", ""),
-            "cover": item.get("picUrl", "") or item.get("diss_cover", "") or item.get("logo", "") or item.get("pic", ""),
-            "songCount": item.get("songNum", 0) or item.get("song_cnt", 0) or item.get("songnum", 0) or item.get("song_count", 0),
-            "playCount": item.get("listen_num", 0),
-            "creator": creator_name if is_collected else "",
+            "id":
+            item.get("tid", 0) or item.get("dissid", 0),
+            "dirid":
+            item.get("dirid", 0),
+            "name":
+            item.get("dirName", "") or item.get("diss_name", "")
+            or item.get("name", "") or item.get("title", ""),
+            "cover":
+            item.get("picUrl", "") or item.get("diss_cover", "")
+            or item.get("logo", "") or item.get("pic", ""),
+            "songCount":
+            item.get("songNum", 0) or item.get("song_cnt", 0)
+            or item.get("songnum", 0) or item.get("song_count", 0),
+            "playCount":
+            item.get("listen_num", 0),
+            "creator":
+            creator_name if is_collected else "",
         }
 
     async def get_user_playlists(self) -> dict[str, Any]:
         """获取用户的歌单（创建的和收藏的）"""
         try:
             if not self.credential or not self.credential.has_musicid():
-                return {"success": False, "error": "未登录", "created": [], "collected": []}
+                return {
+                    "success": False,
+                    "error": "未登录",
+                    "created": [],
+                    "collected": []
+                }
 
             musicid = str(self.credential.musicid)
             encrypt_uin = self.encrypt_uin or ""
@@ -591,8 +823,12 @@ class Plugin:
             # 获取创建的歌单
             created_list = []
             try:
-                created_result = await user.get_created_songlist(musicid, credential=self.credential)
-                created_list = [self._format_playlist_item(item, is_collected=False) for item in created_result]
+                created_result = await user.get_created_songlist(
+                    musicid, credential=self.credential)
+                created_list = [
+                    self._format_playlist_item(item, is_collected=False)
+                    for item in created_result
+                ]
             except Exception as e:
                 decky.logger.warning(f"获取创建的歌单失败: {e}")
 
@@ -600,18 +836,23 @@ class Plugin:
             collected_list = []
             if encrypt_uin:
                 try:
-                    collected_result = await user.get_fav_songlist(encrypt_uin, num=50, credential=self.credential)
+                    collected_result = await user.get_fav_songlist(
+                        encrypt_uin, num=50, credential=self.credential)
                     # 尝试多种可能的字段名
-                    fav_list = (
-                        collected_result.get("v_list", []) 
-                        or collected_result.get("v_playlist", []) 
-                        or collected_result.get("data", {}).get("v_list", [])
-                    )
-                    collected_list = [self._format_playlist_item(item, is_collected=True) for item in fav_list]
+                    fav_list = (collected_result.get("v_list", [])
+                                or collected_result.get("v_playlist", [])
+                                or collected_result.get("data", {}).get(
+                                    "v_list", []))
+                    collected_list = [
+                        self._format_playlist_item(item, is_collected=True)
+                        for item in fav_list
+                    ]
                 except Exception as e:
                     decky.logger.warning(f"获取收藏的歌单失败: {e}")
 
-            decky.logger.info(f"获取用户歌单: 创建 {len(created_list)} 个, 收藏 {len(collected_list)} 个")
+            decky.logger.info(
+                f"获取用户歌单: 创建 {len(created_list)} 个, 收藏 {len(collected_list)} 个"
+            )
             return {
                 "success": True,
                 "created": created_list,
@@ -620,9 +861,16 @@ class Plugin:
 
         except Exception as e:
             decky.logger.error(f"获取用户歌单失败: {e}")
-            return {"success": False, "error": str(e), "created": [], "collected": []}
+            return {
+                "success": False,
+                "error": str(e),
+                "created": [],
+                "collected": []
+            }
 
-    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> dict[str, Any]:
+    async def get_playlist_songs(self,
+                                 playlist_id: int,
+                                 dirid: int = 0) -> dict[str, Any]:
         """获取歌单中的所有歌曲"""
         try:
             songs_data = await songlist.get_songlist(playlist_id, dirid)
@@ -630,7 +878,11 @@ class Plugin:
             songs = [self._format_song(item) for item in songs_data]
 
             decky.logger.info(f"获取歌单 {playlist_id} 的歌曲: {len(songs)} 首")
-            return {"success": True, "songs": songs, "playlist_id": playlist_id}
+            return {
+                "success": True,
+                "songs": songs,
+                "playlist_id": playlist_id
+            }
 
         except Exception as e:
             decky.logger.error(f"获取歌单歌曲失败: {e}")

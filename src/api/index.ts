@@ -19,6 +19,9 @@ import type {
   UserPlaylistsResponse,
   PlaylistSongsResponse,
   FrontendSettingsResponse,
+  UpdateInfo,
+  DownloadResult,
+  PluginVersionResponse,
 } from "../types";
 
 // ==================== 登录相关 ====================
@@ -98,3 +101,14 @@ export const getFrontendSettings = callable<[], FrontendSettingsResponse>("get_f
 export const saveFrontendSettings = callable<[settings: Record<string, unknown>], { success: boolean }>(
   "save_frontend_settings"
 );
+
+// ==================== 更新相关 ====================
+
+/** 检查更新 */
+export const checkUpdate = callable<[], UpdateInfo>("check_update");
+
+/** 下载更新包到 ~/Download */
+export const downloadUpdate = callable<[url: string, filename?: string], DownloadResult>("download_update");
+
+/** 获取本地插件版本（无网络） */
+export const getPluginVersion = callable<[], PluginVersionResponse>("get_plugin_version");

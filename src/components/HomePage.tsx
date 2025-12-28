@@ -5,7 +5,7 @@
 
 import { FC, useCallback, memo } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
-import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory } from "react-icons/fa";
+import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory, FaCog } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { SongItem } from "./SongItem";
@@ -25,6 +25,7 @@ interface HomePageProps {
   onGoToSearch: () => void;
   onGoToPlaylists?: () => void;
   onGoToHistory?: () => void;
+  onGoToSettings?: () => void;
   onLogout: () => void;
   currentPlayingMid?: string;
   onAddSongToQueue?: (song: SongInfo) => void;
@@ -38,6 +39,7 @@ const HomePageComponent: FC<HomePageProps> = ({
   onGoToSearch,
   onGoToPlaylists,
   onGoToHistory,
+  onGoToSettings,
   onLogout,
   currentPlayingMid,
   onAddSongToQueue,
@@ -96,6 +98,14 @@ const HomePageComponent: FC<HomePageProps> = ({
             <ButtonItem layout="below" onClick={onMigrateLegacyData} disabled={migratingLegacy}>
               <FaSyncAlt style={{ marginRight: "8px" }} />
               {migratingLegacy ? "迁移中..." : "迁移旧数据"}
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
+        {onGoToSettings && (
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={onGoToSettings}>
+              <FaCog style={{ marginRight: "8px" }} />
+              设置
             </ButtonItem>
           </PanelSectionRow>
         )}

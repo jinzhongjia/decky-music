@@ -117,7 +117,15 @@ export interface ApiResponse<T = unknown> {
 }
 
 /** 页面类型 */
-export type PageType = 'login' | 'home' | 'search' | 'player' | 'playlists' | 'playlist-detail' | 'history';
+export type PageType =
+  | 'login'
+  | 'home'
+  | 'search'
+  | 'player'
+  | 'playlists'
+  | 'playlist-detail'
+  | 'history'
+  | 'settings';
 
 /** 用户歌单响应 */
 export interface UserPlaylistsResponse {
@@ -149,6 +157,32 @@ export interface FrontendSettings {
     batterySuspend: number;
     acSuspend: number;
   };
+}
+
+// ==================== 更新相关 ====================
+
+export interface UpdateInfo {
+  success: boolean;
+  currentVersion: string;
+  latestVersion?: string;
+  hasUpdate?: boolean;
+  downloadUrl?: string;
+  releasePage?: string;
+  assetName?: string;
+  notes?: string;
+  error?: string;
+}
+
+export interface DownloadResult {
+  success: boolean;
+  path?: string;
+  error?: string;
+}
+
+export interface PluginVersionResponse {
+  success: boolean;
+  version?: string;
+  error?: string;
 }
 
 export interface FrontendSettingsResponse {

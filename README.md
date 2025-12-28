@@ -118,6 +118,26 @@ decky-qqmusic/
 - `DECKY_PLUGIN_SETTINGS_DIR` - 存储用户凭证和配置
 - `DECKY_PLUGIN_LOG_DIR` - 存储日志文件
 
+### Python 开发环境（uv）
+
+本地编辑器要有 QQMusicApi/Decky 的补全与类型检查，推荐使用 [uv](https://github.com/astral-sh/uv) 创建虚拟环境：
+
+```bash
+# 安装 uv（如未安装，可参考官方文档）
+# 创建虚拟环境（放在仓库根目录）
+uv venv .venv
+
+# 激活虚拟环境
+source .venv/bin/activate
+
+# 安装 Python 依赖（使用项目指定的 QQMusicApi commit）
+uv pip install "git+https://github.com/L-1124/QQMusicApi.git@3ccc5daaf0b3d35a4b7375824b213c07687fa992"
+# 可选：安装开发工具
+uv pip install ruff
+```
+
+激活后，Pyright/Pylance 会读取 `.venv` 中的依赖并识别 `decky`/`qqmusic_api` 类型信息。
+
 ### 开发命令
 
 ```bash
