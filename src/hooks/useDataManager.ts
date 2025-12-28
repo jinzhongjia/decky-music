@@ -325,6 +325,16 @@ export const isGuessLoaded = () => cache.guessLoaded;
 export const isDailyLoaded = () => cache.dailyLoaded;
 export const isPlaylistsLoaded = () => cache.playlistsLoaded;
 
+/**
+ * 替换当前的猜你喜欢列表并通知订阅者
+ */
+export const replaceGuessLikeSongs = (songs: SongInfo[]) => {
+  cache.guessLikeSongs = songs;
+  cache.guessLoaded = true;
+  cache.guessLoading = false;
+  notifyListeners();
+};
+
 // ==================== Hook ====================
 
 import { useState, useEffect } from "react";

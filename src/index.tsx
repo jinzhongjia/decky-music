@@ -9,7 +9,7 @@ import { FaMusic } from "react-icons/fa";
 
 import { getLoginStatus, logout, clearAllData } from "./api";
 import { setAuthLoggedIn } from "./state/authState";
-import { preloadData, clearDataCache, fetchGuessLikeRaw } from "./hooks/useDataManager";
+import { preloadData, clearDataCache, fetchGuessLikeRaw, replaceGuessLikeSongs } from "./hooks/useDataManager";
 import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
 import { useMountedRef } from "./hooks/useMountedRef";
 import { LoginPage, HomePage, SearchPage, PlayerPage, PlayerBar, PlaylistsPage, PlaylistDetailPage, HistoryPage, SettingsPage, clearRecommendCache } from "./components";
@@ -30,8 +30,6 @@ function Content() {
   // 使用 ref 保存最新的 player 和页面状态，避免闭包问题
   const playerRef = useRef(player);
   const currentPageRef = useRef(currentPage);
-  const nextGuessLikeRef = useRef<SongInfo[] | null>(null);
-  const nextGuessLikePromiseRef = useRef<Promise<void> | null>(null);
   
   // 每次渲染时更新 ref
   useEffect(() => {
@@ -145,32 +143,13 @@ function Content() {
   }, [player]);
 
   // 获取更多猜你喜欢歌曲的回调
-  const prefetchNextGuessLikeBatch = useCallback(() => {
-    if (nextGuessLikePromiseRef.current) return;
-    nextGuessLikePromiseRef.current = fetchGuessLikeRaw()
-      .then((songs) => {
-        nextGuessLikeRef.current = songs;
-      })
-      .catch(() => { })
-      .finally(() => {
-        nextGuessLikePromiseRef.current = null;
-      });
-  }, []);
-
   const fetchMoreGuessLikeSongs = useCallback(async (): Promise<SongInfo[]> => {
-    if (nextGuessLikeRef.current && nextGuessLikeRef.current.length > 0) {
-      const cached = nextGuessLikeRef.current;
-      nextGuessLikeRef.current = null;
-      // 继续预拉取下一批
-      prefetchNextGuessLikeBatch();
-      return cached;
-    }
-
     const songs = await fetchGuessLikeRaw();
-    // 拉取后立即预取下一批，保持连续
-    prefetchNextGuessLikeBatch();
+    if (songs.length > 0) {
+      replaceGuessLikeSongs(songs);
+    }
     return songs;
-  }, [prefetchNextGuessLikeBatch]);
+  }, []);
 
   // 从列表中选择歌曲时，设置整个列表为播放列表
   // source: 'guess-like' 表示来自猜你喜欢，播放完后会自动刷新
