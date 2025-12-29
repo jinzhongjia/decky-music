@@ -57,6 +57,7 @@ RUN PLUGIN_NAME=$(jq -r '.name' plugin.json) && echo "$PLUGIN_NAME" > /tmp/plugi
 RUN PLUGIN_NAME=$(cat /tmp/plugin_name) && mkdir -p "$PLUGIN_NAME"
 COPY --from=frontend /build/dist ./dist_tmp
 COPY --from=frontend /build/py_modules ./py_modules_tmp
+COPY --from=frontend /build/backend ./backend_tmp
 COPY --from=frontend /build/main.py ./
 COPY --from=frontend /build/package.json ./package_tmp.json
 COPY --from=frontend /build/LICENSE ./LICENSE_tmp
@@ -67,6 +68,7 @@ COPY --from=frontend /build/assets ./assets_tmp
 RUN PLUGIN_NAME=$(cat /tmp/plugin_name) && \
     mv dist_tmp "$PLUGIN_NAME/dist" && \
     mv py_modules_tmp "$PLUGIN_NAME/py_modules" && \
+    mv backend_tmp "$PLUGIN_NAME/backend" && \
     mv main.py "$PLUGIN_NAME/" && \
     mv plugin.json "$PLUGIN_NAME/" && \
     mv package_tmp.json "$PLUGIN_NAME/package.json" && \

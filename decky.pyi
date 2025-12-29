@@ -15,7 +15,6 @@ A logging facility `logger` is available which writes to the recommended locatio
 __version__ = '1.0.0'
 
 import logging
-
 from typing import Any
 
 """
