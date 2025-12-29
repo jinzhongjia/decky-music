@@ -9,16 +9,11 @@ import json
 import os
 import sys
 import requests
-from requests import exceptions as req_exc
+import decky
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
-
-# 添加 py_modules 到 Python 路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "py_modules"))
-
-import decky
 
 # QQ Music API 导入
 from qqmusic_api import Credential, login, lyric, recommend, search, song, songlist, user
@@ -120,9 +115,11 @@ class Plugin:
 
     def _download_file(self, url: str, dest: Path) -> None:
         """同步下载文件到指定路径"""
-        with requests.get(
-            url, headers={"User-Agent": "decky-qqmusic"}, timeout=120, stream=True, verify=True
-        ) as resp:
+        with requests.get(url,
+                          headers={"User-Agent": "decky-qqmusic"},
+                          timeout=120,
+                          stream=True,
+                          verify=True) as resp:
             resp.raise_for_status()
             with dest.open("wb") as f:
                 for chunk in resp.iter_content(chunk_size=8192):
@@ -640,7 +637,10 @@ class Plugin:
 
     # ==================== 播放相关 API ====================
 
-    async def get_song_url(self, mid: str, preferred_quality: str | None = None) -> dict[str, Any]:
+    async def get_song_url(
+            self,
+            mid: str,
+            preferred_quality: str | None = None) -> dict[str, Any]:
         """获取歌曲播放链接，支持音质偏好"""
         # 确保凭证有效
         has_credential = self.credential is not None and self.credential.has_musicid(
@@ -650,7 +650,8 @@ class Plugin:
             if not is_valid:
                 has_credential = False  # 刷新失败时按未登录处理，避免无效高码率重试
 
-        def pick_order(pref: str | None, logged_in: bool) -> list[song.SongFileType]:
+        def pick_order(pref: str | None,
+                       logged_in: bool) -> list[song.SongFileType]:
             pref_normalized = (pref or "auto").lower()
             if pref_normalized not in {"auto", "high", "balanced", "compat"}:
                 pref_normalized = "auto"
