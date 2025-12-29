@@ -24,6 +24,11 @@ import type {
   PluginVersionResponse,
   PreferredQuality,
 } from "../types";
+import type {
+  ProvidersResponse,
+  CurrentProviderResponse,
+  SwitchProviderResponse,
+} from "../providers/types";
 
 // ==================== 登录相关 ====================
 
@@ -42,31 +47,39 @@ export const logout = callable<[], { success: boolean }>("logout");
 // ==================== 搜索相关 ====================
 
 /** 搜索歌曲 */
-export const searchSongs = callable<[keyword: string, page: number, num: number], SearchResponse>("search_songs");
+export const searchSongs = callable<[keyword: string, page: number, num: number], SearchResponse>(
+  "search_songs"
+);
 
 /** 获取热门搜索 */
 export const getHotSearch = callable<[], HotSearchResponse>("get_hot_search");
 
 /** 获取搜索建议 */
-export const getSearchSuggest = callable<[keyword: string], {
-  success: boolean;
-  suggestions: Array<{
-    type: string;
-    keyword: string;
-    singer?: string;
-  }>;
-  error?: string;
-}>("get_search_suggest");
+export const getSearchSuggest = callable<
+  [keyword: string],
+  {
+    success: boolean;
+    suggestions: Array<{
+      type: string;
+      keyword: string;
+      singer?: string;
+    }>;
+    error?: string;
+  }
+>("get_search_suggest");
 
 // ==================== 播放相关 ====================
 
 /** 获取歌曲播放链接，可传递偏好音质 */
-export const getSongUrl = callable<[mid: string, preferredQuality?: PreferredQuality], SongUrlResponse>(
-  "get_song_url"
-);
+export const getSongUrl = callable<
+  [mid: string, preferredQuality?: PreferredQuality],
+  SongUrlResponse
+>("get_song_url");
 
 /** 获取歌词 (qrc=true 时获取 QRC 逐字格式) */
-export const getSongLyric = callable<[mid: string, qrc?: boolean], SongLyricResponse>("get_song_lyric");
+export const getSongLyric = callable<[mid: string, qrc?: boolean], SongLyricResponse>(
+  "get_song_lyric"
+);
 
 // ==================== 推荐相关 ====================
 
@@ -77,15 +90,20 @@ export const getGuessLike = callable<[], RecommendResponse>("get_guess_like");
 export const getDailyRecommend = callable<[], DailyRecommendResponse>("get_daily_recommend");
 
 /** 获取推荐歌单 */
-export const getRecommendPlaylists = callable<[], RecommendPlaylistResponse>("get_recommend_playlists");
+export const getRecommendPlaylists = callable<[], RecommendPlaylistResponse>(
+  "get_recommend_playlists"
+);
 
 /** 获取收藏歌曲 */
-export const getFavSongs = callable<[page: number, num: number], {
-  success: boolean;
-  songs: SongInfo[];
-  total: number;
-  error?: string;
-}>("get_fav_songs");
+export const getFavSongs = callable<
+  [page: number, num: number],
+  {
+    success: boolean;
+    songs: SongInfo[];
+    total: number;
+    error?: string;
+  }
+>("get_fav_songs");
 
 // ==================== 歌单相关 ====================
 
@@ -93,7 +111,10 @@ export const getFavSongs = callable<[page: number, num: number], {
 export const getUserPlaylists = callable<[], UserPlaylistsResponse>("get_user_playlists");
 
 /** 获取歌单中的歌曲 */
-export const getPlaylistSongs = callable<[playlist_id: number, dirid: number], PlaylistSongsResponse>("get_playlist_songs");
+export const getPlaylistSongs = callable<
+  [playlist_id: number, dirid: number],
+  PlaylistSongsResponse
+>("get_playlist_songs");
 
 // ==================== 设置相关 ====================
 
@@ -101,12 +122,15 @@ export const getPlaylistSongs = callable<[playlist_id: number, dirid: number], P
 export const getFrontendSettings = callable<[], FrontendSettingsResponse>("get_frontend_settings");
 
 /** 保存前端持久化设置 */
-export const saveFrontendSettings = callable<[settings: Record<string, unknown>], { success: boolean }>(
-  "save_frontend_settings"
-);
+export const saveFrontendSettings = callable<
+  [settings: Record<string, unknown>],
+  { success: boolean }
+>("save_frontend_settings");
 
 /** 手动清除插件数据（凭证与前端设置） */
-export const clearAllData = callable<[], { success: boolean; error?: string }>("clear_all_settings");
+export const clearAllData = callable<[], { success: boolean; error?: string }>(
+  "clear_all_settings"
+);
 
 // ==================== 更新相关 ====================
 
@@ -114,7 +138,22 @@ export const clearAllData = callable<[], { success: boolean; error?: string }>("
 export const checkUpdate = callable<[], UpdateInfo>("check_update");
 
 /** 下载更新包到 ~/Download */
-export const downloadUpdate = callable<[url: string, filename?: string], DownloadResult>("download_update");
+export const downloadUpdate = callable<[url: string, filename?: string], DownloadResult>(
+  "download_update"
+);
 
 /** 获取本地插件版本（无网络） */
 export const getPluginVersion = callable<[], PluginVersionResponse>("get_plugin_version");
+
+// ==================== Provider 管理 ====================
+
+/** 获取所有可用的 Provider */
+export const getProviders = callable<[], ProvidersResponse>("get_providers");
+
+/** 获取当前激活的 Provider */
+export const getCurrentProvider = callable<[], CurrentProviderResponse>("get_current_provider");
+
+/** 切换 Provider */
+export const switchProvider = callable<[provider_id: string], SwitchProviderResponse>(
+  "switch_provider"
+);

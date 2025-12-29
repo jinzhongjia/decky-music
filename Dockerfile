@@ -1,7 +1,8 @@
 # Decky QQ Music 插件构建 Dockerfile
 # 使用 Python 3.11 以匹配 Decky Loader 内嵌的 Python 版本
+# 强制使用 linux/amd64 平台以匹配 Steam Deck (x86_64)
 
-FROM python:3.11-slim AS python-deps
+FROM --platform=linux/amd64 python:3.11-slim AS python-deps
 
 WORKDIR /build
 
@@ -17,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt --target=py_modules \
     && find py_modules -name "*.pyc" -delete 2>/dev/null || true
 
 # 最终阶段：使用 Node.js 构建前端
-FROM node:22-slim AS frontend
+FROM --platform=linux/amd64 node:22-slim AS frontend
 
 WORKDIR /build
 
@@ -57,6 +58,7 @@ RUN PLUGIN_NAME=$(jq -r '.name' plugin.json) && echo "$PLUGIN_NAME" > /tmp/plugi
 RUN PLUGIN_NAME=$(cat /tmp/plugin_name) && mkdir -p "$PLUGIN_NAME"
 COPY --from=frontend /build/dist ./dist_tmp
 COPY --from=frontend /build/py_modules ./py_modules_tmp
+COPY --from=frontend /build/providers ./providers_tmp
 COPY --from=frontend /build/main.py ./
 COPY --from=frontend /build/package.json ./package_tmp.json
 COPY --from=frontend /build/LICENSE ./LICENSE_tmp
@@ -67,6 +69,7 @@ COPY --from=frontend /build/assets ./assets_tmp
 RUN PLUGIN_NAME=$(cat /tmp/plugin_name) && \
     mv dist_tmp "$PLUGIN_NAME/dist" && \
     mv py_modules_tmp "$PLUGIN_NAME/py_modules" && \
+    mv providers_tmp "$PLUGIN_NAME/providers" && \
     mv main.py "$PLUGIN_NAME/" && \
     mv plugin.json "$PLUGIN_NAME/" && \
     mv package_tmp.json "$PLUGIN_NAME/package.json" && \

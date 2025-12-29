@@ -21,9 +21,11 @@ export function setAuthLoggedIn(value: boolean) {
   });
 }
 
-export function subscribeAuth(cb: Listener) {
+export function subscribeAuth(cb: Listener): () => void {
   listeners.add(cb);
-  return () => listeners.delete(cb);
+  return () => {
+    listeners.delete(cb);
+  };
 }
 
 export function useAuthStatus(): boolean {

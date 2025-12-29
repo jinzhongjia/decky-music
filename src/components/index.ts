@@ -3,7 +3,7 @@
  */
 
 export { LoginPage } from "./LoginPage";
-export { HomePage, clearRecommendCache } from "./HomePage";
+export { HomePage } from "./HomePage";
 export { SearchPage } from "./SearchPage";
 export { PlayerPage } from "./PlayerPage";
 export { PlayerBar } from "./PlayerBar";

@@ -14,21 +14,16 @@ interface BackButtonProps {
   label?: string;
 }
 
-export const BackButton: FC<BackButtonProps> = ({ 
-  onClick, 
-  label = "返回" 
-}) => {
+export const BackButton: FC<BackButtonProps> = ({ onClick, label = "返回" }) => {
   return (
     <PanelSection>
       <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={onClick}
-          style={{ marginBottom: "14px" }}
-        >
-          <FaArrowLeft style={{ marginRight: '8px' }} />
-          {label}
-        </ButtonItem>
+        <div style={{ marginBottom: "14px" }}>
+          <ButtonItem layout="below" onClick={onClick}>
+            <FaArrowLeft style={{ marginRight: "8px" }} />
+            {label}
+          </ButtonItem>
+        </div>
       </PanelSectionRow>
     </PanelSection>
   );

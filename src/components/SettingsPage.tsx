@@ -1,11 +1,18 @@
 import { FC, useCallback, useEffect, useMemo, useState } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem, Spinner, Navigation, Focusable } from "@decky/ui";
+import { PanelSection, PanelSectionRow, ButtonItem, Navigation, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaDownload, FaExternalLinkAlt, FaInfoCircle, FaSyncAlt, FaTrash } from "react-icons/fa";
 
-import { checkUpdate, downloadUpdate, getPluginVersion, getFrontendSettings, saveFrontendSettings } from "../api";
+import {
+  checkUpdate,
+  downloadUpdate,
+  getPluginVersion,
+  getFrontendSettings,
+  saveFrontendSettings,
+} from "../api";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { setPreferredQuality } from "../hooks/usePlayer";
+import { useProvider, Capability } from "../providers";
 import type { PreferredQuality, UpdateInfo } from "../types";
 import { BackButton } from "./BackButton";
 
@@ -17,13 +24,20 @@ interface SettingsPageProps {
 const REPO_URL = "https://github.com/jinzhongjia/decky-qqmusic";
 const QUALITY_OPTIONS: Array<{ value: PreferredQuality; label: string; desc: string }> = [
   { value: "auto", label: "自动（推荐）", desc: "优先高码率，若不可用自动降级" },
-  { value: "high", label: "高音质优先", desc: "320kbps/192kbps 优先，可能需要会员，不可用时自动降级" },
+  {
+    value: "high",
+    label: "高音质优先",
+    desc: "320kbps/192kbps 优先，可能需要会员，不可用时自动降级",
+  },
   { value: "balanced", label: "均衡", desc: "192kbps / 128kbps 优先，兼顾质量与稳定性" },
   { value: "compat", label: "兼容/低延迟", desc: "128kbps 及以下优先，适合不稳定网络或节省流量" },
 ];
 
 export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) => {
   const mountedRef = useMountedRef();
+  const { hasCapability } = useProvider();
+
+  const canQualitySelection = hasCapability(Capability.QUALITY_SELECTION);
   const [checking, setChecking] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -112,19 +126,19 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
     }
   }, [mountedRef]);
 
-  const handleQualityChange = useCallback(
-    async (value: PreferredQuality) => {
-      setPreferredQualityState(value);
-      setPreferredQuality(value);
-      try {
-        await saveFrontendSettings({ preferredQuality: value });
-        toaster.toast({ title: "音质偏好已更新", body: QUALITY_OPTIONS.find((o) => o.value === value)?.label });
-      } catch (e) {
-        toaster.toast({ title: "保存失败", body: (e as Error).message });
-      }
-    },
-    []
-  );
+  const handleQualityChange = useCallback(async (value: PreferredQuality) => {
+    setPreferredQualityState(value);
+    setPreferredQuality(value);
+    try {
+      await saveFrontendSettings({ preferredQuality: value });
+      toaster.toast({
+        title: "音质偏好已更新",
+        body: QUALITY_OPTIONS.find((o) => o.value === value)?.label,
+      });
+    } catch (e) {
+      toaster.toast({ title: "保存失败", body: (e as Error).message });
+    }
+  }, []);
 
   const handleClearData = useCallback(async () => {
     if (clearing) return;
@@ -166,87 +180,88 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
 
   return (
     <>
-      <PanelSection title="音质偏好">
-        <PanelSectionRow>
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 520,
-              margin: "0 auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              boxSizing: "border-box",
-            }}
-          >
-            {QUALITY_OPTIONS.map((option) => {
-              const active = preferredQuality === option.value;
-              const focused = focusedQuality === option.value;
-              const borderColor = active || focused ? "#1DB954" : "rgba(255,255,255,0.16)";
-              const background = active
-                ? "rgba(29,185,84,0.16)"
-                : focused
-                ? "rgba(255,255,255,0.07)"
-                : "rgba(255,255,255,0.05)";
-              return (
-                <Focusable
-                  key={option.value}
-                  focusable
-                  onActivate={() => handleQualityChange(option.value)}
-                  onClick={() => handleQualityChange(option.value)}
-                  onFocus={() => setFocusedQuality(option.value)}
-                  onBlur={() => setFocusedQuality(null)}
-                  style={{
-                    width: "100%",
-                    padding: "0",
-                    border: "none",
-                    background: "transparent",
-                  }}
-                >
-                  <div
+      {canQualitySelection && (
+        <PanelSection title="音质偏好">
+          <PanelSectionRow>
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 520,
+                margin: "0 auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+                boxSizing: "border-box",
+              }}
+            >
+              {QUALITY_OPTIONS.map((option) => {
+                const active = preferredQuality === option.value;
+                const focused = focusedQuality === option.value;
+                const borderColor = active || focused ? "#1DB954" : "rgba(255,255,255,0.16)";
+                const background = active
+                  ? "rgba(29,185,84,0.16)"
+                  : focused
+                    ? "rgba(255,255,255,0.07)"
+                    : "rgba(255,255,255,0.05)";
+                return (
+                  <Focusable
+                    key={option.value}
+                    onActivate={() => handleQualityChange(option.value)}
+                    onClick={() => handleQualityChange(option.value)}
+                    onFocus={() => setFocusedQuality(option.value)}
+                    onBlur={() => setFocusedQuality(null)}
                     style={{
                       width: "100%",
-                      padding: "12px 14px",
-                      borderRadius: 14,
-                      border: `2px solid ${borderColor}`,
-                      background,
-                      color: "inherit",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      boxShadow: "none",
-                      boxSizing: "border-box",
+                      padding: "0",
+                      border: "none",
+                      background: "transparent",
                     }}
                   >
                     <div
                       style={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: "50%",
-                        border: "2px solid #1DB954",
-                        background: active ? "#1DB954" : "transparent",
-                        flexShrink: 0,
+                        width: "100%",
+                        padding: "12px 14px",
+                        borderRadius: 14,
+                        border: `2px solid ${borderColor}`,
+                        background,
+                        color: "inherit",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        boxShadow: "none",
+                        boxSizing: "border-box",
                       }}
-                    />
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{option.label}</div>
-                      <div style={{ fontSize: 12, opacity: 0.9, lineHeight: "18px" }}>{option.desc}</div>
+                    >
+                      <div
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: "50%",
+                          border: "2px solid #1DB954",
+                          background: active ? "#1DB954" : "transparent",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{option.label}</div>
+                        <div style={{ fontSize: 12, opacity: 0.9, lineHeight: "18px" }}>
+                          {option.desc}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </Focusable>
-              );
-            })}
-          </div>
-        </PanelSectionRow>
-      </PanelSection>
+                  </Focusable>
+                );
+              })}
+            </div>
+          </PanelSectionRow>
+        </PanelSection>
+      )}
 
       <PanelSection title="版本信息">
         <PanelSectionRow>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <div>当前版本：{currentVersion}</div>
-            {updateInfo?.latestVersion && (
-              <div>最新版本：{updateInfo.latestVersion}</div>
-            )}
+            {updateInfo?.latestVersion && <div>最新版本：{updateInfo.latestVersion}</div>}
             <div>状态：{checking ? "检查中..." : updateStatus}</div>
           </div>
         </PanelSectionRow>
@@ -276,9 +291,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
         )}
         {downloadPath && (
           <PanelSectionRow>
-            <div style={{ fontSize: 12, lineHeight: "18px" }}>
-              已保存到：{downloadPath}
-            </div>
+            <div style={{ fontSize: 12, lineHeight: "18px" }}>已保存到：{downloadPath}</div>
           </PanelSectionRow>
         )}
       </PanelSection>
@@ -314,7 +327,10 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
         </PanelSectionRow>
         {updateInfo?.releasePage && (
           <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => Navigation.NavigateToExternalWeb(updateInfo.releasePage!)}>
+            <ButtonItem
+              layout="below"
+              onClick={() => Navigation.NavigateToExternalWeb(updateInfo.releasePage!)}
+            >
               <FaExternalLinkAlt style={{ marginRight: 8 }} />
               打开最新 Release
             </ButtonItem>

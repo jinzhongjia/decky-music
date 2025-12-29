@@ -15,6 +15,7 @@ import { FocusableList } from "./FocusableList";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { useSearchHistory } from "../hooks/useSearchHistory";
 import { useDebounce } from "../hooks/useDebounce";
+import { useProvider, Capability } from "../providers";
 import { COLORS } from "../utils/styles";
 
 interface SearchPageProps {
@@ -30,7 +31,12 @@ interface Suggestion {
   singer?: string;
 }
 
-const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, currentPlayingMid, onAddSongToQueue }) => {
+const SearchPageComponent: FC<SearchPageProps> = ({
+  onSelectSong,
+  onBack,
+  currentPlayingMid,
+  onAddSongToQueue,
+}) => {
   const [keyword, setKeyword] = useState("");
   const [songs, setSongs] = useState<SongInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,6 +46,10 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
   const [showSuggestions, setShowSuggestions] = useState(false);
   const mountedRef = useMountedRef();
   const { searchHistory, addToHistory, clearHistory } = useSearchHistory();
+  const { hasCapability } = useProvider();
+
+  const canHotSearch = hasCapability(Capability.HOT_SEARCH);
+  const canSearchSuggest = hasCapability(Capability.SEARCH_SUGGEST);
 
   const searchRequestId = useRef(0);
   const suggestionRequestId = useRef(0);
@@ -80,18 +90,19 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
   }, [mountedRef]);
 
   useEffect(() => {
-    loadHotSearch();
-  }, [loadHotSearch]);
+    if (canHotSearch) {
+      loadHotSearch();
+    }
+  }, [canHotSearch, loadHotSearch]);
 
-  // 监听防抖后的关键词，自动获取搜索建议
   useEffect(() => {
-    if (debouncedKeyword.trim()) {
+    if (canSearchSuggest && debouncedKeyword.trim()) {
       fetchSuggestions(debouncedKeyword);
     } else {
       setSuggestions([]);
       setShowSuggestions(false);
     }
-  }, [debouncedKeyword, fetchSuggestions]);
+  }, [canSearchSuggest, debouncedKeyword, fetchSuggestions]);
 
   // 处理输入变化
   const handleInputChange = useCallback((value: string) => {
@@ -361,6 +372,6 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
   );
 };
 
-SearchPageComponent.displayName = 'SearchPage';
+SearchPageComponent.displayName = "SearchPage";
 
 export const SearchPage = memo(SearchPageComponent);

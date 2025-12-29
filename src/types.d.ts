@@ -10,6 +10,8 @@ export interface SongInfo {
   albumMid?: string;
   duration: number;
   cover: string;
+  /** 来源 Provider ID，用于跨 Provider 匹配 (如 'qqmusic', 'spotify') */
+  providerId?: string;
 }
 
 /** 歌单信息 */
@@ -32,7 +34,7 @@ export interface QrCodeResponse {
   error?: string;
 }
 
-export type QrStatus = 'waiting' | 'scanned' | 'timeout' | 'success' | 'refused' | 'unknown';
+export type QrStatus = "waiting" | "scanned" | "timeout" | "success" | "refused" | "unknown";
 
 export interface QrStatusResponse {
   success: boolean;
@@ -119,14 +121,14 @@ export interface ApiResponse<T = unknown> {
 
 /** 页面类型 */
 export type PageType =
-  | 'login'
-  | 'home'
-  | 'search'
-  | 'player'
-  | 'playlists'
-  | 'playlist-detail'
-  | 'history'
-  | 'settings';
+  | "login"
+  | "home"
+  | "search"
+  | "player"
+  | "playlists"
+  | "playlist-detail"
+  | "history"
+  | "settings";
 
 /** 用户歌单响应 */
 export interface UserPlaylistsResponse {
