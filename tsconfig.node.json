@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+        "module": "ESNext",
+        "target": "ES2020",
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "strict": true,
+        "skipLibCheck": true
+    },
+    "include": [
+        "rollup.config.ts",
+        "eslint.config.ts",
+        "src/types/*.d.ts"
+    ]
+}
