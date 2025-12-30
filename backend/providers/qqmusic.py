@@ -1,6 +1,6 @@
-"""QQ 音乐 API 封装模块
+"""QQ 音乐 Provider
 
-封装登录、搜索、推荐、播放、歌单等 QQ 音乐功能。
+实现 QQ 音乐的登录、搜索、推荐、播放、歌单等功能。
 """
 
 import base64
@@ -9,22 +9,50 @@ from datetime import datetime
 from typing import Any
 
 import decky
+from backend.providers.base import Capability, MusicProvider
 from backend.util import format_playlist_item, format_song, get_settings_path
 from qqmusic_api import Credential, login, lyric, recommend, search, song, songlist, user
 from qqmusic_api.login import QR, QRCodeLoginEvents, QRLoginType
 from qqmusic_api.utils.session import get_session
 
 
-class QQMusicService:
-    """QQ 音乐服务类，管理凭证和 API 调用"""
+class QQMusicProvider(MusicProvider):
+    """QQ 音乐服务 Provider"""
 
     def __init__(self) -> None:
         self.credential: Credential | None = None
         self.current_qr: QR | None = None
         self.encrypt_uin: str | None = None
 
+    @property
+    def id(self) -> str:
+        return "qqmusic"
+
+    @property
+    def name(self) -> str:
+        return "QQ音乐"
+
+    @property
+    def capabilities(self) -> set[Capability]:
+        return {
+            Capability.AUTH_QR_LOGIN,
+            Capability.SEARCH_SONG,
+            Capability.SEARCH_SUGGEST,
+            Capability.SEARCH_HOT,
+            Capability.PLAY_SONG,
+            Capability.PLAY_QUALITY_HIGH,
+            Capability.PLAY_QUALITY_STANDARD,
+            Capability.LYRIC_BASIC,
+            Capability.LYRIC_WORD_BY_WORD,
+            Capability.LYRIC_TRANSLATION,
+            Capability.RECOMMEND_DAILY,
+            Capability.RECOMMEND_PERSONALIZED,
+            Capability.RECOMMEND_PLAYLIST,
+            Capability.PLAYLIST_USER,
+            Capability.PLAYLIST_FAVORITE,
+        }
+
     def save_credential(self) -> bool:
-        """保存凭证到文件"""
         if not self.credential:
             return False
         try:
@@ -39,7 +67,6 @@ class QQMusicService:
             return False
 
     def load_credential(self) -> bool:
-        """从文件加载凭证"""
         try:
             settings_path = get_settings_path()
             if settings_path.exists():
@@ -55,8 +82,7 @@ class QQMusicService:
             decky.logger.error(f"加载凭证失败: {e}")
         return False
 
-    async def ensure_credential_valid(self) -> bool:
-        """确保凭证有效，如果过期则尝试刷新"""
+    async def _ensure_credential_valid(self) -> bool:
         if not self.credential or not self.credential.has_musicid():
             return False
 
@@ -82,7 +108,6 @@ class QQMusicService:
             return False
 
     async def get_qr_code(self, login_type: str = "qq") -> dict[str, Any]:
-        """获取登录二维码"""
         try:
             qr_type = QRLoginType.QQ if login_type == "qq" else QRLoginType.WX
             self.current_qr = await login.get_qrcode(qr_type)
@@ -100,7 +125,6 @@ class QQMusicService:
             return {"success": False, "error": str(e)}
 
     async def check_qr_status(self) -> dict[str, Any]:
-        """检查二维码扫描状态"""
         if not self.current_qr:
             return {"success": False, "error": "没有可用的二维码"}
 
@@ -136,14 +160,13 @@ class QQMusicService:
             return {"success": False, "error": str(e)}
 
     async def get_login_status(self) -> dict[str, Any]:
-        """获取当前登录状态"""
         try:
             if not self.credential:
                 self.load_credential()
 
             if self.credential and self.credential.has_musicid():
                 was_expired = await self.credential.is_expired() if self.credential else False
-                is_valid = await self.ensure_credential_valid()
+                is_valid = await self._ensure_credential_valid()
 
                 if is_valid:
                     result: dict[str, Any] = {
@@ -164,7 +187,6 @@ class QQMusicService:
             return {"logged_in": False, "error": str(e)}
 
     def logout(self) -> dict[str, Any]:
-        """退出登录"""
         try:
             self.credential = None
             self.current_qr = None
@@ -182,7 +204,6 @@ class QQMusicService:
             return {"success": False, "error": str(e)}
 
     async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> dict[str, Any]:
-        """搜索歌曲"""
         try:
             results = await search.search_by_type(
                 keyword=keyword,
@@ -206,7 +227,6 @@ class QQMusicService:
             return {"success": False, "error": str(e), "songs": []}
 
     async def get_hot_search(self) -> dict[str, Any]:
-        """获取热搜词"""
         try:
             result = await search.hotkey()
             hotkeys = []
@@ -224,7 +244,6 @@ class QQMusicService:
             return {"success": False, "error": str(e), "hotkeys": []}
 
     async def get_search_suggest(self, keyword: str) -> dict[str, Any]:
-        """获取搜索建议/补全"""
         try:
             if not keyword or not keyword.strip():
                 return {"success": True, "suggestions": []}
@@ -263,7 +282,6 @@ class QQMusicService:
             return {"success": False, "error": str(e), "suggestions": []}
 
     async def get_guess_like(self) -> dict[str, Any]:
-        """获取猜你喜欢"""
         try:
             result = await recommend.get_guess_recommend()
 
@@ -281,7 +299,6 @@ class QQMusicService:
             return {"success": False, "error": str(e), "songs": []}
 
     async def get_daily_recommend(self) -> dict[str, Any]:
-        """获取每日推荐"""
         try:
             result = await recommend.get_radar_recommend()
 
@@ -310,7 +327,6 @@ class QQMusicService:
             return {"success": False, "error": str(e), "songs": []}
 
     async def get_recommend_playlists(self) -> dict[str, Any]:
-        """获取推荐歌单"""
         try:
             result = await recommend.get_recommend_songlist()
 
@@ -336,7 +352,6 @@ class QQMusicService:
             return {"success": False, "error": str(e), "playlists": []}
 
     async def get_fav_songs(self, page: int = 1, num: int = 20) -> dict[str, Any]:
-        """获取收藏歌曲"""
         try:
             if not self.credential or not self.encrypt_uin:
                 return {
@@ -363,10 +378,9 @@ class QQMusicService:
             return {"success": False, "error": str(e), "songs": [], "total": 0}
 
     async def get_song_url(self, mid: str, preferred_quality: str | None = None) -> dict[str, Any]:
-        """获取歌曲播放链接，支持音质偏好"""
         has_credential = self.credential is not None and self.credential.has_musicid()
         if has_credential:
-            is_valid = await self.ensure_credential_valid()
+            is_valid = await self._ensure_credential_valid()
             if not is_valid:
                 has_credential = False
 
@@ -440,7 +454,6 @@ class QQMusicService:
         return {"success": False, "url": "", "mid": mid, "error": error_msg}
 
     async def get_song_urls_batch(self, mids: list[str]) -> dict[str, Any]:
-        """批量获取歌曲播放链接"""
         try:
             urls = await song.get_song_urls(
                 mid=mids,
@@ -455,7 +468,6 @@ class QQMusicService:
             return {"success": False, "error": str(e), "urls": {}}
 
     async def get_song_lyric(self, mid: str, qrc: bool = True) -> dict[str, Any]:
-        """获取歌词"""
         try:
             result = await lyric.get_lyric(mid, qrc=qrc, trans=True)
 
@@ -479,7 +491,6 @@ class QQMusicService:
             }
 
     async def get_song_info(self, mid: str) -> dict[str, Any]:
-        """获取歌曲详细信息"""
         try:
             result = await song.get_detail(mid)
             return {"success": True, "info": result}
@@ -488,7 +499,6 @@ class QQMusicService:
             return {"success": False, "error": str(e), "info": {}}
 
     async def get_user_playlists(self) -> dict[str, Any]:
-        """获取用户的歌单（创建的和收藏的）"""
         try:
             if not self.credential or not self.credential.has_musicid():
                 return {
@@ -538,7 +548,6 @@ class QQMusicService:
             }
 
     async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> dict[str, Any]:
-        """获取歌单中的所有歌曲"""
         try:
             songs_data = await songlist.get_songlist(playlist_id, dirid)
 

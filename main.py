@@ -1,23 +1,43 @@
 """Decky QQ Music 插件后端
 
-实现 QQ 音乐的登录、搜索、推荐和播放功能。
+实现多 Provider 架构的音乐服务，支持登录、搜索、推荐和播放功能。
 """
 
 import sys
 from pathlib import Path
 
-# add current plugin path ot sys path
 plugin_dir = Path(__file__).parent.resolve()
 if str(plugin_dir) not in sys.path:
     sys.path.insert(0, str(plugin_dir))
 
 import asyncio  # noqa: E402
-from typing import Any  # noqa: E402
+from functools import wraps  # noqa: E402
+from typing import Any, Callable, TypeVar  # noqa: E402
 from urllib.parse import urlparse  # noqa: E402
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def require_provider(**default_fields: Any) -> Callable[[F], F]:
+    """装饰器：检查 Provider 是否可用，不可用时返回错误响应"""
+
+    def decorator(func: F) -> F:
+        @wraps(func)
+        async def wrapper(self: "Plugin", *args: Any, **kwargs: Any) -> dict[str, Any]:
+            if not self._provider:
+                return {"success": False, "error": "No active provider", **default_fields}
+            return await func(self, *args, **kwargs)
+
+        return wrapper  # type: ignore
+
+    return decorator
+
 
 import decky  # noqa: E402
 from backend import (  # noqa: E402
-    QQMusicService,
+    NeteaseProvider,
+    ProviderManager,
+    QQMusicProvider,
     download_file,
     get_frontend_settings_path,
     http_get_json,
@@ -34,7 +54,16 @@ class Plugin:
     def __init__(self) -> None:
         self.current_version = load_plugin_version()
         self.loop: asyncio.AbstractEventLoop | None = None
-        self._qqmusic = QQMusicService()
+        self._manager = ProviderManager()
+        self._manager.register(QQMusicProvider())
+        if NeteaseProvider is not None:
+            self._manager.register(NeteaseProvider())
+            self._manager.set_fallback_order(["netease"])
+        self._manager.switch("qqmusic")
+
+    @property
+    def _provider(self):
+        return self._manager.active
 
     async def get_frontend_settings(self) -> dict[str, Any]:
         try:
@@ -106,21 +135,39 @@ class Plugin:
             decky.logger.error(f"下载更新失败: {e}")
             return {"success": False, "error": str(e)}
 
+    async def get_provider_info(self) -> dict[str, Any]:
+        return {"success": True, **self._manager.get_capabilities()}
+
+    async def list_providers(self) -> dict[str, Any]:
+        return {"success": True, "providers": self._manager.list_providers_info()}
+
+    async def switch_provider(self, provider_id: str) -> dict[str, Any]:
+        try:
+            self._manager.switch(provider_id)
+            return {"success": True}
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
+
+    @require_provider()
     async def get_qr_code(self, login_type: str = "qq") -> dict[str, Any]:
-        return await self._qqmusic.get_qr_code(login_type)
+        return await self._provider.get_qr_code(login_type)
 
+    @require_provider()
     async def check_qr_status(self) -> dict[str, Any]:
-        return await self._qqmusic.check_qr_status()
+        return await self._provider.check_qr_status()
 
+    @require_provider(logged_in=False)
     async def get_login_status(self) -> dict[str, Any]:
-        return await self._qqmusic.get_login_status()
+        return await self._provider.get_login_status()
 
+    @require_provider()
     async def logout(self) -> dict[str, Any]:
-        return self._qqmusic.logout()
+        return self._provider.logout()
 
     async def clear_all_settings(self) -> dict[str, Any]:
         try:
-            self._qqmusic.logout()
+            if self._provider:
+                self._provider.logout()
 
             frontend_path = get_frontend_settings_path()
             if frontend_path.exists():
@@ -132,51 +179,84 @@ class Plugin:
             decky.logger.error(f"清除插件数据失败: {e}")
             return {"success": False, "error": str(e)}
 
+    @require_provider(songs=[])
     async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> dict[str, Any]:
-        return await self._qqmusic.search_songs(keyword, page, num)
+        return await self._provider.search_songs(keyword, page, num)
 
+    @require_provider(hotkeys=[])
     async def get_hot_search(self) -> dict[str, Any]:
-        return await self._qqmusic.get_hot_search()
+        return await self._provider.get_hot_search()
 
+    @require_provider(suggestions=[])
     async def get_search_suggest(self, keyword: str) -> dict[str, Any]:
-        return await self._qqmusic.get_search_suggest(keyword)
+        return await self._provider.get_search_suggest(keyword)
 
+    @require_provider(songs=[])
     async def get_guess_like(self) -> dict[str, Any]:
-        return await self._qqmusic.get_guess_like()
+        return await self._provider.get_guess_like()
 
+    @require_provider(songs=[])
     async def get_daily_recommend(self) -> dict[str, Any]:
-        return await self._qqmusic.get_daily_recommend()
+        return await self._provider.get_daily_recommend()
 
+    @require_provider(playlists=[])
     async def get_recommend_playlists(self) -> dict[str, Any]:
-        return await self._qqmusic.get_recommend_playlists()
+        return await self._provider.get_recommend_playlists()
 
+    @require_provider(songs=[], total=0)
     async def get_fav_songs(self, page: int = 1, num: int = 20) -> dict[str, Any]:
-        return await self._qqmusic.get_fav_songs(page, num)
+        return await self._provider.get_fav_songs(page, num)
 
-    async def get_song_url(self, mid: str, preferred_quality: str | None = None) -> dict[str, Any]:
-        return await self._qqmusic.get_song_url(mid, preferred_quality)
+    async def get_song_url(
+        self,
+        mid: str,
+        preferred_quality: str | None = None,
+        song_name: str | None = None,
+        singer: str | None = None,
+    ) -> dict[str, Any]:
+        if not self._provider:
+            return {"success": False, "error": "No active provider", "url": "", "mid": mid}
 
+        if song_name and singer:
+            return await self._manager.get_song_url_with_fallback(mid, song_name, singer, preferred_quality)
+        return await self._provider.get_song_url(mid, preferred_quality)
+
+    @require_provider(urls={})
     async def get_song_urls_batch(self, mids: list[str]) -> dict[str, Any]:
-        return await self._qqmusic.get_song_urls_batch(mids)
+        return await self._provider.get_song_urls_batch(mids)
 
-    async def get_song_lyric(self, mid: str, qrc: bool = True) -> dict[str, Any]:
-        return await self._qqmusic.get_song_lyric(mid, qrc)
+    async def get_song_lyric(
+        self,
+        mid: str,
+        qrc: bool = True,
+        song_name: str | None = None,
+        singer: str | None = None,
+    ) -> dict[str, Any]:
+        if not self._provider:
+            return {"success": False, "error": "No active provider", "lyric": "", "trans": ""}
 
+        if song_name and singer:
+            return await self._manager.get_song_lyric_with_fallback(mid, song_name, singer, qrc)
+        return await self._provider.get_song_lyric(mid, qrc)
+
+    @require_provider(info={})
     async def get_song_info(self, mid: str) -> dict[str, Any]:
-        return await self._qqmusic.get_song_info(mid)
+        return await self._provider.get_song_info(mid)
 
+    @require_provider(created=[], collected=[])
     async def get_user_playlists(self) -> dict[str, Any]:
-        return await self._qqmusic.get_user_playlists()
+        return await self._provider.get_user_playlists()
 
+    @require_provider(songs=[])
     async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> dict[str, Any]:
-        return await self._qqmusic.get_playlist_songs(playlist_id, dirid)
+        return await self._provider.get_playlist_songs(playlist_id, dirid)
 
     async def _main(self):
         self.loop = asyncio.get_event_loop()
         decky.logger.info("Decky QQ Music 插件已加载")
-        self._qqmusic.load_credential()
-        if self._qqmusic.credential:
-            decky.logger.info("已加载保存的登录凭证")
+        if self._provider:
+            self._provider.load_credential()
+            decky.logger.info(f"当前 Provider: {self._provider.name}")
 
     async def _unload(self):
         decky.logger.info("Decky QQ Music 插件正在卸载")

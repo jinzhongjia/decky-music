@@ -32,7 +32,9 @@ export function useAuthStatus(): boolean {
   useEffect(() => {
     setValue(loggedIn);
     const unsubscribe = subscribeAuth(setValue);
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   return value;

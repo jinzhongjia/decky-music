@@ -10,6 +10,7 @@ import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { SongItem } from "./SongItem";
 import { useDataManager } from "../hooks/useDataManager";
+import { useProvider } from "../hooks/useProvider";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { EmptyState } from "./EmptyState";
 
@@ -48,6 +49,12 @@ const HomePageComponent: FC<HomePageProps> = ({
   hasLegacyData = false,
 }) => {
   const dataManager = useDataManager();
+  const { hasCapability } = useProvider();
+
+  const canSearch = hasCapability("search.song");
+  const canViewPlaylists = hasCapability("playlist.user");
+  const canRecommendPersonalized = hasCapability("recommend.personalized");
+  const canRecommendDaily = hasCapability("recommend.daily");
 
   const handleRefreshGuessLike = useCallback(() => {
     dataManager.refreshGuessLike();
@@ -71,13 +78,15 @@ const HomePageComponent: FC<HomePageProps> = ({
     <>
       {/* 操作按钮 */}
       <PanelSection>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={onGoToSearch}>
-            <FaSearch style={{ marginRight: "8px" }} />
-            搜索歌曲
-          </ButtonItem>
-        </PanelSectionRow>
-        {onGoToPlaylists && (
+        {canSearch && (
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={onGoToSearch}>
+              <FaSearch style={{ marginRight: "8px" }} />
+              搜索歌曲
+            </ButtonItem>
+          </PanelSectionRow>
+        )}
+        {canViewPlaylists && onGoToPlaylists && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={onGoToPlaylists}>
               <FaListUl style={{ marginRight: "8px" }} />
@@ -112,50 +121,54 @@ const HomePageComponent: FC<HomePageProps> = ({
       </PanelSection>
 
       {/* 猜你喜欢 */}
-      <PanelSection title="💡 猜你喜欢">
-        <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            onClick={handleRefreshGuessLike}
-            disabled={dataManager.guessLoading}
-          >
-            <FaSyncAlt
-              size={12}
-              style={{
-                marginRight: "8px",
-                animation: dataManager.guessLoading ? "spin 1s linear infinite" : "none",
-              }}
-            />
-            换一批
-          </ButtonItem>
-        </PanelSectionRow>
+      {canRecommendPersonalized && (
+        <PanelSection title="💡 猜你喜欢">
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              onClick={handleRefreshGuessLike}
+              disabled={dataManager.guessLoading}
+            >
+              <FaSyncAlt
+                size={12}
+                style={{
+                  marginRight: "8px",
+                  animation: dataManager.guessLoading ? "spin 1s linear infinite" : "none",
+                }}
+              />
+              换一批
+            </ButtonItem>
+          </PanelSectionRow>
 
-        {dataManager.guessLoading && dataManager.guessLikeSongs.length === 0 ? (
-          <LoadingSpinner />
-        ) : dataManager.guessLikeSongs.length === 0 ? (
-          <EmptyState message="暂无推荐，请稍后再试" />
-        ) : (
-          dataManager.guessLikeSongs.map((song, idx) => (
-            <SongItem
-              key={song.mid || idx}
-              song={song}
-              onClick={handleSongClick}
-              onAddToQueue={onAddSongToQueue}
-            />
-          ))
-        )}
-      </PanelSection>
+          {dataManager.guessLoading && dataManager.guessLikeSongs.length === 0 ? (
+            <LoadingSpinner />
+          ) : dataManager.guessLikeSongs.length === 0 ? (
+            <EmptyState message="暂无推荐，请稍后再试" />
+          ) : (
+            dataManager.guessLikeSongs.map((song, idx) => (
+              <SongItem
+                key={song.mid || idx}
+                song={song}
+                onClick={handleSongClick}
+                onAddToQueue={onAddSongToQueue}
+              />
+            ))
+          )}
+        </PanelSection>
+      )}
 
       {/* 每日推荐 */}
-      <SongList
-        title="📅 每日推荐"
-        songs={dataManager.dailySongs}
-        loading={dataManager.dailyLoading}
-        currentPlayingMid={currentPlayingMid}
-        emptyText="登录后查看每日推荐"
-        onSelectSong={handleDailySongClick}
-        onAddToQueue={onAddSongToQueue}
-      />
+      {canRecommendDaily && (
+        <SongList
+          title="📅 每日推荐"
+          songs={dataManager.dailySongs}
+          loading={dataManager.dailyLoading}
+          currentPlayingMid={currentPlayingMid}
+          emptyText="登录后查看每日推荐"
+          onSelectSong={handleDailySongClick}
+          onAddToQueue={onAddSongToQueue}
+        />
+      )}
 
       {/* 退出登录 */}
       <PanelSection>
@@ -170,6 +183,6 @@ const HomePageComponent: FC<HomePageProps> = ({
   );
 };
 
-HomePageComponent.displayName = 'HomePage';
+HomePageComponent.displayName = "HomePage";
 
 export const HomePage = memo(HomePageComponent);

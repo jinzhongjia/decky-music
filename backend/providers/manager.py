@@ -1,0 +1,168 @@
+"""Provider 管理器
+
+管理所有 Provider，处理路由和 fallback。
+"""
+
+from typing import Any
+
+import decky
+
+from backend.providers.base import Capability, MusicProvider
+
+
+class ProviderManager:
+    """管理所有注册的 Provider，处理路由和 fallback"""
+
+    def __init__(self) -> None:
+        self._providers: dict[str, MusicProvider] = {}
+        self._active_id: str | None = None
+        self._fallback_ids: list[str] = []
+
+    def register(self, provider: MusicProvider) -> None:
+        self._providers[provider.id] = provider
+        decky.logger.info(f"注册 Provider: {provider.name} ({provider.id})")
+
+    def set_fallback_order(self, provider_ids: list[str]) -> None:
+        self._fallback_ids = [pid for pid in provider_ids if pid in self._providers]
+
+    @property
+    def active(self) -> MusicProvider | None:
+        if self._active_id is None:
+            return None
+        return self._providers.get(self._active_id)
+
+    @property
+    def active_id(self) -> str | None:
+        return self._active_id
+
+    def switch(self, provider_id: str) -> None:
+        if provider_id not in self._providers:
+            raise ValueError(f"Unknown provider: {provider_id}")
+        self._active_id = provider_id
+        decky.logger.info(f"切换到 Provider: {provider_id}")
+
+    def get_provider(self, provider_id: str) -> MusicProvider | None:
+        return self._providers.get(provider_id)
+
+    def all_providers(self) -> list[MusicProvider]:
+        return list(self._providers.values())
+
+    def get_capabilities(self) -> dict[str, Any]:
+        if not self.active:
+            return {"provider": None, "capabilities": []}
+        return {
+            "provider": {
+                "id": self.active.id,
+                "name": self.active.name,
+            },
+            "capabilities": [c.value for c in self.active.capabilities],
+        }
+
+    def list_providers_info(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": p.id,
+                "name": p.name,
+                "capabilities": [c.value for c in p.capabilities],
+            }
+            for p in self._providers.values()
+        ]
+
+    async def _match_song_in_provider(
+        self, provider: MusicProvider, song_name: str, singer: str
+    ) -> dict[str, Any] | None:
+        """在指定 provider 中搜索匹配的歌曲"""
+        if not provider.has_capability(Capability.SEARCH_SONG):
+            return None
+
+        query = f"{song_name} {singer}"
+        result = await provider.search_songs(query, page=1, num=10)
+
+        if not result.get("success") or not result.get("songs"):
+            return None
+
+        for s in result["songs"]:
+            if s.get("name") == song_name and singer in s.get("singer", ""):
+                return s
+
+        for s in result["songs"]:
+            if s.get("name") == song_name:
+                return s
+
+        return None
+
+    async def get_song_url_with_fallback(
+        self,
+        mid: str,
+        song_name: str,
+        singer: str,
+        preferred_quality: str | None = None,
+    ) -> dict[str, Any]:
+        """获取播放链接，失败时尝试 fallback providers"""
+        if not self.active:
+            return {"success": False, "error": "No active provider", "url": "", "mid": mid}
+
+        result = await self.active.get_song_url(mid, preferred_quality)
+        if result.get("success") and result.get("url"):
+            result["provider"] = self.active.id
+            return result
+
+        original_error = result.get("error", "Unknown error")
+
+        for fb_id in self._fallback_ids:
+            if fb_id == self._active_id:
+                continue
+            fb_provider = self._providers.get(fb_id)
+            if not fb_provider:
+                continue
+
+            matched = await self._match_song_in_provider(fb_provider, song_name, singer)
+            if not matched:
+                continue
+
+            fb_result = await fb_provider.get_song_url(matched.get("mid", ""), preferred_quality)
+            if fb_result.get("success") and fb_result.get("url"):
+                fb_result["fallback_provider"] = fb_id
+                fb_result["original_provider"] = self._active_id
+                fb_result["matched_song"] = matched
+                decky.logger.info(f"Fallback 成功: {song_name} 从 {fb_id} 获取")
+                return fb_result
+
+        return {
+            "success": False,
+            "error": original_error,
+            "url": "",
+            "mid": mid,
+            "provider": self._active_id,
+        }
+
+    async def get_song_lyric_with_fallback(
+        self, mid: str, song_name: str, singer: str, qrc: bool = True
+    ) -> dict[str, Any]:
+        """获取歌词，失败时尝试 fallback providers"""
+        if not self.active:
+            return {"success": False, "error": "No active provider", "lyric": "", "trans": ""}
+
+        result = await self.active.get_song_lyric(mid, qrc)
+        if result.get("success") and result.get("lyric"):
+            result["provider"] = self.active.id
+            return result
+
+        for fb_id in self._fallback_ids:
+            if fb_id == self._active_id:
+                continue
+            fb_provider = self._providers.get(fb_id)
+            if not fb_provider or not fb_provider.has_capability(Capability.LYRIC_BASIC):
+                continue
+
+            matched = await self._match_song_in_provider(fb_provider, song_name, singer)
+            if not matched:
+                continue
+
+            fb_result = await fb_provider.get_song_lyric(matched.get("mid", ""), qrc)
+            if fb_result.get("success") and fb_result.get("lyric"):
+                fb_result["fallback_provider"] = fb_id
+                fb_result["original_provider"] = self._active_id
+                return fb_result
+
+        return result

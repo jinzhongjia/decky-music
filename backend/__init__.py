@@ -1,4 +1,10 @@
-from backend.qqmusic import QQMusicService
+from backend.providers import (
+    Capability,
+    MusicProvider,
+    NeteaseProvider,
+    ProviderManager,
+    QQMusicProvider,
+)
 from backend.util import (
     download_file,
     get_frontend_settings_path,
@@ -10,7 +16,11 @@ from backend.util import (
 )
 
 __all__ = [
-    "QQMusicService",
+    "Capability",
+    "MusicProvider",
+    "NeteaseProvider",
+    "ProviderManager",
+    "QQMusicProvider",
     "download_file",
     "get_frontend_settings_path",
     "http_get_json",
