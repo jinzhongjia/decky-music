@@ -130,8 +130,9 @@ uv venv .venv
 # 激活虚拟环境
 source .venv/bin/activate
 
-# 安装 Python 依赖（使用项目指定的 QQMusicApi commit）
-uv pip install "git+https://github.com/L-1124/QQMusicApi.git@3ccc5daaf0b3d35a4b7375824b213c07687fa992"
+# 安装项目的依赖
+uv pip install -r requirements.txt
+
 # 可选：安装开发工具
 uv pip install ruff
 ```
