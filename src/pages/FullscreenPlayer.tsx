@@ -74,7 +74,9 @@ export const FullscreenPlayer: FC = () => {
     guessLoading,
     refreshGuessLike,
     preloadData,
+    provider,
   } = dataManager;
+  const isNetease = provider?.id === "netease";
   const currentPlayingMid = currentSong?.mid;
   const playModeConfig = useMemo(() => {
     switch (playMode) {
@@ -252,9 +254,10 @@ export const FullscreenPlayer: FC = () => {
         loading={guessLoading}
         onRefresh={handleRefreshGuessLike}
         onSelectSong={(song) => handleSelectSong(song, guessLikeSongs, 'guess-like')}
+        disableRefresh={isNetease}
       />
     </div>
-  ), [guessLikeSongs, guessLoading, handleRefreshGuessLike, handleSelectSong]);
+  ), [guessLikeSongs, guessLoading, handleRefreshGuessLike, handleSelectSong, isNetease]);
 
   const searchPageContent = useMemo(() => (
     <div ref={searchPageRef} tabIndex={-1} style={{ height: '100%', overflow: 'auto' }}>

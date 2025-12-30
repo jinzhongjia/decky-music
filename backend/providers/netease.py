@@ -4,6 +4,9 @@
 使用 pyncm 库进行 API 调用。
 """
 
+from datetime import datetime
+import random
+import time
 from pathlib import Path
 from typing import Any
 
@@ -14,13 +17,29 @@ from pyncm import (
     LoadSessionFromString,
     SetCurrentSession,
 )
-from pyncm.apis import cloudsearch, login, playlist, track, user
+from pyncm.apis import WeapiCryptoRequest, cloudsearch, login, playlist, track, user
 
 from backend.providers.base import Capability, MusicProvider
 
 
 def _get_netease_settings_path() -> Path:
     return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "netease_session.txt"
+
+
+def _weapi_request(path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """调用网易云 Weapi 接口，自动携带当前 Session"""
+    session = GetCurrentSession()
+    # 确保 csrf_token 与 cookie 同步，部分接口需要 __csrf
+    if not session.csrf_token:
+        session.csrf_token = session.cookies.get("__csrf", "")
+    data = payload or {}
+    try:
+        # WeapiCryptoRequest 是装饰器，需传入返回 (url,payload,method) 的函数
+        req = WeapiCryptoRequest(lambda: (path, data, "POST"))
+        return req()
+    except Exception as e:  # pragma: no cover - 依赖外部接口
+        decky.logger.error(f"Weapi 请求失败 {path}: {e}")
+        return {"code": -1, "msg": str(e)}
 
 
 def _format_netease_song(item: dict[str, Any]) -> dict[str, Any]:
@@ -88,8 +107,12 @@ class NeteaseProvider(MusicProvider):
             Capability.PLAY_QUALITY_HIGH,
             Capability.PLAY_QUALITY_STANDARD,
             Capability.LYRIC_BASIC,
+            Capability.LYRIC_WORD_BY_WORD,
             Capability.LYRIC_TRANSLATION,
             Capability.PLAYLIST_USER,
+            Capability.RECOMMEND_DAILY,
+            Capability.RECOMMEND_PERSONALIZED,
+            Capability.RECOMMEND_PLAYLIST,
         }
 
     def save_credential(self) -> bool:
@@ -183,6 +206,11 @@ class NeteaseProvider(MusicProvider):
             if code == 803:
                 login.WriteLoginInfo(login.GetCurrentLoginStatus())
                 session = GetCurrentSession()
+                try:
+                    # 登录成功后立即刷新 cookie，避免部分接口未携带
+                    WeapiCryptoRequest(session, "/weapi/login/token/refresh", {})
+                except Exception as e:
+                    decky.logger.debug(f"网易云登录后刷新 token 失败: {e}")
                 self.save_credential()
                 self._qr_unikey = None
                 response["logged_in"] = True
@@ -314,7 +342,7 @@ class NeteaseProvider(MusicProvider):
     async def get_song_lyric(self, mid: str, qrc: bool = True) -> dict[str, Any]:
         try:
             song_id = int(mid)
-            result = track.GetTrackLyricsV1(song_id)
+            result = track.GetTrackLyricsNew(song_id)
 
             if result.get("code") != 200:
                 return {
@@ -324,8 +352,21 @@ class NeteaseProvider(MusicProvider):
                     "trans": "",
                 }
 
-            lyric_text = result.get("lrc", {}).get("lyric", "")
-            trans_text = result.get("tlyric", {}).get("lyric", "")
+            # 优先使用逐字歌词，其次普通歌词
+            yrc_text = result.get("yrc", {}).get("lyric", "")
+            krc_text = result.get("klyric", {}).get("lyric", "")
+            lrc_text = result.get("lrc", {}).get("lyric", "") or ""
+
+            lyric_text = yrc_text or krc_text or lrc_text
+            trans_text = result.get("tlyric", {}).get("lyric", "") or ""
+
+            if not lyric_text and not trans_text:
+                return {
+                    "success": False,
+                    "error": "暂无歌词",
+                    "lyric": "",
+                    "trans": "",
+                }
 
             return {
                 "success": True,
@@ -415,3 +456,105 @@ class NeteaseProvider(MusicProvider):
         except Exception as e:
             decky.logger.error(f"网易云获取歌单歌曲失败: {e}")
             return {"success": False, "error": str(e), "songs": []}
+
+    async def get_guess_like(self) -> dict[str, Any]:
+        """猜你喜欢（个性化推荐新歌）"""
+        try:
+            result = _weapi_request(
+                "/weapi/personalized/newsong",
+                {"limit": 50, "timestamp": int(time.time() * 1000)},
+            )
+            if result.get("code") == 301:
+                try:
+                    login.LoginRefreshToken()
+                    result = _weapi_request(
+                        "/weapi/personalized/newsong",
+                        {"limit": 50, "timestamp": int(time.time() * 1000)},
+                    )
+                except Exception as e:
+                    decky.logger.error(f"网易云刷新登录失败: {e}")
+            song_items = result.get("result", []) or result.get("data", []) or []
+
+            # 去重后返回全部个性化新歌
+            seen = set()
+            songs: list[dict[str, Any]] = []
+            for item in song_items:
+                song_obj = item.get("song") if isinstance(item, dict) else None
+                target = song_obj or item
+                if not isinstance(target, dict):
+                    continue
+                mid = str(target.get("id") or target.get("songid") or target.get("mid") or "")
+                if not mid or mid in seen:
+                    continue
+                seen.add(mid)
+                songs.append(_format_netease_song(target))
+
+            decky.logger.info(f"网易云获取猜你喜欢 {len(songs)} 首")
+            return {"success": True, "songs": songs}
+        except Exception as e:
+            decky.logger.error(f"网易云获取猜你喜欢失败: {e}")
+            return {"success": False, "error": str(e), "songs": []}
+
+    async def get_daily_recommend(self) -> dict[str, Any]:
+        """每日推荐歌曲（需登录）"""
+        session = GetCurrentSession()
+        if not session.logged_in:
+            return {"success": False, "error": "未登录", "songs": []}
+
+        try:
+            result = _weapi_request(
+                "/weapi/v3/discovery/recommend/songs",
+                {"limit": 50, "offset": 0, "total": True, "csrf_token": session.csrf_token},
+            )
+            if result.get("code") == 301:
+                # 登录状态失效，尝试刷新
+                try:
+                    login.LoginRefreshToken()
+                    session = GetCurrentSession()
+                    result = _weapi_request(
+                        "/weapi/v3/discovery/recommend/songs",
+                        {"limit": 50, "offset": 0, "total": True, "csrf_token": session.csrf_token},
+                    )
+                except Exception as e:
+                    decky.logger.error(f"网易云刷新登录失败: {e}")
+
+            songs_data = result.get("data", {}).get("dailySongs", []) or []
+            songs = [_format_netease_song(s) for s in songs_data if isinstance(s, dict)]
+
+            decky.logger.info(f"网易云获取每日推荐 {len(songs)} 首")
+            return {
+                "success": True,
+                "songs": songs,
+                "date": datetime.now().strftime("%Y-%m-%d"),
+            }
+        except Exception as e:
+            decky.logger.error(f"网易云获取每日推荐失败: {e}")
+            return {"success": False, "error": str(e), "songs": []}
+
+    async def get_recommend_playlists(self) -> dict[str, Any]:
+        """推荐歌单/每日推荐歌单（需登录）"""
+        session = GetCurrentSession()
+        if not session.logged_in:
+            return {"success": False, "error": "未登录", "playlists": []}
+
+        try:
+            # 官方每日推荐歌单接口
+            result = _weapi_request("/weapi/v1/discovery/recommend/resource", {"limit": 30})
+            playlist_data = result.get("recommend", []) or result.get("data", {}).get("recommend", []) or []
+
+            if not playlist_data:
+                # 兜底使用个性化歌单
+                result = _weapi_request("/weapi/personalized/playlist", {"limit": 30})
+                playlist_data = result.get("result", []) or result.get("playlists", []) or []
+
+            playlists = []
+            for item in playlist_data:
+                if not isinstance(item, dict):
+                    continue
+                playlists.append(_format_netease_playlist(item))
+
+            decky.logger.info(f"网易云获取推荐歌单 {len(playlists)} 个")
+            return {"success": True, "playlists": playlists}
+        except Exception as e:
+            decky.logger.error(f"网易云获取推荐歌单失败: {e}")
+            return {"success": False, "error": str(e), "playlists": []}

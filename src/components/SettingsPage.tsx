@@ -15,6 +15,7 @@ import {
   downloadUpdate,
   getPluginVersion,
   getFrontendSettings,
+  getLoginStatus,
   saveFrontendSettings,
 } from "../api";
 import { useMountedRef } from "../hooks/useMountedRef";
@@ -22,10 +23,12 @@ import { useProvider } from "../hooks/useProvider";
 import { setPreferredQuality } from "../hooks/usePlayer";
 import type { PreferredQuality, UpdateInfo } from "../types";
 import { BackButton } from "./BackButton";
+import { setAuthLoggedIn } from "../state/authState";
 
 interface SettingsPageProps {
   onBack: () => void;
   onClearAllData?: () => Promise<boolean>;
+  onGoToLogin: () => void;
 }
 
 const REPO_URL = "https://github.com/jinzhongjia/decky-qqmusic";
@@ -40,7 +43,7 @@ const QUALITY_OPTIONS: Array<{ value: PreferredQuality; label: string; desc: str
   { value: "compat", label: "兼容/低延迟", desc: "128kbps 及以下优先，适合不稳定网络或节省流量" },
 ];
 
-export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) => {
+export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData, onGoToLogin }) => {
   const mountedRef = useMountedRef();
   const { provider, allProviders, switchProvider, loading: providerLoading } = useProvider();
   const [checking, setChecking] = useState(false);
@@ -177,6 +180,12 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
         if (success) {
           const providerName = allProviders.find((p) => p.id === providerId)?.name || providerId;
           toaster.toast({ title: "音源已切换", body: providerName });
+          const loginStatus = await getLoginStatus();
+          if (!mountedRef.current) return;
+          setAuthLoggedIn(Boolean(loginStatus.logged_in));
+          if (!loginStatus.logged_in) {
+            onGoToLogin();
+          }
         } else {
           toaster.toast({ title: "切换失败", body: "请稍后重试" });
         }
@@ -189,7 +198,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
         }
       }
     },
-    [switchingProvider, provider?.id, switchProvider, mountedRef, allProviders]
+    [switchingProvider, provider?.id, switchProvider, mountedRef, allProviders, onGoToLogin]
   );
 
   useEffect(() => {
@@ -290,6 +299,11 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData }) 
           <div style={{ fontSize: 12, lineHeight: "18px", opacity: 0.8 }}>
             切换音源后需要重新登录对应平台账号。
           </div>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={onGoToLogin}>
+            去登录 / 更换账号
+          </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
 

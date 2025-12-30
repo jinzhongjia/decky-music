@@ -9,10 +9,11 @@ interface GuessLikePageProps {
   loading: boolean;
   onRefresh: () => void;
   onSelectSong: (song: SongInfo) => void;
+  disableRefresh?: boolean;
 }
 
 export const GuessLikePage: FC<GuessLikePageProps> = memo(
-  ({ songs, loading, onRefresh, onSelectSong }) => (
+  ({ songs, loading, onRefresh, onSelectSong, disableRefresh = false }) => (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "0 16px" }}>
       <div
         style={{
@@ -24,8 +25,8 @@ export const GuessLikePage: FC<GuessLikePageProps> = memo(
         }}
       >
         <div style={{ fontSize: "15px", fontWeight: "bold", color: "#fff" }}>猜你喜欢</div>
-        <ButtonItem layout="below" onClick={onRefresh} disabled={loading}>
-          {loading ? "加载中..." : "换一批"}
+        <ButtonItem layout="below" onClick={onRefresh} disabled={loading || disableRefresh}>
+          {disableRefresh ? "已是今日推荐" : loading ? "加载中..." : "换一批"}
         </ButtonItem>
       </div>
 

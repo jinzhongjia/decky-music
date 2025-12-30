@@ -283,6 +283,10 @@ function Content() {
     }
   }, [migratingLegacy, player]);
 
+  const handleGoToLoginPage = useCallback(() => {
+    setCurrentPage("login");
+  }, []);
+
   // 加载中
   if (checking) {
     return (
@@ -391,7 +395,13 @@ function Content() {
         );
 
       case "settings":
-        return <SettingsPage onBack={handleBackToHome} onClearAllData={handleClearAllData} />;
+        return (
+          <SettingsPage
+            onBack={handleBackToHome}
+            onClearAllData={handleClearAllData}
+            onGoToLogin={handleGoToLoginPage}
+          />
+        );
 
       default:
         return <LoginPage onLoginSuccess={handleLoginSuccess} />;

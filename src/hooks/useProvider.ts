@@ -125,6 +125,7 @@ export function useProvider() {
     hasCapability,
     hasAnyCapability,
     hasAllCapabilities,
+    hasProvider: (id: string) => cache.allProviders.some((p) => p.id === id),
 
     switchProvider: doSwitchProvider,
     reload: () => {

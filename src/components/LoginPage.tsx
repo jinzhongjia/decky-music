@@ -2,7 +2,7 @@
  * 登录页面组件
  */
 
-import { FC, useState, useEffect, useRef } from "react";
+import { FC, useState, useEffect, useRef, useCallback } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaQrcode } from "react-icons/fa";
@@ -33,13 +33,38 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [loginType, setLoginType] = useState<"qq" | "wx" | "netease">("qq");
   const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useMountedRef();
-  const { hasCapability, provider } = useProvider();
+  const { hasCapability, provider, allProviders, switchProvider, loading: providerLoading } =
+    useProvider();
+  const [switchingProvider, setSwitchingProvider] = useState(false);
 
   const canQrLogin = hasCapability("auth.qr_login");
   const isQQMusic = provider?.id === "qqmusic";
   const isNetease = provider?.id === "netease";
+  const hasNetease = allProviders.some((p) => p.id === "netease");
+  const hasQQ = allProviders.some((p) => p.id === "qqmusic");
 
-  const fetchQrCode = async (type: "qq" | "wx" | "netease") => {
+  const resetQrState = () => {
+    if (checkIntervalRef.current) {
+      clearInterval(checkIntervalRef.current);
+      checkIntervalRef.current = null;
+    }
+    setQrData("");
+    setStatus("idle");
+  };
+
+  const fetchQrCode = async (type: "qq" | "wx" | "netease", targetProviderId?: string) => {
+    if (targetProviderId && targetProviderId !== provider?.id) {
+      setSwitchingProvider(true);
+      resetQrState();
+      const switched = await switchProvider(targetProviderId);
+      if (!mountedRef.current) return;
+      setSwitchingProvider(false);
+      if (!switched) {
+        toaster.toast({ title: "切换音源失败", body: "请稍后重试" });
+        return;
+      }
+    }
+
     setLoginType(type);
     setStatus("loading");
 
@@ -103,6 +128,22 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
     };
   }, []);
 
+  const handleProviderSwitch = useCallback(
+    async (providerId: string) => {
+      if (providerId === provider?.id || switchingProvider) return;
+      setSwitchingProvider(true);
+      resetQrState();
+      const ok = await switchProvider(providerId);
+      if (!mountedRef.current) return;
+      setSwitchingProvider(false);
+      if (ok) {
+        const loginDefault = providerId === "netease" ? "netease" : "qq";
+        setLoginType(loginDefault);
+      }
+    },
+    [allProviders, mountedRef, provider?.id, switchProvider, switchingProvider]
+  );
+
   const getStatusText = () => {
     switch (status) {
       case "loading":
@@ -143,6 +184,38 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
   return (
     <PanelSection title={`🎵 ${provider?.name || "音乐"}登录`}>
+      {allProviders.length > 1 && (
+        <PanelSectionRow>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ fontSize: 14, opacity: 0.8 }}>选择音源后登录（无需先退出其他音源）</div>
+            <FocusableList gap="8px">
+              {allProviders.map((p) => {
+                const active = provider?.id === p.id;
+                return (
+                  <ButtonItem
+                    key={p.id}
+                    layout="below"
+                    disabled={providerLoading || switchingProvider || active}
+                    onClick={() => handleProviderSwitch(p.id)}
+                  >
+                    {active ? "✓ " : ""}
+                    {p.name}
+                  </ButtonItem>
+                );
+              })}
+            </FocusableList>
+          </div>
+        </PanelSectionRow>
+      )}
+
       <PanelSectionRow>
         <div
           style={{
@@ -186,27 +259,82 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
       {status === "loading" && <LoadingSpinner padding={20} />}
 
-      {status === "idle" && canQrLogin && isQQMusic && (
+      {status === "idle" && canQrLogin && (
         <PanelSectionRow>
-          <FocusableList gap="10px">
-            <ButtonItem layout="below" onClick={() => fetchQrCode("qq")}>
-              <FaQrcode style={{ marginRight: "8px" }} />
-              QQ 扫码登录
-            </ButtonItem>
-            <ButtonItem layout="below" onClick={() => fetchQrCode("wx")}>
-              <FaQrcode style={{ marginRight: "8px" }} />
-              微信扫码登录
-            </ButtonItem>
-          </FocusableList>
-        </PanelSectionRow>
-      )}
+          {providerLoading && allProviders.length === 0 ? (
+            <LoadingSpinner padding={12} />
+          ) : (
+            <FocusableList gap="10px">
+              {(isQQMusic || (!provider && hasQQ)) && (
+                <>
+                  <ButtonItem
+                    layout="below"
+                    disabled={switchingProvider || providerLoading}
+                    onClick={() => fetchQrCode("qq")}
+                  >
+                    <FaQrcode style={{ marginRight: "8px" }} />
+                    QQ 扫码登录
+                  </ButtonItem>
+                  <ButtonItem
+                    layout="below"
+                    disabled={switchingProvider || providerLoading}
+                    onClick={() => fetchQrCode("wx")}
+                  >
+                    <FaQrcode style={{ marginRight: "8px" }} />
+                    微信扫码登录
+                  </ButtonItem>
+                </>
+              )}
 
-      {status === "idle" && canQrLogin && isNetease && (
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={() => fetchQrCode("netease")}>
-            <FaQrcode style={{ marginRight: "8px" }} />
-            网易云扫码登录
-          </ButtonItem>
+              {hasNetease && !isNetease && (
+                <ButtonItem
+                  layout="below"
+                  disabled={switchingProvider || providerLoading}
+                  onClick={() => fetchQrCode("netease", "netease")}
+                >
+                  <FaQrcode style={{ marginRight: "8px" }} />
+                  网易云扫码登录
+                </ButtonItem>
+              )}
+              {isNetease && (
+                <ButtonItem
+                  layout="below"
+                  disabled={switchingProvider || providerLoading}
+                  onClick={() => fetchQrCode("netease")}
+                >
+                  <FaQrcode style={{ marginRight: "8px" }} />
+                  网易云扫码登录
+                </ButtonItem>
+              )}
+
+              {hasQQ && !isQQMusic && (
+                <>
+                  <ButtonItem
+                    layout="below"
+                    disabled={switchingProvider || providerLoading}
+                    onClick={() => fetchQrCode("qq", "qqmusic")}
+                  >
+                    <FaQrcode style={{ marginRight: "8px" }} />
+                    QQ 扫码登录
+                  </ButtonItem>
+                  <ButtonItem
+                    layout="below"
+                    disabled={switchingProvider || providerLoading}
+                    onClick={() => fetchQrCode("wx", "qqmusic")}
+                  >
+                    <FaQrcode style={{ marginRight: "8px" }} />
+                    微信扫码登录
+                  </ButtonItem>
+                </>
+              )}
+
+              {!hasNetease && !providerLoading && (
+                <div style={{ fontSize: 12, color: COLORS.textSecondary }}>
+                  未检测到网易云音源，请检查后端依赖或设置。
+                </div>
+              )}
+            </FocusableList>
+          )}
         </PanelSectionRow>
       )}
 

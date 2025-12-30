@@ -49,12 +49,13 @@ const HomePageComponent: FC<HomePageProps> = ({
   hasLegacyData = false,
 }) => {
   const dataManager = useDataManager();
-  const { hasCapability } = useProvider();
+  const { hasCapability, provider } = useProvider();
 
   const canSearch = hasCapability("search.song");
   const canViewPlaylists = hasCapability("playlist.user");
   const canRecommendPersonalized = hasCapability("recommend.personalized");
   const canRecommendDaily = hasCapability("recommend.daily");
+  const isNetease = provider?.id === "netease";
 
   const handleRefreshGuessLike = useCallback(() => {
     dataManager.refreshGuessLike();
@@ -127,16 +128,17 @@ const HomePageComponent: FC<HomePageProps> = ({
             <ButtonItem
               layout="below"
               onClick={handleRefreshGuessLike}
-              disabled={dataManager.guessLoading}
+              disabled={dataManager.guessLoading || isNetease}
             >
               <FaSyncAlt
                 size={12}
                 style={{
                   marginRight: "8px",
                   animation: dataManager.guessLoading ? "spin 1s linear infinite" : "none",
+                  opacity: isNetease ? 0.4 : 1,
                 }}
               />
-              换一批
+              {isNetease ? "已是今日推荐" : "换一批"}
             </ButtonItem>
           </PanelSectionRow>
 

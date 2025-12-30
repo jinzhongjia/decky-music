@@ -19,4 +19,5 @@ try:
 
     __all__.append("NeteaseProvider")
 except ImportError:
-    NeteaseProvider = None  # type: ignore[misc,assignment]
+    # TODO: 这里需要处理一下
+    pass

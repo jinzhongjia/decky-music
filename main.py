@@ -9,6 +9,10 @@ from pathlib import Path
 plugin_dir = Path(__file__).parent.resolve()
 if str(plugin_dir) not in sys.path:
     sys.path.insert(0, str(plugin_dir))
+# Ensure bundled python dependencies are importable (py_modules)
+py_modules_dir = plugin_dir / "py_modules"
+if py_modules_dir.exists() and str(py_modules_dir) not in sys.path:
+    sys.path.insert(0, str(py_modules_dir))
 
 import asyncio  # noqa: E402
 from functools import wraps  # noqa: E402
