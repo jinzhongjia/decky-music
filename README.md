@@ -191,6 +191,7 @@ echo "%wheel ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/wheel
 **3. 修改配置**
 
 编辑 `.mise.toml` 中的 `DECK_HOST`：
+
 ```toml
 DECK_HOST = "deck@<STEAM_DECK_IP>"
 ```
@@ -211,11 +212,10 @@ mise run dev
 2. 提交代码：`git add . && git commit -m "release: v0.0.x"`
 3. 打 tag：`git tag v0.0.x`
 4. 推送：`git push && git push --tags`
-5. GitHub Actions 会自动构建并创建 Release
+5. 进行 Release 发布操作，Github Actions 会自动构建产物放入 Release 页面
 
 ## 📋 待办事项
 
-- [ ] 音质选择
 - [ ] 悬浮歌词
 
 ## ⚠️ 注意事项
