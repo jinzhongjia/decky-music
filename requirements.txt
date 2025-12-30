@@ -1,7 +1,7 @@
 # Decky QQ Music Plugin - Python Dependencies
 # CI/CD 构建时安装到 py_modules 目录
 
-# 从 GitHub 拉取指定 commit 的代码
-# 使用 L-1124/QQMusicApi 仓库的 3ccc5daaf0b3d35a4b7375824b213c07687fa992 commit
-git+https://github.com/L-1124/QQMusicApi.git@3ccc5daaf0b3d35a4b7375824b213c07687fa992
+# 从 GitHub 拉取指定 tag 的代码
+# 使用 L-1124/QQMusicApi 仓库的 v0.4.1 版本
+git+https://github.com/L-1124/QQMusicApi.git@v0.4.1
 requests>=2.32.3
