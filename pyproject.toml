@@ -4,9 +4,12 @@ version = "1.0.0"
 description = "Decky Loader plugin for QQ Music"
 requires-python = ">=3.11"
 dependencies = [
-    "qqmusic-api-python>=0.3.6",
+    "qqmusic-api-python",
     "requests>=2.32.3",
 ]
+
+[tool.uv.sources]
+qqmusic-api-python = { git = "https://github.com/L-1124/QQMusicApi.git", tag = "v0.4.1" }
 
 [project.optional-dependencies]
 dev = [
