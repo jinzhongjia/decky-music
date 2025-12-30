@@ -1,11 +1,10 @@
 # Decky QQ Music 插件
 
-在 Steam Deck 上享受 QQ 音乐的 Decky Loader 插件。
-
 <p align="center">
   <img src="./assets/decky_music_logo_small.png" width="600" />
 </p>
 
+在 Steam Deck 上享受 QQ 音乐的 Decky Loader 插件。
 
 ## ✨ 功能特性
 
