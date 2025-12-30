@@ -3,7 +3,7 @@
 在 Steam Deck 上享受 QQ 音乐的 Decky Loader 插件。
 
 <p align="center">
-  <img src="https://private-user-images.githubusercontent.com/41784264/530347979-ad03569b-7bfc-4aa0-9847-7d82fa666288.jpg?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NjY3NDk5OTIsIm5iZiI6MTc2Njc0OTY5MiwicGF0aCI6Ii80MTc4NDI2NC81MzAzNDc5NzktYWQwMzU2OWItN2JmYy00YWEwLTk4NDctN2Q4MmZhNjY2Mjg4LmpwZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTEyMjYlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUxMjI2VDExNDgxMlomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTdkYjQ4NTk2MjI1MGMwMWZjNWU0NDg1NmFmZGMwNTJmOGQxZDdjMzc1OTNiYTM0ZjUzYmUyNjVlOGMzMDNlYjUmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.0G9e0l-pCcOgQ6XZhyy_mFNuUU7a96VgcfLhGbpOMbU" width="600" />
+  <img src="./assets/decky_music_logo_small.png" width="600" />
 </p>
 
 
