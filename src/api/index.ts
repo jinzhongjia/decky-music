@@ -26,6 +26,7 @@ import type {
   ProviderInfoResponse,
   ListProvidersResponse,
   SwitchProviderResponse,
+  ProviderSelectionResponse,
 } from "../types";
 
 // ==================== 登录相关 ====================
@@ -150,4 +151,8 @@ export const listProviders = callable<[], ListProvidersResponse>("list_providers
 
 export const switchProvider = callable<[providerId: string], SwitchProviderResponse>(
   "switch_provider"
+);
+
+export const getProviderSelection = callable<[], ProviderSelectionResponse>(
+  "get_provider_selection"
 );

@@ -161,6 +161,36 @@ class Plugin:
             decky.logger.error(f"保存前端设置失败: {e}")
             return {"success": False, "error": str(e)}
 
+    async def get_provider_selection(self) -> dict[str, object]:
+        """获取当前配置的主 Provider 和 fallback Provider（仅返回已登录的）"""
+        try:
+            main_id: str | None = None
+            if self._provider and await self._ensure_provider_logged_in(self._provider):
+                main_id = self._provider.id
+            else:
+                cfg_main = self.config.get_main_provider_id()
+                if cfg_main:
+                    provider = self._manager.get_provider(cfg_main)
+                    if provider and await self._ensure_provider_logged_in(provider):
+                        main_id = cfg_main
+
+            fallback_ids: list[str] = []
+            for fb_id in self.config.get_fallback_provider_ids():
+                if fb_id == main_id:
+                    continue
+                fb_provider = self._manager.get_provider(fb_id)
+                if fb_provider and await self._ensure_provider_logged_in(fb_provider):
+                    fallback_ids.append(fb_id)
+
+            return {
+                "success": True,
+                "mainProvider": main_id,
+                "fallbackProviders": fallback_ids,
+            }
+        except Exception as e:  # pragma: no cover - 依赖外部接口
+            decky.logger.error(f"获取 Provider 配置失败: {e}")
+            return {"success": False, "error": str(e), "mainProvider": None, "fallbackProviders": []}
+
     async def get_plugin_version(self) -> PluginVersionResponse:
         return {"success": True, "version": self.current_version}
 

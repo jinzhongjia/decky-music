@@ -198,6 +198,13 @@ export interface FrontendSettingsResponse {
   settings: FrontendSettings;
 }
 
+export interface ProviderSelectionResponse {
+  success: boolean;
+  mainProvider: string | null;
+  fallbackProviders: string[];
+  error?: string;
+}
+
 /** 播放状态 */
 export interface PlayerState {
   currentSong: SongInfo | null;

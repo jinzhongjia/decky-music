@@ -47,8 +47,7 @@ export const LoadingSpinner: FC<LoadingSpinnerProps> = ({ padding = 30 }) => {
       >
         {[0, 1, 2, 3].map((i) => (
           <div
-            // eslint-disable-next-line react/no-array-index-key
-            key={i}
+            key={`bar-${i}`}
             style={{
               ...barBaseStyle,
               animation: `music-loading-bar 0.9s ease-in-out ${i * 0.12}s infinite`,
