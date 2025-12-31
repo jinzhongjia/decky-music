@@ -30,3 +30,7 @@ run = """
 mise run build
 mise run deploy
 """
+
+[tasks.py-deps]
+description = "安装 Python 开发依赖（LSP 支持）"
+run = "uv sync --all-extras"

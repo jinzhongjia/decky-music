@@ -415,53 +415,13 @@ decky.logger.error("错误")
 
 ### 开发环境设置
 
-#### 前端依赖
-
-```bash
-pnpm install
-```
-
-#### Python 开发环境（LSP 支持）
-
-本项目使用 `uv` 管理 Python 开发环境。开发环境与构建环境分离：
-
-- **开发环境**: 使用 `.venv/` 虚拟环境，提供 LSP 类型检查和代码补全
-- **构建环境**: Docker 构建时自动安装依赖到 `py_modules/`
-
-```bash
-# 创建虚拟环境并安装依赖
-uv sync
-
-# 或者手动创建
-uv venv .venv
-uv pip install "git+https://github.com/L-1124/QQMusicApi.git@3ccc5daaf0b3d35a4b7375824b213c07687fa992"
-```
-
-安装后，IDE/编辑器的 Python LSP（如 Pyright/Pylance）将能够：
-- 识别 `qqmusic_api` 模块的类型信息
-- 提供代码补全和类型检查
-- 解析 `decky` 模块（通过 `decky.pyi` 类型存根）
-
-### 开发命令
-
-```bash
-# 类型检查
-pnpm run typecheck
-
-# Lint
-pnpm run lint
-pnpm run lint:fix
-
-# Python Lint
-pnpm run lint:py
-pnpm run lint:py:fix
-```
+可以参考 README.md 文件
 
 ### 部署到 Steam Deck
 
 通过 Decky Loader 在 Steam Deck 上加载未打包的插件进行调试。
 
-我们通过使用 rsync 工具将代码同步到 Steam Deck 上，这要求开发者在 Steam Deck 开启 SSH 服务。
+我们通过使用 rsync 工具将代码同步到 Steam Deck 上，默认开发者在 Steam Deck 开启 SSH 服务。
 
 并且 steamdeck 使用 `sudo` 不需要密码
 
@@ -472,6 +432,9 @@ pnpm run lint:py:fix
 ```bash
 # 构建
 mise run build
+
+# 构建并部署到 Steam Deck
+mise run deploy
 
 # 输出文件: out/QQMusic.zip 和 out/QQMusic/
 ```

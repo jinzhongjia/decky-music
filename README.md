@@ -78,38 +78,6 @@ mise run build
 
 ## 🛠️ 开发
 
-### 项目结构
-
-```
-decky-qqmusic/
-├── main.py                     # Python 后端主文件
-├── py_modules/                 # Python 依赖
-│   └── qqmusic_api/            # QQ音乐 API 库
-├── src/
-│   ├── index.tsx               # 前端入口
-│   ├── api/
-│   │   └── index.ts            # API 调用封装
-│   ├── components/
-│   │   ├── index.ts            # 组件导出
-│   │   ├── LoginPage.tsx       # 登录页面
-│   │   ├── HomePage.tsx        # 首页（推荐）
-│   │   ├── SearchPage.tsx      # 搜索页面
-│   │   ├── PlayerPage.tsx      # 全屏播放器
-│   │   ├── PlayerBar.tsx       # 迷你播放条
-│   │   ├── SongItem.tsx        # 歌曲列表项
-│   │   └── SongList.tsx        # 歌曲列表
-│   ├── hooks/
-│   │   └── usePlayer.ts        # 播放器状态管理
-│   ├── utils/
-│   │   └── format.ts           # 格式化工具
-│   └── types.d.ts              # TypeScript 类型定义
-├── dist/                       # 构建输出
-├── plugin.json                 # 插件配置
-├── package.json                # 前端依赖配置
-└── defaults/
-    └── defaults.txt            # 默认配置
-```
-
 ### 环境变量
 
 插件使用以下 Decky 环境变量：
@@ -230,5 +198,5 @@ BSD-3-Clause License
 ## 🙏 致谢
 
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) - Steam Deck 插件加载器
-- [QQMusicApi](https://github.com/L-1124/QQMusicApi) - QQ 音乐 API 库 (使用 commit: 3ccc5daaf0b3d35a4b7375824b213c07687fa992)
+- [QQMusicApi](https://github.com/L-1124/QQMusicApi) - QQ 音乐 API 库 (v0.4.1)
 - [decky-plugin-template](https://github.com/SteamDeckHomebrew/decky-plugin-template) - 插件模板
