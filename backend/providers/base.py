@@ -154,6 +154,7 @@ class MusicProvider(ABC):
 
     # ==================== 搜索相关 ====================
 
+    # TODO: 这里的返回值需要额外的进行声明
     async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> dict[str, Any]:
         """搜索歌曲
 
@@ -211,6 +212,7 @@ class MusicProvider(ABC):
         """
         return {"success": False, "error": "Not implemented", "urls": {}}
 
+    # TODO: 这个方法需要修改一下，返回值需要标注歌词格式，因为逐字歌词有时候拿不到
     async def get_song_lyric(self, mid: str, qrc: bool = True) -> dict[str, Any]:
         """获取歌词
 
