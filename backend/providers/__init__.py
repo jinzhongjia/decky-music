@@ -6,18 +6,12 @@
 from backend.providers.base import Capability, MusicProvider
 from backend.providers.manager import ProviderManager
 from backend.providers.qqmusic import QQMusicProvider
+from backend.providers.netease import NeteaseProvider
 
 __all__ = [
     "Capability",
     "MusicProvider",
     "ProviderManager",
     "QQMusicProvider",
+    "NeteaseProvider",
 ]
-
-try:
-    from backend.providers.netease import NeteaseProvider
-
-    __all__.append("NeteaseProvider")
-except ImportError:
-    # TODO: 这里需要处理一下
-    pass
