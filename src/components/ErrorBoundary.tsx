@@ -8,7 +8,6 @@ import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 
 interface Props {
   children: ReactNode;
-  fallback?: ReactNode;
 }
 
 interface State {
@@ -27,40 +26,34 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   render(): ReactNode {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
+    if (!this.state.hasError) return this.props.children;
 
-      return (
-        <PanelSection title="出错了">
-          <PanelSectionRow>
-            <div style={{ textAlign: "center", padding: "20px 0" }}>
-              <div style={{ fontSize: "32px", marginBottom: "12px" }}>😵</div>
-              <div style={{ color: "#b0b0b0", marginBottom: "16px" }}>插件遇到了一个错误</div>
-              {this.state.error && (
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#808080",
-                    background: "rgba(0,0,0,0.2)",
-                    padding: "8px",
-                    borderRadius: "4px",
-                    marginBottom: "16px",
-                    wordBreak: "break-word",
-                    maxHeight: "80px",
-                    overflow: "auto",
-                  }}
-                >
-                  {this.state.error.message}
-                </div>
-              )}
-            </div>
-          </PanelSectionRow>
-        </PanelSection>
-      );
-    }
-
-    return this.props.children;
+    return (
+      <PanelSection title="出错了">
+        <PanelSectionRow>
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ fontSize: "32px", marginBottom: "12px" }}>😵</div>
+            <div style={{ color: "#b0b0b0", marginBottom: "16px" }}>插件遇到了一个错误</div>
+            {this.state.error && (
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: "#808080",
+                  background: "rgba(0,0,0,0.2)",
+                  padding: "8px",
+                  borderRadius: "4px",
+                  marginBottom: "16px",
+                  wordBreak: "break-word",
+                  maxHeight: "80px",
+                  overflow: "auto",
+                }}
+              >
+                {this.state.error.message}
+              </div>
+            )}
+          </div>
+        </PanelSectionRow>
+      </PanelSection>
+    );
   }
 }
