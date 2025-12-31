@@ -3,7 +3,7 @@
  * 捕获子组件渲染错误，防止整个插件崩溃
  */
 
-import { Component, type ReactNode, type ErrorInfo } from "react";
+import { Component, type ReactNode } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 
 interface Props {
@@ -25,15 +25,6 @@ export class ErrorBoundary extends Component<Props, State> {
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    console.error("[QQMusic] 组件渲染错误:", error);
-    console.error("[QQMusic] 错误堆栈:", errorInfo.componentStack);
-  }
-
-  handleRetry = (): void => {
-    this.setState({ hasError: false, error: null });
-  };
 
   render(): ReactNode {
     if (this.state.hasError) {
@@ -65,11 +56,6 @@ export class ErrorBoundary extends Component<Props, State> {
                 </div>
               )}
             </div>
-          </PanelSectionRow>
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={this.handleRetry}>
-              重试
-            </ButtonItem>
           </PanelSectionRow>
         </PanelSection>
       );
