@@ -22,6 +22,7 @@
 
 - Steam Deck 已安装 [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
 - Node.js v16.14+ 和 pnpm v9
+- Python 3.11(steam decky 使用的是 3.11 版本)
 
 ### 从 Release 安装（推荐）
 
