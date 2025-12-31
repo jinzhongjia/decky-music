@@ -438,37 +438,7 @@ function Content() {
 
 // 插件导出
 export default definePlugin(() => {
-  // 添加全局样式
-  const style = document.createElement("style");
-  style.id = "decky-qqmusic-styles";
-  style.textContent = `
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-    
-    /* 防止滚动条导致宽度变化 */
-    .qqmusic-container {
-      overflow-x: hidden;
-      box-sizing: border-box;
-    }
-    
-    /* 控制按钮焦点高亮（使用 focusClassName） */
-    .qqmusic-control-btn-focused {
-      outline: 2px solid rgba(255, 255, 255, 0.9) !important;
-      outline-offset: 3px;
-      background: rgba(255, 255, 255, 0.2) !important;
-    }
-    
-    /* 播放/暂停按钮焦点高亮 */
-    .qqmusic-play-btn-focused {
-      outline: 3px solid #fff !important;
-      outline-offset: 4px;
-      box-shadow: 0 4px 28px rgba(29, 185, 84, 0.8) !important;
-    }
-  `;
-  document.head.appendChild(style);
-
+  // TODO: 修复 full screen 的错误
   // 注册全屏路由
   routerHook.addRoute(ROUTE_PATH, FullscreenPlayer);
 
@@ -487,11 +457,11 @@ export default definePlugin(() => {
     });
 
   return {
-    name: "QQ音乐",
+    name: "Decky Music",
     titleView: (
       <div className={staticClasses.Title}>
         <FaMusic style={{ marginRight: "8px" }} />
-        QQ音乐
+        Decky Music
       </div>
     ),
     content: (
@@ -501,6 +471,7 @@ export default definePlugin(() => {
     ),
     icon: <FaMusic />,
     onDismount() {
+      // some clean
       // 清理菜单 patch
       menuManager.cleanup();
 
