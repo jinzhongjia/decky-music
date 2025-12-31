@@ -4,6 +4,7 @@
 """
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ import requests
 import decky
 
 
+@lru_cache(maxsize=None)
 def load_plugin_version(plugin_json_path: Path | None = None) -> str:
     """读取 plugin.json 中的版本号
 
