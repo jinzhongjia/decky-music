@@ -5,7 +5,27 @@
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any
+
+from backend.types import (
+    DailyRecommendResponse,
+    FavSongsResponse,
+    HotSearchResponse,
+    LoginStatusResponse,
+    PlaylistSongsResponse,
+    RecommendPlaylistResponse,
+    RecommendResponse,
+    PreferredQuality,
+    SearchResponse,
+    SearchSuggestResponse,
+    SongInfoResponse,
+    SongLyricResponse,
+    SongUrlBatchResponse,
+    SongUrlResponse,
+    UserPlaylistsResponse,
+    QrCodeResponse,
+    QrStatusResponse,
+    OperationResult,
+)
 
 
 class Capability(Enum):
@@ -117,7 +137,7 @@ class MusicProvider(ABC):
 
     # ==================== 认证相关 ====================
 
-    async def get_qr_code(self, login_type: str = "qq") -> dict[str, Any]:
+    async def get_qr_code(self, login_type: str = "qq") -> QrCodeResponse:
         """获取登录二维码
 
         Args:
@@ -128,7 +148,7 @@ class MusicProvider(ABC):
         """
         return {"success": False, "error": "Not implemented"}
 
-    async def check_qr_status(self) -> dict[str, Any]:
+    async def check_qr_status(self) -> QrStatusResponse:
         """检查二维码扫描状态
 
         Returns:
@@ -136,7 +156,7 @@ class MusicProvider(ABC):
         """
         return {"success": False, "error": "Not implemented"}
 
-    async def get_login_status(self) -> dict[str, Any]:
+    async def get_login_status(self) -> LoginStatusResponse:
         """获取当前登录状态
 
         Returns:
@@ -144,7 +164,7 @@ class MusicProvider(ABC):
         """
         return {"logged_in": False, "error": "Not implemented"}
 
-    def logout(self) -> dict[str, Any]:
+    def logout(self) -> OperationResult:
         """退出登录
 
         Returns:
@@ -154,8 +174,7 @@ class MusicProvider(ABC):
 
     # ==================== 搜索相关 ====================
 
-    # TODO: 这里的返回值需要额外的进行声明
-    async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> dict[str, Any]:
+    async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> SearchResponse:
         """搜索歌曲
 
         Args:
@@ -166,9 +185,9 @@ class MusicProvider(ABC):
         Returns:
             搜索结果
         """
-        return {"success": False, "error": "Not implemented", "songs": []}
+        return {"success": False, "error": "Not implemented", "songs": [], "keyword": keyword, "page": page}
 
-    async def get_hot_search(self) -> dict[str, Any]:
+    async def get_hot_search(self) -> HotSearchResponse:
         """获取热门搜索
 
         Returns:
@@ -176,7 +195,7 @@ class MusicProvider(ABC):
         """
         return {"success": False, "error": "Not implemented", "hotkeys": []}
 
-    async def get_search_suggest(self, keyword: str) -> dict[str, Any]:
+    async def get_search_suggest(self, keyword: str) -> SearchSuggestResponse:
         """获取搜索建议
 
         Args:
@@ -189,7 +208,9 @@ class MusicProvider(ABC):
 
     # ==================== 播放相关 ====================
 
-    async def get_song_url(self, mid: str, preferred_quality: str | None = None) -> dict[str, Any]:
+    async def get_song_url(
+        self, mid: str, preferred_quality: PreferredQuality | None = None
+    ) -> SongUrlResponse:
         """获取歌曲播放链接
 
         Args:
@@ -201,7 +222,7 @@ class MusicProvider(ABC):
         """
         return {"success": False, "error": "Not implemented", "url": "", "mid": mid}
 
-    async def get_song_urls_batch(self, mids: list[str]) -> dict[str, Any]:
+    async def get_song_urls_batch(self, mids: list[str]) -> SongUrlBatchResponse:
         """批量获取歌曲播放链接
 
         Args:
@@ -212,8 +233,7 @@ class MusicProvider(ABC):
         """
         return {"success": False, "error": "Not implemented", "urls": {}}
 
-    # TODO: 这个方法需要修改一下，返回值需要标注歌词格式，因为逐字歌词有时候拿不到
-    async def get_song_lyric(self, mid: str, qrc: bool = True) -> dict[str, Any]:
+    async def get_song_lyric(self, mid: str, qrc: bool = True) -> SongLyricResponse:
         """获取歌词
 
         Args:
@@ -230,7 +250,7 @@ class MusicProvider(ABC):
             "trans": "",
         }
 
-    async def get_song_info(self, mid: str) -> dict[str, Any]:
+    async def get_song_info(self, mid: str) -> SongInfoResponse:
         """获取歌曲详细信息
 
         Args:
@@ -243,7 +263,7 @@ class MusicProvider(ABC):
 
     # ==================== 推荐相关 ====================
 
-    async def get_guess_like(self) -> dict[str, Any]:
+    async def get_guess_like(self) -> RecommendResponse:
         """获取猜你喜欢
 
         Returns:
@@ -251,7 +271,7 @@ class MusicProvider(ABC):
         """
         return {"success": False, "error": "Not implemented", "songs": []}
 
-    async def get_daily_recommend(self) -> dict[str, Any]:
+    async def get_daily_recommend(self) -> DailyRecommendResponse:
         """获取每日推荐
 
         Returns:
@@ -259,7 +279,7 @@ class MusicProvider(ABC):
         """
         return {"success": False, "error": "Not implemented", "songs": []}
 
-    async def get_recommend_playlists(self) -> dict[str, Any]:
+    async def get_recommend_playlists(self) -> RecommendPlaylistResponse:
         """获取推荐歌单
 
         Returns:
@@ -269,7 +289,7 @@ class MusicProvider(ABC):
 
     # ==================== 歌单相关 ====================
 
-    async def get_fav_songs(self, page: int = 1, num: int = 20) -> dict[str, Any]:
+    async def get_fav_songs(self, page: int = 1, num: int = 20) -> FavSongsResponse:
         """获取收藏歌曲
 
         Args:
@@ -281,7 +301,7 @@ class MusicProvider(ABC):
         """
         return {"success": False, "error": "Not implemented", "songs": [], "total": 0}
 
-    async def get_user_playlists(self) -> dict[str, Any]:
+    async def get_user_playlists(self) -> UserPlaylistsResponse:
         """获取用户歌单
 
         Returns:
@@ -294,7 +314,7 @@ class MusicProvider(ABC):
             "collected": [],
         }
 
-    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> dict[str, Any]:
+    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> PlaylistSongsResponse:
         """获取歌单中的歌曲
 
         Args:
@@ -304,4 +324,4 @@ class MusicProvider(ABC):
         Returns:
             歌单歌曲列表
         """
-        return {"success": False, "error": "Not implemented", "songs": []}
+        return {"success": False, "error": "Not implemented", "songs": [], "playlist_id": playlist_id}

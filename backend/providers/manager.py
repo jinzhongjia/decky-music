@@ -3,11 +3,17 @@
 管理所有 Provider，处理路由和 fallback。
 """
 
-from typing import Any
-
 import decky
 
 from backend.providers.base import Capability, MusicProvider
+from backend.types import (
+    ProviderFullInfo,
+    ProviderInfoPayload,
+    PreferredQuality,
+    SongInfo,
+    SongLyricResponse,
+    SongUrlResponse,
+)
 
 
 class ProviderManager:
@@ -47,7 +53,7 @@ class ProviderManager:
     def all_providers(self) -> list[MusicProvider]:
         return list(self._providers.values())
 
-    def get_capabilities(self) -> dict[str, Any]:
+    def get_capabilities(self) -> ProviderInfoPayload:
         if not self.active:
             return {"provider": None, "capabilities": []}
         return {
@@ -58,7 +64,7 @@ class ProviderManager:
             "capabilities": [c.value for c in self.active.capabilities],
         }
 
-    def list_providers_info(self) -> list[dict[str, Any]]:
+    def list_providers_info(self) -> list[ProviderFullInfo]:
         return [
             {
                 "id": p.id,
@@ -70,7 +76,7 @@ class ProviderManager:
 
     async def _match_song_in_provider(
         self, provider: MusicProvider, song_name: str, singer: str
-    ) -> dict[str, Any] | None:
+    ) -> SongInfo | None:
         """在指定 provider 中搜索匹配的歌曲"""
         if not provider.has_capability(Capability.SEARCH_SONG):
             return None
@@ -96,8 +102,8 @@ class ProviderManager:
         mid: str,
         song_name: str,
         singer: str,
-        preferred_quality: str | None = None,
-    ) -> dict[str, Any]:
+        preferred_quality: PreferredQuality | None = None,
+    ) -> SongUrlResponse:
         """获取播放链接，失败时尝试 fallback providers"""
         if not self.active:
             return {"success": False, "error": "No active provider", "url": "", "mid": mid}
@@ -138,7 +144,7 @@ class ProviderManager:
 
     async def get_song_lyric_with_fallback(
         self, mid: str, song_name: str, singer: str, qrc: bool = True
-    ) -> dict[str, Any]:
+    ) -> SongLyricResponse:
         """获取歌词，失败时尝试 fallback providers"""
         if not self.active:
             return {"success": False, "error": "No active provider", "lyric": "", "trans": ""}

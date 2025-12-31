@@ -4,11 +4,11 @@
 使用 pyncm 库进行 API 调用。
 """
 
-from datetime import datetime
 import random
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Mapping
 
 import decky
 from pyncm import (
@@ -20,13 +20,34 @@ from pyncm import (
 from pyncm.apis import WeapiCryptoRequest, cloudsearch, login, playlist, track, user
 
 from backend.providers.base import Capability, MusicProvider
+from backend.types import (
+    DailyRecommendResponse,
+    FavSongsResponse,
+    HotSearchResponse,
+    LoginStatusResponse,
+    OperationResult,
+    PlaylistInfo,
+    PlaylistSongsResponse,
+    PreferredQuality,
+    QrCodeResponse,
+    QrStatusResponse,
+    RecommendPlaylistResponse,
+    RecommendResponse,
+    SearchResponse,
+    SearchSuggestResponse,
+    SongInfo,
+    SongLyricResponse,
+    SongUrlResponse,
+    SongUrlBatchResponse,
+    UserPlaylistsResponse,
+)
 
 
 def _get_netease_settings_path() -> Path:
     return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "netease_session.txt"
 
 
-def _weapi_request(path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+def _weapi_request(path: str, payload: dict[str, object] | None = None) -> dict[str, object]:
     """调用网易云 Weapi 接口，自动携带当前 Session"""
     session = GetCurrentSession()
     # 确保 csrf_token 与 cookie 同步，部分接口需要 __csrf
@@ -42,7 +63,7 @@ def _weapi_request(path: str, payload: dict[str, Any] | None = None) -> dict[str
         return {"code": -1, "msg": str(e)}
 
 
-def _format_netease_song(item: dict[str, Any]) -> dict[str, Any]:
+def _format_netease_song(item: Mapping[str, object]) -> SongInfo:
     """格式化网易云歌曲为统一格式"""
     artists = item.get("ar", []) or item.get("artists", [])
     if isinstance(artists, list):
@@ -66,10 +87,11 @@ def _format_netease_song(item: dict[str, Any]) -> dict[str, Any]:
         "albumMid": "",
         "duration": duration_ms // 1000 if duration_ms > 1000 else duration_ms,
         "cover": cover,
+        "provider": "netease",
     }
 
 
-def _format_netease_playlist(item: dict[str, Any]) -> dict[str, Any]:
+def _format_netease_playlist(item: Mapping[str, object]) -> PlaylistInfo:
     """格式化网易云歌单为统一格式"""
     creator = item.get("creator", {})
     return {
@@ -80,6 +102,7 @@ def _format_netease_playlist(item: dict[str, Any]) -> dict[str, Any]:
         "songCount": item.get("trackCount", 0),
         "playCount": item.get("playCount", 0),
         "creator": creator.get("nickname", "") if isinstance(creator, dict) else "",
+        "provider": "netease",
     }
 
 
@@ -103,6 +126,8 @@ class NeteaseProvider(MusicProvider):
             Capability.AUTH_QR_LOGIN,
             Capability.AUTH_ANONYMOUS,
             Capability.SEARCH_SONG,
+            Capability.SEARCH_HOT,
+            Capability.SEARCH_SUGGEST,
             Capability.PLAY_SONG,
             Capability.PLAY_QUALITY_HIGH,
             Capability.PLAY_QUALITY_STANDARD,
@@ -144,7 +169,7 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"加载网易云凭证失败: {e}")
             return False
 
-    async def get_qr_code(self, login_type: str = "qq") -> dict[str, Any]:
+    async def get_qr_code(self, login_type: str = "qq") -> QrCodeResponse:
         try:
             result = login.LoginQrcodeUnikey()
             if result.get("code") != 200:
@@ -185,7 +210,7 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"获取网易云二维码失败: {e}")
             return {"success": False, "error": str(e)}
 
-    async def check_qr_status(self) -> dict[str, Any]:
+    async def check_qr_status(self) -> QrStatusResponse:
         if not self._qr_unikey:
             return {"success": False, "error": "没有可用的二维码"}
 
@@ -201,7 +226,7 @@ class NeteaseProvider(MusicProvider):
             }
             status = status_map.get(code, "unknown")
 
-            response: dict[str, Any] = {"success": True, "status": status}
+            response: QrStatusResponse = {"success": True, "status": status}
 
             if code == 803:
                 login.WriteLoginInfo(login.GetCurrentLoginStatus())
@@ -223,7 +248,7 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"检查网易云二维码状态失败: {e}")
             return {"success": False, "error": str(e)}
 
-    async def get_login_status(self) -> dict[str, Any]:
+    async def get_login_status(self) -> LoginStatusResponse:
         try:
             session = GetCurrentSession()
             if session.logged_in:
@@ -237,7 +262,7 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"获取网易云登录状态失败: {e}")
             return {"logged_in": False, "error": str(e)}
 
-    def logout(self) -> dict[str, Any]:
+    def logout(self) -> OperationResult:
         try:
             try:
                 login.LoginLogout()
@@ -259,10 +284,15 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"网易云退出登录失败: {e}")
             return {"success": False, "error": str(e)}
 
-    async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> dict[str, Any]:
+    async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> SearchResponse:
         try:
             offset = (page - 1) * num
-            result = cloudsearch.GetSearchResult(keyword, stype=cloudsearch.SONG, limit=num, offset=offset)
+            result = cloudsearch.GetSearchResult(
+                keyword,
+                stype=cloudsearch.SONG,
+                limit=num,
+                offset=offset
+            )
 
             if result.get("code") != 200:
                 return {
@@ -284,9 +314,9 @@ class NeteaseProvider(MusicProvider):
 
         except Exception as e:
             decky.logger.error(f"网易云搜索失败: {e}")
-            return {"success": False, "error": str(e), "songs": []}
+            return {"success": False, "error": str(e), "songs": [], "keyword": keyword, "page": page}
 
-    async def get_song_url(self, mid: str, preferred_quality: str | None = None) -> dict[str, Any]:
+    async def get_song_url(self, mid: str, preferred_quality: PreferredQuality | None = None) -> SongUrlResponse:
         try:
             song_id = int(mid)
 
@@ -339,7 +369,118 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"网易云获取播放链接失败: {e}")
             return {"success": False, "error": str(e), "url": "", "mid": mid}
 
-    async def get_song_lyric(self, mid: str, qrc: bool = True) -> dict[str, Any]:
+    async def get_song_urls_batch(self, mids: list[str]) -> SongUrlBatchResponse:
+        urls: dict[str, str] = {}
+        last_error = ""
+        for mid in mids:
+            single = await self.get_song_url(mid)
+            if single.get("success") and single.get("url"):
+                urls[mid] = str(single["url"])
+            else:
+                last_error = single.get("error", "")
+        if urls and len(urls) == len(mids):
+            return {"success": True, "urls": urls}
+        return {"success": False, "error": last_error or "部分歌曲获取失败", "urls": urls}
+
+    async def get_search_suggest(self, keyword: str) -> SearchSuggestResponse:
+        try:
+            if not keyword or not keyword.strip():
+                return {"success": True, "suggestions": []}
+
+            result = _weapi_request("/weapi/search/suggest/keyword", {"s": keyword})
+            result_data = result.get("result", {}) if isinstance(result, dict) else {}
+
+            suggestions: list[dict[str, str]] = []
+
+            for item in result_data.get("songs", []):
+                if not isinstance(item, dict):
+                    continue
+                singers = item.get("artists", [])
+                singer_name = ""
+                if isinstance(singers, list):
+                    singer_name = ", ".join(
+                        [a.get("name", "") for a in singers if isinstance(a, dict) and a.get("name")]
+                    )
+                elif isinstance(singers, str):
+                    singer_name = singers
+                name = item.get("name", "")
+                if name:
+                    suggestions.append({"type": "song", "keyword": str(name), "singer": singer_name})
+
+            for item in result_data.get("artists", []):
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name", "")
+                if name:
+                    suggestions.append({"type": "singer", "keyword": str(name)})
+
+            for item in result_data.get("albums", []):
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name", "")
+                artist = item.get("artist", {})
+                singer = artist.get("name", "") if isinstance(artist, dict) else ""
+                if name:
+                    suggestions.append({"type": "album", "keyword": str(name), "singer": singer})
+
+            return {"success": True, "suggestions": suggestions[:10]}
+        except Exception as e:
+            decky.logger.error(f"网易云获取搜索建议失败: {e}")
+            return {"success": False, "error": str(e), "suggestions": []}
+
+    async def get_hot_search(self) -> HotSearchResponse:
+        try:
+            # 优先使用带评分的热搜列表
+            result = _weapi_request("/weapi/search/hot/detail", {})
+            hot_list = result.get("data", []) or result.get("result", {}).get("hots", [])
+
+            hotkeys: list[dict[str, object]] = []
+            for item in hot_list:
+                if not isinstance(item, dict):
+                    continue
+                keyword = item.get("searchWord") or item.get("first") or ""
+                if not keyword:
+                    continue
+                score_raw = item.get("score") or item.get("second") or 0
+                score = int(score_raw) if isinstance(score_raw, (int, float)) else 0
+                hotkeys.append({"keyword": str(keyword), "score": score})
+
+            return {"success": True, "hotkeys": hotkeys[:20]}
+        except Exception as e:
+            decky.logger.error(f"网易云获取热搜失败: {e}")
+            return {"success": False, "error": str(e), "hotkeys": []}
+
+    async def get_fav_songs(self, page: int = 1, num: int = 20) -> FavSongsResponse:
+        session = GetCurrentSession()
+        if not session.logged_in:
+            return {"success": False, "error": "未登录", "songs": [], "total": 0}
+
+        try:
+            # /likelist 返回喜欢歌曲的 ID 列表
+            like_ids_resp = _weapi_request("/weapi/song/like/get", {"uid": session.uid})
+            ids = like_ids_resp.get("ids", []) if isinstance(like_ids_resp, dict) else []
+            if not ids:
+                return {"success": True, "songs": [], "total": 0}
+
+            offset = (page - 1) * num
+            total = len(ids)
+            slice_ids = ids[offset : offset + num]
+            if not slice_ids:
+                return {"success": True, "songs": [], "total": total}
+
+            detail_result = track.GetTrackDetail(slice_ids)
+            if detail_result.get("code") != 200:
+                return {"success": False, "error": "获取歌曲详情失败", "songs": [], "total": total}
+
+            songs_data = detail_result.get("songs", [])
+            songs = [_format_netease_song(s) for s in songs_data]
+
+            return {"success": True, "songs": songs, "total": total}
+        except Exception as e:
+            decky.logger.error(f"网易云获取收藏歌曲失败: {e}")
+            return {"success": False, "error": str(e), "songs": [], "total": 0}
+
+    async def get_song_lyric(self, mid: str, qrc: bool = True) -> SongLyricResponse:
         try:
             song_id = int(mid)
             result = track.GetTrackLyricsNew(song_id)
@@ -379,7 +520,7 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"网易云获取歌词失败: {e}")
             return {"success": False, "error": str(e), "lyric": "", "trans": ""}
 
-    async def get_user_playlists(self) -> dict[str, Any]:
+    async def get_user_playlists(self) -> UserPlaylistsResponse:
         try:
             session = GetCurrentSession()
             if not session.logged_in:
@@ -426,12 +567,12 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"网易云获取用户歌单失败: {e}")
             return {"success": False, "error": str(e), "created": [], "collected": []}
 
-    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> dict[str, Any]:
+    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> PlaylistSongsResponse:
         try:
             result = playlist.GetPlaylistInfo(playlist_id)
 
             if result.get("code") != 200:
-                return {"success": False, "error": "获取歌单歌曲失败", "songs": []}
+                return {"success": False, "error": "获取歌单歌曲失败", "songs": [], "playlist_id": playlist_id}
 
             track_ids = result.get("playlist", {}).get("trackIds", [])
             if not track_ids:
@@ -441,7 +582,7 @@ class NeteaseProvider(MusicProvider):
             detail_result = track.GetTrackDetail(ids)
 
             if detail_result.get("code") != 200:
-                return {"success": False, "error": "获取歌曲详情失败", "songs": []}
+                return {"success": False, "error": "获取歌曲详情失败", "songs": [], "playlist_id": playlist_id}
 
             songs_data = detail_result.get("songs", [])
             songs = [_format_netease_song(s) for s in songs_data]
@@ -455,11 +596,12 @@ class NeteaseProvider(MusicProvider):
 
         except Exception as e:
             decky.logger.error(f"网易云获取歌单歌曲失败: {e}")
-            return {"success": False, "error": str(e), "songs": []}
+            return {"success": False, "error": str(e), "songs": [], "playlist_id": playlist_id}
 
-    async def get_guess_like(self) -> dict[str, Any]:
+    async def get_guess_like(self) -> RecommendResponse:
         """猜你喜欢（个性化推荐新歌）"""
         try:
+            # TODO: 这个固定 50 吗？？？
             result = _weapi_request(
                 "/weapi/personalized/newsong",
                 {"limit": 50, "timestamp": int(time.time() * 1000)},
@@ -477,7 +619,7 @@ class NeteaseProvider(MusicProvider):
 
             # 去重后返回全部个性化新歌
             seen = set()
-            songs: list[dict[str, Any]] = []
+            songs: list[SongInfo] = []
             for item in song_items:
                 song_obj = item.get("song") if isinstance(item, dict) else None
                 target = song_obj or item
@@ -495,7 +637,7 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"网易云获取猜你喜欢失败: {e}")
             return {"success": False, "error": str(e), "songs": []}
 
-    async def get_daily_recommend(self) -> dict[str, Any]:
+    async def get_daily_recommend(self) -> DailyRecommendResponse:
         """每日推荐歌曲（需登录）"""
         session = GetCurrentSession()
         if not session.logged_in:
@@ -531,7 +673,7 @@ class NeteaseProvider(MusicProvider):
             decky.logger.error(f"网易云获取每日推荐失败: {e}")
             return {"success": False, "error": str(e), "songs": []}
 
-    async def get_recommend_playlists(self) -> dict[str, Any]:
+    async def get_recommend_playlists(self) -> RecommendPlaylistResponse:
         """推荐歌单/每日推荐歌单（需登录）"""
         session = GetCurrentSession()
         if not session.logged_in:

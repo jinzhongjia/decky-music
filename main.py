@@ -16,23 +16,72 @@ if py_modules_dir.exists() and str(py_modules_dir) not in sys.path:
 
 import asyncio  # noqa: E402
 from functools import wraps  # noqa: E402
-from typing import Any, Callable, TypeVar  # noqa: E402
+from typing import (  # noqa: E402
+    Awaitable,
+    Callable,
+    Concatenate,
+    ParamSpec,
+    TypeVar,
+    cast,
+)
 from urllib.parse import urlparse  # noqa: E402
 
-F = TypeVar("F", bound=Callable[..., Any])
+from backend.types import (  # noqa: E402
+    DailyRecommendResponse,
+    DownloadResult,
+    FavSongsResponse,
+    FrontendSettings,
+    FrontendSettingsResponse,
+    HotSearchResponse,
+    ListProvidersResponse,
+    LoginStatusResponse,
+    OperationResult,
+    PluginVersionResponse,
+    PreferredQuality,
+    ProviderInfoResponse,
+    QrCodeResponse,
+    QrStatusResponse,
+    RecommendPlaylistResponse,
+    RecommendResponse,
+    SearchResponse,
+    SearchSuggestResponse,
+    SongInfoResponse,
+    SongLyricResponse,
+    SongUrlBatchResponse,
+    SongUrlResponse,
+    SwitchProviderResponse,
+    UpdateInfo,
+    UserPlaylistsResponse,
+    PlaylistSongsResponse,
+)
+
+ResponseDict = TypeVar("ResponseDict", bound=dict[str, object])
+P = ParamSpec("P")
 
 
-def require_provider(**default_fields: Any) -> Callable[[F], F]:
+def require_provider(
+    **default_fields: object,
+) -> Callable[
+    [Callable[Concatenate["Plugin", P], Awaitable[ResponseDict]]],
+    Callable[Concatenate["Plugin", P], Awaitable[ResponseDict]],
+]:
     """装饰器：检查 Provider 是否可用，不可用时返回错误响应"""
 
-    def decorator(func: F) -> F:
+    def decorator(
+        func: Callable[Concatenate["Plugin", P], Awaitable[ResponseDict]],
+    ) -> Callable[Concatenate["Plugin", P], Awaitable[ResponseDict]]:
         @wraps(func)
-        async def wrapper(self: "Plugin", *args: Any, **kwargs: Any) -> dict[str, Any]:
+        async def wrapper(self: "Plugin", *args: P.args, **kwargs: P.kwargs) -> ResponseDict:
             if not self._provider:
-                return {"success": False, "error": "No active provider", **default_fields}
+                base_response: dict[str, object] = {
+                    "success": False,
+                    "error": "No active provider",
+                }
+                base_response.update(default_fields)
+                return cast(ResponseDict, base_response)
             return await func(self, *args, **kwargs)
 
-        return wrapper  # type: ignore
+        return wrapper
 
     return decorator
 
@@ -40,6 +89,7 @@ def require_provider(**default_fields: Any) -> Callable[[F], F]:
 import decky  # noqa: E402
 from backend import (  # noqa: E402
     NeteaseProvider,
+    MusicProvider,
     ProviderManager,
     QQMusicProvider,
     download_file,
@@ -67,17 +117,17 @@ class Plugin:
         self._manager.switch("qqmusic")
 
     @property
-    def _provider(self):
+    def _provider(self) -> MusicProvider | None:
         return self._manager.active
 
-    async def get_frontend_settings(self) -> dict[str, Any]:
+    async def get_frontend_settings(self) -> FrontendSettingsResponse:
         try:
             return {"success": True, "settings": load_frontend_settings()}
         except Exception as e:
             decky.logger.error(f"获取前端设置失败: {e}")
             return {"success": False, "settings": {}, "error": str(e)}
 
-    async def save_frontend_settings(self, settings: dict[str, Any]) -> dict[str, Any]:
+    async def save_frontend_settings(self, settings: FrontendSettings) -> OperationResult:
         try:
             existing = load_frontend_settings()
             merged = {**existing, **(settings or {})}
@@ -87,10 +137,10 @@ class Plugin:
             decky.logger.error(f"保存前端设置失败: {e}")
             return {"success": False, "error": str(e)}
 
-    async def get_plugin_version(self) -> dict[str, Any]:
+    async def get_plugin_version(self) -> PluginVersionResponse:
         return {"success": True, "version": self.current_version}
 
-    async def check_update(self) -> dict[str, Any]:
+    async def check_update(self) -> UpdateInfo:
         api_url = "https://api.github.com/repos/jinzhongjia/decky-qqmusic/releases/latest"
         try:
             release = await asyncio.to_thread(http_get_json, api_url)
@@ -124,7 +174,7 @@ class Plugin:
             decky.logger.error(f"检查更新失败: {e}")
             return {"success": False, "error": str(e)}
 
-    async def download_update(self, url: str, filename: str | None = None) -> dict[str, Any]:
+    async def download_update(self, url: str, filename: str | None = None) -> DownloadResult:
         if not url:
             return {"success": False, "error": "缺少下载链接"}
         try:
@@ -140,13 +190,13 @@ class Plugin:
             decky.logger.error(f"下载更新失败: {e}")
             return {"success": False, "error": str(e)}
 
-    async def get_provider_info(self) -> dict[str, Any]:
+    async def get_provider_info(self) -> ProviderInfoResponse:
         return {"success": True, **self._manager.get_capabilities()}
 
-    async def list_providers(self) -> dict[str, Any]:
+    async def list_providers(self) -> ListProvidersResponse:
         return {"success": True, "providers": self._manager.list_providers_info()}
 
-    async def switch_provider(self, provider_id: str) -> dict[str, Any]:
+    async def switch_provider(self, provider_id: str) -> SwitchProviderResponse:
         try:
             self._manager.switch(provider_id)
             return {"success": True}
@@ -154,22 +204,22 @@ class Plugin:
             return {"success": False, "error": str(e)}
 
     @require_provider()
-    async def get_qr_code(self, login_type: str = "qq") -> dict[str, Any]:
+    async def get_qr_code(self, login_type: str = "qq") -> QrCodeResponse:
         return await self._provider.get_qr_code(login_type)
 
     @require_provider()
-    async def check_qr_status(self) -> dict[str, Any]:
+    async def check_qr_status(self) -> QrStatusResponse:
         return await self._provider.check_qr_status()
 
     @require_provider(logged_in=False)
-    async def get_login_status(self) -> dict[str, Any]:
+    async def get_login_status(self) -> LoginStatusResponse:
         return await self._provider.get_login_status()
 
     @require_provider()
-    async def logout(self) -> dict[str, Any]:
+    async def logout(self) -> OperationResult:
         return self._provider.logout()
 
-    async def clear_all_settings(self) -> dict[str, Any]:
+    async def clear_all_settings(self) -> OperationResult:
         try:
             if self._provider:
                 self._provider.logout()
@@ -185,40 +235,40 @@ class Plugin:
             return {"success": False, "error": str(e)}
 
     @require_provider(songs=[])
-    async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> dict[str, Any]:
+    async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> SearchResponse:
         return await self._provider.search_songs(keyword, page, num)
 
     @require_provider(hotkeys=[])
-    async def get_hot_search(self) -> dict[str, Any]:
+    async def get_hot_search(self) -> HotSearchResponse:
         return await self._provider.get_hot_search()
 
     @require_provider(suggestions=[])
-    async def get_search_suggest(self, keyword: str) -> dict[str, Any]:
+    async def get_search_suggest(self, keyword: str) -> SearchSuggestResponse:
         return await self._provider.get_search_suggest(keyword)
 
     @require_provider(songs=[])
-    async def get_guess_like(self) -> dict[str, Any]:
+    async def get_guess_like(self) -> RecommendResponse:
         return await self._provider.get_guess_like()
 
     @require_provider(songs=[])
-    async def get_daily_recommend(self) -> dict[str, Any]:
+    async def get_daily_recommend(self) -> DailyRecommendResponse:
         return await self._provider.get_daily_recommend()
 
     @require_provider(playlists=[])
-    async def get_recommend_playlists(self) -> dict[str, Any]:
+    async def get_recommend_playlists(self) -> RecommendPlaylistResponse:
         return await self._provider.get_recommend_playlists()
 
     @require_provider(songs=[], total=0)
-    async def get_fav_songs(self, page: int = 1, num: int = 20) -> dict[str, Any]:
+    async def get_fav_songs(self, page: int = 1, num: int = 20) -> FavSongsResponse:
         return await self._provider.get_fav_songs(page, num)
 
     async def get_song_url(
         self,
         mid: str,
-        preferred_quality: str | None = None,
+        preferred_quality: PreferredQuality | None = None,
         song_name: str | None = None,
         singer: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> SongUrlResponse:
         if not self._provider:
             return {"success": False, "error": "No active provider", "url": "", "mid": mid}
 
@@ -227,7 +277,7 @@ class Plugin:
         return await self._provider.get_song_url(mid, preferred_quality)
 
     @require_provider(urls={})
-    async def get_song_urls_batch(self, mids: list[str]) -> dict[str, Any]:
+    async def get_song_urls_batch(self, mids: list[str]) -> SongUrlBatchResponse:
         return await self._provider.get_song_urls_batch(mids)
 
     async def get_song_lyric(
@@ -236,7 +286,7 @@ class Plugin:
         qrc: bool = True,
         song_name: str | None = None,
         singer: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> SongLyricResponse:
         if not self._provider:
             return {"success": False, "error": "No active provider", "lyric": "", "trans": ""}
 
@@ -245,15 +295,15 @@ class Plugin:
         return await self._provider.get_song_lyric(mid, qrc)
 
     @require_provider(info={})
-    async def get_song_info(self, mid: str) -> dict[str, Any]:
+    async def get_song_info(self, mid: str) -> SongInfoResponse:
         return await self._provider.get_song_info(mid)
 
     @require_provider(created=[], collected=[])
-    async def get_user_playlists(self) -> dict[str, Any]:
+    async def get_user_playlists(self) -> UserPlaylistsResponse:
         return await self._provider.get_user_playlists()
 
     @require_provider(songs=[])
-    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> dict[str, Any]:
+    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> PlaylistSongsResponse:
         return await self._provider.get_playlist_songs(playlist_id, dirid)
 
     async def _main(self):

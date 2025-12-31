@@ -6,11 +6,10 @@
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
-
 import requests
 
 import decky
+from backend.types import FrontendSettings
 
 
 @lru_cache(maxsize=None)
@@ -43,7 +42,7 @@ def get_frontend_settings_path() -> Path:
     return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "frontend_settings.json"
 
 
-def load_frontend_settings() -> dict[str, Any]:
+def load_frontend_settings() -> FrontendSettings:
     """加载前端设置
 
     Returns:
@@ -59,7 +58,7 @@ def load_frontend_settings() -> dict[str, Any]:
     return {}
 
 
-def save_frontend_settings(settings: dict[str, Any]) -> bool:
+def save_frontend_settings(settings: FrontendSettings) -> bool:
     """保存前端设置
 
     Args:
@@ -102,7 +101,7 @@ def normalize_version(version: str) -> tuple[int, ...] | None:
     return tuple(parts)
 
 
-def http_get_json(url: str) -> dict[str, Any]:
+def http_get_json(url: str) -> dict[str, object]:
     """同步获取 JSON 数据
 
     Args:
@@ -146,90 +145,3 @@ def download_file(url: str, dest: Path) -> None:
             for chunk in resp.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-
-
-def format_song(item: dict[str, Any]) -> dict[str, Any]:
-    """格式化歌曲信息为统一格式
-
-    Args:
-        item: 原始歌曲数据
-
-    Returns:
-        格式化后的歌曲信息字典
-    """
-    # 处理歌手信息
-    singers = item.get("singer", [])
-    if isinstance(singers, list):
-        singer_name = ", ".join(
-            [s.get("name", "") for s in singers if s.get("name")])
-    else:
-        singer_name = str(singers)
-
-    # 获取专辑信息
-    album = item.get("album", {})
-    if isinstance(album, dict):
-        album_name = album.get("name", "")
-        album_mid = album.get("mid", "")
-    else:
-        album_name = ""
-        album_mid = ""
-
-    # 获取歌曲 mid
-    mid = item.get("mid", "") or item.get("songmid", "")
-
-    return {
-        "id":
-        item.get("id", 0) or item.get("songid", 0),
-        "mid":
-        mid,
-        "name":
-        item.get("name", "") or item.get("title", "")
-        or item.get("songname", ""),
-        "singer":
-        singer_name,
-        "album":
-        album_name,
-        "albumMid":
-        album_mid,
-        "duration":
-        item.get("interval", 0),
-        "cover":
-        f"https://y.qq.com/music/photo_new/T002R300x300M000{album_mid}.jpg"
-        if album_mid else "",
-    }
-
-
-def format_playlist_item(item: dict[str, Any],
-                         is_collected: bool = False) -> dict[str, Any]:
-    """格式化歌单项为统一格式
-
-    Args:
-        item: 原始歌单数据
-        is_collected: 是否为收藏的歌单（影响 creator 字段）
-
-    Returns:
-        格式化后的歌单信息字典
-    """
-    creator = item.get("creator", {})
-    creator_name = creator.get("nick", "") if isinstance(
-        creator, dict) else item.get("creator_name", "")
-
-    return {
-        "id":
-        item.get("tid", 0) or item.get("dissid", 0),
-        "dirid":
-        item.get("dirid", 0),
-        "name":
-        item.get("dirName", "") or item.get("diss_name", "")
-        or item.get("name", "") or item.get("title", ""),
-        "cover":
-        item.get("picUrl", "") or item.get("diss_cover", "")
-        or item.get("logo", "") or item.get("pic", ""),
-        "songCount":
-        item.get("songNum", 0) or item.get("song_cnt", 0)
-        or item.get("songnum", 0) or item.get("song_count", 0),
-        "playCount":
-        item.get("listen_num", 0),
-        "creator":
-        creator_name if is_collected else "",
-    }

@@ -10,6 +10,7 @@ export interface SongInfo {
   albumMid?: string;
   duration: number;
   cover: string;
+  provider: string;
 }
 
 /** 歌单信息 */
@@ -21,6 +22,7 @@ export interface PlaylistInfo {
   songCount: number;
   playCount?: number;
   creator?: string;
+  provider: string;
 }
 
 // ==================== 登录相关 ====================

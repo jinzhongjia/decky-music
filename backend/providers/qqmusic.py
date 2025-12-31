@@ -6,11 +6,34 @@
 import base64
 import json
 from datetime import datetime
-from typing import Any
 
 import decky
+from typing import Mapping
+
 from backend.providers.base import Capability, MusicProvider
-from backend.util import format_playlist_item, format_song, get_settings_path
+from backend.types import (
+    DailyRecommendResponse,
+    FavSongsResponse,
+    HotSearchResponse,
+    LoginStatusResponse,
+    OperationResult,
+    PlaylistSongsResponse,
+    PreferredQuality,
+    QrCodeResponse,
+    QrStatusResponse,
+    RecommendPlaylistResponse,
+    RecommendResponse,
+    SearchResponse,
+    SearchSuggestResponse,
+    SongInfo,
+    PlaylistInfo,
+    SongInfoResponse,
+    SongLyricResponse,
+    SongUrlBatchResponse,
+    SongUrlResponse,
+    UserPlaylistsResponse,
+)
+from backend.util import get_settings_path
 from qqmusic_api import Credential, login, lyric, recommend, search, song, songlist, user
 from qqmusic_api.login import QR, QRCodeLoginEvents, QRLoginType
 from qqmusic_api.utils.session import get_session
@@ -18,6 +41,54 @@ from qqmusic_api.utils.session import get_session
 
 class QQMusicProvider(MusicProvider):
     """QQ 音乐服务 Provider"""
+
+    @staticmethod
+    def _format_song(item: Mapping[str, object]) -> SongInfo:
+        """格式化 QQ 音乐歌曲为统一结构"""
+        singers = item.get("singer", [])
+        if isinstance(singers, list):
+            singer_name = ", ".join([s.get("name", "") for s in singers if s.get("name")])
+        else:
+            singer_name = str(singers)
+
+        album = item.get("album", {})
+        if isinstance(album, dict):
+            album_name = album.get("name", "")
+            album_mid = album.get("mid", "")
+        else:
+            album_name = ""
+            album_mid = ""
+
+        mid = item.get("mid", "") or item.get("songmid", "")
+
+        return {
+            "id": item.get("id", 0) or item.get("songid", 0),
+            "mid": mid,
+            "name": item.get("name", "") or item.get("title", "") or item.get("songname", ""),
+            "singer": singer_name,
+            "album": album_name,
+            "albumMid": album_mid,
+            "duration": item.get("interval", 0),
+            "cover": f"https://y.qq.com/music/photo_new/T002R300x300M000{album_mid}.jpg" if album_mid else "",
+            "provider": "qqmusic",
+        }
+
+    @staticmethod
+    def _format_playlist_item(item: Mapping[str, object], is_collected: bool = False) -> PlaylistInfo:
+        """格式化 QQ 音乐歌单为统一结构"""
+        creator = item.get("creator", {})
+        creator_name = creator.get("nick", "") if isinstance(creator, dict) else item.get("creator_name", "")
+
+        return {
+            "id": item.get("tid", 0) or item.get("dissid", 0),
+            "dirid": item.get("dirid", 0),
+            "name": item.get("dirName", "") or item.get("diss_name", "") or item.get("name", "") or item.get("title", ""),
+            "cover": item.get("picUrl", "") or item.get("diss_cover", "") or item.get("logo", "") or item.get("pic", ""),
+            "songCount": item.get("songNum", 0) or item.get("song_cnt", 0) or item.get("songnum", 0) or item.get("song_count", 0),
+            "playCount": item.get("listen_num", 0),
+            "creator": creator_name if is_collected else "",
+            "provider": "qqmusic",
+        }
 
     def __init__(self) -> None:
         self.credential: Credential | None = None
@@ -107,7 +178,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.warning(f"检查凭证状态失败: {e}")
             return False
 
-    async def get_qr_code(self, login_type: str = "qq") -> dict[str, Any]:
+    async def get_qr_code(self, login_type: str = "qq") -> QrCodeResponse:
         try:
             qr_type = QRLoginType.QQ if login_type == "qq" else QRLoginType.WX
             self.current_qr = await login.get_qrcode(qr_type)
@@ -124,7 +195,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取二维码失败: {e}")
             return {"success": False, "error": str(e)}
 
-    async def check_qr_status(self) -> dict[str, Any]:
+    async def check_qr_status(self) -> QrStatusResponse:
         if not self.current_qr:
             return {"success": False, "error": "没有可用的二维码"}
 
@@ -141,7 +212,7 @@ class QQMusicProvider(MusicProvider):
             }
 
             status = status_map.get(event, "unknown")
-            result: dict[str, Any] = {"success": True, "status": status}
+            result: QrStatusResponse = {"success": True, "status": status}
 
             if event == QRCodeLoginEvents.DONE and credential:
                 self.credential = credential
@@ -159,7 +230,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"检查二维码状态失败: {e}")
             return {"success": False, "error": str(e)}
 
-    async def get_login_status(self) -> dict[str, Any]:
+    async def get_login_status(self) -> LoginStatusResponse:
         try:
             if not self.credential:
                 self.load_credential()
@@ -169,7 +240,7 @@ class QQMusicProvider(MusicProvider):
                 is_valid = await self._ensure_credential_valid()
 
                 if is_valid:
-                    result: dict[str, Any] = {
+                    result: LoginStatusResponse = {
                         "logged_in": True,
                         "musicid": self.credential.musicid,
                         "encrypt_uin": self.credential.encrypt_uin,
@@ -186,7 +257,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取登录状态失败: {e}")
             return {"logged_in": False, "error": str(e)}
 
-    def logout(self) -> dict[str, Any]:
+    def logout(self) -> OperationResult:
         try:
             self.credential = None
             self.current_qr = None
@@ -203,7 +274,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"退出登录失败: {e}")
             return {"success": False, "error": str(e)}
 
-    async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> dict[str, Any]:
+    async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> SearchResponse:
         try:
             results = await search.search_by_type(
                 keyword=keyword,
@@ -212,7 +283,7 @@ class QQMusicProvider(MusicProvider):
                 page=page,
             )
 
-            songs = [format_song(item) for item in results]
+            songs = [self._format_song(item) for item in results]
 
             decky.logger.info(f"搜索'{keyword}'找到 {len(songs)} 首歌曲")
             return {
@@ -224,9 +295,9 @@ class QQMusicProvider(MusicProvider):
 
         except Exception as e:
             decky.logger.error(f"搜索失败: {e}")
-            return {"success": False, "error": str(e), "songs": []}
+            return {"success": False, "error": str(e), "songs": [], "keyword": keyword, "page": page}
 
-    async def get_hot_search(self) -> dict[str, Any]:
+    async def get_hot_search(self) -> HotSearchResponse:
         try:
             result = await search.hotkey()
             hotkeys = []
@@ -243,7 +314,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取热搜失败: {e}")
             return {"success": False, "error": str(e), "hotkeys": []}
 
-    async def get_search_suggest(self, keyword: str) -> dict[str, Any]:
+    async def get_search_suggest(self, keyword: str) -> SearchSuggestResponse:
         try:
             if not keyword or not keyword.strip():
                 return {"success": True, "suggestions": []}
@@ -281,7 +352,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取搜索建议失败: {e}")
             return {"success": False, "error": str(e), "suggestions": []}
 
-    async def get_guess_like(self) -> dict[str, Any]:
+    async def get_guess_like(self) -> RecommendResponse:
         try:
             result = await recommend.get_guess_recommend()
 
@@ -289,7 +360,7 @@ class QQMusicProvider(MusicProvider):
             track_list = result.get("tracks", []) or result.get("data", {}).get("tracks", [])
 
             for item in track_list:
-                songs.append(format_song(item))
+                songs.append(self._format_song(item))
 
             decky.logger.info(f"获取猜你喜欢 {len(songs)} 首")
             return {"success": True, "songs": songs}
@@ -298,7 +369,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取猜你喜欢失败: {e}")
             return {"success": False, "error": str(e), "songs": []}
 
-    async def get_daily_recommend(self) -> dict[str, Any]:
+    async def get_daily_recommend(self) -> DailyRecommendResponse:
         try:
             result = await recommend.get_radar_recommend()
 
@@ -306,14 +377,14 @@ class QQMusicProvider(MusicProvider):
             song_list = result.get("SongList", []) or result.get("data", {}).get("SongList", [])
 
             for item in song_list:
-                songs.append(format_song(item))
+                songs.append(self._format_song(item))
 
             if not songs:
                 result = await recommend.get_recommend_newsong()
                 song_list = result.get("songlist", []) or result.get("data", {}).get("songlist", [])
                 for item in song_list:
                     if isinstance(item, dict):
-                        songs.append(format_song(item))
+                        songs.append(self._format_song(item))
 
             decky.logger.info(f"获取每日推荐 {len(songs)} 首")
             return {
@@ -326,7 +397,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取每日推荐失败: {e}")
             return {"success": False, "error": str(e), "songs": []}
 
-    async def get_recommend_playlists(self) -> dict[str, Any]:
+    async def get_recommend_playlists(self) -> RecommendPlaylistResponse:
         try:
             result = await recommend.get_recommend_songlist()
 
@@ -342,6 +413,7 @@ class QQMusicProvider(MusicProvider):
                         "songCount": item.get("song_cnt", 0),
                         "playCount": item.get("listen_num", 0),
                         "creator": item.get("username", ""),
+                        "provider": self.id,
                     }
                 )
 
@@ -351,7 +423,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取推荐歌单失败: {e}")
             return {"success": False, "error": str(e), "playlists": []}
 
-    async def get_fav_songs(self, page: int = 1, num: int = 20) -> dict[str, Any]:
+    async def get_fav_songs(self, page: int = 1, num: int = 20) -> FavSongsResponse:
         try:
             if not self.credential or not self.encrypt_uin:
                 return {
@@ -365,7 +437,7 @@ class QQMusicProvider(MusicProvider):
 
             songs = []
             for item in result.get("songlist", []):
-                songs.append(format_song(item))
+                songs.append(self._format_song(item))
 
             return {
                 "success": True,
@@ -377,7 +449,9 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取收藏歌曲失败: {e}")
             return {"success": False, "error": str(e), "songs": [], "total": 0}
 
-    async def get_song_url(self, mid: str, preferred_quality: str | None = None) -> dict[str, Any]:
+    async def get_song_url(
+        self, mid: str, preferred_quality: PreferredQuality | None = None
+    ) -> SongUrlResponse:
         has_credential = self.credential is not None and self.credential.has_musicid()
         if has_credential:
             is_valid = await self._ensure_credential_valid()
@@ -453,7 +527,7 @@ class QQMusicProvider(MusicProvider):
         decky.logger.warning(f"无法获取歌曲 {mid}: {error_msg}")
         return {"success": False, "url": "", "mid": mid, "error": error_msg}
 
-    async def get_song_urls_batch(self, mids: list[str]) -> dict[str, Any]:
+    async def get_song_urls_batch(self, mids: list[str]) -> SongUrlBatchResponse:
         try:
             urls = await song.get_song_urls(
                 mid=mids,
@@ -467,7 +541,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"批量获取播放链接失败: {e}")
             return {"success": False, "error": str(e), "urls": {}}
 
-    async def get_song_lyric(self, mid: str, qrc: bool = True) -> dict[str, Any]:
+    async def get_song_lyric(self, mid: str, qrc: bool = True) -> SongLyricResponse:
         try:
             result = await lyric.get_lyric(mid, qrc=qrc, trans=True)
 
@@ -490,7 +564,7 @@ class QQMusicProvider(MusicProvider):
                 "trans": "",
             }
 
-    async def get_song_info(self, mid: str) -> dict[str, Any]:
+    async def get_song_info(self, mid: str) -> SongInfoResponse:
         try:
             result = await song.get_detail(mid)
             return {"success": True, "info": result}
@@ -498,7 +572,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取歌曲信息失败: {e}")
             return {"success": False, "error": str(e), "info": {}}
 
-    async def get_user_playlists(self) -> dict[str, Any]:
+    async def get_user_playlists(self) -> UserPlaylistsResponse:
         try:
             if not self.credential or not self.credential.has_musicid():
                 return {
@@ -514,7 +588,7 @@ class QQMusicProvider(MusicProvider):
             created_list = []
             try:
                 created_result = await user.get_created_songlist(musicid, credential=self.credential)
-                created_list = [format_playlist_item(item, is_collected=False) for item in created_result]
+                created_list = [self._format_playlist_item(item, is_collected=False) for item in created_result]
             except Exception as e:
                 decky.logger.warning(f"获取创建的歌单失败: {e}")
 
@@ -527,7 +601,7 @@ class QQMusicProvider(MusicProvider):
                         or collected_result.get("v_playlist", [])
                         or collected_result.get("data", {}).get("v_list", [])
                     )
-                    collected_list = [format_playlist_item(item, is_collected=True) for item in fav_list]
+                    collected_list = [self._format_playlist_item(item, is_collected=True) for item in fav_list]
                 except Exception as e:
                     decky.logger.warning(f"获取收藏的歌单失败: {e}")
 
@@ -547,11 +621,11 @@ class QQMusicProvider(MusicProvider):
                 "collected": [],
             }
 
-    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> dict[str, Any]:
+    async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> PlaylistSongsResponse:
         try:
             songs_data = await songlist.get_songlist(playlist_id, dirid)
 
-            songs = [format_song(item) for item in songs_data]
+            songs = [self._format_song(item) for item in songs_data]
 
             decky.logger.info(f"获取歌单 {playlist_id} 的歌曲: {len(songs)} 首")
             return {
@@ -562,4 +636,4 @@ class QQMusicProvider(MusicProvider):
 
         except Exception as e:
             decky.logger.error(f"获取歌单歌曲失败: {e}")
-            return {"success": False, "error": str(e), "songs": []}
+            return {"success": False, "error": str(e), "songs": [], "playlist_id": playlist_id}
