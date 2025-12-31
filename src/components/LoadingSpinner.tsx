@@ -7,14 +7,14 @@ interface LoadingSpinnerProps {
   padding?: number | string;
 }
 
-const STYLE_ID = "qqmusic-loading-style";
+const STYLE_ID = "music-loading-style";
 
 const ensureStylesInjected = () => {
   if (document.getElementById(STYLE_ID)) return;
   const styleEl = document.createElement("style");
   styleEl.id = STYLE_ID;
   styleEl.textContent = `
-    @keyframes qqmusic-loading-bar {
+    @keyframes music-loading-bar {
       0% { transform: scaleY(0.4); opacity: 0.5; }
       50% { transform: scaleY(1); opacity: 1; }
       100% { transform: scaleY(0.4); opacity: 0.5; }
@@ -51,7 +51,7 @@ export const LoadingSpinner: FC<LoadingSpinnerProps> = ({ padding = 30 }) => {
             key={i}
             style={{
               ...barBaseStyle,
-              animation: `qqmusic-loading-bar 0.9s ease-in-out ${i * 0.12}s infinite`,
+              animation: `music-loading-bar 0.9s ease-in-out ${i * 0.12}s infinite`,
             }}
           />
         ))}
