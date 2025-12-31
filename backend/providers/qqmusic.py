@@ -5,11 +5,11 @@
 
 import base64
 import json
+from collections.abc import Mapping
 from datetime import datetime
 
 import decky
-from typing import Mapping
-
+from backend.config_manager import ConfigManager
 from backend.providers.base import Capability, MusicProvider
 from backend.types import (
     DailyRecommendResponse,
@@ -17,6 +17,7 @@ from backend.types import (
     HotSearchResponse,
     LoginStatusResponse,
     OperationResult,
+    PlaylistInfo,
     PlaylistSongsResponse,
     PreferredQuality,
     QrCodeResponse,
@@ -26,14 +27,12 @@ from backend.types import (
     SearchResponse,
     SearchSuggestResponse,
     SongInfo,
-    PlaylistInfo,
     SongInfoResponse,
     SongLyricResponse,
     SongUrlBatchResponse,
     SongUrlResponse,
     UserPlaylistsResponse,
 )
-from backend.util import get_settings_path
 from qqmusic_api import Credential, login, lyric, recommend, search, song, songlist, user
 from qqmusic_api.login import QR, QRCodeLoginEvents, QRLoginType
 from qqmusic_api.utils.session import get_session
@@ -94,6 +93,7 @@ class QQMusicProvider(MusicProvider):
         self.credential: Credential | None = None
         self.current_qr: QR | None = None
         self.encrypt_uin: str | None = None
+        self._config = ConfigManager()
 
     @property
     def id(self) -> str:
@@ -127,10 +127,8 @@ class QQMusicProvider(MusicProvider):
         if not self.credential:
             return False
         try:
-            settings_path = get_settings_path()
-            settings_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(settings_path, "w", encoding="utf-8") as f:
-                f.write(self.credential.as_json())
+            data = json.loads(self.credential.as_json())
+            self._config.set_qqmusic_credential(data)
             decky.logger.info("凭证保存成功")
             return True
         except Exception as e:
@@ -139,10 +137,8 @@ class QQMusicProvider(MusicProvider):
 
     def load_credential(self) -> bool:
         try:
-            settings_path = get_settings_path()
-            if settings_path.exists():
-                with open(settings_path, encoding="utf-8") as f:
-                    data = json.load(f)
+            data = self._config.get_qqmusic_credential()
+            if data:
                 self.credential = Credential.from_cookies_dict(data)
                 self.encrypt_uin = self.credential.encrypt_uin if self.credential else None
                 if self.credential:
@@ -263,9 +259,7 @@ class QQMusicProvider(MusicProvider):
             self.current_qr = None
             self.encrypt_uin = None
 
-            settings_path = get_settings_path()
-            if settings_path.exists():
-                settings_path.unlink()
+            self._config.delete_qqmusic_credential()
 
             decky.logger.info("已退出登录")
             return {"success": True}

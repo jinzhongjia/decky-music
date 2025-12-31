@@ -5,8 +5,8 @@
 
 from backend.providers.base import Capability, MusicProvider
 from backend.providers.manager import ProviderManager
-from backend.providers.qqmusic import QQMusicProvider
 from backend.providers.netease import NeteaseProvider
+from backend.providers.qqmusic import QQMusicProvider
 
 __all__ = [
     "Capability",

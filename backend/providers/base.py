@@ -11,10 +11,13 @@ from backend.types import (
     FavSongsResponse,
     HotSearchResponse,
     LoginStatusResponse,
+    OperationResult,
     PlaylistSongsResponse,
+    PreferredQuality,
+    QrCodeResponse,
+    QrStatusResponse,
     RecommendPlaylistResponse,
     RecommendResponse,
-    PreferredQuality,
     SearchResponse,
     SearchSuggestResponse,
     SongInfoResponse,
@@ -22,9 +25,6 @@ from backend.types import (
     SongUrlBatchResponse,
     SongUrlResponse,
     UserPlaylistsResponse,
-    QrCodeResponse,
-    QrStatusResponse,
-    OperationResult,
 )
 
 
@@ -146,6 +146,7 @@ class MusicProvider(ABC):
         Returns:
             包含二维码数据的响应
         """
+        del login_type
         return {"success": False, "error": "Not implemented"}
 
     async def check_qr_status(self) -> QrStatusResponse:
@@ -185,7 +186,8 @@ class MusicProvider(ABC):
         Returns:
             搜索结果
         """
-        return {"success": False, "error": "Not implemented", "songs": [], "keyword": keyword, "page": page}
+        del keyword, page, num
+        return {"success": False, "error": "Not implemented", "songs": [], "keyword": "", "page": 1}
 
     async def get_hot_search(self) -> HotSearchResponse:
         """获取热门搜索
@@ -204,6 +206,7 @@ class MusicProvider(ABC):
         Returns:
             搜索建议列表
         """
+        del keyword
         return {"success": False, "error": "Not implemented", "suggestions": []}
 
     # ==================== 播放相关 ====================
@@ -220,7 +223,8 @@ class MusicProvider(ABC):
         Returns:
             播放链接
         """
-        return {"success": False, "error": "Not implemented", "url": "", "mid": mid}
+        del mid, preferred_quality
+        return {"success": False, "error": "Not implemented", "url": "", "mid": ""}
 
     async def get_song_urls_batch(self, mids: list[str]) -> SongUrlBatchResponse:
         """批量获取歌曲播放链接
@@ -231,6 +235,7 @@ class MusicProvider(ABC):
         Returns:
             播放链接映射
         """
+        del mids
         return {"success": False, "error": "Not implemented", "urls": {}}
 
     async def get_song_lyric(self, mid: str, qrc: bool = True) -> SongLyricResponse:
@@ -243,6 +248,7 @@ class MusicProvider(ABC):
         Returns:
             歌词内容
         """
+        del mid, qrc
         return {
             "success": False,
             "error": "Not implemented",
@@ -259,6 +265,7 @@ class MusicProvider(ABC):
         Returns:
             歌曲信息
         """
+        del mid
         return {"success": False, "error": "Not implemented", "info": {}}
 
     # ==================== 推荐相关 ====================
@@ -299,6 +306,7 @@ class MusicProvider(ABC):
         Returns:
             收藏歌曲列表
         """
+        del page, num
         return {"success": False, "error": "Not implemented", "songs": [], "total": 0}
 
     async def get_user_playlists(self) -> UserPlaylistsResponse:
@@ -324,4 +332,5 @@ class MusicProvider(ABC):
         Returns:
             歌单歌曲列表
         """
-        return {"success": False, "error": "Not implemented", "songs": [], "playlist_id": playlist_id}
+        del playlist_id, dirid
+        return {"success": False, "error": "Not implemented", "songs": [], "playlist_id": 0}

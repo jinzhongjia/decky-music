@@ -1,18 +1,18 @@
 """工具函数模块
 
-提供版本处理、设置管理、HTTP 请求、数据格式化等通用工具函数。
+提供版本处理、HTTP 请求、数据格式化等通用工具函数。
 """
 
 import json
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
+
 import requests
 
 import decky
-from backend.types import FrontendSettings
 
 
-@lru_cache(maxsize=None)
+@cache
 def load_plugin_version(plugin_json_path: Path) -> str:
     """读取 plugin.json 中的版本号
 
@@ -28,54 +28,6 @@ def load_plugin_version(plugin_json_path: Path) -> str:
     with open(plugin_json_path, encoding="utf-8") as f:
         data = json.load(f)
     return str(data.get("version", "")).strip()
-
-
-@lru_cache(maxsize=None)
-def get_settings_path() -> Path:
-    """获取凭证设置文件路径"""
-    return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "credential.json"
-
-
-@lru_cache(maxsize=None)
-def get_frontend_settings_path() -> Path:
-    """获取前端设置文件路径"""
-    return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "frontend_settings.json"
-
-
-def load_frontend_settings() -> FrontendSettings:
-    """加载前端设置
-
-    Returns:
-        设置字典，加载失败返回空字典
-    """
-    try:
-        settings_path = get_frontend_settings_path()
-        if settings_path.exists():
-            with open(settings_path, encoding="utf-8") as f:
-                return json.load(f)
-    except Exception as e:
-        decky.logger.error(f"加载前端设置失败: {e}")
-    return {}
-
-
-def save_frontend_settings(settings: FrontendSettings) -> bool:
-    """保存前端设置
-
-    Args:
-        settings: 要保存的设置字典
-
-    Returns:
-        是否保存成功
-    """
-    try:
-        settings_path = get_frontend_settings_path()
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(settings_path, "w", encoding="utf-8") as f:
-            json.dump(settings, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        decky.logger.error(f"保存前端设置失败: {e}")
-        return False
 
 
 def normalize_version(version: str) -> tuple[int, ...] | None:

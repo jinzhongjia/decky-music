@@ -15,10 +15,9 @@ if py_modules_dir.exists() and str(py_modules_dir) not in sys.path:
     sys.path.insert(0, str(py_modules_dir))
 
 import asyncio  # noqa: E402
+from collections.abc import Awaitable, Callable  # noqa: E402
 from functools import wraps  # noqa: E402
 from typing import (  # noqa: E402
-    Awaitable,
-    Callable,
     Concatenate,
     ParamSpec,
     TypeVar,
@@ -36,6 +35,7 @@ from backend.types import (  # noqa: E402
     ListProvidersResponse,
     LoginStatusResponse,
     OperationResult,
+    PlaylistSongsResponse,
     PluginVersionResponse,
     PreferredQuality,
     ProviderInfoResponse,
@@ -52,7 +52,6 @@ from backend.types import (  # noqa: E402
     SwitchProviderResponse,
     UpdateInfo,
     UserPlaylistsResponse,
-    PlaylistSongsResponse,
 )
 
 ResponseDict = TypeVar("ResponseDict", bound=dict[str, object])
@@ -88,17 +87,14 @@ def require_provider(
 
 import decky  # noqa: E402
 from backend import (  # noqa: E402
-    NeteaseProvider,
+    ConfigManager,
     MusicProvider,
+    NeteaseProvider,
     ProviderManager,
     QQMusicProvider,
+    check_for_update,
     download_file,
-    get_frontend_settings_path,
-    http_get_json,
-    load_frontend_settings,
     load_plugin_version,
-    normalize_version,
-    save_frontend_settings,
 )
 
 
@@ -108,7 +104,7 @@ class Plugin:
     def __init__(self) -> None:
         plugin_path = Path(__file__).with_name("plugin.json")
         self.current_version = load_plugin_version(plugin_path)
-        self.loop: asyncio.AbstractEventLoop | None = None
+        self.config = ConfigManager()
         self._manager = ProviderManager()
         self._manager.register(QQMusicProvider())
         if NeteaseProvider is not None:
@@ -116,23 +112,51 @@ class Plugin:
             self._manager.set_fallback_order(["netease"])
         self._manager.switch("qqmusic")
 
+    async def _ensure_provider_logged_in(self, provider: MusicProvider) -> bool:
+        """检查 provider 登录状态，未登录则返回 False"""
+        try:
+            status = await provider.get_login_status()
+            return bool(status.get("logged_in"))
+        except Exception as e:  # pragma: no cover - 依赖外部接口
+            decky.logger.error(f"检查 {provider.id} 登录状态失败: {e}")
+            return False
+
+    async def _apply_provider_config(self) -> None:
+        """根据配置选择主 Provider 和 fallback Provider（仅使用已登录的 Provider）"""
+        main_id = self.config.get_main_provider_id()
+        fallback_ids_config = self.config.get_fallback_provider_ids()
+
+        # 处理主 Provider
+        if main_id:
+            provider = self._manager.get_provider(main_id)
+            if provider and await self._ensure_provider_logged_in(provider):
+                self._manager.switch(main_id)
+
+        # 处理 fallback Provider 列表，必须已登录且不同于主 Provider
+        fallback_ids: list[str] = []
+        for fb_id in fallback_ids_config:
+            if fb_id == self._manager.active_id:
+                continue
+            fb_provider = self._manager.get_provider(fb_id)
+            if fb_provider and await self._ensure_provider_logged_in(fb_provider):
+                fallback_ids.append(fb_id)
+        self._manager.set_fallback_order(fallback_ids)
+
     @property
     def _provider(self) -> MusicProvider | None:
         return self._manager.active
 
     async def get_frontend_settings(self) -> FrontendSettingsResponse:
         try:
-            return {"success": True, "settings": load_frontend_settings()}
+            return {"success": True, "settings": self.config.get_frontend_settings()}
         except Exception as e:
             decky.logger.error(f"获取前端设置失败: {e}")
             return {"success": False, "settings": {}, "error": str(e)}
 
     async def save_frontend_settings(self, settings: FrontendSettings) -> OperationResult:
         try:
-            existing = load_frontend_settings()
-            merged = {**existing, **(settings or {})}
-            ok = save_frontend_settings(merged)
-            return {"success": ok}
+            self.config.update_frontend_settings(settings or {})
+            return {"success": True}
         except Exception as e:
             decky.logger.error(f"保存前端设置失败: {e}")
             return {"success": False, "error": str(e)}
@@ -141,38 +165,7 @@ class Plugin:
         return {"success": True, "version": self.current_version}
 
     async def check_update(self) -> UpdateInfo:
-        api_url = "https://api.github.com/repos/jinzhongjia/decky-qqmusic/releases/latest"
-        try:
-            release = await asyncio.to_thread(http_get_json, api_url)
-            latest_version = str(release.get("tag_name") or release.get("name") or "").strip()
-            assets = release.get("assets") or []
-            asset = next(
-                (item for item in assets if str(item.get("name", "")).lower().endswith(".zip")),
-                None,
-            )
-            if not asset and assets:
-                asset = assets[0]
-
-            download_url = asset.get("browser_download_url") if asset else None
-            asset_name = asset.get("name") if asset else None
-
-            current_norm = normalize_version(self.current_version)
-            latest_norm = normalize_version(latest_version)
-            has_update = current_norm is not None and latest_norm is not None and latest_norm > current_norm
-
-            return {
-                "success": True,
-                "currentVersion": self.current_version,
-                "latestVersion": latest_version,
-                "hasUpdate": has_update,
-                "downloadUrl": download_url,
-                "releasePage": release.get("html_url"),
-                "assetName": asset_name,
-                "notes": release.get("body", ""),
-            }
-        except Exception as e:
-            decky.logger.error(f"检查更新失败: {e}")
-            return {"success": False, "error": str(e)}
+        return await check_for_update(self.current_version)
 
     async def download_update(self, url: str, filename: str | None = None) -> DownloadResult:
         if not url:
@@ -199,6 +192,7 @@ class Plugin:
     async def switch_provider(self, provider_id: str) -> SwitchProviderResponse:
         try:
             self._manager.switch(provider_id)
+            self.config.set_main_provider_id(provider_id)
             return {"success": True}
         except ValueError as e:
             return {"success": False, "error": str(e)}
@@ -224,9 +218,7 @@ class Plugin:
             if self._provider:
                 self._provider.logout()
 
-            frontend_path = get_frontend_settings_path()
-            if frontend_path.exists():
-                frontend_path.unlink()
+            self.config.clear_all()
 
             decky.logger.info("已清除插件数据")
             return {"success": True}
@@ -307,10 +299,9 @@ class Plugin:
         return await self._provider.get_playlist_songs(playlist_id, dirid)
 
     async def _main(self):
-        self.loop = asyncio.get_event_loop()
         decky.logger.info("Decky QQ Music 插件已加载")
+        await self._apply_provider_config()
         if self._provider:
-            self._provider.load_credential()
             decky.logger.info(f"当前 Provider: {self._provider.name}")
 
     async def _unload(self):

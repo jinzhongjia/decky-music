@@ -4,12 +4,11 @@
 """
 
 import decky
-
 from backend.providers.base import Capability, MusicProvider
 from backend.types import (
+    PreferredQuality,
     ProviderFullInfo,
     ProviderInfoPayload,
-    PreferredQuality,
     SongInfo,
     SongLyricResponse,
     SongUrlResponse,

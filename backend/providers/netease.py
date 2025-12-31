@@ -4,13 +4,11 @@
 使用 pyncm 库进行 API 调用。
 """
 
-import random
 import time
+from collections.abc import Mapping
+from contextlib import suppress
 from datetime import datetime
-from pathlib import Path
-from typing import Mapping
 
-import decky
 from pyncm import (
     DumpSessionAsString,
     GetCurrentSession,
@@ -19,6 +17,8 @@ from pyncm import (
 )
 from pyncm.apis import WeapiCryptoRequest, cloudsearch, login, playlist, track, user
 
+import decky
+from backend.config_manager import ConfigManager
 from backend.providers.base import Capability, MusicProvider
 from backend.types import (
     DailyRecommendResponse,
@@ -37,14 +37,10 @@ from backend.types import (
     SearchSuggestResponse,
     SongInfo,
     SongLyricResponse,
-    SongUrlResponse,
     SongUrlBatchResponse,
+    SongUrlResponse,
     UserPlaylistsResponse,
 )
-
-
-def _get_netease_settings_path() -> Path:
-    return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "netease_session.txt"
 
 
 def _weapi_request(path: str, payload: dict[str, object] | None = None) -> dict[str, object]:
@@ -111,6 +107,7 @@ class NeteaseProvider(MusicProvider):
 
     def __init__(self) -> None:
         self._qr_unikey: str | None = None
+        self._config = ConfigManager()
 
     @property
     def id(self) -> str:
@@ -146,9 +143,7 @@ class NeteaseProvider(MusicProvider):
             if not session.logged_in:
                 return False
             session_str = DumpSessionAsString(session)
-            settings_path = _get_netease_settings_path()
-            settings_path.parent.mkdir(parents=True, exist_ok=True)
-            settings_path.write_text(session_str, encoding="utf-8")
+            self._config.set_netease_session(session_str)
             decky.logger.info("网易云凭证保存成功")
             return True
         except Exception as e:
@@ -157,10 +152,9 @@ class NeteaseProvider(MusicProvider):
 
     def load_credential(self) -> bool:
         try:
-            settings_path = _get_netease_settings_path()
-            if not settings_path.exists():
+            session_str = self._config.get_netease_session()
+            if not session_str:
                 return False
-            session_str = settings_path.read_text(encoding="utf-8")
             session = LoadSessionFromString(session_str)
             SetCurrentSession(session)
             decky.logger.info("网易云凭证加载成功")
@@ -170,6 +164,7 @@ class NeteaseProvider(MusicProvider):
             return False
 
     async def get_qr_code(self, login_type: str = "qq") -> QrCodeResponse:
+        del login_type
         try:
             result = login.LoginQrcodeUnikey()
             if result.get("code") != 200:
@@ -179,9 +174,10 @@ class NeteaseProvider(MusicProvider):
             qr_url = login.GetLoginQRCodeUrl(self._qr_unikey)
 
             try:
-                import qrcode
-                import io
                 import base64
+                import io
+
+                import qrcode
 
                 qr = qrcode.QRCode(version=1, box_size=10, border=2)
                 qr.add_data(qr_url)
@@ -264,18 +260,14 @@ class NeteaseProvider(MusicProvider):
 
     def logout(self) -> OperationResult:
         try:
-            try:
+            with suppress(Exception):
                 login.LoginLogout()
-            except Exception:
-                pass
 
             from pyncm import SetNewSession
 
             SetNewSession()
 
-            settings_path = _get_netease_settings_path()
-            if settings_path.exists():
-                settings_path.unlink()
+            self._config.delete_netease_session()
 
             self._qr_unikey = None
             decky.logger.info("网易云已退出登录")
@@ -481,6 +473,7 @@ class NeteaseProvider(MusicProvider):
             return {"success": False, "error": str(e), "songs": [], "total": 0}
 
     async def get_song_lyric(self, mid: str, qrc: bool = True) -> SongLyricResponse:
+        del qrc
         try:
             song_id = int(mid)
             result = track.GetTrackLyricsNew(song_id)
@@ -569,6 +562,7 @@ class NeteaseProvider(MusicProvider):
 
     async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> PlaylistSongsResponse:
         try:
+            del dirid
             result = playlist.GetPlaylistInfo(playlist_id)
 
             if result.get("code") != 200:
