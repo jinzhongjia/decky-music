@@ -14,7 +14,7 @@ import decky
 
 
 @lru_cache(maxsize=None)
-def load_plugin_version(plugin_json_path: Path | None = None) -> str:
+def load_plugin_version(plugin_json_path: Path) -> str:
     """读取 plugin.json 中的版本号
 
     Args:
@@ -23,26 +23,21 @@ def load_plugin_version(plugin_json_path: Path | None = None) -> str:
     Returns:
         版本号字符串，读取失败返回空字符串
     """
-    try:
-        if plugin_json_path is None:
-            # 默认使用 main.py 所在目录
-            import __main__
-
-            plugin_json_path = Path(__main__.__file__).with_name("plugin.json")
-        if plugin_json_path.exists():
-            with open(plugin_json_path, encoding="utf-8") as f:
-                data = json.load(f)
-            return str(data.get("version", "")).strip()
-    except Exception as e:
-        decky.logger.warning(f"读取版本号失败: {e}")
-    return ""
+    if not plugin_json_path.exists():
+        decky.logger.error(f"未找到 plugin.json 文件: {plugin_json_path}")
+        return ""
+    with open(plugin_json_path, encoding="utf-8") as f:
+        data = json.load(f)
+    return str(data.get("version", "")).strip()
 
 
+@lru_cache(maxsize=None)
 def get_settings_path() -> Path:
     """获取凭证设置文件路径"""
     return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "credential.json"
 
 
+@lru_cache(maxsize=None)
 def get_frontend_settings_path() -> Path:
     """获取前端设置文件路径"""
     return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "frontend_settings.json"

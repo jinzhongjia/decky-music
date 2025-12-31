@@ -56,7 +56,8 @@ class Plugin:
     """Decky QQ Music 插件主类"""
 
     def __init__(self) -> None:
-        self.current_version = load_plugin_version()
+        plugin_path = Path(__file__).with_name("plugin.json")
+        self.current_version = load_plugin_version(plugin_path)
         self.loop: asyncio.AbstractEventLoop | None = None
         self._manager = ProviderManager()
         self._manager.register(QQMusicProvider())
