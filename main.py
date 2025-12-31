@@ -167,12 +167,6 @@ class Plugin:
             main_id: str | None = None
             if self._provider and await self._ensure_provider_logged_in(self._provider):
                 main_id = self._provider.id
-            else:
-                cfg_main = self.config.get_main_provider_id()
-                if cfg_main:
-                    provider = self._manager.get_provider(cfg_main)
-                    if provider and await self._ensure_provider_logged_in(provider):
-                        main_id = cfg_main
 
             fallback_ids: list[str] = []
             for fb_id in self.config.get_fallback_provider_ids():
