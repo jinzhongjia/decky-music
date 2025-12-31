@@ -1,10 +1,5 @@
-/**
- * 加载状态组件
- * 统一加载状态的显示样式
- */
-
-import { FC } from "react";
-import { PanelSectionRow, Spinner } from "@decky/ui";
+import { FC, useEffect } from "react";
+import { PanelSectionRow } from "@decky/ui";
 import { FLEX_CENTER_HORIZONTAL } from "../utils/styles";
 
 interface LoadingSpinnerProps {
@@ -12,18 +7,55 @@ interface LoadingSpinnerProps {
   padding?: number | string;
 }
 
-export const LoadingSpinner: FC<LoadingSpinnerProps> = ({ 
-  padding = 30 
-}) => {
+const STYLE_ID = "qqmusic-loading-style";
+
+const ensureStylesInjected = () => {
+  if (document.getElementById(STYLE_ID)) return;
+  const styleEl = document.createElement("style");
+  styleEl.id = STYLE_ID;
+  styleEl.textContent = `
+    @keyframes qqmusic-loading-bar {
+      0% { transform: scaleY(0.4); opacity: 0.5; }
+      50% { transform: scaleY(1); opacity: 1; }
+      100% { transform: scaleY(0.4); opacity: 0.5; }
+    }
+  `;
+  document.head.appendChild(styleEl);
+};
+
+export const LoadingSpinner: FC<LoadingSpinnerProps> = ({ padding = 30 }) => {
+  useEffect(() => {
+    ensureStylesInjected();
+  }, []);
+
+  const barBaseStyle = {
+    width: 6,
+    height: 28,
+    borderRadius: 3,
+    background: "var(--gpColorGreen)",
+    boxShadow: "0 0 10px rgba(46, 204, 113, 0.35)",
+  };
+
   return (
     <PanelSectionRow>
-      <div style={{ 
-        ...FLEX_CENTER_HORIZONTAL,
-        padding: typeof padding === 'number' ? `${padding}px` : padding 
-      }}>
-        <Spinner />
+      <div
+        style={{
+          ...FLEX_CENTER_HORIZONTAL,
+          gap: 6,
+          padding: typeof padding === "number" ? `${padding}px` : padding,
+        }}
+      >
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            // eslint-disable-next-line react/no-array-index-key
+            key={i}
+            style={{
+              ...barBaseStyle,
+              animation: `qqmusic-loading-bar 0.9s ease-in-out ${i * 0.12}s infinite`,
+            }}
+          />
+        ))}
       </div>
     </PanelSectionRow>
   );
 };
-
