@@ -379,5 +379,6 @@ export function useDataManager() {
     // 其他
     preloadData,
     clearDataCache,
+    provider: null as { id: string; name: string } | null, // 占位，需要 useProvider 获取
   };
 }

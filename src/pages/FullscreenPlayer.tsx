@@ -10,7 +10,7 @@ import { FaListOl, FaPause, FaPlay, FaRandom, FaRedo, FaStepBackward, FaStepForw
 
 import { toaster } from "@decky/api";
 import { HistoryPage, LoginPage, PlaylistDetailPage, PlaylistsPage, SearchPage } from "../components";
-import { getLoginStatus } from "../api";
+import { getProviderSelection } from "../api";
 import { setAuthLoggedIn, useAuthStatus } from "../state/authState";
 import { GuessLikePage } from "./fullscreen/GuessLikePage";
 import { KaraokeLyrics } from "./fullscreen/KaraokeLyrics";
@@ -74,8 +74,10 @@ export const FullscreenPlayer: FC = () => {
     guessLoading,
     refreshGuessLike,
     preloadData,
-    provider,
   } = dataManager;
+  
+  // provider 暂时不需要，或者使用 useProvider 获取
+  const provider = { id: 'qqmusic', name: 'QQ音乐' }; // 临时 fix
   const isNetease = provider?.id === "netease";
   const currentPlayingMid = currentSong?.mid;
   const playModeConfig = useMemo(() => {
@@ -116,9 +118,10 @@ export const FullscreenPlayer: FC = () => {
 
   const checkLoginStatus = useCallback(async () => {
     try {
-      const result = await getLoginStatus();
+      const result = await getProviderSelection();
       if (!mountedRef.current) return;
-      setAuthLoggedIn(Boolean(result.logged_in));
+      const isLoggedIn = Boolean(result.success && result.mainProvider);
+      setAuthLoggedIn(isLoggedIn);
       // 数据由 dataManager 预加载，这里不需要额外加载
     } catch (e) {
       console.error("检查登录状态失败:", e);

@@ -8,7 +8,6 @@ import type {
   SongInfo,
   QrCodeResponse,
   QrStatusResponse,
-  LoginStatusResponse,
   SearchResponse,
   HotSearchResponse,
   SongUrlResponse,
@@ -36,9 +35,6 @@ export const getQrCode = callable<[login_type: string], QrCodeResponse>("get_qr_
 
 /** 检查二维码扫描状态 */
 export const checkQrStatus = callable<[], QrStatusResponse>("check_qr_status");
-
-/** 获取登录状态 */
-export const getLoginStatus = callable<[], LoginStatusResponse>("get_login_status");
 
 /** 退出登录 */
 export const logout = callable<[], { success: boolean }>("logout");

@@ -2,421 +2,51 @@
  * Decky QQ Music 插件主入口
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
 import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui";
-import { definePlugin, toaster, routerHook } from "@decky/api";
+import { definePlugin, routerHook } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
-import { getLoginStatus, logout, clearAllData } from "./api";
+import { getProviderSelection } from "./api";
 import { setAuthLoggedIn } from "./state/authState";
-import {
-  preloadData,
-  clearDataCache,
-  fetchGuessLikeRaw,
-  replaceGuessLikeSongs,
-} from "./hooks/useDataManager";
-import { usePlayer, cleanupPlayer } from "./hooks/usePlayer";
-import { useMountedRef } from "./hooks/useMountedRef";
-import {
-  LoginPage,
-  HomePage,
-  SearchPage,
-  PlayerPage,
-  PlayerBar,
-  PlaylistsPage,
-  PlaylistDetailPage,
-  HistoryPage,
-  SettingsPage,
-  ErrorBoundary,
-  clearRecommendCache,
-} from "./components";
+import { preloadData } from "./hooks/useDataManager";
+import { cleanupPlayer } from "./hooks/usePlayer";
+import { useAppLogic } from "./hooks/useAppLogic";
+import { PlayerBar, ErrorBoundary } from "./components";
+import { Router } from "./components/Router";
 import { FullscreenPlayer } from "./pages";
 import { ROUTE_PATH, menuManager } from "./patches";
-import type { PageType, SongInfo, PlaylistInfo } from "./types";
+import type { PageType } from "./types";
 
 // 主内容组件
 function Content() {
-  const [currentPage, setCurrentPage] = useState<PageType>("login");
-  const [checking, setChecking] = useState(true);
-  const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistInfo | null>(null);
-  const [migratingLegacy, setMigratingLegacy] = useState(false);
-  const mountedRef = useMountedRef();
-
-  const player = usePlayer();
-
-  // 使用 ref 保存最新的 player 和页面状态，避免闭包问题
-  const playerRef = useRef(player);
-  const currentPageRef = useRef(currentPage);
-
-  // 每次渲染时更新 ref
-  useEffect(() => {
-    playerRef.current = player;
-    currentPageRef.current = currentPage;
-  }, [player, currentPage]);
-
-  const checkLoginStatus = useCallback(async () => {
-    setChecking(true);
-    try {
-      const result = await getLoginStatus();
-      if (!mountedRef.current) return;
-      setCurrentPage(result.logged_in ? "home" : "login");
-      setAuthLoggedIn(Boolean(result.logged_in));
-
-      // 已登录时启用左侧菜单
-      if (result.logged_in) {
-        menuManager.enable();
-      }
-    } catch (e) {
-      console.error("检查登录状态失败:", e);
-      if (!mountedRef.current) return;
-      setCurrentPage("login");
-      setAuthLoggedIn(false);
-    }
-    setChecking(false);
-  }, [mountedRef]);
-
-  useEffect(() => {
-    checkLoginStatus();
-  }, [checkLoginStatus]);
-
-  // 手柄快捷键绑定: X (2) 暂停/播放, L1 (30) 上一曲, R1 (31) 下一曲, Y (3) 进入详细页
-  useEffect(() => {
-    /* eslint-disable no-undef */
-    // @ts-ignore - SteamClient 是全局变量
-    if (
-      typeof SteamClient === "undefined" ||
-      !SteamClient?.Input?.RegisterForControllerInputMessages
-    ) {
-      console.warn("SteamClient.Input 不可用，跳过手柄快捷键绑定");
-      return;
-    }
-
-    // @ts-ignore
-    const unregister = SteamClient.Input.RegisterForControllerInputMessages(
-      (_controllerIndex: number, button: number, pressed: boolean) => {
-        // 只处理按下事件
-        if (!pressed) return;
-
-        // 从 ref 获取最新状态
-        const p = playerRef.current;
-        const page = currentPageRef.current;
-
-        // 只在有歌曲时响应
-        if (!p.currentSong) return;
-
-        switch (button) {
-          case 2: // X - 播放/暂停
-            p.togglePlay();
-            break;
-          case 30: // L1 - 上一曲
-            if (p.playlist.length > 1) {
-              p.playPrev();
-            }
-            break;
-          case 31: // R1 - 下一曲
-            if (p.playlist.length > 1) {
-              p.playNext();
-            }
-            break;
-          case 3: // Y - 进入详细页
-            if (page !== "player" && page !== "login") {
-              setCurrentPage("player");
-            }
-            break;
-        }
-      }
-    );
-    /* eslint-enable no-undef */
-
-    return () => {
-      unregister?.unregister?.();
-    };
-  }, []);
-
-  const handleLoginSuccess = useCallback(() => {
-    player.enableSettingsSave(true);
-    setAuthLoggedIn(true);
-    setCurrentPage("home");
-    // 登录成功后启用左侧菜单并预加载数据
-    menuManager.enable();
-    preloadData();
-  }, [player]);
-
-  const handleLogout = useCallback(async () => {
-    await logout();
-    player.stop();
-    player.enableSettingsSave(false);
-    clearRecommendCache(); // 清除推荐缓存（旧版兼容）
-    clearDataCache(); // 清除数据管理器缓存
-    // 退出登录后禁用左侧菜单
-    menuManager.disable();
-    setCurrentPage("login");
-    setAuthLoggedIn(false);
-    toaster.toast({
-      title: "已退出登录",
-      body: "期待下次见面！",
-    });
-  }, [player]);
-
-  // 获取更多猜你喜欢歌曲的回调
-  const fetchMoreGuessLikeSongs = useCallback(async (): Promise<SongInfo[]> => {
-    const songs = await fetchGuessLikeRaw();
-    if (songs.length > 0) {
-      replaceGuessLikeSongs(songs);
-    }
-    return songs;
-  }, []);
-
-  // 从列表中选择歌曲时，设置整个列表为播放列表
-  // source: 'guess-like' 表示来自猜你喜欢，播放完后会自动刷新
-  const handleSelectSong = useCallback(
-    async (song: SongInfo, playlist?: SongInfo[], source?: string) => {
-      if (playlist && playlist.length > 0) {
-        const index = playlist.findIndex((s) => s.mid === song.mid);
-        await player.playPlaylist(playlist, index >= 0 ? index : 0);
-
-        // 如果是猜你喜欢，设置自动刷新回调
-        if (source === "guess-like") {
-          player.setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
-        } else {
-          player.setOnNeedMoreSongs(null);
-        }
-      } else {
-        await player.playSong(song);
-        player.setOnNeedMoreSongs(null);
-      }
-    },
-    [fetchMoreGuessLikeSongs, player]
-  );
-
-  const handleGoToPlayer = useCallback(() => {
-    if (player.currentSong) {
-      setCurrentPage("player");
-    }
-  }, [player.currentSong]);
-
-  const handleGoToSearch = useCallback(() => {
-    setCurrentPage("search");
-  }, []);
-
-  const handleGoToPlaylists = useCallback(() => {
-    setCurrentPage("playlists");
-  }, []);
-
-  const handleGoToHistory = useCallback(() => {
-    setCurrentPage("history");
-  }, []);
-
-  const handleGoToSettings = useCallback(() => {
-    setCurrentPage("settings");
-  }, []);
-
-  const handleBackToHome = useCallback(() => {
-    setCurrentPage("home");
-  }, []);
-
-  const handleBackToPlaylists = useCallback(() => {
-    setCurrentPage("playlists");
-  }, []);
-
-  const handleClearAllData = useCallback(async () => {
-    const res = await clearAllData();
-    if (!res.success) {
-      throw new Error(res.error || "清除失败");
-    }
-
-    player.enableSettingsSave(false);
-    player.resetAllState();
-    clearDataCache();
-    menuManager.disable();
-    setSelectedPlaylist(null);
-    setCurrentPage("login");
-    setAuthLoggedIn(false);
-    return true;
-  }, [player]);
-
-  // 选择歌单
-  const handleSelectPlaylist = useCallback((playlist: PlaylistInfo) => {
-    setSelectedPlaylist(playlist);
-    setCurrentPage("playlist-detail");
-  }, []);
-
-  const handleAddSongToQueue = useCallback(
-    async (song: SongInfo) => {
-      await player.addToQueue([song]);
-      toaster.toast({
-        title: "已添加到播放队列",
-        body: song.name,
-      });
-    },
-    [player]
-  );
-
-  const handleAddPlaylistToQueue = useCallback(
-    async (songs: SongInfo[]) => {
-      if (!songs || songs.length === 0) return;
-      await player.addToQueue(songs);
-      toaster.toast({
-        title: "已添加到播放队列",
-        body: `加入 ${songs.length} 首歌曲`,
-      });
-    },
-    [player]
-  );
-
-  const handleMigrateLegacy = useCallback(async () => {
-    if (migratingLegacy) return;
-    setMigratingLegacy(true);
-    try {
-      const migrated = await player.migrateLegacySettings();
-      toaster.toast({
-        title: migrated ? "迁移完成" : "没有发现可迁移数据",
-        body: migrated ? "旧数据已写入设置并清理" : undefined,
-      });
-    } catch (e) {
-      toaster.toast({
-        title: "迁移失败",
-        body: (e as Error).message,
-      });
-    } finally {
-      setMigratingLegacy(false);
-    }
-  }, [migratingLegacy, player]);
-
-  const handleGoToLoginPage = useCallback(() => {
-    setCurrentPage("login");
-  }, []);
-
-  // 加载中
-  if (checking) {
-    return (
-      <PanelSection title="QQ音乐">
-        <PanelSectionRow>
-          <div style={{ display: "flex", justifyContent: "center", padding: "40px" }}>
-            <Spinner />
-          </div>
-        </PanelSectionRow>
-      </PanelSection>
-    );
-  }
-
-  // 渲染页面
-  const renderPage = () => {
-    switch (currentPage) {
-      case "login":
-        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-
-      case "home":
-        return (
-          <HomePage
-            onSelectSong={handleSelectSong}
-            onGoToSearch={handleGoToSearch}
-            onGoToPlaylists={handleGoToPlaylists}
-            onGoToHistory={handleGoToHistory}
-            onGoToSettings={handleGoToSettings}
-            onLogout={handleLogout}
-            currentPlayingMid={player.currentSong?.mid}
-            onAddSongToQueue={handleAddSongToQueue}
-            onMigrateLegacyData={handleMigrateLegacy}
-            migratingLegacy={migratingLegacy}
-            hasLegacyData={player.hasLegacyData}
-          />
-        );
-
-      case "search":
-        return (
-          <SearchPage
-            onSelectSong={handleSelectSong}
-            onBack={handleBackToHome}
-            currentPlayingMid={player.currentSong?.mid}
-            onAddSongToQueue={handleAddSongToQueue}
-          />
-        );
-
-      case "playlists":
-        return <PlaylistsPage onSelectPlaylist={handleSelectPlaylist} onBack={handleBackToHome} />;
-
-      case "playlist-detail":
-        return selectedPlaylist ? (
-          <PlaylistDetailPage
-            playlist={selectedPlaylist}
-            onSelectSong={handleSelectSong}
-            onAddPlaylistToQueue={handleAddPlaylistToQueue}
-            onAddSongToQueue={handleAddSongToQueue}
-            onBack={handleBackToPlaylists}
-            currentPlayingMid={player.currentSong?.mid}
-          />
-        ) : (
-          <PlaylistsPage onSelectPlaylist={handleSelectPlaylist} onBack={handleBackToHome} />
-        );
-
-      case "history":
-        return (
-          <HistoryPage
-            playlist={player.playlist}
-            currentIndex={player.currentIndex}
-            onSelectIndex={player.playAtIndex}
-            onBack={handleBackToHome}
-            currentPlayingMid={player.currentSong?.mid}
-            onRemoveFromQueue={player.removeFromQueue}
-          />
-        );
-
-      case "player":
-        return player.currentSong ? (
-          <PlayerPage
-            song={player.currentSong}
-            isPlaying={player.isPlaying}
-            currentTime={player.currentTime}
-            duration={player.duration}
-            volume={player.volume}
-            loading={player.loading}
-            error={player.error}
-            hasPlaylist={player.playlist.length > 1}
-            playMode={player.playMode}
-            onTogglePlay={player.togglePlay}
-            onTogglePlayMode={player.cyclePlayMode}
-            onSeek={player.seek}
-            onVolumeChange={player.setVolume}
-            onNext={player.playNext}
-            onPrev={player.playPrev}
-            onBack={handleBackToHome}
-          />
-        ) : (
-          <HomePage
-            onSelectSong={handleSelectSong}
-            onGoToSearch={handleGoToSearch}
-            onGoToPlaylists={handleGoToPlaylists}
-            onGoToHistory={handleGoToHistory}
-            onGoToSettings={handleGoToSettings}
-            onLogout={handleLogout}
-            onAddSongToQueue={handleAddSongToQueue}
-          />
-        );
-
-      case "settings":
-        return (
-          <SettingsPage
-            onBack={handleBackToHome}
-            onClearAllData={handleClearAllData}
-            onGoToLogin={handleGoToLoginPage}
-          />
-        );
-
-      default:
-        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-    }
-  };
+  const { state, player, nav, data } = useAppLogic();
+  const { currentPage, selectedPlaylist } = state;
 
   return (
     <div
-      className="qqmusic-container"
+      className="dekcy-music-container"
       style={{ paddingBottom: player.currentSong && currentPage !== "player" ? "70px" : "0" }}
     >
-      {renderPage()}
+      {currentPage === "loading" ? (
+        <PanelSection title="Decky Music">
+          <PanelSectionRow>
+            <div style={{ display: "flex", justifyContent: "center", padding: "40px" }}>
+              <Spinner />
+            </div>
+          </PanelSectionRow>
+        </PanelSection>
+      ) : (
+        <Router
+          currentPage={currentPage as PageType}
+          player={player}
+          selectedPlaylist={selectedPlaylist}
+          nav={nav}
+          data={data}
+        />
+      )}
 
       {/* 迷你播放器条 - 非全屏播放器页面且有歌曲时显示 */}
-      {player.currentSong && currentPage !== "player" && currentPage !== "login" && (
+      {player.currentSong && currentPage !== "player" && currentPage !== "login" && currentPage !== "loading" && (
         <PlayerBar
           song={player.currentSong}
           isPlaying={player.isPlaying}
@@ -425,7 +55,7 @@ function Content() {
           loading={player.loading}
           onTogglePlay={player.togglePlay}
           onSeek={player.seek}
-          onClick={handleGoToPlayer}
+          onClick={nav.onGoToPlayer}
           onNext={player.playlist.length > 1 ? player.playNext : undefined}
           onPrev={player.playlist.length > 1 ? player.playPrev : undefined}
           playMode={player.playMode}
@@ -443,10 +73,13 @@ export default definePlugin(() => {
   routerHook.addRoute(ROUTE_PATH, FullscreenPlayer);
 
   // 插件初始化时检查登录状态，已登录则启用左侧菜单并预加载数据
-  getLoginStatus()
+  // 以前是 getLoginStatus()，现在改为 getProviderSelection()
+  getProviderSelection()
     .then((result) => {
-      setAuthLoggedIn(Boolean(result.logged_in));
-      if (result.logged_in) {
+      // 只要 mainProvider 存在，就视为已登录
+      const isLoggedIn = Boolean(result.success && result.mainProvider);
+      setAuthLoggedIn(isLoggedIn);
+      if (isLoggedIn) {
         menuManager.enable();
         // 预加载数据
         preloadData();

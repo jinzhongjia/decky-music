@@ -15,8 +15,8 @@ import {
   downloadUpdate,
   getPluginVersion,
   getFrontendSettings,
-  getLoginStatus,
   saveFrontendSettings,
+  getProviderSelection,
 } from "../api";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { useProvider } from "../hooks/useProvider";
@@ -180,10 +180,13 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData, on
         if (success) {
           const providerName = allProviders.find((p) => p.id === providerId)?.name || providerId;
           toaster.toast({ title: "音源已切换", body: providerName });
-          const loginStatus = await getLoginStatus();
+          const selection = await getProviderSelection();
           if (!mountedRef.current) return;
-          setAuthLoggedIn(Boolean(loginStatus.logged_in));
-          if (!loginStatus.logged_in) {
+          
+          const isLoggedIn = Boolean(selection.success && selection.mainProvider);
+          setAuthLoggedIn(isLoggedIn);
+          
+          if (!isLoggedIn) {
             onGoToLogin();
           }
         } else {
