@@ -280,10 +280,10 @@ export const loadPlaylists = async (): Promise<{ created: PlaylistInfo[], collec
 
 /**
  * 预加载所有数据（在插件初始化时调用）
+ * 已弃用，保留为空函数以兼容
  */
-export const preloadData = async () => {
-  await Promise.all([loadGuessLike(), loadDailyRecommend(), loadPlaylists()]);
-};
+export const preloadData = async () => {};
+
 
 // ==================== 清理 ====================
 

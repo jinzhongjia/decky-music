@@ -7,6 +7,7 @@ import { PlaylistsPage } from "./PlaylistsPage";
 import { PlaylistDetailPage } from "./PlaylistDetailPage";
 import { HistoryPage } from "./HistoryPage";
 import { SettingsPage } from "./SettingsPage";
+import { ProviderSettingsPage } from "./ProviderSettingsPage";
 import type { PageType, SongInfo, PlaylistInfo } from "../types";
 import type { usePlayer } from "../hooks/usePlayer";
 
@@ -17,6 +18,7 @@ export interface NavigationHandlers {
   onGoToPlaylists: () => void;
   onGoToHistory: () => void;
   onGoToSettings: () => void;
+  onGoToProviderSettings: () => void;
   onBackToHome: () => void;
   onBackToPlaylists: () => void;
   onGoToLogin: () => void;
@@ -148,6 +150,14 @@ export const Router: FC<RouterProps> = ({
         <SettingsPage
           onBack={nav.onBackToHome}
           onClearAllData={nav.onClearAllData}
+          onGoToProviderSettings={nav.onGoToProviderSettings}
+        />
+      );
+
+    case "provider-settings":
+      return (
+        <ProviderSettingsPage
+          onBack={nav.onGoToSettings}
           onGoToLogin={nav.onGoToLogin}
         />
       );
