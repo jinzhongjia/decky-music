@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
 
 # 安装 Python 依赖到 py_modules
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt --target=py_modules \
+RUN pip install -r requirements.txt --target=py_modules \
     && find py_modules -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
     && find py_modules -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true \
     && find py_modules -name "*.pyc" -delete 2>/dev/null || true
