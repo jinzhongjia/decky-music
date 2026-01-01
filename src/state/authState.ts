@@ -5,10 +5,6 @@ type Listener = (loggedIn: boolean) => void;
 let loggedIn = false;
 const listeners = new Set<Listener>();
 
-export function getAuthLoggedIn(): boolean {
-  return loggedIn;
-}
-
 export function setAuthLoggedIn(value: boolean) {
   if (loggedIn === value) return;
   loggedIn = value;
