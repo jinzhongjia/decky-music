@@ -1,11 +1,11 @@
 {
-  "name": "QQMusic",
+  "name": "DeckyMusic",
   "version": "0.5.0",
   "author": "jinzhongjia",
   "flags": [],
   "api_version": 1,
   "publish": {
-    "tags": ["music", "qqmusic", "audio", "streaming"],
+    "tags": ["music", "audio", "streaming"],
     "description": "在 Steam Deck 上享受 QQ 音乐。支持扫码登录、搜索歌曲和音乐播放。",
     "image": "https://y.qq.com/favicon.ico"
   }

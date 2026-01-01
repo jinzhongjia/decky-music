@@ -1,5 +1,5 @@
 [project]
-name = "decky-qqmusic"
+name = "decky-music"
 version = "1.0.0"
 description = "Decky Loader plugin for QQ Music"
 requires-python = ">=3.11"

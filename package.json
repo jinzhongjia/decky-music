@@ -1,7 +1,7 @@
 {
-  "name": "decky-qqmusic",
+  "name": "decky-music",
   "version": "0.5.0",
-  "description": "Decky Loader plugin for QQ Music - Listen to QQ Music on Steam Deck",
+  "description": "Decky Loader plugin for Music - Listen to Music on Steam Deck",
   "type": "module",
   "scripts": {
     "build": "rollup -c",
@@ -17,23 +17,23 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jinzhongjia/decky-qqmusic.git"
+    "url": "git+https://github.com/jinzhongjia/decky-music.git"
   },
   "keywords": [
     "decky",
     "plugin",
     "steam-deck",
     "deck",
-    "qqmusic",
+    "music",
     "music",
     "audio"
   ],
-  "author": "Decky QQ Music",
+  "author": "Decky Music",
   "license": "BSD-3-Clause",
   "bugs": {
-    "url": "https://github.com/jinzhongjia/decky-qqmusic/issues"
+    "url": "https://github.com/jinzhongjia/decky-music/issues"
   },
-  "homepage": "https://github.com/jinzhongjia/decky-qqmusic#readme",
+  "homepage": "https://github.com/jinzhongjia/decky-music#readme",
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
     "@decky/ui": "^4.11.0",

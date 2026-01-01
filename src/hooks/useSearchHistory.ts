@@ -5,7 +5,7 @@
 
 import { useState, useCallback } from "react";
 
-const SEARCH_HISTORY_KEY = "qqmusic_search_history";
+const SEARCH_HISTORY_KEY = "decky_music_search_history";
 const MAX_HISTORY = 10;
 
 /**

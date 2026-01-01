@@ -1,10 +1,10 @@
-# Decky QQ Music 插件
+# Decky Music 插件
 
 <p align="center">
   <img src="./assets/decky_music_logo_small.png" width="600" />
 </p>
 
-在 Steam Deck 上享受 QQ 音乐的 Decky Loader 插件。
+在 Steam Deck 上享受音乐的 Decky Loader 插件。
 
 ## ✨ 功能特性
 
@@ -26,7 +26,7 @@
 
 ### 从 Release 安装（推荐）
 
-1. 从 [Releases](https://github.com/jinzhongjia/decky-qqmusic/releases) 下载最新的 `QQMusic.zip`
+1. 从 [Releases](https://github.com/jinzhongjia/decky-music/releases) 下载最新的 `DeckyMusic.zip`
 2. 使用 Steam Decky 的开发者模式安装本插件
 
 ### 从源码构建
@@ -42,13 +42,13 @@ Fork 此仓库后，GitHub Actions 会自动构建。创建 tag 时会自动发�
 需要安装 [mise](https://mise.jdx.dev/) 和 Docker。
 
 ```bash
-git clone https://github.com/your-username/decky-qqmusic.git
-cd decky-qqmusic
+git clone https://github.com/your-username/decky-music.git
+cd decky-music
 
 # 构建
 mise run build
 
-# 输出文件: out/QQMusic.zip 和 out/QQMusic/
+# 输出文件: out/DeckyMusic.zip 和 out/DeckyMusic/
 ```
 
 ## 🎮 使用方法
@@ -58,7 +58,7 @@ mise run build
 1. 打开 Steam Deck 的游戏模式
 2. 按下 `...` 按钮打开快速访问菜单
 3. 切换到 Decky 插件标签页
-4. 找到并打开 "QQ音乐" 插件
+4. 找到并打开 "Decky Music" 插件
 5. 选择 "QQ扫码登录" 或 "微信扫码登录"
 6. 使用手机扫描二维码并确认登录
 

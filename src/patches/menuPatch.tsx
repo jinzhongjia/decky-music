@@ -9,7 +9,7 @@ import { afterPatch, findInReactTree, getReactRoot } from "@decky/ui";
 import { FaMusic } from "react-icons/fa";
 
 // 路由路径
-export const ROUTE_PATH = "/qqmusic";
+export const ROUTE_PATH = "/decky-music";
 
 // 菜单项的 Props 接口
 interface MainMenuItemProps {
@@ -70,7 +70,7 @@ const doPatchMenu = (): (() => void) => {
     );
 
     if (!menuNode || !menuNode.return?.type) {
-      console.warn('[QQMusic] 未找到主菜单节点，菜单注入失败');
+      console.warn('[DeckyMusic] 未找到主菜单节点，菜单注入失败');
       return () => {};
     }
 
@@ -81,7 +81,7 @@ const doPatchMenu = (): (() => void) => {
       const ret = orig(props);
       
       if (!ret?.props?.children?.props?.children?.[0]?.type) {
-        console.warn('[QQMusic] 菜单元素结构异常，可能是 Steam 更新导致');
+        console.warn('[DeckyMusic] 菜单元素结构异常，可能是 Steam 更新导致');
         return ret;
       }
 
@@ -98,13 +98,13 @@ const doPatchMenu = (): (() => void) => {
           ) as any[] | null;
 
           if (!menuItems) {
-            console.warn('[QQMusic] 未找到菜单项数组');
+            console.warn('[DeckyMusic] 未找到菜单项数组');
             return innerRet;
           }
 
           // 检查是否已经添加过
           const alreadyExists = menuItems.some(
-            (item: any) => item?.props?.route === ROUTE_PATH || item?.key === 'qqmusic'
+            (item: any) => item?.props?.route === ROUTE_PATH || item?.key === 'decky-music'
           );
           if (alreadyExists) {
             return innerRet;
@@ -117,16 +117,16 @@ const doPatchMenu = (): (() => void) => {
           } | undefined;
 
           if (!menuItem) {
-            console.warn('[QQMusic] 未找到参考菜单项');
+            console.warn('[DeckyMusic] 未找到参考菜单项');
             return innerRet;
           }
 
           // 创建新菜单项
           const newItem = (
             <MenuItemWrapper
-              key="qqmusic"
+              key="decky-music"
               route={ROUTE_PATH}
-              label="QQ音乐"
+              label="Decky Music"
               onFocus={menuItem.props.onFocus}
               useIconAsProp={!!menuItem.props.icon}
               MenuItemComponent={menuItem.type}
@@ -139,7 +139,7 @@ const doPatchMenu = (): (() => void) => {
           );
 
           if (!itemIndexes.length) {
-            console.warn('[QQMusic] 菜单项索引为空');
+            console.warn('[DeckyMusic] 菜单项索引为空');
             return innerRet;
           }
 
@@ -172,7 +172,7 @@ const doPatchMenu = (): (() => void) => {
       }
     };
   } catch (error) {
-    console.error('[QQMusic] 菜单 Patch 失败:', error);
+    console.error('[DeckyMusic] 菜单 Patch 失败:', error);
     return () => {};
   }
 };

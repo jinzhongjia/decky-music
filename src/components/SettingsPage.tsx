@@ -31,7 +31,7 @@ interface SettingsPageProps {
   onGoToProviderSettings: () => void;
 }
 
-const REPO_URL = "https://github.com/jinzhongjia/decky-qqmusic";
+const REPO_URL = "https://github.com/jinzhongjia/decky-music";
 const QUALITY_OPTIONS: Array<{ value: PreferredQuality; label: string; desc: string }> = [
   { value: "auto", label: "自动（推荐）", desc: "优先高码率，若不可用自动降级" },
   {
@@ -343,7 +343,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData, on
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
             <FaInfoCircle style={{ marginTop: 4 }} />
             <div style={{ lineHeight: "18px" }}>
-              Decky QQ Music 插件，提供扫码登录、音乐播放、歌词与歌单等功能。感谢使用并欢迎反馈。
+              Decky Music 插件，提供扫码登录、音乐播放、歌词与歌单等功能。感谢使用并欢迎反馈。
             </div>
           </div>
         </PanelSectionRow>

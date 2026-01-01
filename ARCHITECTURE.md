@@ -1,8 +1,8 @@
-# Decky QQ Music 架构文档
+# Decky Music 架构文档
 
 ## 目标与范围
 
-- 在 Steam Deck 的 Decky Loader 环境中提供 QQ 音乐体验。
+- 在 Steam Deck 的 Decky Loader 环境中提供音乐体验。
 - 前端侧重轻量 UI 与播放控制；后端负责登录、数据获取与转发。
 - 通过 Decky 的前后端通信接口完成业务闭环。
 
@@ -161,7 +161,7 @@
 
 - 前端构建：Rollup + pnpm（见 `rollup.config.js`）。
 - 后端依赖：`py_modules/qqmusic_api`（Docker 构建时安装）。
-- 推荐构建流程：`mise run build` 输出 `out/QQMusic.zip`。
+- 推荐构建流程：`mise run build` 输出 `out/DeckyMusic.zip`。
 
 ## 约束与注意事项
 

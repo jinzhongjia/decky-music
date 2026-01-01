@@ -1,4 +1,4 @@
-"""Decky QQ Music 插件后端
+"""Decky Music 插件后端
 
 实现多 Provider 架构的音乐服务，支持登录、搜索、推荐和播放功能。
 """
@@ -99,7 +99,7 @@ from backend import (  # noqa: E402
 
 
 class Plugin:
-    """Decky QQ Music 插件主类"""
+    """Decky Music 插件主类"""
 
     def __init__(self) -> None:
         plugin_path = Path(__file__).with_name("plugin.json")
@@ -198,7 +198,7 @@ class Plugin:
             download_dir = Path.home() / "Downloads"
             download_dir.mkdir(parents=True, exist_ok=True)
             parsed = urlparse(url)
-            target_name = filename or Path(parsed.path).name or "QQMusic.zip"
+            target_name = filename or Path(parsed.path).name or "DeckyMusic.zip"
             dest = download_dir / target_name
 
             await asyncio.to_thread(download_file, url, dest)
@@ -323,16 +323,16 @@ class Plugin:
         return await self._provider.get_playlist_songs(playlist_id, dirid)
 
     async def _main(self):
-        decky.logger.info("Decky QQ Music 插件已加载")
+        decky.logger.info("Decky Music 插件已加载")
         await self._apply_provider_config()
         if self._provider:
             decky.logger.info(f"当前 Provider: {self._provider.name}")
 
     async def _unload(self):
-        decky.logger.info("Decky QQ Music 插件正在卸载")
+        decky.logger.info("Decky Music 插件正在卸载")
 
     async def _uninstall(self):
-        decky.logger.info("Decky QQ Music 插件已删除")
+        decky.logger.info("Decky Music 插件已删除")
 
     async def _migration(self):
         decky.logger.info("执行数据迁移检查")

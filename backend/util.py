@@ -68,7 +68,7 @@ def http_get_json(url: str) -> dict[str, object]:
     resp = requests.get(
         url,
         headers={
-            "User-Agent": "decky-qqmusic",
+            "User-Agent": "decky-music",
             "Accept": "application/vnd.github+json",
         },
         timeout=15,
@@ -87,7 +87,7 @@ def download_file(url: str, dest: Path) -> None:
     """
     with requests.get(
             url,
-            headers={"User-Agent": "decky-qqmusic"},
+            headers={"User-Agent": "decky-music"},
             timeout=120,
             stream=True,
             verify=True,

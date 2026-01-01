@@ -12,7 +12,7 @@ from backend.util import http_get_json, normalize_version
 
 async def check_for_update(current_version: str) -> UpdateInfo:
     """检查 GitHub 最新版本并返回更新信息"""
-    api_url = "https://api.github.com/repos/jinzhongjia/decky-qqmusic/releases/latest"
+    api_url = "https://api.github.com/repos/jinzhongjia/decky-music/releases/latest"
     try:
         release = await asyncio.to_thread(http_get_json, api_url)
         latest_version = str(release.get("tag_name") or release.get("name") or "").strip()

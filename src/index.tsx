@@ -1,5 +1,5 @@
 /**
- * Decky QQ Music 插件主入口
+ * Decky Music 插件主入口
  */
 
 import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui";
@@ -84,7 +84,7 @@ export default definePlugin(() => {
       }
     })
     .catch((e) => {
-      console.error("[QQMusic] 检查登录状态失败:", e);
+      console.error("[DeckyMusic] 检查登录状态失败:", e);
     });
 
   return {
@@ -113,7 +113,7 @@ export default definePlugin(() => {
       cleanupPlayer();
 
       // 移除全局样式
-      const styleEl = document.getElementById("decky-qqmusic-styles");
+      const styleEl = document.getElementById("decky-music-styles");
       if (styleEl) {
         styleEl.remove();
       }

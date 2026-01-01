@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-**Decky QQ Music 插件** - 在 Steam Deck 上享受 QQ 音乐的 Decky Loader 插件。
+**Decky Music 插件** - 在 Steam Deck 上享受音乐的 Decky Loader 插件。
 
 ### 技术栈
 
@@ -436,7 +436,7 @@ mise run build
 # 构建并部署到 Steam Deck
 mise run deploy
 
-# 输出文件: out/QQMusic.zip 和 out/QQMusic/
+# 输出文件: out/DeckyMusic.zip 和 out/DeckyMusic/
 ```
 
 ### 发版流程
