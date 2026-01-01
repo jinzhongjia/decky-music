@@ -222,12 +222,8 @@ export type PlayMode = "order" | "single" | "shuffle";
 export type Capability =
   // 认证相关
   | "auth.qr_login"
-  | "auth.password"
-  | "auth.anonymous"
   // 搜索相关
   | "search.song"
-  | "search.album"
-  | "search.playlist"
   | "search.suggest"
   | "search.hot"
   // 播放相关
@@ -245,8 +241,7 @@ export type Capability =
   | "recommend.playlist"
   // 歌单相关
   | "playlist.user"
-  | "playlist.favorite"
-  | "playlist.create";
+  | "playlist.favorite";
 
 /** Provider 基本信息 */
 export interface ProviderBasicInfo {

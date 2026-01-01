@@ -121,7 +121,6 @@ class NeteaseProvider(MusicProvider):
     def capabilities(self) -> set[Capability]:
         return {
             Capability.AUTH_QR_LOGIN,
-            Capability.AUTH_ANONYMOUS,
             Capability.SEARCH_SONG,
             Capability.SEARCH_HOT,
             Capability.SEARCH_SUGGEST,

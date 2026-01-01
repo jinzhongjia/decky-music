@@ -37,15 +37,12 @@ class Capability(Enum):
 
     # ==================== 认证相关 ====================
     AUTH_QR_LOGIN = "auth.qr_login"  # 扫码登录
-    AUTH_PASSWORD = "auth.password"  # 密码登录
-    AUTH_ANONYMOUS = "auth.anonymous"  # 匿名使用（无需登录）
 
     # ==================== 搜索相关 ====================
     SEARCH_SONG = "search.song"  # 歌曲搜索
-    SEARCH_ALBUM = "search.album"  # 专辑搜索
-    SEARCH_PLAYLIST = "search.playlist"  # 歌单搜索
     SEARCH_SUGGEST = "search.suggest"  # 搜索建议/补全
     SEARCH_HOT = "search.hot"  # 热门搜索
+
 
     # ==================== 播放相关 ====================
     PLAY_SONG = "play.song"  # 歌曲播放
@@ -66,7 +63,6 @@ class Capability(Enum):
     # ==================== 歌单相关 ====================
     PLAYLIST_USER = "playlist.user"  # 用户歌单
     PLAYLIST_FAVORITE = "playlist.favorite"  # 收藏歌曲
-    PLAYLIST_CREATE = "playlist.create"  # 创建歌单
 
 
 class MusicProvider(ABC):
