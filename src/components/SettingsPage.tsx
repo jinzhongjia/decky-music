@@ -28,7 +28,7 @@ import { setAuthLoggedIn } from "../state/authState";
 interface SettingsPageProps {
   onBack: () => void;
   onClearAllData?: () => Promise<boolean>;
-  onGoToLogin: () => void;
+  onGoToProviderSettings: () => void;
 }
 
 const REPO_URL = "https://github.com/jinzhongjia/decky-qqmusic";
@@ -43,9 +43,9 @@ const QUALITY_OPTIONS: Array<{ value: PreferredQuality; label: string; desc: str
   { value: "compat", label: "兼容/低延迟", desc: "128kbps 及以下优先，适合不稳定网络或节省流量" },
 ];
 
-export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData, onGoToLogin }) => {
+export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData, onGoToProviderSettings }) => {
   const mountedRef = useMountedRef();
-  const { provider, allProviders, switchProvider, loading: providerLoading } = useProvider();
+  const { provider, loading: providerLoading } = useProvider();
   const [checking, setChecking] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -54,8 +54,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData, on
   const [preferredQuality, setPreferredQualityState] = useState<PreferredQuality>("auto");
   const [clearing, setClearing] = useState(false);
   const [focusedQuality, setFocusedQuality] = useState<PreferredQuality | null>(null);
-  const [switchingProvider, setSwitchingProvider] = useState(false);
-  const [focusedProvider, setFocusedProvider] = useState<string | null>(null);
 
   const handleCheckUpdate = useCallback(async () => {
     setChecking(true);
@@ -170,39 +168,13 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData, on
     }
   }, [clearing, mountedRef, onClearAllData]);
 
-  const handleProviderSwitch = useCallback(
-    async (providerId: string) => {
-      if (switchingProvider || providerId === provider?.id) return;
-      setSwitchingProvider(true);
-      try {
-        const success = await switchProvider(providerId);
-        if (!mountedRef.current) return;
-        if (success) {
-          const providerName = allProviders.find((p) => p.id === providerId)?.name || providerId;
-          toaster.toast({ title: "音源已切换", body: providerName });
-          const selection = await getProviderSelection();
-          if (!mountedRef.current) return;
-          
-          const isLoggedIn = Boolean(selection.success && selection.mainProvider);
-          setAuthLoggedIn(isLoggedIn);
-          
-          if (!isLoggedIn) {
-            onGoToLogin();
-          }
-        } else {
-          toaster.toast({ title: "切换失败", body: "请稍后重试" });
-        }
-      } catch (e) {
-        if (!mountedRef.current) return;
-        toaster.toast({ title: "切换失败", body: (e as Error).message });
-      } finally {
-        if (mountedRef.current) {
-          setSwitchingProvider(false);
-        }
-      }
-    },
-    [switchingProvider, provider?.id, switchProvider, mountedRef, allProviders, onGoToLogin]
-  );
+//   const handleProviderSwitch = useCallback(
+//     async (providerId: string) => {
+//       // 逻辑已迁移到 ProviderSettingsPage
+//     },
+//     []
+//   );
+
 
   useEffect(() => {
     void loadLocalVersion();
@@ -231,81 +203,9 @@ export const SettingsPage: FC<SettingsPageProps> = ({ onBack, onClearAllData, on
             <span>当前音源：{providerLoading ? "加载中..." : provider?.name || "未知"}</span>
           </div>
         </PanelSectionRow>
-        {allProviders.length > 1 && (
-          <PanelSectionRow>
-            <div
-              style={{
-                width: "100%",
-                maxWidth: 520,
-                margin: "0 auto",
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-              }}
-            >
-              {allProviders.map((p) => {
-                const active = provider?.id === p.id;
-                const focused = focusedProvider === p.id;
-                const borderColor = active || focused ? "#1DB954" : "rgba(255,255,255,0.16)";
-                const background = active
-                  ? "rgba(29,185,84,0.16)"
-                  : focused
-                    ? "rgba(255,255,255,0.07)"
-                    : "rgba(255,255,255,0.05)";
-                return (
-                  <Focusable
-                    key={p.id}
-                    onActivate={() => handleProviderSwitch(p.id)}
-                    onClick={() => handleProviderSwitch(p.id)}
-                    onFocus={() => setFocusedProvider(p.id)}
-                    onBlur={() => setFocusedProvider(null)}
-                    style={{
-                      width: "100%",
-                      padding: "0",
-                      border: "none",
-                      background: "transparent",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "100%",
-                        padding: "10px 14px",
-                        borderRadius: 12,
-                        border: `2px solid ${borderColor}`,
-                        background,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        boxSizing: "border-box",
-                        opacity: switchingProvider ? 0.6 : 1,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: "50%",
-                          border: "2px solid #1DB954",
-                          background: active ? "#1DB954" : "transparent",
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
-                    </div>
-                  </Focusable>
-                );
-              })}
-            </div>
-          </PanelSectionRow>
-        )}
         <PanelSectionRow>
-          <div style={{ fontSize: 12, lineHeight: "18px", opacity: 0.8 }}>
-            切换音源后需要重新登录对应平台账号。
-          </div>
-        </PanelSectionRow>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={onGoToLogin}>
-            去登录 / 更换账号
+          <ButtonItem layout="below" onClick={onGoToProviderSettings}>
+            切换音源 / 账号管理
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>

@@ -61,7 +61,6 @@ export function useAppLogic() {
     setAuthLoggedIn(true);
     setCurrentPage("home");
     menuManager.enable();
-    preloadData();
   }, [player]);
 
   const handleLogout = useCallback(async () => {

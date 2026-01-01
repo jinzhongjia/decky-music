@@ -130,7 +130,8 @@ export type PageType =
   | "playlists"
   | "playlist-detail"
   | "history"
-  | "settings";
+  | "settings"
+  | "provider-settings";
 
 /** 用户歌单响应 */
 export interface UserPlaylistsResponse {
@@ -148,12 +149,20 @@ export interface PlaylistSongsResponse {
   error?: string;
 }
 
+export interface StoredQueueState {
+  playlist: SongInfo[];
+  currentIndex: number;
+  currentMid?: string;
+}
+
 export interface FrontendSettings {
-  playlistState?: {
-    playlist: SongInfo[];
-    currentIndex: number;
-    currentMid?: string;
-  };
+  // 按 provider ID 隔离的播放队列状态
+  // key: providerId, value: 队列状态
+  providerQueues?: Record<string, StoredQueueState>;
+  
+  // 当前激活的 provider ID（可选，也可依赖后端状态，但前端存一份方便恢复 UI）
+  lastProviderId?: string;
+
   playMode?: PlayMode;
   volume?: number;
   sleepBackup?: {

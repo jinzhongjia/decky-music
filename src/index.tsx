@@ -81,8 +81,6 @@ export default definePlugin(() => {
       setAuthLoggedIn(isLoggedIn);
       if (isLoggedIn) {
         menuManager.enable();
-        // 预加载数据
-        preloadData();
       }
     })
     .catch((e) => {
