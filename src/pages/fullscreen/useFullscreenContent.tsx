@@ -125,21 +125,26 @@ export function useFullscreenContent(params: UseFullscreenContentParams) {
     </div>
   ), [currentIndex, currentPlayingMid, goBackToPlayer, playAtIndex, playlist, removeFromQueue]);
 
+  const pageRefs = useMemo(() => ({
+    guessLikePageRef,
+    searchPageRef,
+    playlistsPageRef,
+    playlistDetailPageRef,
+    historyPageRef,
+  }), []);
+
+  // 页面内容
+  const content = useMemo(() => ({
+    guessLikeContent,
+    searchPageContent,
+    playlistsContent,
+    playlistDetailContent,
+    historyContent,
+  }), [guessLikeContent, searchPageContent, playlistsContent, playlistDetailContent, historyContent]);
+
   return {
-    pageRefs: {
-      guessLikePageRef,
-      searchPageRef,
-      playlistsPageRef,
-      playlistDetailPageRef,
-      historyPageRef,
-    },
-    content: {
-      guessLikeContent,
-      searchPageContent,
-      playlistsContent,
-      playlistDetailContent,
-      historyContent,
-    },
+    pageRefs,
+    content,
   };
 }
 
