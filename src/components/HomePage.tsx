@@ -12,6 +12,7 @@ import { GuessLikeSection } from "./GuessLikeSection";
 import { useDataManager } from "../hooks/useDataManager";
 import { useProvider } from "../hooks/useProvider";
 import { useAuthStatus } from "../state/authState";
+import { useAutoLoadGuessLike } from "../hooks/useAutoLoadGuessLike";
 
 // 清除缓存（保持向后兼容）
 export function clearRecommendCache() {
@@ -64,18 +65,8 @@ const HomePageComponent: FC<HomePageProps> = ({
     }
   }, [isLoggedIn, canRecommendDaily, dataManager]);
 
-  // 登录后自动加载猜你喜欢
-  useEffect(() => {
-    if (
-      isLoggedIn &&
-      canRecommendPersonalized &&
-      !dataManager.guessLoaded &&
-      !dataManager.guessLoading &&
-      dataManager.guessLikeSongs.length === 0
-    ) {
-      void dataManager.loadGuessLike();
-    }
-  }, [isLoggedIn, canRecommendPersonalized, dataManager]);
+  // 按需加载猜你喜欢（组件挂载时加载）
+  useAutoLoadGuessLike();
 
   const handleRefreshGuessLike = useCallback(() => {
     dataManager.refreshGuessLike();

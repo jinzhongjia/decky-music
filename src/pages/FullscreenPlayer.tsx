@@ -12,6 +12,7 @@ import { useDataManager } from "../hooks/useDataManager";
 import { useProvider } from "../hooks/useProvider";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { usePlayer } from "../hooks/usePlayer";
+import { useAutoLoadGuessLike } from "../hooks/useAutoLoadGuessLike";
 import { FaListOl, FaRandom, FaRedo } from "react-icons/fa";
 import { NavBar } from "./fullscreen/NavBar";
 import { PlayerPage } from "./fullscreen/PlayerPage";
@@ -33,7 +34,7 @@ export const FullscreenPlayer: FC = () => {
 
   const player = usePlayer();
   const dataManager = useDataManager();
-  const { hasCapability, provider } = useProvider();
+  const { provider } = useProvider();
   const {
     currentSong,
     isPlaying,
@@ -46,7 +47,6 @@ export const FullscreenPlayer: FC = () => {
   } = player;
   const { preloadData } = dataManager;
 
-  const canRecommendPersonalized = hasCapability("recommend.personalized");
   const isNetease = provider?.id === "netease";
   const currentPlayingMid = currentSong?.mid;
 
@@ -97,19 +97,8 @@ export const FullscreenPlayer: FC = () => {
     checkLoginStatus();
   }, [isLoggedIn, checkLoginStatus]);
 
-  // 进入猜你喜欢页面时自动加载数据
-  useEffect(() => {
-    if (
-      currentPage === 'guess-like' &&
-      isLoggedIn &&
-      canRecommendPersonalized &&
-      !dataManager.guessLoaded &&
-      !dataManager.guessLoading &&
-      dataManager.guessLikeSongs.length === 0
-    ) {
-      void dataManager.loadGuessLike();
-    }
-  }, [currentPage, isLoggedIn, canRecommendPersonalized, dataManager]);
+  // 进入猜你喜欢页面时自动加载数据（按需加载模式）
+  useAutoLoadGuessLike(() => currentPage === 'guess-like');
 
   // 手柄快捷键
   useFullscreenGamepad(player, currentPage, navigateToPage);
