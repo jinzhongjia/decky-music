@@ -61,7 +61,7 @@ export function useFullscreenHandlers(
   ) => {
     if (songList && songList.length > 0) {
       const index = songList.findIndex(s => s.mid === song.mid);
-      await playPlaylist(songList, index >= 0 ? index : 0);
+      playPlaylist(songList, index >= 0 ? index : 0).catch(() => {});
 
       if (source === 'guess-like') {
         setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
@@ -69,7 +69,7 @@ export function useFullscreenHandlers(
         setOnNeedMoreSongs(null);
       }
     } else {
-      await playSong(song);
+      playSong(song).catch(() => {});
       setOnNeedMoreSongs(null);
     }
     navigateToPage('player');
