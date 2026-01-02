@@ -337,24 +337,24 @@ export const replaceGuessLikeSongs = (songs: SongInfo[]) => {
 
 // ==================== Hook ====================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 /**
  * 使用数据管理器的 Hook
  * 自动订阅数据变化
  */
 export function useDataManager() {
-  const [, forceUpdate] = useState({});
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    const listener = () => forceUpdate({});
+    const listener = () => setVersion((v) => v + 1);
     listeners.add(listener);
     return () => {
       listeners.delete(listener);
     };
   }, []);
 
-  return {
+  return useMemo(() => ({
     // 猜你喜欢
     guessLikeSongs: cache.guessLikeSongs,
     guessLoading: cache.guessLoading,
@@ -380,5 +380,5 @@ export function useDataManager() {
     preloadData,
     clearDataCache,
     provider: null as { id: string; name: string } | null, // 占位，需要 useProvider 获取
-  };
+  }), [version]);
 }

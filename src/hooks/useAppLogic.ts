@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { toaster } from "@decky/api";
 import { logout, clearAllData, getProviderSelection } from "../api";
 import { setAuthLoggedIn } from "../state/authState";
@@ -17,6 +17,15 @@ export function useAppLogic() {
   const mountedRef = useMountedRef();
 
   const player = usePlayer();
+  const { 
+    playPlaylist, 
+    playSong, 
+    setOnNeedMoreSongs, 
+    addToQueue, 
+    enableSettingsSave,
+    stop,
+    resetAllState
+  } = player;
 
   // Handle controller input
   useSteamInput({
@@ -51,22 +60,22 @@ export function useAppLogic() {
   }, [checkLoginStatus]);
 
   const handleLoginSuccess = useCallback(() => {
-    player.enableSettingsSave(true);
+    enableSettingsSave(true);
     setAuthLoggedIn(true);
     setCurrentPage("home");
     menuManager.enable();
-  }, [player]);
+  }, [enableSettingsSave]);
 
   const handleLogout = useCallback(async () => {
-    player.enableSettingsSave(false);
+    enableSettingsSave(false);
     await logout();
-    player.stop();
+    stop();
     clearRecommendCache();
     clearDataCache();
     menuManager.disable();
     setCurrentPage("login");
     setAuthLoggedIn(false);
-  }, [player]);
+  }, [enableSettingsSave, stop]);
 
   const fetchMoreGuessLikeSongs = useCallback(async (): Promise<SongInfo[]> => {
     const songs = await fetchGuessLikeRaw();
@@ -80,19 +89,19 @@ export function useAppLogic() {
     async (song: SongInfo, playlist?: SongInfo[], source?: string) => {
       if (playlist && playlist.length > 0) {
         const index = playlist.findIndex((s) => s.mid === song.mid);
-        await player.playPlaylist(playlist, index >= 0 ? index : 0);
+        playPlaylist(playlist, index >= 0 ? index : 0).catch(() => {});
 
         if (source === "guess-like") {
-          player.setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
+          setOnNeedMoreSongs(fetchMoreGuessLikeSongs);
         } else {
-          player.setOnNeedMoreSongs(null);
+          setOnNeedMoreSongs(null);
         }
       } else {
-        await player.playSong(song);
-        player.setOnNeedMoreSongs(null);
+        playSong(song).catch(() => {});
+        setOnNeedMoreSongs(null);
       }
     },
-    [fetchMoreGuessLikeSongs, player]
+    [fetchMoreGuessLikeSongs, playPlaylist, playSong, setOnNeedMoreSongs]
   );
 
   const handleClearAllData = useCallback(async () => {
@@ -101,15 +110,15 @@ export function useAppLogic() {
       throw new Error(res.error || "清除失败");
     }
 
-    player.enableSettingsSave(false);
-    player.resetAllState();
+    enableSettingsSave(false);
+    resetAllState();
     clearDataCache();
     menuManager.disable();
     setSelectedPlaylist(null);
     setCurrentPage("login");
     setAuthLoggedIn(false);
     return true;
-  }, [player]);
+  }, [enableSettingsSave, resetAllState]);
 
   const handleSelectPlaylist = useCallback((playlist: PlaylistInfo) => {
     setSelectedPlaylist(playlist);
@@ -118,55 +127,55 @@ export function useAppLogic() {
 
   const handleAddSongToQueue = useCallback(
     async (song: SongInfo) => {
-      await player.addToQueue([song]);
+      await addToQueue([song]);
       toaster.toast({
         title: "已添加到播放队列",
         body: song.name,
       });
     },
-    [player]
+    [addToQueue]
   );
 
   const handleAddPlaylistToQueue = useCallback(
     async (songs: SongInfo[]) => {
       if (!songs || songs.length === 0) return;
-      await player.addToQueue(songs);
+      await addToQueue(songs);
       toaster.toast({
         title: "已添加到播放队列",
         body: `加入 ${songs.length} 首歌曲`,
       });
     },
-    [player]
+    [addToQueue]
   );
 
   // Navigation handlers
-  const nav: NavigationHandlers = {
+  const nav: NavigationHandlers = useMemo(() => ({
     onLoginSuccess: handleLoginSuccess,
     onLogout: handleLogout,
-    onGoToSearch: useCallback(() => setCurrentPage("search"), []),
-    onGoToPlaylists: useCallback(() => setCurrentPage("playlists"), []),
-    onGoToHistory: useCallback(() => setCurrentPage("history"), []),
-    onGoToSettings: useCallback(() => setCurrentPage("settings"), []),
-    onGoToProviderSettings: useCallback(() => setCurrentPage("provider-settings"), []),
-    onBackToHome: useCallback(() => setCurrentPage("home"), []),
-    onBackToPlaylists: useCallback(() => setCurrentPage("playlists"), []),
-    onGoToLogin: useCallback(() => setCurrentPage("login"), []),
-    onGoToPlayer: useCallback(() => {
+    onGoToSearch: () => setCurrentPage("search"),
+    onGoToPlaylists: () => setCurrentPage("playlists"),
+    onGoToHistory: () => setCurrentPage("history"),
+    onGoToSettings: () => setCurrentPage("settings"),
+    onGoToProviderSettings: () => setCurrentPage("provider-settings"),
+    onBackToHome: () => setCurrentPage("home"),
+    onBackToPlaylists: () => setCurrentPage("playlists"),
+    onGoToLogin: () => setCurrentPage("login"),
+    onGoToPlayer: () => {
       // Only allow navigation if song is playing/loaded
       if (player.currentSong) {
         setCurrentPage("player");
       }
-    }, [player.currentSong]),
+    },
     onClearAllData: handleClearAllData,
-  };
+  }), [handleLoginSuccess, handleLogout, handleClearAllData, player.currentSong]);
 
   // Data handlers
-  const data: DataHandlers = {
+  const data: DataHandlers = useMemo(() => ({
     onSelectSong: handleSelectSong,
     onSelectPlaylist: handleSelectPlaylist,
     onAddSongToQueue: handleAddSongToQueue,
     onAddPlaylistToQueue: handleAddPlaylistToQueue,
-  };
+  }), [handleSelectSong, handleSelectPlaylist, handleAddSongToQueue, handleAddPlaylistToQueue]);
 
   return {
     state: {
