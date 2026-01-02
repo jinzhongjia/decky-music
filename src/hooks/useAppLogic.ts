@@ -2,12 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toaster } from "@decky/api";
 import { logout, clearAllData, getProviderSelection } from "../api";
 import { setAuthLoggedIn } from "../state/authState";
-import {
-  preloadData,
-  clearDataCache,
-  fetchGuessLikeRaw,
-  replaceGuessLikeSongs,
-} from "./useDataManager";
+import { clearDataCache, fetchGuessLikeRaw, replaceGuessLikeSongs } from "./useDataManager";
 import { usePlayer } from "./usePlayer";
 import { useMountedRef } from "./useMountedRef";
 import { useSteamInput } from "./useSteamInput";
@@ -24,10 +19,10 @@ export function useAppLogic() {
   const player = usePlayer();
 
   // Handle controller input
-  useSteamInput({ 
-    player, 
-    currentPage: currentPage === "loading" ? "login" : currentPage, 
-    setCurrentPage: (page) => setCurrentPage(page) 
+  useSteamInput({
+    player,
+    currentPage: currentPage === "loading" ? "login" : currentPage,
+    setCurrentPage: (page) => setCurrentPage(page),
   });
 
   const checkLoginStatus = useCallback(async () => {
@@ -145,7 +140,6 @@ export function useAppLogic() {
     [player]
   );
 
-
   // Navigation handlers
   const nav: NavigationHandlers = {
     onLoginSuccess: handleLoginSuccess,
@@ -154,14 +148,15 @@ export function useAppLogic() {
     onGoToPlaylists: useCallback(() => setCurrentPage("playlists"), []),
     onGoToHistory: useCallback(() => setCurrentPage("history"), []),
     onGoToSettings: useCallback(() => setCurrentPage("settings"), []),
+    onGoToProviderSettings: useCallback(() => setCurrentPage("provider-settings"), []),
     onBackToHome: useCallback(() => setCurrentPage("home"), []),
     onBackToPlaylists: useCallback(() => setCurrentPage("playlists"), []),
     onGoToLogin: useCallback(() => setCurrentPage("login"), []),
     onGoToPlayer: useCallback(() => {
-        // Only allow navigation if song is playing/loaded
-        if (player.currentSong) {
-            setCurrentPage("player");
-        }
+      // Only allow navigation if song is playing/loaded
+      if (player.currentSong) {
+        setCurrentPage("player");
+      }
     }, [player.currentSong]),
     onClearAllData: handleClearAllData,
   };
