@@ -267,7 +267,7 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
     const lastScrolledIndexRef = useRef(-1);
 
     useEffect(() => {
-      if (!isPlaying || !lyric?.isQrc) {
+      if (!isPlaying || !lyric) {
         if (animationFrameRef.current) {
           cancelAnimationFrame(animationFrameRef.current);
           animationFrameRef.current = null;
@@ -275,9 +275,14 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
         return;
       }
 
+      const isQrc = lyric.isQrc && (lyric.qrcLines || []).length > 0;
+      // QRC 格式需要高频更新（16ms）以实现逐字效果
+      // LRC 格式只需要较低频率更新（100ms）以实现滚动效果
+      const updateInterval = isQrc ? 16 : 100;
+
       const updateLoop = () => {
         const now = performance.now();
-        if (now - lastUpdateTimeRef.current >= 16) {
+        if (now - lastUpdateTimeRef.current >= updateInterval) {
           lastUpdateTimeRef.current = now;
           const audioTime = getAudioCurrentTime();
           if (audioTime !== lastAudioTimeRef.current) {
@@ -300,7 +305,7 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
           animationFrameRef.current = null;
         }
       };
-    }, [isPlaying, lyric?.isQrc]);
+    }, [isPlaying, lyric]);
 
     useEffect(() => {
       lastComputedIndexRef.current = -1;
@@ -344,7 +349,9 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
     );
 
     const isQrc = lyric?.isQrc && (lyric?.qrcLines || []).length > 0;
-    const effectiveTime = isQrc ? currentTime : getAudioCurrentTime();
+    // 对于 QRC 和 LRC 格式都使用 currentTime，确保歌词能够滚动
+    // currentTime 会在 useEffect 中定期更新
+    const effectiveTime = currentTime;
     const currentLyricIndex = useMemo(
       () => getCurrentLyricIndex(effectiveTime),
       [effectiveTime, getCurrentLyricIndex]

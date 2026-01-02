@@ -44,9 +44,8 @@ export function setAuthLoggedIn(value: boolean): void {
   authStateListeners.forEach((listener) => {
     try {
       listener(authLoggedIn);
-    } catch (error) {
-      // 忽略单个订阅者的错误，避免影响其他订阅者
-      console.error("Auth state listener error:", error);
+    } catch {
+      // 忽略单个订阅者的错误
     }
   });
 }

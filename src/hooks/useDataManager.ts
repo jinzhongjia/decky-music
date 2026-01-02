@@ -151,8 +151,8 @@ export const loadGuessLike = async (forceRefresh = false): Promise<SongInfo[]> =
         // 预加载封面图片
         preloadSongCovers(result.songs);
       }
-    } catch (e) {
-      console.error("[DataManager] 加载猜你喜欢失败:", e);
+    } catch {
+      // 忽略错误
     } finally {
       cache.guessLoading = false;
       notifyListeners();
@@ -187,8 +187,8 @@ export const fetchGuessLikeRaw = async (): Promise<SongInfo[]> => {
       if (result.success && result.songs.length > 0) {
         return result.songs;
       }
-    } catch (e) {
-      console.error("[DataManager] 预取猜你喜欢失败:", e);
+    } catch {
+      // 忽略错误
     } finally {
       guessLikeRawPromise = null;
     }
@@ -223,8 +223,8 @@ export const loadDailyRecommend = async (): Promise<SongInfo[]> => {
         // 预加载封面图片
         preloadSongCovers(result.songs);
       }
-    } catch (e) {
-      console.error("[DataManager] 加载每日推荐失败:", e);
+    } catch {
+      // 忽略错误
     } finally {
       cache.dailyLoading = false;
       notifyListeners();
@@ -262,8 +262,8 @@ export const loadPlaylists = async (): Promise<{ created: PlaylistInfo[], collec
         // 预加载歌单封面
         preloadPlaylistCovers([...cache.createdPlaylists, ...cache.collectedPlaylists]);
       }
-    } catch (e) {
-      console.error("[DataManager] 加载歌单失败:", e);
+    } catch {
+      // 忽略错误
     } finally {
       cache.playlistsLoading = false;
       notifyListeners();

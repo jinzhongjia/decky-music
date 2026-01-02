@@ -88,8 +88,7 @@ export function createPlayNext(
             } else {
               return null;
             }
-          } catch (e) {
-            console.error("获取更多歌曲失败:", e);
+          } catch {
             return null;
           }
         } else {

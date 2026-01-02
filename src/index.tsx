@@ -84,8 +84,8 @@ export default definePlugin(() => {
                 menuManager.enable();
             }
         })
-        .catch((e) => {
-            console.error("[DeckyMusic] 检查登录状态失败:", e);
+        .catch(() => {
+            // 忽略错误
         });
 
     return {

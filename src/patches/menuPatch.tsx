@@ -71,7 +71,6 @@ const doPatchMenu = (): (() => void) => {
     );
 
     if (!menuNode || !menuNode.return?.type) {
-      console.warn('[DeckyMusic] 未找到主菜单节点，菜单注入失败');
       return () => {};
     }
 
@@ -82,7 +81,6 @@ const doPatchMenu = (): (() => void) => {
       const ret = orig(props);
       
       if (!ret?.props?.children?.props?.children?.[0]?.type) {
-        console.warn('[DeckyMusic] 菜单元素结构异常，可能是 Steam 更新导致');
         return ret;
       }
 
@@ -96,7 +94,6 @@ const doPatchMenu = (): (() => void) => {
           ) as any[] | null;
 
           if (!menuItems) {
-            console.warn('[DeckyMusic] 未找到菜单项数组');
             return innerRet;
           }
 
@@ -112,7 +109,6 @@ const doPatchMenu = (): (() => void) => {
           } | undefined;
 
           if (!menuItem) {
-            console.warn('[DeckyMusic] 未找到参考菜单项');
             return innerRet;
           }
 
@@ -134,7 +130,6 @@ const doPatchMenu = (): (() => void) => {
             .filter((idx) => idx >= 0);
 
           if (itemIndexes.length === 0) {
-            console.warn('[DeckyMusic] 菜单项索引为空');
             return innerRet;
           }
 
@@ -167,8 +162,7 @@ const doPatchMenu = (): (() => void) => {
     }
 
     return restoreOriginal;
-  } catch (error) {
-    console.error('[DeckyMusic] 菜单 Patch 失败:', error);
+  } catch {
     return () => {};
   }
 };

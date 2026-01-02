@@ -82,8 +82,8 @@ export const FullscreenPlayer: FC = () => {
       if (!mountedRef.current) return;
       const isLoggedIn = Boolean(result.success && result.mainProvider);
       setAuthLoggedIn(isLoggedIn);
-    } catch (e) {
-      console.error("检查登录状态失败:", e);
+    } catch {
+      // 忽略错误
     }
   }, [mountedRef]);
 

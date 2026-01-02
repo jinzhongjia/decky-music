@@ -25,7 +25,6 @@ export function useSteamInput({ player, currentPage, setCurrentPage }: UseSteamI
       typeof SteamClient === "undefined" ||
       !SteamClient?.Input?.RegisterForControllerInputMessages
     ) {
-      console.warn("SteamClient.Input unavailable, skipping controller bindings");
       return;
     }
 

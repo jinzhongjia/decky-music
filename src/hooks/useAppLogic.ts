@@ -39,8 +39,7 @@ export function useAppLogic() {
       if (isLoggedIn) {
         menuManager.enable();
       }
-    } catch (e) {
-      console.error("检查登录状态失败:", e);
+    } catch {
       if (!mountedRef.current) return;
       setCurrentPage("login");
       setAuthLoggedIn(false);

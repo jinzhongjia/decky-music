@@ -169,3 +169,4 @@ async def get_something(self, param: str) -> dict[str, Any]:
 3. **硬编码**：不在代码中硬编码配置值或常量
 4. **过度注释**：不为显而易见的代码添加注释
 5. **忽视性能**：不忽视可能的性能问题
+6. **console 日志**：禁止使用 `console.log/warn/error` 等（Steam Deck 无法查看控制台输出）
