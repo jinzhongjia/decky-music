@@ -3,16 +3,15 @@
  * 使用全局数据管理器，与全屏页面共享数据
  */
 
-import { FC, useCallback, memo } from "react";
+import { FC, useCallback, memo, useEffect } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
-import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory, FaCog } from "react-icons/fa";
+import { FaSearch, FaSignOutAlt, FaListUl, FaHistory, FaCog } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
-import { SongItem } from "./SongItem";
+import { GuessLikeSection } from "./GuessLikeSection";
 import { useDataManager } from "../hooks/useDataManager";
 import { useProvider } from "../hooks/useProvider";
-import { LoadingSpinner } from "./LoadingSpinner";
-import { EmptyState } from "./EmptyState";
+import { useAuthStatus } from "../state/authState";
 
 // 清除缓存（保持向后兼容）
 export function clearRecommendCache() {
@@ -44,6 +43,7 @@ const HomePageComponent: FC<HomePageProps> = ({
 }) => {
   const dataManager = useDataManager();
   const { hasCapability, provider } = useProvider();
+  const isLoggedIn = useAuthStatus();
 
   const canSearch = hasCapability("search.song");
   const canViewPlaylists = hasCapability("playlist.user");
@@ -51,11 +51,37 @@ const HomePageComponent: FC<HomePageProps> = ({
   const canRecommendDaily = hasCapability("recommend.daily");
   const isNetease = provider?.id === "netease";
 
+  // 登录后自动加载每日推荐
+  useEffect(() => {
+    if (
+      isLoggedIn &&
+      canRecommendDaily &&
+      !dataManager.dailyLoaded &&
+      !dataManager.dailyLoading &&
+      dataManager.dailySongs.length === 0
+    ) {
+      void dataManager.loadDailyRecommend();
+    }
+  }, [isLoggedIn, canRecommendDaily, dataManager]);
+
+  // 登录后自动加载猜你喜欢
+  useEffect(() => {
+    if (
+      isLoggedIn &&
+      canRecommendPersonalized &&
+      !dataManager.guessLoaded &&
+      !dataManager.guessLoading &&
+      dataManager.guessLikeSongs.length === 0
+    ) {
+      void dataManager.loadGuessLike();
+    }
+  }, [isLoggedIn, canRecommendPersonalized, dataManager]);
+
   const handleRefreshGuessLike = useCallback(() => {
     dataManager.refreshGuessLike();
   }, [dataManager]);
 
-  const handleSongClick = useCallback(
+  const handleGuessLikeSongClick = useCallback(
     (song: SongInfo) => {
       onSelectSong(song, dataManager.guessLikeSongs, "guess-like");
     },
@@ -109,40 +135,15 @@ const HomePageComponent: FC<HomePageProps> = ({
 
       {/* 猜你喜欢 */}
       {canRecommendPersonalized && (
-        <PanelSection title="💡 猜你喜欢">
-          <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              onClick={handleRefreshGuessLike}
-              disabled={dataManager.guessLoading || isNetease}
-            >
-              <FaSyncAlt
-                size={12}
-                style={{
-                  marginRight: "8px",
-                  animation: dataManager.guessLoading ? "spin 1s linear infinite" : "none",
-                  opacity: isNetease ? 0.4 : 1,
-                }}
-              />
-              {isNetease ? "已是今日推荐" : "换一批"}
-            </ButtonItem>
-          </PanelSectionRow>
-
-          {dataManager.guessLoading && dataManager.guessLikeSongs.length === 0 ? (
-            <LoadingSpinner />
-          ) : dataManager.guessLikeSongs.length === 0 ? (
-            <EmptyState message="暂无推荐，请稍后再试" />
-          ) : (
-            dataManager.guessLikeSongs.map((song, idx) => (
-              <SongItem
-                key={song.mid || idx}
-                song={song}
-                onClick={handleSongClick}
-                onAddToQueue={onAddSongToQueue}
-              />
-            ))
-          )}
-        </PanelSection>
+        <GuessLikeSection
+          songs={dataManager.guessLikeSongs}
+          loading={dataManager.guessLoading}
+          onRefresh={handleRefreshGuessLike}
+          onSelectSong={handleGuessLikeSongClick}
+          onAddToQueue={onAddSongToQueue}
+          disableRefresh={isNetease}
+          variant="panel"
+        />
       )}
 
       {/* 每日推荐 */}
@@ -152,7 +153,7 @@ const HomePageComponent: FC<HomePageProps> = ({
           songs={dataManager.dailySongs}
           loading={dataManager.dailyLoading}
           currentPlayingMid={currentPlayingMid}
-          emptyText="登录后查看每日推荐"
+          emptyText={isLoggedIn ? "暂无每日推荐" : "登录后查看每日推荐"}
           onSelectSong={handleDailySongClick}
           onAddToQueue={onAddSongToQueue}
         />
