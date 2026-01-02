@@ -8,44 +8,39 @@
  * 
  * @example
  * // 满足条件时加载（用于全屏页面）
- * useAutoLoadGuessLike(() => currentPage === 'guess-like');
+ * useAutoLoadGuessLike(currentPage === 'guess-like');
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useDataManager } from "./useDataManager";
 import { useProvider } from "./useProvider";
 import { useAuthStatus } from "../state/authState";
 
 export function useAutoLoadGuessLike(
-  condition?: () => boolean
+  enabled: boolean = true
 ): void {
   const dataManager = useDataManager();
   const { hasCapability } = useProvider();
   const isLoggedIn = useAuthStatus();
-  const conditionRef = useRef(condition);
-
-  // 保持 condition 函数的最新引用
-  conditionRef.current = condition;
-
   const canRecommendPersonalized = hasCapability("recommend.personalized");
 
   useEffect(() => {
-    const shouldLoad = conditionRef.current?.() ?? true;
-    if (!shouldLoad) return;
+    if (!enabled) return;
 
-    if (
-      isLoggedIn &&
-      canRecommendPersonalized &&
-      !dataManager.guessLoaded &&
-      !dataManager.guessLoading &&
-      dataManager.guessLikeSongs.length === 0
-    ) {
+    // 如果数据已存在，不需要加载
+    if (dataManager.guessLikeSongs.length > 0) return;
+
+    // 如果正在加载，不需要重复加载
+    if (dataManager.guessLoading) return;
+
+    // 如果已登录且有权限，则加载数据
+    if (isLoggedIn && canRecommendPersonalized) {
       void dataManager.loadGuessLike();
     }
   }, [
+    enabled,
     isLoggedIn,
     canRecommendPersonalized,
-    dataManager.guessLoaded,
     dataManager.guessLoading,
     dataManager.guessLikeSongs.length,
     dataManager.loadGuessLike,
