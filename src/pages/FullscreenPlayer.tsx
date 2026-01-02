@@ -94,7 +94,7 @@ export const FullscreenPlayer: FC = () => {
   }, [isLoggedIn, checkLoginStatus]);
 
   // 进入猜你喜欢页面时自动加载数据（按需加载模式）
-  useAutoLoadGuessLike(() => currentPage === 'guess-like');
+  useAutoLoadGuessLike(currentPage === 'guess-like');
 
   // 手柄快捷键
   useFullscreenGamepad(player, currentPage, navigateToPage);
