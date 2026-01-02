@@ -1,6 +1,6 @@
 {
   "name": "decky-music",
-  "version": "0.5.0",
+  "version": "1.0.0",
   "description": "Decky Loader plugin for Music - Listen to Music on Steam Deck",
   "type": "module",
   "scripts": {
