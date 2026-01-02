@@ -38,9 +38,7 @@ export const FullscreenPlayer: FC = () => {
   const {
     currentSong,
     isPlaying,
-    currentTime,
     duration,
-    lyric,
     playMode,
     seek,
     togglePlay,
@@ -74,10 +72,8 @@ export const FullscreenPlayer: FC = () => {
     }
   }, [currentSong, duration, isPlaying, seek, togglePlay]);
 
-  // 页面导航
-  const navigateToPage = useCallback((page: FullscreenPageType) => {
-    setCurrentPage(page);
-  }, []);
+  // 页面导航（直接使用 setCurrentPage）
+  const navigateToPage = setCurrentPage;
 
   // 检查登录状态
   const checkLoginStatus = useCallback(async () => {
@@ -126,7 +122,6 @@ export const FullscreenPlayer: FC = () => {
   // 导航辅助函数
   const goBackToPlayer = useCallback(() => navigateToPage('player'), [navigateToPage]);
   const goBackToPlaylists = useCallback(() => navigateToPage('playlists'), [navigateToPage]);
-  const handleRefreshGuessLike = useCallback(() => dataManager.refreshGuessLike(), [dataManager]);
 
   // 页面内容
   const {
@@ -141,38 +136,26 @@ export const FullscreenPlayer: FC = () => {
     onSelectSong: handleSelectSong,
     onSelectPlaylist: handleSelectPlaylist,
     onAddPlaylistToQueue: handleAddPlaylistToQueue,
-    onRefreshGuessLike: handleRefreshGuessLike,
+    onRefreshGuessLike: () => dataManager.refreshGuessLike(),
     goBackToPlayer,
     goBackToPlaylists,
   });
 
   // 页面焦点管理
   const focusCurrentPage = useCallback((page: FullscreenPageType) => {
-    let target: HTMLElement | null = null;
-    switch (page) {
-      case 'player':
-        target = playerPageRef.current;
-        break;
-      case 'guess-like':
-        target = pageRefs.guessLikePageRef.current;
-        break;
-      case 'search':
-        target = pageRefs.searchPageRef.current;
-        break;
-      case 'playlists':
-        target = pageRefs.playlistsPageRef.current;
-        break;
-      case 'playlist-detail':
-        target = selectedPlaylist ? pageRefs.playlistDetailPageRef.current : null;
-        break;
-      case 'history':
-        target = pageRefs.historyPageRef.current;
-        break;
-      default:
-        break;
-    }
+    const pageRefMap: Record<string, HTMLElement | null> = {
+      'player': playerPageRef.current,
+      'guess-like': pageRefs.guessLikePageRef.current,
+      'search': pageRefs.searchPageRef.current,
+      'playlists': pageRefs.playlistsPageRef.current,
+      'playlist-detail': selectedPlaylist ? pageRefs.playlistDetailPageRef.current : null,
+      'history': pageRefs.historyPageRef.current,
+    };
+    
+    const target = pageRefMap[page];
     if (!target) return;
-    const focusFn = () => target?.focus({ preventScroll: true });
+    
+    const focusFn = () => target.focus({ preventScroll: true });
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(focusFn);
     } else {
@@ -197,20 +180,14 @@ export const FullscreenPlayer: FC = () => {
 
   // 渲染非历史页面内容
   const renderNonHistoryContent = () => {
-    switch (currentPage) {
-      case 'player':
-        return renderPlayerPage();
-      case 'guess-like':
-        return content.guessLikeContent;
-      case 'search':
-        return content.searchPageContent;
-      case 'playlists':
-        return content.playlistsContent;
-      case 'playlist-detail':
-        return content.playlistDetailContent;
-      default:
-        return null;
-    }
+    const contentMap: Record<string, React.ReactElement | null> = {
+      'player': renderPlayerPage(),
+      'guess-like': content.guessLikeContent,
+      'search': content.searchPageContent,
+      'playlists': content.playlistsContent,
+      'playlist-detail': content.playlistDetailContent,
+    };
+    return contentMap[currentPage] ?? null;
   };
 
   // 未登录

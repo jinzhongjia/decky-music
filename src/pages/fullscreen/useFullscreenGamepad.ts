@@ -21,11 +21,8 @@ export function useFullscreenGamepad(
 
   useEffect(() => {
     playerRef.current = player;
-  });
-
-  useEffect(() => {
     currentPageRef.current = currentPage;
-  }, [currentPage]);
+  }, [player, currentPage]);
 
   useEffect(() => {
     // @ts-ignore

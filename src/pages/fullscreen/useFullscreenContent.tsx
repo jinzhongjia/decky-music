@@ -7,11 +7,7 @@ import { HistoryPage, PlaylistDetailPage, PlaylistsPage, SearchPage } from "../.
 import { GuessLikePage } from "./GuessLikePage";
 import type { SongInfo, PlaylistInfo } from "../../types";
 import type { UsePlayerReturn } from "../../hooks/usePlayer";
-// 临时类型定义，直到 useDataManager 导出类型
-interface UseDataManagerReturn {
-  guessLikeSongs: SongInfo[];
-  guessLoading: boolean;
-}
+import type { UseDataManagerReturn } from "./types";
 
 const MemoSearchPage = memo(SearchPage);
 const MemoPlaylistsPage = memo(PlaylistsPage);

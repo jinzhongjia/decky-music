@@ -25,6 +25,14 @@ interface MainMenuItemProps {
 // eslint-disable-next-line no-undef
 const getReactTree = () => getReactRoot(document.getElementById('root') as HTMLElement);
 
+// 辅助函数：检查是否为菜单项元素
+const isMenuItemElement = (e: any): boolean =>
+  Boolean(e?.props?.label && e?.props?.onFocus && e?.props?.route && e?.type?.toString);
+
+// 辅助函数：检查菜单项是否已存在
+const isMenuItemAlreadyAdded = (menuItems: any[]): boolean =>
+  menuItems.some((item: any) => item?.props?.route === ROUTE_PATH || item?.key === 'decky-music');
+
 // 菜单项包装组件
 interface MenuItemWrapperProps extends MainMenuItemProps {
   MenuItemComponent: FC<MainMenuItemProps>;
@@ -37,13 +45,6 @@ const MenuItemWrapper: FC<MenuItemWrapperProps> = ({
   useIconAsProp, 
   ...props 
 }) => {
-  const labelElement = (
-    <div style={{ display: 'flex', width: '150px', justifyContent: 'space-between' }}>
-      <div>{label}</div>
-    </div>
-  );
-
-  // 根据菜单项类型决定如何传递图标
   const iconProps = useIconAsProp 
     ? { icon: <FaMusic /> } 
     : { children: <FaMusic /> };
@@ -52,12 +53,12 @@ const MenuItemWrapper: FC<MenuItemWrapperProps> = ({
     <MenuItemComponent
       {...props}
       {...iconProps}
-      label={labelElement}
+      label={label}
     />
   );
 };
 
-// 全局状态：是否已 patch
+// 全局状态
 let isPatched = false;
 let unpatchFn: (() => void) | null = null;
 
@@ -89,12 +90,9 @@ const doPatchMenu = (): (() => void) => {
         ret.props.children.props.children[0].type = patchedInnerMenu;
       } else {
         afterPatch(ret.props.children.props.children[0], 'type', (_: any, innerRet: any) => {
-          const isMenuItemElt = (e: any) => 
-            e?.props?.label && e?.props?.onFocus && e?.props?.route && e?.type?.toString;
-          
           const menuItems = findInReactTree(
             innerRet, 
-            (node: any) => Array.isArray(node) && node.some(isMenuItemElt)
+            (node: any) => Array.isArray(node) && node.some(isMenuItemElement)
           ) as any[] | null;
 
           if (!menuItems) {
@@ -103,15 +101,12 @@ const doPatchMenu = (): (() => void) => {
           }
 
           // 检查是否已经添加过
-          const alreadyExists = menuItems.some(
-            (item: any) => item?.props?.route === ROUTE_PATH || item?.key === 'decky-music'
-          );
-          if (alreadyExists) {
+          if (isMenuItemAlreadyAdded(menuItems)) {
             return innerRet;
           }
 
           // 找到一个现有菜单项作为参考
-          const menuItem = menuItems.find(isMenuItemElt) as { 
+          const menuItem = menuItems.find(isMenuItemElement) as { 
             props: MainMenuItemProps; 
             type: FC<MainMenuItemProps>;
           } | undefined;
@@ -133,20 +128,20 @@ const doPatchMenu = (): (() => void) => {
             />
           );
 
-          // 获取菜单项索引
-          const itemIndexes = menuItems.flatMap((item, index) =>
-            item && item.$$typeof && item.type !== 'div' ? index : []
-          );
+          // 获取有效菜单项索引
+          const itemIndexes = menuItems
+            .map((item, index) => (item?.$$typeof && item.type !== 'div' ? index : -1))
+            .filter((idx) => idx >= 0);
 
-          if (!itemIndexes.length) {
+          if (itemIndexes.length === 0) {
             console.warn('[DeckyMusic] 菜单项索引为空');
             return innerRet;
           }
 
-          const insertIndex =
-            itemIndexes.length > 4
-              ? itemIndexes[3] + 1
-              : itemIndexes[itemIndexes.length - 1] + 1;
+          // 插入位置：如果菜单项超过4个，插入到第4个位置后，否则插入到最后
+          const insertIndex = itemIndexes.length > 4 
+            ? itemIndexes[3] + 1 
+            : itemIndexes[itemIndexes.length - 1] + 1;
           
           menuItems.splice(insertIndex, 0, newItem);
 
@@ -159,18 +154,19 @@ const doPatchMenu = (): (() => void) => {
     };
 
     // 替换原始组件
-    menuNode.return.type = menuWrapper;
-    if (menuNode.return.alternate) {
-      menuNode.return.alternate.type = menuNode.return.type;
-    }
-
-    // 返回取消 patch 的函数
-    return () => {
+    const restoreOriginal = () => {
       menuNode.return.type = orig;
       if (menuNode.return.alternate) {
-        menuNode.return.alternate.type = menuNode.return.type;
+        menuNode.return.alternate.type = orig;
       }
     };
+
+    menuNode.return.type = menuWrapper;
+    if (menuNode.return.alternate) {
+      menuNode.return.alternate.type = menuWrapper;
+    }
+
+    return restoreOriginal;
   } catch (error) {
     console.error('[DeckyMusic] 菜单 Patch 失败:', error);
     return () => {};
@@ -194,9 +190,7 @@ export const menuManager = {
    * 禁用菜单（退出登录后调用）
    */
   disable: () => {
-    if (!isPatched || !unpatchFn) {
-      return;
-    }
+    if (!isPatched || !unpatchFn) return;
     unpatchFn();
     unpatchFn = null;
     isPatched = false;

@@ -5,15 +5,8 @@
 import { useCallback, useRef } from "react";
 import { toaster } from "@decky/api";
 import type { SongInfo, PlaylistInfo } from "../../types";
-import type { FullscreenPageType } from "./types";
+import type { FullscreenPageType, UseDataManagerReturn } from "./types";
 import type { UsePlayerReturn } from "../../hooks/usePlayer";
-// 临时类型定义，直到 useDataManager 导出类型
-interface UseDataManagerReturn {
-  guessLikeSongs: SongInfo[];
-  guessLoading: boolean;
-  refreshGuessLike: () => Promise<SongInfo[]>;
-  preloadData: () => void;
-}
 
 /**
  * 创建全屏播放器的事件处理函数
@@ -83,9 +76,8 @@ export function useFullscreenHandlers(
   }, [fetchMoreGuessLikeSongs, navigateToPage, playPlaylist, playSong, setOnNeedMoreSongs]);
 
   // 选择歌单
-  const handleSelectPlaylist = useCallback((playlistInfo: PlaylistInfo) => {
+  const handleSelectPlaylist = useCallback((_playlistInfo: PlaylistInfo) => {
     navigateToPage('playlist-detail');
-    return playlistInfo;
   }, [navigateToPage]);
 
   // 添加歌单到队列
