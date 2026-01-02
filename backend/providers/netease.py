@@ -245,6 +245,9 @@ class NeteaseProvider(MusicProvider):
 
     async def get_login_status(self) -> LoginStatusResponse:
         try:
+            # 先尝试加载保存的凭证（系统重启后需要恢复 session）
+            self.load_credential()
+            
             session = GetCurrentSession()
             if session.logged_in:
                 return {
