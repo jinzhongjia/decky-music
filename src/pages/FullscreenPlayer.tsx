@@ -9,6 +9,7 @@ import { LoginPage } from "../components";
 import { getProviderSelection } from "../api";
 import { setAuthLoggedIn, useAuthStatus } from "../state/authState";
 import { useDataManager } from "../hooks/useDataManager";
+import { useProvider } from "../hooks/useProvider";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { usePlayer } from "../hooks/usePlayer";
 import { FaListOl, FaRandom, FaRedo } from "react-icons/fa";
@@ -32,6 +33,7 @@ export const FullscreenPlayer: FC = () => {
 
   const player = usePlayer();
   const dataManager = useDataManager();
+  const { hasCapability, provider } = useProvider();
   const {
     currentSong,
     isPlaying,
@@ -44,8 +46,7 @@ export const FullscreenPlayer: FC = () => {
   } = player;
   const { preloadData } = dataManager;
 
-  // provider 暂时不需要，或者使用 useProvider 获取
-  const provider = { id: 'qqmusic', name: 'QQ音乐' }; // 临时 fix
+  const canRecommendPersonalized = hasCapability("recommend.personalized");
   const isNetease = provider?.id === "netease";
   const currentPlayingMid = currentSong?.mid;
 
@@ -95,6 +96,20 @@ export const FullscreenPlayer: FC = () => {
     if (isLoggedIn === false || isLoggedIn === true) return;
     checkLoginStatus();
   }, [isLoggedIn, checkLoginStatus]);
+
+  // 进入猜你喜欢页面时自动加载数据
+  useEffect(() => {
+    if (
+      currentPage === 'guess-like' &&
+      isLoggedIn &&
+      canRecommendPersonalized &&
+      !dataManager.guessLoaded &&
+      !dataManager.guessLoading &&
+      dataManager.guessLikeSongs.length === 0
+    ) {
+      void dataManager.loadGuessLike();
+    }
+  }, [currentPage, isLoggedIn, canRecommendPersonalized, dataManager]);
 
   // 手柄快捷键
   useFullscreenGamepad(player, currentPage, navigateToPage);
