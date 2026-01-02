@@ -117,7 +117,7 @@ const doPatchMenu = (): (() => void) => {
             <MenuItemWrapper
               key="decky-music"
               route={ROUTE_PATH}
-              label="Decky Music"
+              label="音乐"
               onFocus={menuItem.props.onFocus}
               useIconAsProp={!!menuItem.props.icon}
               MenuItemComponent={menuItem.type}
