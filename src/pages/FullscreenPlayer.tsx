@@ -169,7 +169,7 @@ export const FullscreenPlayer: FC = () => {
 
   // 渲染播放器页面
   const renderPlayerPage = () => (
-    <div ref={playerPageRef} tabIndex={-1}>
+    <div ref={playerPageRef} tabIndex={-1} style={{ height: '100%', overflow: 'hidden' }}>
       <PlayerPage
         player={player}
         playModeConfig={playModeConfig}
