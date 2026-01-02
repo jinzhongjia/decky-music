@@ -32,8 +32,8 @@ export interface ParsedLyric {
   isQrc: boolean; // 是否是 QRC 格式
 }
 
-// 清理非标准时间标记的正则
-const CLEANUP_TIME_MARKER_REGEX = /\(\d+\)|\(\d+,\d+,\d+\)/g;
+// 清理非标准时间标记的正则 (支持 (100), (100,200), (100,200,300) 等格式)
+const CLEANUP_TIME_MARKER_REGEX = /\(\d+(?:,\d+)*\)/g;
 
 /**
  * 解析时间标签 [mm:ss.xx] 或 [mm:ss:xx] 或 [mm:ss]
@@ -63,7 +63,11 @@ function parseTime(timeStr: string): number {
  */
 function isInvalidLyricText(text: string): boolean {
   const trimmed = text.trim();
-  return !trimmed || /^[/\-*~\s\\：:.。，,]+$/.test(trimmed);
+  // 过滤纯符号、空行
+  if (!trimmed || /^[/\-*~\s\\：:.。，,]+$/.test(trimmed)) return true;
+  // 过滤纯坐标/时间标记行，如 (1062,531)
+  if (/^\(\d+(?:,\d+)*\)$/.test(trimmed)) return true;
+  return false;
 }
 
 /**
