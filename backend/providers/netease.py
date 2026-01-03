@@ -48,7 +48,9 @@ def _weapi_request(path: str, payload: dict[str, object] | None = None) -> dict[
     session = GetCurrentSession()
     # 确保 csrf_token 与 cookie 同步，部分接口需要 __csrf
     if not session.csrf_token:
-        session.csrf_token = session.cookies.get("__csrf", "")
+        # Cast to str to satisfy type checker, as session.csrf_token expects str
+        # but session.cookies.get returns Optional[str] or similar
+        session.csrf_token = str(session.cookies.get("__csrf", ""))
     data = payload or {}
     try:
         # WeapiCryptoRequest 是装饰器，需传入返回 (url,payload,method) 的函数
