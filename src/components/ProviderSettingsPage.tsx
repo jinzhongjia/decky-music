@@ -4,12 +4,14 @@ import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui"
 import { toaster } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
-import { getProviderSelection } from "../api";
+import { getProviderInfo, getProviderSelection } from "../api";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { useProvider } from "../hooks/useProvider";
 import { setAuthLoggedIn } from "../state/authState";
 import { useDataManager } from "../hooks/useDataManager";
 import { usePlayer } from "../hooks/usePlayer";
+import { restoreQueueForProvider } from "../hooks/playerHooks";
+import { setProviderId as setQueueProviderId } from "../hooks/useSongQueue";
 import { BackButton } from "./BackButton";
 import type { ProviderFullInfo } from "../types";
 
@@ -33,7 +35,7 @@ export const ProviderSettingsPage: FC<Props> = ({ onBack, onGoToLogin }) => {
       setSwitchingProvider(true);
       
       try {
-        // 1. 切换 Provider
+        // 1. 切换 Provider（队列已在修改时自动保存，无需手动保存）
         const success = await switchProvider(providerId);
         if (!mountedRef.current) return;
         
@@ -41,22 +43,29 @@ export const ProviderSettingsPage: FC<Props> = ({ onBack, onGoToLogin }) => {
           const providerName = allProviders.find((p) => p.id === providerId)?.name || providerId;
           toaster.toast({ title: "音源已切换", body: providerName });
           
-          // 2. 检查登录状态
+          // 3. 停止当前播放（避免旧 Provider 的音频继续播放）
+          // stop() 现在只停止播放，不清空队列
+          player.stop();
+          
+          // 4. 更新全局 provider ID
+          setQueueProviderId(providerId);
+          
+          // 5. 恢复新 provider 的队列
+          // 使用 getProviderInfo 确保 provider 信息已更新
+          await getProviderInfo();
+          await restoreQueueForProvider(providerId);
+          
+          // 6. 检查登录状态
           const selection = await getProviderSelection();
           if (!mountedRef.current) return;
           
           const isLoggedIn = Boolean(selection.success && selection.mainProvider);
           setAuthLoggedIn(isLoggedIn);
           
-          // 3. 清理当前播放队列和缓存数据
-          // 注意：usePlayer 内部会根据 providerId 自动切换/恢复持久化的队列
-          // 这里我们需要显式停止播放，以避免旧 Provider 的音频继续播放
-          player.clearCurrentQueue(); 
-          
-          // 4. 刷新首页推荐数据
+          // 7. 刷新首页推荐数据
           dataManager.clearDataCache(); // 清空旧数据
           
-          // 5. 如果未登录，跳转登录页
+          // 8. 如果未登录，跳转登录页
           if (!isLoggedIn) {
             onGoToLogin();
           }

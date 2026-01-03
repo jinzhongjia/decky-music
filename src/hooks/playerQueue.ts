@@ -43,6 +43,15 @@ export function createPlaySong(
       setPlaylist([song]);
       setCurrentIndex(0);
       syncShuffleAfterPlaylistChange(0);
+      // 立即保存队列状态
+      const frontendSettings = getFrontendSettingsCache();
+      saveQueueState(
+        globalCurrentProviderId,
+        globalPlaylist,
+        globalCurrentIndex,
+        frontendSettings.providerQueues,
+        updateFrontendSettingsCache
+      );
       const callback = getOnPlayNextCallback();
       await playSongInternalFn(song, 0, false, callback || undefined);
       return;
@@ -91,6 +100,15 @@ export function createPlayPlaylist(
       setPlaylist([...songs]);
       setCurrentIndex(startIndex);
       syncShuffleAfterPlaylistChange(startIndex);
+      // 立即保存队列状态
+      const frontendSettings = getFrontendSettingsCache();
+      saveQueueState(
+        globalCurrentProviderId,
+        globalPlaylist,
+        globalCurrentIndex,
+        frontendSettings.providerQueues,
+        updateFrontendSettingsCache
+      );
       const callback = getOnPlayNextCallback();
       await playSongInternalFn(songs[startIndex], startIndex, false, callback || undefined);
       return;
@@ -125,7 +143,7 @@ export function createPlayPlaylist(
           globalPlaylist,
           globalCurrentIndex,
           frontendSettings.providerQueues,
-          () => {}
+          updateFrontendSettingsCache
         );
         return;
       }
@@ -141,7 +159,7 @@ export function createPlayPlaylist(
         globalPlaylist,
         globalCurrentIndex,
         frontendSettings.providerQueues,
-        () => {}
+        updateFrontendSettingsCache
       );
       const callback = getOnPlayNextCallback();
       await playSongInternalFn(globalPlaylist[targetIndex], targetIndex, false, callback || undefined);
@@ -206,6 +224,15 @@ export function createAddToQueue(
       setQueueCurrentIndex(0);
       setCurrentIndex(0);
       syncShuffleAfterPlaylistChange(0);
+      // 更新索引后再次保存
+      const frontendSettings2 = getFrontendSettingsCache();
+      saveQueueState(
+        globalCurrentProviderId,
+        globalPlaylist,
+        globalCurrentIndex,
+        frontendSettings2.providerQueues,
+        updateFrontendSettingsCache
+      );
       const callback = getOnPlayNextCallback();
       await playSongInternalFn(newPlaylist[0], 0, false, callback || undefined);
     }
@@ -233,7 +260,7 @@ export function createRemoveFromQueue(
       globalPlaylist,
       globalCurrentIndex,
       frontendSettings.providerQueues,
-      () => {}
+      updateFrontendSettingsCache
     );
   };
 }

@@ -194,6 +194,7 @@ export function usePlayer(): UsePlayerReturn {
     togglePlay,
     seek,
     stop,
+    clearQueue,
     resetAllState,
   } = createPlayerMethods({
     playSongInternalWithState,
@@ -247,7 +248,8 @@ export function usePlayer(): UsePlayerReturn {
 
   const clearCurrentQueue = useCallback(() => {
     stop();
-  }, [stop]);
+    clearQueue();
+  }, [stop, clearQueue]);
 
   return {
     currentSong,

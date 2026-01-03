@@ -19,6 +19,7 @@ import {
   getFrontendSettingsCache,
   loadPlayMode,
   loadVolume,
+  updateFrontendSettingsCache,
 } from "./playerSettings";
 import { getGlobalAudio, getGlobalVolume, setGlobalVolume } from "./playerAudio";
 import { fetchLyricWithCache } from "./playerLyric";
@@ -216,5 +217,30 @@ export function usePlaybackTimeSync(
 
     return () => clearInterval(interval);
   }, [setIsPlaying, setCurrentTime, setDuration]);
+}
+
+/**
+ * 恢复指定 provider 的队列状态
+ */
+export async function restoreQueueForProvider(providerId: string): Promise<void> {
+  await ensureFrontendSettingsLoaded();
+  const frontendSettings = getFrontendSettingsCache();
+  const stored = loadQueueStateFromSettings(providerId, frontendSettings);
+  
+  if (stored.playlist.length > 0) {
+    setQueuePlaylist(stored.playlist);
+    const restoredIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
+    setQueueCurrentIndex(restoredIndex);
+    const restoredSong = stored.playlist[restoredIndex] || null;
+    setGlobalCurrentSong(restoredSong);
+  } else {
+    // 如果没有存储的队列，清空当前队列
+    setQueuePlaylist([]);
+    setQueueCurrentIndex(-1);
+    setGlobalCurrentSong(null);
+  }
+  
+  // 广播状态变化，通知所有订阅者（包括 usePlayer hook）
+  broadcastPlayerState();
 }
 
