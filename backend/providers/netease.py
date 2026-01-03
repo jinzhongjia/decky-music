@@ -31,6 +31,7 @@ from backend.types import (
     PlaylistSongsResponse,
     PreferredQuality,
     QrCodeResponse,
+    QrStatus,
     QrStatusResponse,
     RecommendPlaylistResponse,
     RecommendResponse,
@@ -227,13 +228,13 @@ class NeteaseProvider(MusicProvider):
             # 确保 code 是整数类型
             code = int(code_raw) if isinstance(code_raw, (int, float)) else 0
 
-            status_map = {
+            status_map: dict[int, QrStatus] = {
                 801: "waiting",
                 802: "scanned",
                 803: "success",
                 800: "timeout",
             }
-            status = status_map.get(code, "unknown")
+            status: QrStatus = status_map.get(code, "unknown")
 
             response: QrStatusResponse = {"success": True, "status": status}
 
