@@ -22,6 +22,7 @@ import {
   createTogglePlay,
   createSeek,
   createStop,
+  createClearQueue,
   createResetAllState,
 } from "./playerControls";
 import type { SongInfo, PlayMode } from "../types";
@@ -148,23 +149,27 @@ export function createPlayerMethods(params: CreatePlayerMethodsParams) {
       setCurrentTime,
       setDuration,
       setError,
-      setLyric,
-      setPlaylist,
-      setCurrentIndex
+      setLyric
     );
     return fn();
-  }, [setCurrentSong, setIsPlaying, setCurrentTime, setDuration, setError, setLyric, setPlaylist, setCurrentIndex]);
+  }, [setCurrentSong, setIsPlaying, setCurrentTime, setDuration, setError, setLyric]);
+
+  const clearQueue = useCallback(() => {
+    const fn = createClearQueue(setPlaylist, setCurrentIndex);
+    return fn();
+  }, [setPlaylist, setCurrentIndex]);
 
   const resetAllState = useCallback(() => {
     const fn = createResetAllState(
       stop,
+      clearQueue,
       setPlayModeState,
       setVolumeState,
       setSettingsRestored,
       enableSettingsSave
     );
     return fn();
-  }, [stop, setPlayModeState, setVolumeState, setSettingsRestored, enableSettingsSave]);
+  }, [stop, clearQueue, setPlayModeState, setVolumeState, setSettingsRestored, enableSettingsSave]);
 
   // 设置播放下一首回调
   useEffect(() => {
@@ -185,6 +190,7 @@ export function createPlayerMethods(params: CreatePlayerMethodsParams) {
     togglePlay,
     seek,
     stop,
+    clearQueue,
     resetAllState,
   };
 }

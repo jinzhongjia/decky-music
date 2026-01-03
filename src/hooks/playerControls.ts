@@ -77,7 +77,7 @@ export function createSeek(
 }
 
 /**
- * 创建停止播放的函数
+ * 创建停止播放的函数（只停止播放，不清空队列）
  */
 export function createStop(
   setCurrentSong: (song: any) => void,
@@ -85,9 +85,7 @@ export function createStop(
   setCurrentTime: (time: number) => void,
   setDuration: (duration: number) => void,
   setError: (error: string) => void,
-  setLyric: (lyric: any) => void,
-  setPlaylist: (playlist: any[]) => void,
-  setCurrentIndex: (index: number) => void
+  setLyric: (lyric: any) => void
 ): () => void {
   return () => {
     const audio = getGlobalAudio();
@@ -98,8 +96,6 @@ export function createStop(
 
     setGlobalCurrentSong(null);
     setGlobalLyric(null);
-    setQueuePlaylist([]);
-    setQueueCurrentIndex(-1);
     setOnNeedMoreSongsCallback(null);
 
     setCurrentSong(null);
@@ -108,8 +104,23 @@ export function createStop(
     setDuration(0);
     setError("");
     setLyric(null);
+    broadcastPlayerState();
+  };
+}
+
+/**
+ * 创建清空队列的函数
+ */
+export function createClearQueue(
+  setPlaylist: (playlist: any[]) => void,
+  setCurrentIndex: (index: number) => void
+): () => void {
+  return () => {
+    setQueuePlaylist([]);
+    setQueueCurrentIndex(-1);
     setPlaylist([]);
     setCurrentIndex(-1);
+    
     const frontendSettings = getFrontendSettingsCache();
     if (globalCurrentProviderId) {
       clearQueueState(
@@ -127,6 +138,7 @@ export function createStop(
  */
 export function createResetAllState(
   stopFn: () => void,
+  clearQueueFn: () => void,
   setPlayModeState: (mode: any) => void,
   setVolumeState: (volume: number) => void,
   setSettingsRestored: (restored: boolean) => void,
@@ -135,6 +147,7 @@ export function createResetAllState(
   return () => {
     enableSettingsSave(false);
     stopFn();
+    clearQueueFn();
     setGlobalPlayMode("order");
     setGlobalVolume(1);
     resetAllShuffleState();

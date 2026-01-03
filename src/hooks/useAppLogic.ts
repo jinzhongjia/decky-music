@@ -23,7 +23,6 @@ export function useAppLogic() {
     setOnNeedMoreSongs, 
     addToQueue, 
     enableSettingsSave,
-    stop,
     resetAllState
   } = player;
 
@@ -69,13 +68,13 @@ export function useAppLogic() {
   const handleLogout = useCallback(async () => {
     enableSettingsSave(false);
     await logout();
-    stop();
+    player.clearCurrentQueue(); // 登出时清空队列
     clearRecommendCache();
     clearDataCache();
     menuManager.disable();
     setCurrentPage("login");
     setAuthLoggedIn(false);
-  }, [enableSettingsSave, stop]);
+  }, [enableSettingsSave, player]);
 
   const fetchMoreGuessLikeSongs = useCallback(async (): Promise<SongInfo[]> => {
     const songs = await fetchGuessLikeRaw();
