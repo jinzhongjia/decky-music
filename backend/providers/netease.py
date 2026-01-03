@@ -175,7 +175,8 @@ class NeteaseProvider(MusicProvider):
             # WeapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
             result = cast(dict[str, object], result_raw)
             if result.get("code") != 200:
-                return {"success": False, "error": result.get("message", "获取二维码失败")}
+                error_msg = result.get("message", "获取二维码失败")
+                return {"success": False, "error": str(error_msg) if error_msg else "获取二维码失败"}
 
             unikey_raw = result.get("unikey", "")
             # 确保 unikey 是字符串类型
