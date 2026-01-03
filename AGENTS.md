@@ -38,7 +38,7 @@ src/
 └── index.tsx             # 主应用组件
 ```
 
-## python 使用
+## Python 使用规范
 
 ### 1. 代码规范 (PEP 8)
 
@@ -108,7 +108,7 @@ except KeyError as e:
     print(f"错误：配置中缺少键 {e}")
 ```
 
-## TypeScript 使用
+## TypeScript 使用规范
 
 必须使用 TypeScript，所有文件使用 .ts 或 .tsx 扩展名
 
@@ -188,7 +188,7 @@ const memoizedValue = useMemo(() => {
 | 包体积 | 定期检查依赖，移除未使用的库 |
 | 渲染优化 | 使用 React.memo、useMemo、useCallback 避免重新渲染 |
 
-### 关键设计模式
+## 关键设计模式
 
 #### 1. 前后端通信
 
@@ -241,6 +241,7 @@ async def get_something(self, param: str) -> dict[str, Any]:
 4. **可读性**：使用有意义的变量名和函数名，前端新手也可以轻松读懂代码
 5. **模块化**：提取可复用的逻辑为独立函数或 Hooks
 6. **简洁性**: 无用的代码无需保留
+7. **严格性**: 严格遵守上方的 Python 使用规范和 TypeScript 使用规范
 
 ### 禁止做
 
