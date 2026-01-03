@@ -52,6 +52,7 @@ import {
  * 全局清理函数 - 用于插件卸载时调用
  */
 export function cleanupPlayer(): void {
+  // 清理音频实例和全局状态
   cleanupAudio();
   resetGlobalPlayerState();
   resetQueueState();
