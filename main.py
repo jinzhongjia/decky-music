@@ -55,29 +55,32 @@ from backend.types import (  # noqa: E402
 )
 
 ResponseDict = TypeVar("ResponseDict", bound=dict[str, object])
+R = TypeVar("R")  # 通用返回类型
 P = ParamSpec("P")
 
 
 def require_provider(
     **default_fields: object,
 ) -> Callable[
-    [Callable[Concatenate["Plugin", P], Awaitable[ResponseDict]]],
-    Callable[Concatenate["Plugin", P], Awaitable[ResponseDict]],
+    [Callable[Concatenate["Plugin", P], Awaitable[R]]],
+    Callable[Concatenate["Plugin", P], Awaitable[R]],
 ]:
     """装饰器：检查 Provider 是否可用，不可用时返回错误响应"""
 
     def decorator(
-        func: Callable[Concatenate["Plugin", P], Awaitable[ResponseDict]],
-    ) -> Callable[Concatenate["Plugin", P], Awaitable[ResponseDict]]:
+        func: Callable[Concatenate["Plugin", P], Awaitable[R]],
+    ) -> Callable[Concatenate["Plugin", P], Awaitable[R]]:
         @wraps(func)
-        async def wrapper(self: "Plugin", *args: P.args, **kwargs: P.kwargs) -> ResponseDict:
+        async def wrapper(self: "Plugin", *args: P.args, **kwargs: P.kwargs) -> R:
             if not self._provider:
                 base_response: dict[str, object] = {
                     "success": False,
                     "error": "No active provider",
                 }
                 base_response.update(default_fields)
-                return cast(ResponseDict, base_response)
+                return cast(R, base_response)
+            # 类型保护：此时 _provider 一定不是 None
+            assert self._provider is not None
             return await func(self, *args, **kwargs)
 
         return wrapper
@@ -223,19 +226,27 @@ class Plugin:
 
     @require_provider()
     async def get_qr_code(self, login_type: str = "qq") -> QrCodeResponse:
-        return await self._provider.get_qr_code(login_type)
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_qr_code(login_type)
 
     @require_provider()
     async def check_qr_status(self) -> QrStatusResponse:
-        return await self._provider.check_qr_status()
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.check_qr_status()
 
     @require_provider(logged_in=False)
     async def get_login_status(self) -> LoginStatusResponse:
-        return await self._provider.get_login_status()
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_login_status()
 
     @require_provider()
     async def logout(self) -> OperationResult:
-        return self._provider.logout()
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return provider.logout()
 
     async def clear_all_settings(self) -> OperationResult:
         try:
@@ -252,31 +263,45 @@ class Plugin:
 
     @require_provider(songs=[])
     async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> SearchResponse:
-        return await self._provider.search_songs(keyword, page, num)
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.search_songs(keyword, page, num)
 
     @require_provider(hotkeys=[])
     async def get_hot_search(self) -> HotSearchResponse:
-        return await self._provider.get_hot_search()
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_hot_search()
 
     @require_provider(suggestions=[])
     async def get_search_suggest(self, keyword: str) -> SearchSuggestResponse:
-        return await self._provider.get_search_suggest(keyword)
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_search_suggest(keyword)
 
     @require_provider(songs=[])
     async def get_guess_like(self) -> RecommendResponse:
-        return await self._provider.get_guess_like()
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_guess_like()
 
     @require_provider(songs=[])
     async def get_daily_recommend(self) -> DailyRecommendResponse:
-        return await self._provider.get_daily_recommend()
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_daily_recommend()
 
     @require_provider(playlists=[])
     async def get_recommend_playlists(self) -> RecommendPlaylistResponse:
-        return await self._provider.get_recommend_playlists()
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_recommend_playlists()
 
     @require_provider(songs=[], total=0)
     async def get_fav_songs(self, page: int = 1, num: int = 20) -> FavSongsResponse:
-        return await self._provider.get_fav_songs(page, num)
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_fav_songs(page, num)
 
     async def get_song_url(
         self,
@@ -294,7 +319,9 @@ class Plugin:
 
     @require_provider(urls={})
     async def get_song_urls_batch(self, mids: list[str]) -> SongUrlBatchResponse:
-        return await self._provider.get_song_urls_batch(mids)
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_song_urls_batch(mids)
 
     async def get_song_lyric(
         self,
@@ -312,15 +339,21 @@ class Plugin:
 
     @require_provider(info={})
     async def get_song_info(self, mid: str) -> SongInfoResponse:
-        return await self._provider.get_song_info(mid)
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_song_info(mid)
 
     @require_provider(created=[], collected=[])
     async def get_user_playlists(self) -> UserPlaylistsResponse:
-        return await self._provider.get_user_playlists()
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_user_playlists()
 
     @require_provider(songs=[])
     async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> PlaylistSongsResponse:
-        return await self._provider.get_playlist_songs(playlist_id, dirid)
+        # 装饰器已确保 _provider 不为 None
+        provider = cast(MusicProvider, self._provider)
+        return await provider.get_playlist_songs(playlist_id, dirid)
 
     async def _main(self):
         decky.logger.info("Decky Music 插件已加载")
