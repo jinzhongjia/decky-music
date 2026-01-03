@@ -15,6 +15,7 @@ from backend.providers.base import Capability, MusicProvider
 from backend.types import (
     DailyRecommendResponse,
     FavSongsResponse,
+    HotKey,
     HotSearchResponse,
     LoginStatusResponse,
     OperationResult,
@@ -313,7 +314,7 @@ class QQMusicProvider(MusicProvider):
     async def get_hot_search(self) -> HotSearchResponse:
         try:
             result = await search.hotkey()
-            hotkeys = []
+            hotkeys :list[HotKey] = []
             for item in result.get("hotkey", []):
                 hotkeys.append(
                     {
