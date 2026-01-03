@@ -40,6 +40,8 @@ src/
 
 ## Python 使用规范
 
+main.py 只是方法暴露和少量初始化代码，复杂业务逻辑都必须放在 backend/ 目录下的各个模块中。
+
 ### 1. 代码规范 (PEP 8)
 
 - **严格遵守 PEP 8**：所有代码必须符合 PEP 8 风格指南。
@@ -109,6 +111,8 @@ except KeyError as e:
 ```
 
 ## TypeScript 使用规范
+
+index.tsx 只是应用入口，复杂业务逻辑都必须放在对应模块中。
 
 必须使用 TypeScript，所有文件使用 .ts 或 .tsx 扩展名
 
