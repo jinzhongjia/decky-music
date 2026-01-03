@@ -19,7 +19,6 @@ import {
   getFrontendSettingsCache,
   loadPlayMode,
   loadVolume,
-  updateFrontendSettingsCache,
 } from "./playerSettings";
 import { getGlobalAudio, getGlobalVolume, setGlobalVolume } from "./playerAudio";
 import { fetchLyricWithCache } from "./playerLyric";
