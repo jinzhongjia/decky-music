@@ -7,6 +7,7 @@ import base64
 import json
 from collections.abc import Mapping
 from datetime import datetime
+from typing import cast
 
 import decky
 from backend.config_manager import ConfigManager
@@ -21,6 +22,7 @@ from backend.types import (
     PlaylistSongsResponse,
     PreferredQuality,
     QrCodeResponse,
+    QrStatus,
     QrStatusResponse,
     RecommendPlaylistResponse,
     RecommendResponse,
@@ -60,17 +62,20 @@ class QQMusicProvider(MusicProvider):
 
         mid = item.get("mid", "") or item.get("songmid", "")
 
-        return {
-            "id": item.get("id", 0) or item.get("songid", 0),
-            "mid": mid,
-            "name": item.get("name", "") or item.get("title", "") or item.get("songname", ""),
-            "singer": singer_name,
-            "album": album_name,
-            "albumMid": album_mid,
-            "duration": item.get("interval", 0),
-            "cover": f"https://y.qq.com/music/photo_new/T002R300x300M000{album_mid}.jpg" if album_mid else "",
-            "provider": "qqmusic",
-        }
+        return cast(
+            SongInfo,
+            {
+                "id": item.get("id", 0) or item.get("songid", 0),
+                "mid": mid,
+                "name": item.get("name", "") or item.get("title", "") or item.get("songname", ""),
+                "singer": singer_name,
+                "album": album_name,
+                "albumMid": album_mid,
+                "duration": item.get("interval", 0),
+                "cover": f"https://y.qq.com/music/photo_new/T002R300x300M000{album_mid}.jpg" if album_mid else "",
+                "provider": "qqmusic",
+            },
+        )
 
     @staticmethod
     def _format_playlist_item(item: Mapping[str, object], is_collected: bool = False) -> PlaylistInfo:
@@ -78,16 +83,28 @@ class QQMusicProvider(MusicProvider):
         creator = item.get("creator", {})
         creator_name = creator.get("nick", "") if isinstance(creator, dict) else item.get("creator_name", "")
 
-        return {
-            "id": item.get("tid", 0) or item.get("dissid", 0),
-            "dirid": item.get("dirid", 0),
-            "name": item.get("dirName", "") or item.get("diss_name", "") or item.get("name", "") or item.get("title", ""),
-            "cover": item.get("picUrl", "") or item.get("diss_cover", "") or item.get("logo", "") or item.get("pic", ""),
-            "songCount": item.get("songNum", 0) or item.get("song_cnt", 0) or item.get("songnum", 0) or item.get("song_count", 0),
-            "playCount": item.get("listen_num", 0),
-            "creator": creator_name if is_collected else "",
-            "provider": "qqmusic",
-        }
+        return cast(
+            PlaylistInfo,
+            {
+                "id": item.get("tid", 0) or item.get("dissid", 0),
+                "dirid": item.get("dirid", 0),
+                "name": item.get("dirName", "")
+                or item.get("diss_name", "")
+                or item.get("name", "")
+                or item.get("title", ""),
+                "cover": item.get("picUrl", "")
+                or item.get("diss_cover", "")
+                or item.get("logo", "")
+                or item.get("pic", ""),
+                "songCount": item.get("songNum", 0)
+                or item.get("song_cnt", 0)
+                or item.get("songnum", 0)
+                or item.get("song_count", 0),
+                "playCount": item.get("listen_num", 0),
+                "creator": creator_name if is_collected else "",
+                "provider": "qqmusic",
+            },
+        )
 
     def __init__(self) -> None:
         self.credential: Credential | None = None
@@ -198,7 +215,7 @@ class QQMusicProvider(MusicProvider):
         try:
             event, credential = await login.check_qrcode(self.current_qr)
 
-            status_map = {
+            status_map: dict[QRCodeLoginEvents, QrStatus] = {
                 QRCodeLoginEvents.SCAN: "waiting",
                 QRCodeLoginEvents.CONF: "scanned",
                 QRCodeLoginEvents.TIMEOUT: "timeout",
@@ -207,7 +224,7 @@ class QQMusicProvider(MusicProvider):
                 QRCodeLoginEvents.OTHER: "unknown",
             }
 
-            status = status_map.get(event, "unknown")
+            status: QrStatus = status_map.get(event, "unknown")
             result: QrStatusResponse = {"success": True, "status": status}
 
             if event == QRCodeLoginEvents.DONE and credential:
@@ -443,9 +460,7 @@ class QQMusicProvider(MusicProvider):
             decky.logger.error(f"获取收藏歌曲失败: {e}")
             return {"success": False, "error": str(e), "songs": [], "total": 0}
 
-    async def get_song_url(
-        self, mid: str, preferred_quality: PreferredQuality | None = None
-    ) -> SongUrlResponse:
+    async def get_song_url(self, mid: str, preferred_quality: PreferredQuality | None = None) -> SongUrlResponse:
         has_credential = self.credential is not None and self.credential.has_musicid()
         if has_credential:
             is_valid = await self._ensure_credential_valid()
