@@ -109,10 +109,21 @@ class Plugin:
         self.current_version = load_plugin_version(plugin_path)
         self.config = ConfigManager()
         self._manager = ProviderManager()
-        self._manager.register(QQMusicProvider())
-        if NeteaseProvider is not None:
-            self._manager.register(NeteaseProvider())
-            self._manager.set_fallback_order(["netease"])
+        
+        # 注册 providers
+        qqmusic_provider = QQMusicProvider()
+        self._manager.register(qqmusic_provider)
+        netease_provider = NeteaseProvider()
+        self._manager.register(netease_provider)
+        
+        # 在初始化时加载所有 providers 的凭证
+        # 这样在检查登录状态时，凭证已经准备好了
+        for provider in self._manager.all_providers():
+            try:
+                provider.load_credential()
+            except Exception as e:
+                decky.logger.warning(f"加载 {provider.id} 凭证失败: {e}")
+        
         self._manager.switch("qqmusic")
 
     async def _ensure_provider_logged_in(self, provider: MusicProvider) -> bool:
