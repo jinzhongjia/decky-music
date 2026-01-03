@@ -7,6 +7,7 @@ import { toaster } from "@decky/api";
 import type { SongInfo, PlaylistInfo } from "../../types";
 import type { FullscreenPageType, UseDataManagerReturn } from "./types";
 import type { UsePlayerReturn } from "../../hooks/usePlayer";
+import { fetchGuessLikeRaw, replaceGuessLikeSongs } from "../../hooks/useDataManager";
 
 /**
  * 创建全屏播放器的事件处理函数
@@ -23,15 +24,13 @@ export function useFullscreenHandlers(
     setOnNeedMoreSongs,
   } = player;
 
-  const { refreshGuessLike } = dataManager;
-
   // 猜你喜欢预取相关
   const nextGuessLikeRef = useRef<SongInfo[] | null>(null);
   const nextGuessLikePromiseRef = useRef<Promise<void> | null>(null);
 
   const prefetchNextGuessLikeBatch = useCallback(() => {
     if (nextGuessLikePromiseRef.current) return;
-    nextGuessLikePromiseRef.current = refreshGuessLike()
+    nextGuessLikePromiseRef.current = fetchGuessLikeRaw()
       .then((songs) => {
         nextGuessLikeRef.current = songs;
       })
@@ -39,19 +38,26 @@ export function useFullscreenHandlers(
       .finally(() => {
         nextGuessLikePromiseRef.current = null;
       });
-  }, [refreshGuessLike]);
+  }, []);
 
   const fetchMoreGuessLikeSongs = useCallback(async (): Promise<SongInfo[]> => {
+    let songs: SongInfo[];
     if (nextGuessLikeRef.current && nextGuessLikeRef.current.length > 0) {
-      const cached = nextGuessLikeRef.current;
+      songs = nextGuessLikeRef.current;
       nextGuessLikeRef.current = null;
       prefetchNextGuessLikeBatch();
-      return cached;
+    } else {
+      songs = await fetchGuessLikeRaw();
+      prefetchNextGuessLikeBatch();
     }
-    const songs = await refreshGuessLike();
-    prefetchNextGuessLikeBatch();
+    
+    // 获取新数据后，直接替换UI上的猜你喜欢数据
+    if (songs.length > 0) {
+      replaceGuessLikeSongs(songs);
+    }
+    
     return songs;
-  }, [prefetchNextGuessLikeBatch, refreshGuessLike]);
+  }, [prefetchNextGuessLikeBatch]);
 
   // 选择歌曲
   const handleSelectSong = useCallback(async (
