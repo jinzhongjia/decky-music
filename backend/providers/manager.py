@@ -3,6 +3,8 @@
 管理所有 Provider，处理路由和 fallback。
 """
 
+from typing import TYPE_CHECKING
+
 import decky
 from backend.providers.base import Capability, MusicProvider
 from backend.types import (
@@ -13,6 +15,9 @@ from backend.types import (
     SongLyricResponse,
     SongUrlResponse,
 )
+
+if TYPE_CHECKING:
+    from backend.config_manager import ConfigManager
 
 
 class ProviderManager:
@@ -173,3 +178,82 @@ class ProviderManager:
                 return fb_result
 
         return result
+
+    async def ensure_provider_logged_in(self, provider: MusicProvider) -> bool:
+        """检查 provider 登录状态，未登录则返回 False
+
+        Args:
+            provider: 音乐提供者实例
+
+        Returns:
+            已登录返回 True，否则返回 False
+        """
+        try:
+            status = await provider.get_login_status()
+            return bool(status.get("logged_in"))
+        except Exception as e:  # pragma: no cover - 依赖外部接口
+            decky.logger.error(f"检查 {provider.id} 登录状态失败: {e}")
+            return False
+
+    async def apply_provider_config(self, config: "ConfigManager") -> None:
+        """根据配置选择主 Provider 和 fallback Provider（仅使用已登录的 Provider）
+
+        Args:
+            config: 配置管理器
+        """
+        main_id = config.get_main_provider_id()
+        fallback_ids_config = config.get_fallback_provider_ids()
+
+        # 处理主 Provider
+        if main_id:
+            provider = self.get_provider(main_id)
+            if provider and await self.ensure_provider_logged_in(provider):
+                self.switch(main_id)
+        else:
+            # 如果没有配置主 Provider，选择第一个已登录的 Provider 作为默认值
+            for provider in self.all_providers():
+                if await self.ensure_provider_logged_in(provider):
+                    self.switch(provider.id)
+                    decky.logger.info(f"未配置主 Provider，自动选择已登录的 Provider: {provider.name}")
+                    break
+
+        # 处理 fallback Provider 列表，必须已登录且不同于主 Provider
+        fallback_ids: list[str] = []
+        for fb_id in fallback_ids_config:
+            if fb_id == self._active_id:
+                continue
+            fb_provider = self.get_provider(fb_id)
+            if fb_provider and await self.ensure_provider_logged_in(fb_provider):
+                fallback_ids.append(fb_id)
+        self.set_fallback_order(fallback_ids)
+
+    async def get_provider_selection(self, config: "ConfigManager") -> dict[str, object]:
+        """获取当前配置的主 Provider 和 fallback Provider（仅返回已登录的）
+
+        Args:
+            config: 配置管理器
+
+        Returns:
+            包含 mainProvider 和 fallbackProviders 的字典
+        """
+        try:
+            main_id: str | None = None
+            if self.active and await self.ensure_provider_logged_in(self.active):
+                main_id = self.active.id
+
+            fallback_ids: list[str] = []
+            for fb_id in config.get_fallback_provider_ids():
+                if fb_id == main_id:
+                    continue
+                fb_provider = self.get_provider(fb_id)
+                if fb_provider and await self.ensure_provider_logged_in(fb_provider):
+                    fallback_ids.append(fb_id)
+
+            return {
+                "success": True,
+                "mainProvider": main_id,
+                "fallbackProviders": fallback_ids,
+            }
+        except Exception as e:  # pragma: no cover - 依赖外部接口
+            decky.logger.error(f"获取 Provider 配置失败: {e}")
+            return {"success": False, "error": str(e), "mainProvider": None, "fallbackProviders": []}
