@@ -33,29 +33,40 @@ import { setOnNeedMoreSongsCallback } from "./playerNavigation";
  */
 export function createTogglePlay(
   isPlaying: boolean,
-  playSongInternalFn: (song: any, index: number, autoSkip: boolean, onNext?: () => void) => Promise<boolean>
+  playSongInternalFn: (
+    song: any,
+    index: number,
+    autoSkip: boolean,
+    onNext?: () => void
+  ) => Promise<boolean>
 ): () => void {
   return () => {
     const audio = getGlobalAudio();
-
     const resumeSong = getGlobalCurrentSong();
-    if (!audio.src && resumeSong) {
-      const resumeIndex = globalCurrentIndex >= 0 ? globalCurrentIndex : 0;
-      void playSongInternalFn(resumeSong, resumeIndex, false);
-      return;
-    }
 
-    if (isPlaying) {
-      audio.pause();
-    } else {
-      audio
-        .play()
-        .catch((e) => {
-          toaster.toast({
-            title: "播放失败",
-            body: e.message,
-          });
+    // 如果没有音频源但有歌曲，需要重新加载音频
+    // 检查 audio.src 是否为空或无效
+    const hasValidSrc =
+      audio.src && audio.src !== "" && audio.readyState !== HTMLMediaElement.HAVE_NOTHING;
+    if (hasValidSrc) {
+      if (isPlaying) {
+        audio.pause();
+      } else {
+        audio.play().catch((e) => {
+          toaster.toast({ title: "播放失败", body: e.message });
         });
+      }
+    } else {
+      if (resumeSong) {
+        const resumeIndex = globalCurrentIndex >= 0 ? globalCurrentIndex : 0;
+        playSongInternalFn(resumeSong, resumeIndex, false);
+        return;
+      }
+
+      toaster.toast({
+        title: "无法播放",
+        body: "没有可用的音频源或当前歌曲。",
+      });
     }
   };
 }
@@ -63,9 +74,7 @@ export function createTogglePlay(
 /**
  * 创建跳转时间的函数
  */
-export function createSeek(
-  setCurrentTime: (time: number) => void
-): (time: number) => void {
+export function createSeek(setCurrentTime: (time: number) => void): (time: number) => void {
   return (time: number) => {
     const audio = getGlobalAudio();
     if (audio.duration) {
@@ -120,7 +129,7 @@ export function createClearQueue(
     setQueueCurrentIndex(-1);
     setPlaylist([]);
     setCurrentIndex(-1);
-    
+
     const frontendSettings = getFrontendSettingsCache();
     if (globalCurrentProviderId) {
       clearQueueState(
@@ -161,4 +170,3 @@ export function createResetAllState(
     setSettingsRestored(false);
   };
 }
-
