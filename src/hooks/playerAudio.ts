@@ -62,7 +62,6 @@ export function cleanupAudio(): void {
   if (globalAudio) {
     globalAudio.pause();
     globalAudio.src = "";
-    // 注意：不删除 globalAudio，保持单例
   }
 }
 
