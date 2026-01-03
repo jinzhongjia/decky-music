@@ -24,6 +24,7 @@ from backend.providers.base import Capability, MusicProvider
 from backend.types import (
     DailyRecommendResponse,
     FavSongsResponse,
+    HotKey,
     HotSearchResponse,
     LoginStatusResponse,
     OperationResult,
@@ -41,6 +42,7 @@ from backend.types import (
     SongLyricResponse,
     SongUrlBatchResponse,
     SongUrlResponse,
+    SuggestionItem,
     UserPlaylistsResponse,
 )
 
@@ -271,7 +273,6 @@ class NeteaseProvider(MusicProvider):
                 return {
                     "logged_in": True,
                     "musicid": session.uid,
-                    "nickname": session.nickname,
                 }
             return {"logged_in": False}
         except Exception as e:
@@ -299,21 +300,25 @@ class NeteaseProvider(MusicProvider):
     async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> SearchResponse:
         try:
             offset = (page - 1) * num
-            result = cloudsearch.GetSearchResult(
+            result_raw = cloudsearch.GetSearchResult(
                 keyword,
                 stype=cloudsearch.SONG,
                 limit=num,
                 offset=offset
             )
+            # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
+            result = cast(dict[str, object], result_raw)
 
             if result.get("code") != 200:
+                error_msg = result.get("message", "搜索失败")
                 return {
                     "success": False,
-                    "error": result.get("message", "搜索失败"),
+                    "error": str(error_msg) if error_msg else "搜索失败",
                     "songs": [],
                 }
 
-            songs_data = result.get("result", {}).get("songs", [])
+            result_data = result.get("result", {})
+            songs_data = result_data.get("songs", []) if isinstance(result_data, dict) else []
             songs = [_format_netease_song(s) for s in songs_data]
 
             decky.logger.info(f"网易云搜索'{keyword}'找到 {len(songs)} 首歌曲")
@@ -340,7 +345,9 @@ class NeteaseProvider(MusicProvider):
             }
             level = level_map.get(preferred_quality or "auto", "exhigh")
 
-            result = track.GetTrackAudioV1(song_id, level=level)
+            result_raw = track.GetTrackAudioV1([song_id], level=level)
+            # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
+            result = cast(dict[str, object], result_raw)
 
             if result.get("code") != 200:
                 return {
@@ -350,7 +357,8 @@ class NeteaseProvider(MusicProvider):
                     "mid": mid,
                 }
 
-            data_list = result.get("data", [])
+            data_list_raw = result.get("data", [])
+            data_list = data_list_raw if isinstance(data_list_raw, list) else []
             if not data_list:
                 return {
                     "success": False,
@@ -359,7 +367,17 @@ class NeteaseProvider(MusicProvider):
                     "mid": mid,
                 }
 
-            url = data_list[0].get("url", "")
+            first_item = data_list[0]
+            if not isinstance(first_item, dict):
+                return {
+                    "success": False,
+                    "error": "数据格式错误",
+                    "url": "",
+                    "mid": mid,
+                }
+
+            url_raw = first_item.get("url", "")
+            url = str(url_raw) if url_raw else ""
             if not url:
                 return {
                     "success": False,
@@ -368,7 +386,8 @@ class NeteaseProvider(MusicProvider):
                     "mid": mid,
                 }
 
-            quality = data_list[0].get("level", "unknown")
+            quality_raw = first_item.get("level", "unknown")
+            quality = str(quality_raw) if quality_raw else "unknown"
             decky.logger.debug(f"网易云获取歌曲 {mid} 成功，音质: {quality}")
             return {
                 "success": True,
@@ -386,8 +405,9 @@ class NeteaseProvider(MusicProvider):
         last_error = ""
         for mid in mids:
             single = await self.get_song_url(mid)
-            if single.get("success") and single.get("url"):
-                urls[mid] = str(single["url"])
+            url_value = single.get("url")
+            if single.get("success") and url_value:
+                urls[mid] = str(url_value)
             else:
                 last_error = single.get("error", "")
         if urls and len(urls) == len(mids):
@@ -402,9 +422,12 @@ class NeteaseProvider(MusicProvider):
             result = _weapi_request("/weapi/search/suggest/keyword", {"s": keyword})
             result_data = result.get("result", {}) if isinstance(result, dict) else {}
 
-            suggestions: list[dict[str, str]] = []
+            suggestions: list[SuggestionItem] = []
 
-            for item in result_data.get("songs", []):
+            # 处理歌曲建议
+            songs_raw = result_data.get("songs", []) if isinstance(result_data, dict) else []
+            songs_list = songs_raw if isinstance(songs_raw, list) else []
+            for item in songs_list:
                 if not isinstance(item, dict):
                     continue
                 singers = item.get("artists", [])
@@ -417,23 +440,29 @@ class NeteaseProvider(MusicProvider):
                     singer_name = singers
                 name = item.get("name", "")
                 if name:
-                    suggestions.append({"type": "song", "keyword": str(name), "singer": singer_name})
+                    suggestions.append(cast(SuggestionItem, {"type": "song", "keyword": str(name), "singer": singer_name}))
 
-            for item in result_data.get("artists", []):
+            # 处理歌手建议
+            artists_raw = result_data.get("artists", []) if isinstance(result_data, dict) else []
+            artists_list = artists_raw if isinstance(artists_raw, list) else []
+            for item in artists_list:
                 if not isinstance(item, dict):
                     continue
                 name = item.get("name", "")
                 if name:
-                    suggestions.append({"type": "singer", "keyword": str(name)})
+                    suggestions.append(cast(SuggestionItem, {"type": "singer", "keyword": str(name)}))
 
-            for item in result_data.get("albums", []):
+            # 处理专辑建议
+            albums_raw = result_data.get("albums", []) if isinstance(result_data, dict) else []
+            albums_list = albums_raw if isinstance(albums_raw, list) else []
+            for item in albums_list:
                 if not isinstance(item, dict):
                     continue
                 name = item.get("name", "")
                 artist = item.get("artist", {})
                 singer = artist.get("name", "") if isinstance(artist, dict) else ""
                 if name:
-                    suggestions.append({"type": "album", "keyword": str(name), "singer": singer})
+                    suggestions.append(cast(SuggestionItem, {"type": "album", "keyword": str(name), "singer": singer}))
 
             return {"success": True, "suggestions": suggestions[:10]}
         except Exception as e:
@@ -444,9 +473,13 @@ class NeteaseProvider(MusicProvider):
         try:
             # 优先使用带评分的热搜列表
             result = _weapi_request("/weapi/search/hot/detail", {})
-            hot_list = result.get("data", []) or result.get("result", {}).get("hots", [])
+            data_raw = result.get("data", [])
+            result_data = result.get("result", {})
+            result_hots = result_data.get("hots", []) if isinstance(result_data, dict) else []
+            hot_list_raw = data_raw if isinstance(data_raw, list) and data_raw else result_hots
+            hot_list = hot_list_raw if isinstance(hot_list_raw, list) else []
 
-            hotkeys: list[dict[str, object]] = []
+            hotkeys: list[HotKey] = []
             for item in hot_list:
                 if not isinstance(item, dict):
                     continue
@@ -455,7 +488,7 @@ class NeteaseProvider(MusicProvider):
                     continue
                 score_raw = item.get("score") or item.get("second") or 0
                 score = int(score_raw) if isinstance(score_raw, (int, float)) else 0
-                hotkeys.append({"keyword": str(keyword), "score": score})
+                hotkeys.append(cast(HotKey, {"keyword": str(keyword), "score": score}))
 
             return {"success": True, "hotkeys": hotkeys[:20]}
         except Exception as e:
@@ -470,7 +503,8 @@ class NeteaseProvider(MusicProvider):
         try:
             # /likelist 返回喜欢歌曲的 ID 列表
             like_ids_resp = _weapi_request("/weapi/song/like/get", {"uid": session.uid})
-            ids = like_ids_resp.get("ids", []) if isinstance(like_ids_resp, dict) else []
+            ids_raw = like_ids_resp.get("ids", []) if isinstance(like_ids_resp, dict) else []
+            ids = ids_raw if isinstance(ids_raw, list) else []
             if not ids:
                 return {"success": True, "songs": [], "total": 0}
 
@@ -480,12 +514,18 @@ class NeteaseProvider(MusicProvider):
             if not slice_ids:
                 return {"success": True, "songs": [], "total": total}
 
-            detail_result = track.GetTrackDetail(slice_ids)
-            if detail_result.get("code") != 200:
+            detail_result_raw = track.GetTrackDetail(slice_ids)
+            # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
+            detail_result = cast(dict[str, object], detail_result_raw)
+            
+            code_raw = detail_result.get("code", 0)
+            code = int(code_raw) if isinstance(code_raw, (int, float)) else 0
+            if code != 200:
                 return {"success": False, "error": "获取歌曲详情失败", "songs": [], "total": total}
 
-            songs_data = detail_result.get("songs", [])
-            songs = [_format_netease_song(s) for s in songs_data]
+            songs_data_raw = detail_result.get("songs", [])
+            songs_data = songs_data_raw if isinstance(songs_data_raw, list) else []
+            songs = [_format_netease_song(s) for s in songs_data if isinstance(s, dict)]
 
             return {"success": True, "songs": songs, "total": total}
         except Exception as e:
@@ -495,10 +535,13 @@ class NeteaseProvider(MusicProvider):
     async def get_song_lyric(self, mid: str, qrc: bool = True) -> SongLyricResponse:
         del qrc
         try:
-            song_id = int(mid)
-            result = track.GetTrackLyricsNew(song_id)
+            result_raw = track.GetTrackLyricsNew(mid)
+            # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
+            result = cast(dict[str, object], result_raw)
 
-            if result.get("code") != 200:
+            code_raw = result.get("code", 0)
+            code = int(code_raw) if isinstance(code_raw, (int, float)) else 0
+            if code != 200:
                 return {
                     "success": False,
                     "error": "获取歌词失败",
@@ -507,12 +550,23 @@ class NeteaseProvider(MusicProvider):
                 }
 
             # 优先使用逐字歌词，其次普通歌词
-            yrc_text = result.get("yrc", {}).get("lyric", "")
-            krc_text = result.get("klyric", {}).get("lyric", "")
-            lrc_text = result.get("lrc", {}).get("lyric", "") or ""
+            yrc_raw = result.get("yrc", {})
+            yrc_dict = yrc_raw if isinstance(yrc_raw, dict) else {}
+            yrc_text = str(yrc_dict.get("lyric", "")) if yrc_dict else ""
+
+            krc_raw = result.get("klyric", {})
+            krc_dict = krc_raw if isinstance(krc_raw, dict) else {}
+            krc_text = str(krc_dict.get("lyric", "")) if krc_dict else ""
+
+            lrc_raw = result.get("lrc", {})
+            lrc_dict = lrc_raw if isinstance(lrc_raw, dict) else {}
+            lrc_text = str(lrc_dict.get("lyric", "")) if lrc_dict else ""
 
             lyric_text = yrc_text or krc_text or lrc_text
-            trans_text = result.get("tlyric", {}).get("lyric", "") or ""
+
+            tlyric_raw = result.get("tlyric", {})
+            tlyric_dict = tlyric_raw if isinstance(tlyric_raw, dict) else {}
+            trans_text = str(tlyric_dict.get("lyric", "")) if tlyric_dict else ""
 
             if not lyric_text and not trans_text:
                 return {
@@ -545,9 +599,13 @@ class NeteaseProvider(MusicProvider):
                 }
 
             uid = session.uid
-            result = user.GetUserPlaylists(uid)
+            result_raw = user.GetUserPlaylists(uid)
+            # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
+            result = cast(dict[str, object], result_raw)
 
-            if result.get("code") != 200:
+            code_raw = result.get("code", 0)
+            code = int(code_raw) if isinstance(code_raw, (int, float)) else 0
+            if code != 200:
                 return {
                     "success": False,
                     "error": "获取歌单失败",
@@ -555,14 +613,18 @@ class NeteaseProvider(MusicProvider):
                     "collected": [],
                 }
 
-            playlists = result.get("playlist", [])
+            playlists_raw = result.get("playlist", [])
+            playlists = playlists_raw if isinstance(playlists_raw, list) else []
             created = []
             collected = []
 
             for p in playlists:
+                if not isinstance(p, dict):
+                    continue
                 formatted = _format_netease_playlist(p)
                 creator = p.get("creator", {})
-                creator_id = creator.get("userId", 0) if isinstance(creator, dict) else 0
+                creator_id_raw = creator.get("userId", 0) if isinstance(creator, dict) else 0
+                creator_id = int(creator_id_raw) if isinstance(creator_id_raw, (int, float)) else 0
 
                 if creator_id == uid:
                     created.append(formatted)
@@ -583,23 +645,36 @@ class NeteaseProvider(MusicProvider):
     async def get_playlist_songs(self, playlist_id: int, dirid: int = 0) -> PlaylistSongsResponse:
         try:
             del dirid
-            result = playlist.GetPlaylistInfo(playlist_id)
+            result_raw = playlist.GetPlaylistInfo(playlist_id)
+            # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
+            result = cast(dict[str, object], result_raw)
 
-            if result.get("code") != 200:
+            code_raw = result.get("code", 0)
+            code = int(code_raw) if isinstance(code_raw, (int, float)) else 0
+            if code != 200:
                 return {"success": False, "error": "获取歌单歌曲失败", "songs": [], "playlist_id": playlist_id}
 
-            track_ids = result.get("playlist", {}).get("trackIds", [])
+            playlist_data_raw = result.get("playlist", {})
+            playlist_data = playlist_data_raw if isinstance(playlist_data_raw, dict) else {}
+            track_ids_raw = playlist_data.get("trackIds", [])
+            track_ids = track_ids_raw if isinstance(track_ids_raw, list) else []
+            
             if not track_ids:
                 return {"success": True, "songs": [], "playlist_id": playlist_id}
 
-            ids = [t["id"] for t in track_ids[:100]]
-            detail_result = track.GetTrackDetail(ids)
+            ids = [t.get("id", 0) for t in track_ids[:100] if isinstance(t, dict)]
+            detail_result_raw = track.GetTrackDetail(ids)
+            # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
+            detail_result = cast(dict[str, object], detail_result_raw)
 
-            if detail_result.get("code") != 200:
+            detail_code_raw = detail_result.get("code", 0)
+            detail_code = int(detail_code_raw) if isinstance(detail_code_raw, (int, float)) else 0
+            if detail_code != 200:
                 return {"success": False, "error": "获取歌曲详情失败", "songs": [], "playlist_id": playlist_id}
 
-            songs_data = detail_result.get("songs", [])
-            songs = [_format_netease_song(s) for s in songs_data]
+            songs_data_raw = detail_result.get("songs", [])
+            songs_data = songs_data_raw if isinstance(songs_data_raw, list) else []
+            songs = [_format_netease_song(s) for s in songs_data if isinstance(s, dict)]
 
             decky.logger.info(f"网易云获取歌单 {playlist_id} 的歌曲: {len(songs)} 首")
             return {
@@ -629,7 +704,10 @@ class NeteaseProvider(MusicProvider):
                     )
                 except Exception as e:
                     decky.logger.error(f"网易云刷新登录失败: {e}")
-            song_items = result.get("result", []) or result.get("data", []) or []
+            result_items = result.get("result", [])
+            data_items = result.get("data", [])
+            song_items_raw = result_items if isinstance(result_items, list) and result_items else (data_items if isinstance(data_items, list) else [])
+            song_items = song_items_raw if isinstance(song_items_raw, list) else []
 
             # 去重后返回全部个性化新歌
             seen = set()
@@ -674,7 +752,10 @@ class NeteaseProvider(MusicProvider):
                 except Exception as e:
                     decky.logger.error(f"网易云刷新登录失败: {e}")
 
-            songs_data = result.get("data", {}).get("dailySongs", []) or []
+            data_raw = result.get("data", {})
+            data = data_raw if isinstance(data_raw, dict) else {}
+            daily_songs_raw = data.get("dailySongs", [])
+            songs_data = daily_songs_raw if isinstance(daily_songs_raw, list) else []
             songs = [_format_netease_song(s) for s in songs_data if isinstance(s, dict)]
 
             decky.logger.info(f"网易云获取每日推荐 {len(songs)} 首")
@@ -696,12 +777,20 @@ class NeteaseProvider(MusicProvider):
         try:
             # 官方每日推荐歌单接口
             result = _weapi_request("/weapi/v1/discovery/recommend/resource", {"limit": 30})
-            playlist_data = result.get("recommend", []) or result.get("data", {}).get("recommend", []) or []
+            recommend_raw = result.get("recommend", [])
+            data_raw = result.get("data", {})
+            data = data_raw if isinstance(data_raw, dict) else {}
+            data_recommend_raw = data.get("recommend", []) if isinstance(data, dict) else []
+            playlist_data_raw = recommend_raw if isinstance(recommend_raw, list) and recommend_raw else (data_recommend_raw if isinstance(data_recommend_raw, list) else [])
+            playlist_data = playlist_data_raw if isinstance(playlist_data_raw, list) else []
 
             if not playlist_data:
                 # 兜底使用个性化歌单
                 result = _weapi_request("/weapi/personalized/playlist", {"limit": 30})
-                playlist_data = result.get("result", []) or result.get("playlists", []) or []
+                result_items = result.get("result", [])
+                playlists_items = result.get("playlists", [])
+                playlist_data_raw = result_items if isinstance(result_items, list) and result_items else (playlists_items if isinstance(playlists_items, list) else [])
+                playlist_data = playlist_data_raw if isinstance(playlist_data_raw, list) else []
 
             playlists = []
             for item in playlist_data:
