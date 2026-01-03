@@ -76,9 +76,11 @@ def _format_netease_song(item: Mapping[str, object]) -> SongInfo:
     cover = album.get("picUrl", "") if isinstance(album, dict) else ""
 
     song_id = item.get("id", 0)
-    duration_ms = item.get("dt", 0) or item.get("duration", 0)
+    duration_raw = item.get("dt", 0) or item.get("duration", 0)
+    # 确保 duration_ms 是整数类型
+    duration_ms = int(duration_raw) if isinstance(duration_raw, (int, float)) else 0
 
-    return {
+    return cast(SongInfo, {
         "id": song_id,
         "mid": str(song_id),
         "name": item.get("name", ""),
@@ -88,13 +90,13 @@ def _format_netease_song(item: Mapping[str, object]) -> SongInfo:
         "duration": duration_ms // 1000 if duration_ms > 1000 else duration_ms,
         "cover": cover,
         "provider": "netease",
-    }
+    })
 
 
 def _format_netease_playlist(item: Mapping[str, object]) -> PlaylistInfo:
     """格式化网易云歌单为统一格式"""
     creator = item.get("creator", {})
-    return {
+    return cast(PlaylistInfo, {
         "id": item.get("id", 0),
         "dirid": 0,
         "name": item.get("name", ""),
@@ -103,7 +105,7 @@ def _format_netease_playlist(item: Mapping[str, object]) -> PlaylistInfo:
         "playCount": item.get("playCount", 0),
         "creator": creator.get("nickname", "") if isinstance(creator, dict) else "",
         "provider": "netease",
-    }
+    })
 
 
 class NeteaseProvider(MusicProvider):
