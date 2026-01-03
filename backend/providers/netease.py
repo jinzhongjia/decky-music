@@ -8,6 +8,7 @@ import time
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime
+from typing import cast
 
 from pyncm import (
     DumpSessionAsString,
@@ -53,9 +54,10 @@ def _weapi_request(path: str, payload: dict[str, object] | None = None) -> dict[
         session.csrf_token = str(session.cookies.get("__csrf", ""))
     data = payload or {}
     try:
-        # WeapiCryptoRequest 是装饰器，需传入返回 (url,payload,method) 的函数
-        req = WeapiCryptoRequest(lambda: (path, data, "POST"))
-        return req()
+        # WeapiCryptoRequest 需要传入 session, url, payload
+        result = WeapiCryptoRequest(session, path, data)
+        # 使用类型断言，因为 WeapiCryptoRequest 返回的是类似 dict 的对象
+        return cast(dict[str, object], result)
     except Exception as e:  # pragma: no cover - 依赖外部接口
         decky.logger.error(f"Weapi 请求失败 {path}: {e}")
         return {"code": -1, "msg": str(e)}
