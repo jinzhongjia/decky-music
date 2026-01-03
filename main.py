@@ -373,6 +373,39 @@ class Plugin:
         provider = cast(MusicProvider, self._provider)
         return await provider.get_playlist_songs(playlist_id, dirid)
 
+    async def log_from_frontend(self, level: str, message: str, data: dict[str, object] | None = None) -> OperationResult:
+        """接收前端日志并输出到后端日志系统
+        
+        Args:
+            level: 日志级别，支持 'info', 'warn', 'warning', 'error', 'debug'
+            message: 日志消息
+            data: 可选的额外数据（会以 JSON 格式附加到日志中）
+        
+        Returns:
+            操作结果
+        """
+        try:
+            log_message = message
+            if data:
+                import json
+                data_str = json.dumps(data, ensure_ascii=False)
+                log_message = f"{message} | 数据: {data_str}"
+            
+            level_lower = level.lower()
+            if level_lower in ("error", "err"):
+                decky.logger.error(f"[前端] {log_message}")
+            elif level_lower in ("warn", "warning"):
+                decky.logger.warning(f"[前端] {log_message}")
+            elif level_lower == "debug":
+                decky.logger.debug(f"[前端] {log_message}")
+            else:  # info 或其他
+                decky.logger.info(f"[前端] {log_message}")
+            
+            return {"success": True}
+        except Exception as e:
+            decky.logger.error(f"处理前端日志失败: {e}")
+            return {"success": False, "error": str(e)}
+
     async def _main(self):
         decky.logger.info("Decky Music 插件已加载")
         await self._apply_provider_config()

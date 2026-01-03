@@ -152,3 +152,11 @@ export const switchProvider = callable<[providerId: string], SwitchProviderRespo
 export const getProviderSelection = callable<[], ProviderSelectionResponse>(
   "get_provider_selection"
 );
+
+// ==================== 日志相关 ====================
+
+/** 前端日志输出到后端 */
+export const logFromFrontend = callable<
+  [level: string, message: string, data?: Record<string, unknown>],
+  { success: boolean; error?: string }
+>("log_from_frontend");
