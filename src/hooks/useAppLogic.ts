@@ -152,7 +152,6 @@ export function useAppLogic() {
   const nav: NavigationHandlers = useMemo(() => ({
     onLoginSuccess: handleLoginSuccess,
     onLogout: handleLogout,
-    onGoToSearch: () => setCurrentPage("search"),
     onGoToPlaylists: () => setCurrentPage("playlists"),
     onGoToHistory: () => setCurrentPage("history"),
     onGoToSettings: () => setCurrentPage("settings"),

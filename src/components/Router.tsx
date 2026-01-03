@@ -1,7 +1,6 @@
 import type { FC } from "react";
 import { LoginPage } from "./LoginPage";
 import { HomePage } from "./HomePage";
-import { SearchPage } from "./SearchPage";
 import { PlayerPage } from "./PlayerPage";
 import { PlaylistsPage } from "./PlaylistsPage";
 import { PlaylistDetailPage } from "./PlaylistDetailPage";
@@ -14,7 +13,6 @@ import type { usePlayer } from "../hooks/usePlayer";
 export interface NavigationHandlers {
   onLoginSuccess: () => void;
   onLogout: () => void;
-  onGoToSearch: () => void;
   onGoToPlaylists: () => void;
   onGoToHistory: () => void;
   onGoToSettings: () => void;
@@ -56,21 +54,10 @@ export const Router: FC<RouterProps> = ({
       return (
         <HomePage
           onSelectSong={data.onSelectSong}
-          onGoToSearch={nav.onGoToSearch}
           onGoToPlaylists={nav.onGoToPlaylists}
           onGoToHistory={nav.onGoToHistory}
           onGoToSettings={nav.onGoToSettings}
           onLogout={nav.onLogout}
-          currentPlayingMid={player.currentSong?.mid}
-          onAddSongToQueue={data.onAddSongToQueue}
-        />
-      );
-
-    case "search":
-      return (
-        <SearchPage
-          onSelectSong={data.onSelectSong}
-          onBack={nav.onBackToHome}
           currentPlayingMid={player.currentSong?.mid}
           onAddSongToQueue={data.onAddSongToQueue}
         />
@@ -136,7 +123,6 @@ export const Router: FC<RouterProps> = ({
       ) : (
         <HomePage
           onSelectSong={data.onSelectSong}
-          onGoToSearch={nav.onGoToSearch}
           onGoToPlaylists={nav.onGoToPlaylists}
           onGoToHistory={nav.onGoToHistory}
           onGoToSettings={nav.onGoToSettings}

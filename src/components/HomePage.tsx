@@ -5,7 +5,7 @@
 
 import { FC, useCallback, memo, useEffect } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
-import { FaSearch, FaSignOutAlt, FaListUl, FaHistory, FaCog } from "react-icons/fa";
+import { FaSignOutAlt, FaListUl, FaHistory, FaCog } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
 import { GuessLikeSection } from "./GuessLikeSection";
@@ -23,7 +23,6 @@ export function clearRecommendCache() {
 
 interface HomePageProps {
   onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
-  onGoToSearch: () => void;
   onGoToPlaylists?: () => void;
   onGoToHistory?: () => void;
   onGoToSettings?: () => void;
@@ -34,7 +33,6 @@ interface HomePageProps {
 
 const HomePageComponent: FC<HomePageProps> = ({
   onSelectSong,
-  onGoToSearch,
   onGoToPlaylists,
   onGoToHistory,
   onGoToSettings,
@@ -46,7 +44,6 @@ const HomePageComponent: FC<HomePageProps> = ({
   const { hasCapability, provider } = useProvider();
   const isLoggedIn = useAuthStatus();
 
-  const canSearch = hasCapability("search.song");
   const canViewPlaylists = hasCapability("playlist.user");
   const canRecommendPersonalized = hasCapability("recommend.personalized");
   const canRecommendDaily = hasCapability("recommend.daily");
@@ -90,14 +87,6 @@ const HomePageComponent: FC<HomePageProps> = ({
     <>
       {/* 操作按钮 */}
       <PanelSection>
-        {canSearch && (
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={onGoToSearch}>
-              <FaSearch style={{ marginRight: "8px" }} />
-              搜索歌曲
-            </ButtonItem>
-          </PanelSectionRow>
-        )}
         {canViewPlaylists && onGoToPlaylists && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={onGoToPlaylists}>
