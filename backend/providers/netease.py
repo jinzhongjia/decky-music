@@ -16,9 +16,7 @@ from pyncm import (
     LoadSessionFromString,
     SetCurrentSession,
 )
-from pyncm.apis import cloudsearch, login, playlist, track, user
-from pyncm.utils.crypto import WeapiEncrypt
-import json
+from pyncm.apis import cloudsearch, login, playlist, track, user, WeapiCryptoRequest
 
 import decky
 from backend.config_manager import ConfigManager
@@ -58,36 +56,24 @@ def _weapi_request(path: str, payload: dict[str, object] | None = None) -> dict[
         # but session.cookies.get returns Optional[str] or similar
         session.csrf_token = str(session.cookies.get("__csrf", ""))
     data = payload or {}
+    
     try:
-        # WeapiCryptoRequest 是装饰器，不能直接调用
-        # 直接使用底层加密和请求方法
-        payload_json = json.dumps({**data, "csrf_token": session.csrf_token})
-        encrypted_data = WeapiEncrypt(payload_json)
-        
         # 确保路径以 /weapi/ 开头
         url = path if path.startswith("/weapi/") else path.replace("/api/", "/weapi/")
         
-        response = session.request(
-            "POST",
-            url,
-            params={"csrf_token": session.csrf_token},
-            data=encrypted_data,
-            headers={"User-Agent": session.UA_DEFAULT, "Referer": "https://music.163.com"},
-            cookies={**session.eapi_config},
-        )
+        # 使用装饰器方式：创建一个闭包函数，捕获 url 和 data
+        def _make_request_inner():
+            # 装饰器期望函数返回 (url, payload) 或 (url, payload, method)
+            # csrf_token 会自动添加到 payload 中
+            return url, data
         
-        # 解析响应
-        response_text = response.text if hasattr(response, 'text') else str(response)
-        response_text = response_text.decode() if isinstance(response_text, bytes) else response_text
-        response_text = response_text.strip("\x10")
-        result = json.loads(response_text)
+        # 用装饰器装饰函数（WeapiCryptoRequest 是装饰器工厂，返回装饰器）
+        # 装饰器会处理加密、请求和响应解析
+        decorated_func = WeapiCryptoRequest(_make_request_inner)  # type: ignore[call-arg]
         
-        # 处理 abroad 响应
-        if isinstance(result, dict) and result.get("abroad"):
-            from pyncm.utils.crypto import AbroadDecrypt
-            real_payload = AbroadDecrypt(result["result"])
-            result = {"result": json.loads(real_payload), "abroad": True}
-        
+        # 调用被装饰的函数，装饰器会自动处理加密和请求
+        # session 会通过 GetCurrentSession() 自动获取，也可以通过 kwargs 传入
+        result = decorated_func()
         return cast(dict[str, object], result)
     except Exception as e:  # pragma: no cover - 依赖外部接口
         decky.logger.error(f"Weapi 请求失败 {path}: {e}")
