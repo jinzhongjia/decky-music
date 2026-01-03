@@ -124,7 +124,7 @@ class Plugin:
             except Exception as e:
                 decky.logger.warning(f"加载 {provider.id} 凭证失败: {e}")
         
-        self._manager.switch("qqmusic")
+        # 不设置默认 provider，让 _apply_provider_config() 根据配置和登录状态来选择
 
     async def _ensure_provider_logged_in(self, provider: MusicProvider) -> bool:
         """检查 provider 登录状态，未登录则返回 False"""
@@ -145,6 +145,13 @@ class Plugin:
             provider = self._manager.get_provider(main_id)
             if provider and await self._ensure_provider_logged_in(provider):
                 self._manager.switch(main_id)
+        else:
+            # 如果没有配置主 Provider，选择第一个已登录的 Provider 作为默认值
+            for provider in self._manager.all_providers():
+                if await self._ensure_provider_logged_in(provider):
+                    self._manager.switch(provider.id)
+                    decky.logger.info(f"未配置主 Provider，自动选择已登录的 Provider: {provider.name}")
+                    break
 
         # 处理 fallback Provider 列表，必须已登录且不同于主 Provider
         fallback_ids: list[str] = []
