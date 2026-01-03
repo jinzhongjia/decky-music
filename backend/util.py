@@ -4,12 +4,19 @@
 """
 
 import json
-from functools import cache
+from collections.abc import Awaitable, Callable
+from functools import cache, wraps
 from pathlib import Path
+from typing import Concatenate, ParamSpec, TypeVar, cast
 
 import requests
 
 import decky
+from backend.types import OperationResult
+
+R = TypeVar("R")
+P = ParamSpec("P")
+Self = TypeVar("Self")
 
 
 @cache
@@ -97,3 +104,75 @@ def download_file(url: str, dest: Path) -> None:
             for chunk in resp.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
+
+
+def require_provider(
+    **default_fields: object,
+) -> Callable[
+    [Callable[Concatenate[Self, P], Awaitable[R]]],
+    Callable[Concatenate[Self, P], Awaitable[R]],
+]:
+    """装饰器：检查 Provider 是否可用，不可用时返回错误响应
+
+    Args:
+        **default_fields: 当 Provider 不可用时的默认返回值字段
+
+    Returns:
+        装饰器函数
+    """
+
+    def decorator(
+        func: Callable[Concatenate[Self, P], Awaitable[R]],
+    ) -> Callable[Concatenate[Self, P], Awaitable[R]]:
+        @wraps(func)
+        async def wrapper(self: Self, *args: P.args, **kwargs: P.kwargs) -> R:
+            provider = getattr(self, "_provider", None)
+            if not provider:
+                base_response: dict[str, object] = {
+                    "success": False,
+                    "error": "No active provider",
+                }
+                base_response.update(default_fields)
+                return cast(R, base_response)
+            return await func(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def log_from_frontend(
+    level: str,
+    message: str,
+    data: dict[str, object] | None = None,
+) -> OperationResult:
+    """接收前端日志并输出到后端日志系统
+
+    Args:
+        level: 日志级别，支持 'info', 'warn', 'warning', 'error', 'debug'
+        message: 日志消息
+        data: 可选的额外数据（会以 JSON 格式附加到日志中）
+
+    Returns:
+        操作结果
+    """
+    try:
+        log_message = message
+        if data:
+            data_str = json.dumps(data, ensure_ascii=False)
+            log_message = f"{message} | 数据: {data_str}"
+
+        level_lower = level.lower()
+        if level_lower in ("error", "err"):
+            decky.logger.error(f"[前端] {log_message}")
+        elif level_lower in ("warn", "warning"):
+            decky.logger.warning(f"[前端] {log_message}")
+        elif level_lower == "debug":
+            decky.logger.debug(f"[前端] {log_message}")
+        else:  # info 或其他
+            decky.logger.info(f"[前端] {log_message}")
+
+        return {"success": True}
+    except Exception as e:
+        decky.logger.error(f"处理前端日志失败: {e}")
+        return {"success": False, "error": str(e)}

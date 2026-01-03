@@ -3,8 +3,8 @@
 实现多 Provider 架构的音乐服务，支持登录、搜索、推荐和播放功能。
 """
 
-import sys
-from pathlib import Path
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 plugin_dir = Path(__file__).parent.resolve()
 if str(plugin_dir) not in sys.path:
@@ -14,23 +14,13 @@ py_modules_dir = plugin_dir / "py_modules"
 if py_modules_dir.exists() and str(py_modules_dir) not in sys.path:
     sys.path.insert(0, str(py_modules_dir))
 
-import asyncio  # noqa: E402
-from collections.abc import Awaitable, Callable  # noqa: E402
-from functools import wraps  # noqa: E402
-from typing import (  # noqa: E402
-    Concatenate,
-    ParamSpec,
-    TypeVar,
-    cast,
-)
-from urllib.parse import urlparse  # noqa: E402
+from typing import cast  # noqa: E402
 
 from backend.types import (  # noqa: E402
     DailyRecommendResponse,
     DownloadResult,
     FavSongsResponse,
     FrontendSettings,
-    FrontendSettingsResponse,
     HotSearchResponse,
     ListProvidersResponse,
     LoginStatusResponse,
@@ -54,40 +44,6 @@ from backend.types import (  # noqa: E402
     UserPlaylistsResponse,
 )
 
-ResponseDict = TypeVar("ResponseDict", bound=dict[str, object])
-R = TypeVar("R")  # 通用返回类型
-P = ParamSpec("P")
-
-
-def require_provider(
-    **default_fields: object,
-) -> Callable[
-    [Callable[Concatenate["Plugin", P], Awaitable[R]]],
-    Callable[Concatenate["Plugin", P], Awaitable[R]],
-]:
-    """装饰器：检查 Provider 是否可用，不可用时返回错误响应"""
-
-    def decorator(
-        func: Callable[Concatenate["Plugin", P], Awaitable[R]],
-    ) -> Callable[Concatenate["Plugin", P], Awaitable[R]]:
-        @wraps(func)
-        async def wrapper(self: "Plugin", *args: P.args, **kwargs: P.kwargs) -> R:
-            if not self._provider:
-                base_response: dict[str, object] = {
-                    "success": False,
-                    "error": "No active provider",
-                }
-                base_response.update(default_fields)
-                return cast(R, base_response)
-            # 类型保护：此时 _provider 一定不是 None
-            assert self._provider is not None
-            return await func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
 import decky  # noqa: E402
 from backend import (  # noqa: E402
     ConfigManager,
@@ -96,9 +52,12 @@ from backend import (  # noqa: E402
     ProviderManager,
     QQMusicProvider,
     check_for_update,
-    download_file,
+    download_update,
     load_plugin_version,
+    log_from_frontend,
+    require_provider,
 )
+from backend.types import FrontendSettingsResponse
 
 
 class Plugin:
@@ -109,13 +68,13 @@ class Plugin:
         self.current_version = load_plugin_version(plugin_path)
         self.config = ConfigManager()
         self._manager = ProviderManager()
-        
+
         # 注册 providers
         qqmusic_provider = QQMusicProvider()
         self._manager.register(qqmusic_provider)
         netease_provider = NeteaseProvider()
         self._manager.register(netease_provider)
-        
+
         # 在初始化时加载所有 providers 的凭证
         # 这样在检查登录状态时，凭证已经准备好了
         for provider in self._manager.all_providers():
@@ -123,45 +82,8 @@ class Plugin:
                 provider.load_credential()
             except Exception as e:
                 decky.logger.warning(f"加载 {provider.id} 凭证失败: {e}")
-        
-        # 不设置默认 provider，让 _apply_provider_config() 根据配置和登录状态来选择
 
-    async def _ensure_provider_logged_in(self, provider: MusicProvider) -> bool:
-        """检查 provider 登录状态，未登录则返回 False"""
-        try:
-            status = await provider.get_login_status()
-            return bool(status.get("logged_in"))
-        except Exception as e:  # pragma: no cover - 依赖外部接口
-            decky.logger.error(f"检查 {provider.id} 登录状态失败: {e}")
-            return False
-
-    async def _apply_provider_config(self) -> None:
-        """根据配置选择主 Provider 和 fallback Provider（仅使用已登录的 Provider）"""
-        main_id = self.config.get_main_provider_id()
-        fallback_ids_config = self.config.get_fallback_provider_ids()
-
-        # 处理主 Provider
-        if main_id:
-            provider = self._manager.get_provider(main_id)
-            if provider and await self._ensure_provider_logged_in(provider):
-                self._manager.switch(main_id)
-        else:
-            # 如果没有配置主 Provider，选择第一个已登录的 Provider 作为默认值
-            for provider in self._manager.all_providers():
-                if await self._ensure_provider_logged_in(provider):
-                    self._manager.switch(provider.id)
-                    decky.logger.info(f"未配置主 Provider，自动选择已登录的 Provider: {provider.name}")
-                    break
-
-        # 处理 fallback Provider 列表，必须已登录且不同于主 Provider
-        fallback_ids: list[str] = []
-        for fb_id in fallback_ids_config:
-            if fb_id == self._manager.active_id:
-                continue
-            fb_provider = self._manager.get_provider(fb_id)
-            if fb_provider and await self._ensure_provider_logged_in(fb_provider):
-                fallback_ids.append(fb_id)
-        self._manager.set_fallback_order(fallback_ids)
+        # 不设置默认 provider，让 apply_provider_config() 根据配置和登录状态来选择
 
     @property
     def _provider(self) -> MusicProvider | None:
@@ -184,27 +106,7 @@ class Plugin:
 
     async def get_provider_selection(self) -> dict[str, object]:
         """获取当前配置的主 Provider 和 fallback Provider（仅返回已登录的）"""
-        try:
-            main_id: str | None = None
-            if self._provider and await self._ensure_provider_logged_in(self._provider):
-                main_id = self._provider.id
-
-            fallback_ids: list[str] = []
-            for fb_id in self.config.get_fallback_provider_ids():
-                if fb_id == main_id:
-                    continue
-                fb_provider = self._manager.get_provider(fb_id)
-                if fb_provider and await self._ensure_provider_logged_in(fb_provider):
-                    fallback_ids.append(fb_id)
-
-            return {
-                "success": True,
-                "mainProvider": main_id,
-                "fallbackProviders": fallback_ids,
-            }
-        except Exception as e:  # pragma: no cover - 依赖外部接口
-            decky.logger.error(f"获取 Provider 配置失败: {e}")
-            return {"success": False, "error": str(e), "mainProvider": None, "fallbackProviders": []}
+        return await self._manager.get_provider_selection(self.config)
 
     async def get_plugin_version(self) -> PluginVersionResponse:
         return {"success": True, "version": self.current_version}
@@ -213,20 +115,7 @@ class Plugin:
         return await check_for_update(self.current_version)
 
     async def download_update(self, url: str, filename: str | None = None) -> DownloadResult:
-        if not url:
-            return {"success": False, "error": "缺少下载链接"}
-        try:
-            download_dir = Path.home() / "Downloads"
-            download_dir.mkdir(parents=True, exist_ok=True)
-            parsed = urlparse(url)
-            target_name = filename or Path(parsed.path).name or "DeckyMusic.zip"
-            dest = download_dir / target_name
-
-            await asyncio.to_thread(download_file, url, dest)
-            return {"success": True, "path": str(dest)}
-        except Exception as e:
-            decky.logger.error(f"下载更新失败: {e}")
-            return {"success": False, "error": str(e)}
+        return await download_update(url, filename)
 
     async def get_provider_info(self) -> ProviderInfoResponse:
         return {"success": True, **self._manager.get_capabilities()}
@@ -373,42 +262,24 @@ class Plugin:
         provider = cast(MusicProvider, self._provider)
         return await provider.get_playlist_songs(playlist_id, dirid)
 
-    async def log_from_frontend(self, level: str, message: str, data: dict[str, object] | None = None) -> OperationResult:
+    async def log_from_frontend(
+        self, level: str, message: str, data: dict[str, object] | None = None
+    ) -> OperationResult:
         """接收前端日志并输出到后端日志系统
-        
+
         Args:
             level: 日志级别，支持 'info', 'warn', 'warning', 'error', 'debug'
             message: 日志消息
             data: 可选的额外数据（会以 JSON 格式附加到日志中）
-        
+
         Returns:
             操作结果
         """
-        try:
-            log_message = message
-            if data:
-                import json
-                data_str = json.dumps(data, ensure_ascii=False)
-                log_message = f"{message} | 数据: {data_str}"
-            
-            level_lower = level.lower()
-            if level_lower in ("error", "err"):
-                decky.logger.error(f"[前端] {log_message}")
-            elif level_lower in ("warn", "warning"):
-                decky.logger.warning(f"[前端] {log_message}")
-            elif level_lower == "debug":
-                decky.logger.debug(f"[前端] {log_message}")
-            else:  # info 或其他
-                decky.logger.info(f"[前端] {log_message}")
-            
-            return {"success": True}
-        except Exception as e:
-            decky.logger.error(f"处理前端日志失败: {e}")
-            return {"success": False, "error": str(e)}
+        return log_from_frontend(level, message, data)
 
     async def _main(self):
         decky.logger.info("Decky Music 插件已加载")
-        await self._apply_provider_config()
+        await self._manager.apply_provider_config(self.config)
         if self._provider:
             decky.logger.info(f"当前 Provider: {self._provider.name}")
 

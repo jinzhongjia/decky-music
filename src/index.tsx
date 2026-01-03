@@ -27,7 +27,7 @@ function Content() {
     const isLoading = currentPage === "loading";
     return (
         <div
-            className="dekcy-music-container"
+            className="decky-music-container"
             style={{ paddingBottom }}
         >
             {isLoading ? (

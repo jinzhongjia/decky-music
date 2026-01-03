@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import decky
-from backend.types import UpdateInfo
-from backend.util import http_get_json, normalize_version
+from backend.types import DownloadResult, UpdateInfo
+from backend.util import download_file, http_get_json, normalize_version
 
 
 async def check_for_update(current_version: str) -> UpdateInfo:
@@ -46,4 +48,30 @@ async def check_for_update(current_version: str) -> UpdateInfo:
         return result
     except Exception as e:  # pragma: no cover - 依赖外部接口
         decky.logger.error(f"检查更新失败: {e}")
+        return {"success": False, "error": str(e)}
+
+
+async def download_update(url: str, filename: str | None = None) -> DownloadResult:
+    """下载更新文件
+
+    Args:
+        url: 下载链接
+        filename: 可选的文件名
+
+    Returns:
+        下载结果
+    """
+    if not url:
+        return {"success": False, "error": "缺少下载链接"}
+    try:
+        download_dir = Path.home() / "Downloads"
+        download_dir.mkdir(parents=True, exist_ok=True)
+        parsed = urlparse(url)
+        target_name = filename or Path(parsed.path).name or "DeckyMusic.zip"
+        dest = download_dir / target_name
+
+        await asyncio.to_thread(download_file, url, dest)
+        return {"success": True, "path": str(dest)}
+    except Exception as e:
+        decky.logger.error(f"下载更新失败: {e}")
         return {"success": False, "error": str(e)}
