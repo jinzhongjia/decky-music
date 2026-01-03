@@ -6,17 +6,11 @@
 import {
   globalPlaylist,
   globalCurrentIndex,
-  globalCurrentProviderId,
   setCurrentIndex as setQueueCurrentIndex,
-  saveQueueState,
 } from "./useSongQueue";
 import {
   getGlobalPlayMode,
 } from "./playerState";
-import {
-  getFrontendSettingsCache,
-  updateFrontendSettingsCache,
-} from "./playerSettings";
 import {
   syncShuffleAfterPlaylistChange,
   getShuffleNextIndex,
@@ -25,6 +19,7 @@ import {
 } from "./playerShuffle";
 import type { SongInfo } from "../types";
 import { playSongInternal } from "./playerPlayback";
+import { getGlobalAudio } from "./playerAudio";
 
 // 播放下一首的回调（用于在 ended 事件中调用）
 let onPlayNextCallback: (() => void) | null = null;
@@ -74,6 +69,10 @@ export function createPlayNext(
   return async () => {
     if (globalPlaylist.length === 0) return;
 
+    // 立即暂停当前播放，提升响应速度
+    const audio = getGlobalAudio();
+    audio.pause();
+
     const resolveOrderNext = async (): Promise<number | null> => {
       let nextIndex = globalCurrentIndex + 1;
       if (nextIndex >= globalPlaylist.length) {
@@ -117,15 +116,8 @@ export function createPlayNext(
       syncShuffleAfterPlaylistChange(targetIndex);
     }
     if (nextSong) {
+      // playSongInternal 内部已经会调用 saveQueueState，这里不需要重复调用
       await playSongInternalFn(nextSong, targetIndex, true, onPlayNextCallback || undefined);
-      const frontendSettings = getFrontendSettingsCache();
-      saveQueueState(
-        globalCurrentProviderId,
-        globalPlaylist,
-        globalCurrentIndex,
-        frontendSettings.providerQueues,
-        updateFrontendSettingsCache
-      );
     }
   };
 }
@@ -138,6 +130,10 @@ export function createPlayPrev(
 ): () => void {
   return () => {
     if (globalPlaylist.length === 0) return;
+
+    // 立即暂停当前播放，提升响应速度
+    const audio = getGlobalAudio();
+    audio.pause();
 
     let targetIndex: number | null = null;
     const currentMode = getGlobalPlayMode();
@@ -160,6 +156,7 @@ export function createPlayPrev(
 
     const prevSong = globalPlaylist[targetIndex];
     if (prevSong) {
+      // playSongInternal 内部已经会调用 saveQueueState，这里不需要重复调用
       void playSongInternalFn(prevSong, targetIndex, true, onPlayNextCallback || undefined);
     }
   };
@@ -173,18 +170,16 @@ export function createPlayAtIndex(
 ): (index: number) => Promise<void> {
   return async (index: number) => {
     if (index < 0 || index >= globalPlaylist.length) return;
+
+    // 立即暂停当前播放，提升响应速度
+    const audio = getGlobalAudio();
+    audio.pause();
+
     if (getGlobalPlayMode() === "shuffle") {
       handleShuffleJumpTo(index);
     }
     setQueueCurrentIndex(index);
-    const frontendSettings = getFrontendSettingsCache();
-    saveQueueState(
-      globalCurrentProviderId,
-      globalPlaylist,
-      globalCurrentIndex,
-      frontendSettings.providerQueues,
-      updateFrontendSettingsCache
-    );
+    // playSongInternal 内部已经会调用 saveQueueState，这里不需要重复调用
     const song = globalPlaylist[index];
     await playSongInternalFn(song, index, true, onPlayNextCallback || undefined);
   };
