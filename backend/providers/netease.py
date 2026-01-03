@@ -171,11 +171,15 @@ class NeteaseProvider(MusicProvider):
     async def get_qr_code(self, login_type: str = "qq") -> QrCodeResponse:
         del login_type
         try:
-            result = login.LoginQrcodeUnikey()
+            result_raw = login.LoginQrcodeUnikey()
+            # WeapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
+            result = cast(dict[str, object], result_raw)
             if result.get("code") != 200:
                 return {"success": False, "error": result.get("message", "获取二维码失败")}
 
-            self._qr_unikey = result.get("unikey", "")
+            unikey_raw = result.get("unikey", "")
+            # 确保 unikey 是字符串类型
+            self._qr_unikey = str(unikey_raw) if unikey_raw else ""
             qr_url = login.GetLoginQRCodeUrl(self._qr_unikey)
 
             try:
@@ -216,8 +220,12 @@ class NeteaseProvider(MusicProvider):
             return {"success": False, "error": "没有可用的二维码"}
 
         try:
-            result = login.LoginQrcodeCheck(self._qr_unikey)
-            code = result.get("code", 0)
+            result_raw = login.LoginQrcodeCheck(self._qr_unikey)
+            # WeapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
+            result = cast(dict[str, object], result_raw)
+            code_raw = result.get("code", 0)
+            # 确保 code 是整数类型
+            code = int(code_raw) if isinstance(code_raw, (int, float)) else 0
 
             status_map = {
                 801: "waiting",
@@ -230,7 +238,10 @@ class NeteaseProvider(MusicProvider):
             response: QrStatusResponse = {"success": True, "status": status}
 
             if code == 803:
-                login.WriteLoginInfo(login.GetCurrentLoginStatus())
+                login_status_raw = login.GetCurrentLoginStatus()
+                # GetCurrentLoginStatus 返回 dict，但类型检查器认为是 tuple
+                login_status = cast(dict[str, object], login_status_raw)
+                login.WriteLoginInfo(login_status)
                 session = GetCurrentSession()
                 try:
                     # 登录成功后立即刷新 cookie，避免部分接口未携带
