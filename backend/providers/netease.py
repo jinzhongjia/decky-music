@@ -16,7 +16,9 @@ from pyncm import (
     LoadSessionFromString,
     SetCurrentSession,
 )
-from pyncm.apis import WeapiCryptoRequest, cloudsearch, login, playlist, track, user
+from pyncm.apis import cloudsearch, login, playlist, track, user
+from pyncm.utils.crypto import WeapiEncrypt
+import json
 
 import decky
 from backend.config_manager import ConfigManager
@@ -57,9 +59,35 @@ def _weapi_request(path: str, payload: dict[str, object] | None = None) -> dict[
         session.csrf_token = str(session.cookies.get("__csrf", ""))
     data = payload or {}
     try:
-        # WeapiCryptoRequest 需要传入 session, url, payload
-        result = WeapiCryptoRequest(session, path, data)
-        # 使用类型断言，因为 WeapiCryptoRequest 返回的是类似 dict 的对象
+        # WeapiCryptoRequest 是装饰器，不能直接调用
+        # 直接使用底层加密和请求方法
+        payload_json = json.dumps({**data, "csrf_token": session.csrf_token})
+        encrypted_data = WeapiEncrypt(payload_json)
+        
+        # 确保路径以 /weapi/ 开头
+        url = path if path.startswith("/weapi/") else path.replace("/api/", "/weapi/")
+        
+        response = session.request(
+            "POST",
+            url,
+            params={"csrf_token": session.csrf_token},
+            data=encrypted_data,
+            headers={"User-Agent": session.UA_DEFAULT, "Referer": "https://music.163.com"},
+            cookies={**session.eapi_config},
+        )
+        
+        # 解析响应
+        response_text = response.text if hasattr(response, 'text') else str(response)
+        response_text = response_text.decode() if isinstance(response_text, bytes) else response_text
+        response_text = response_text.strip("\x10")
+        result = json.loads(response_text)
+        
+        # 处理 abroad 响应
+        if isinstance(result, dict) and result.get("abroad"):
+            from pyncm.utils.crypto import AbroadDecrypt
+            real_payload = AbroadDecrypt(result["result"])
+            result = {"result": json.loads(real_payload), "abroad": True}
+        
         return cast(dict[str, object], result)
     except Exception as e:  # pragma: no cover - 依赖外部接口
         decky.logger.error(f"Weapi 请求失败 {path}: {e}")
@@ -248,7 +276,7 @@ class NeteaseProvider(MusicProvider):
                 session = GetCurrentSession()
                 try:
                     # 登录成功后立即刷新 cookie，避免部分接口未携带
-                    WeapiCryptoRequest(session, "/weapi/login/token/refresh", {})
+                    _weapi_request("/weapi/login/token/refresh", {})
                 except Exception as e:
                     decky.logger.debug(f"网易云登录后刷新 token 失败: {e}")
                 self.save_credential()
@@ -695,38 +723,87 @@ class NeteaseProvider(MusicProvider):
                 "/weapi/personalized/newsong",
                 {"limit": 50, "timestamp": int(time.time() * 1000)},
             )
-            if result.get("code") == 301:
+            
+            # 记录 API 返回的原始 code
+            code = result.get("code", -1)
+            decky.logger.info(f"网易云猜你喜欢 API 返回 code: {code}")
+            
+            # 检查是否需要刷新 token
+            if code == 301:
+                decky.logger.info("网易云 token 过期，尝试刷新")
                 try:
                     login.LoginRefreshToken()
                     result = _weapi_request(
                         "/weapi/personalized/newsong",
                         {"limit": 50, "timestamp": int(time.time() * 1000)},
                     )
+                    code = result.get("code", -1)
+                    decky.logger.info(f"刷新后 API 返回 code: {code}")
                 except Exception as e:
                     decky.logger.error(f"网易云刷新登录失败: {e}")
+                    return {"success": False, "error": f"刷新登录失败: {e}", "songs": []}
+            
+            # 检查 API 返回状态
+            if code != 200:
+                error_msg_raw = result.get("msg", result.get("message", f"API 返回错误 code: {code}"))
+                error_msg = str(error_msg_raw) if error_msg_raw else f"API 返回错误 code: {code}"
+                decky.logger.error(f"网易云猜你喜欢 API 失败: {error_msg}, code: {code}")
+                return {"success": False, "error": error_msg, "songs": []}
+            
+            # 尝试从多个可能的字段获取数据
             result_items = result.get("result", [])
             data_items = result.get("data", [])
-            song_items_raw = result_items if isinstance(result_items, list) and result_items else (data_items if isinstance(data_items, list) else [])
+            recommend_items = result.get("recommend", [])
+            
+            decky.logger.info(f"网易云 API 返回数据结构 - result: {type(result_items)}, data: {type(data_items)}, recommend: {type(recommend_items)}")
+            
+            # 优先使用 result，其次 data，最后 recommend
+            song_items_raw = (
+                result_items if isinstance(result_items, list) and result_items 
+                else (data_items if isinstance(data_items, list) and data_items 
+                else (recommend_items if isinstance(recommend_items, list) and recommend_items 
+                else []))
+            )
             song_items = song_items_raw if isinstance(song_items_raw, list) else []
+            
+            decky.logger.info(f"网易云解析到 {len(song_items)} 个原始条目")
 
             # 去重后返回全部个性化新歌
             seen = set()
             songs: list[SongInfo] = []
             for item in song_items:
-                song_obj = item.get("song") if isinstance(item, dict) else None
-                target = song_obj or item
-                if not isinstance(target, dict):
+                if not isinstance(item, dict):
+                    decky.logger.debug(f"跳过非字典类型的 item: {type(item)}")
                     continue
+                
+                # 尝试从 item 中提取 song 对象
+                song_obj = item.get("song") if isinstance(item.get("song"), dict) else None
+                target = song_obj or item
+                
+                if not isinstance(target, dict):
+                    decky.logger.debug(f"跳过无效的 target: {type(target)}")
+                    continue
+                
                 mid = str(target.get("id") or target.get("songid") or target.get("mid") or "")
                 if not mid or mid in seen:
+                    if not mid:
+                        decky.logger.debug(f"跳过无 ID 的歌曲: {target.get('name', 'unknown')}")
                     continue
                 seen.add(mid)
-                songs.append(_format_netease_song(target))
+                
+                try:
+                    formatted_song = _format_netease_song(target)
+                    songs.append(formatted_song)
+                except Exception as e:
+                    decky.logger.warning(f"格式化歌曲失败: {e}, target: {target.get('name', 'unknown')}")
+                    continue
 
-            decky.logger.info(f"网易云获取猜你喜欢 {len(songs)} 首")
+            decky.logger.info(f"网易云获取猜你喜欢成功: {len(songs)} 首")
+            if len(songs) == 0:
+                decky.logger.warning(f"网易云猜你喜欢返回空列表，原始数据: result keys = {list(result.keys()) if isinstance(result, dict) else 'not dict'}")
             return {"success": True, "songs": songs}
         except Exception as e:
-            decky.logger.error(f"网易云获取猜你喜欢失败: {e}")
+            decky.logger.error(f"网易云获取猜你喜欢失败: {e}", exc_info=True)
             return {"success": False, "error": str(e), "songs": []}
 
     async def get_daily_recommend(self) -> DailyRecommendResponse:
