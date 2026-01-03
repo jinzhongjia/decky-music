@@ -286,6 +286,8 @@ class QQMusicProvider(MusicProvider):
             return {"success": False, "error": str(e)}
 
     async def search_songs(self, keyword: str, page: int = 1, num: int = 20) -> SearchResponse:
+        # 清理关键词
+        keyword = keyword.strip() if keyword else ""
         try:
             results = await search.search_by_type(
                 keyword=keyword,
