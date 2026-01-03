@@ -73,9 +73,7 @@ class ProviderManager:
             for p in self._providers.values()
         ]
 
-    async def _match_song_in_provider(
-        self, provider: MusicProvider, song_name: str, singer: str
-    ) -> SongInfo | None:
+    async def _match_song_in_provider(self, provider: MusicProvider, song_name: str, singer: str) -> SongInfo | None:
         """在指定 provider 中搜索匹配的歌曲"""
         if not provider.has_capability(Capability.SEARCH_SONG):
             return None
@@ -83,14 +81,15 @@ class ProviderManager:
         query = f"{song_name} {singer}"
         result = await provider.search_songs(query, page=1, num=10)
 
-        if not result.get("success") or not result.get("songs"):
+        songs = result.get("songs") or []
+        if not result.get("success") or not songs:
             return None
 
-        for s in result["songs"]:
+        for s in songs:
             if s.get("name") == song_name and singer in s.get("singer", ""):
                 return s
 
-        for s in result["songs"]:
+        for s in songs:
             if s.get("name") == song_name:
                 return s
 
@@ -128,18 +127,21 @@ class ProviderManager:
             fb_result = await fb_provider.get_song_url(matched.get("mid", ""), preferred_quality)
             if fb_result.get("success") and fb_result.get("url"):
                 fb_result["fallback_provider"] = fb_id
-                fb_result["original_provider"] = self._active_id
+                if self._active_id:
+                    fb_result["original_provider"] = self._active_id
                 fb_result["matched_song"] = matched
                 decky.logger.info(f"Fallback 成功: {song_name} 从 {fb_id} 获取")
                 return fb_result
 
-        return {
+        result: SongUrlResponse = {
             "success": False,
             "error": original_error,
             "url": "",
             "mid": mid,
-            "provider": self._active_id,
         }
+        if self._active_id:
+            result["provider"] = self._active_id
+        return result
 
     async def get_song_lyric_with_fallback(
         self, mid: str, song_name: str, singer: str, qrc: bool = True
@@ -150,7 +152,6 @@ class ProviderManager:
 
         result = await self.active.get_song_lyric(mid, qrc)
         if result.get("success") and result.get("lyric"):
-            result["provider"] = self.active.id
             return result
 
         for fb_id in self._fallback_ids:
@@ -167,7 +168,8 @@ class ProviderManager:
             fb_result = await fb_provider.get_song_lyric(matched.get("mid", ""), qrc)
             if fb_result.get("success") and fb_result.get("lyric"):
                 fb_result["fallback_provider"] = fb_id
-                fb_result["original_provider"] = self._active_id
+                if self._active_id:
+                    fb_result["original_provider"] = self._active_id
                 return fb_result
 
         return result
