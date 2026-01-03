@@ -209,7 +209,6 @@ class NeteaseProvider(MusicProvider):
                     "success": True,
                     "qr_data": qr_url,
                     "login_type": "netease",
-                    "is_url": True,
                 }
 
         except Exception as e:
