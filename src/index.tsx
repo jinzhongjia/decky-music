@@ -110,7 +110,7 @@ export default definePlugin(() => {
             // 移除路由
             routerHook.removeRoute(ROUTE_PATH);
 
-            // 清理播放器（停止播放、恢复休眠）
+            // 清理播放器
             cleanupPlayer();
 
             // 移除全局样式
