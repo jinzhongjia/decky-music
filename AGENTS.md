@@ -4,28 +4,108 @@
 建议目标：每个文件 150-200 行代码
 超过限制处理：必须拆分为多个文件或提取为独立模块
 
-## 遵守的项目架构
+## python 前端遵守的项目架构
+
+```
+main.py
+backend/           # 后端逻辑
+├── config_manager.py        # 配置管理
+├── types.py            # 类型定义
+├── update_checker.py   # 更新检查器
+├── util.py   # 工具函数 
+├── providers/
+│   ├── base.py     # 提供者基类
+│   ├── manager.py  # 提供者管理器
+│   ├── qqmusic.py  # QQ 音乐提供者实现
+│   ├── netease.py  # 网易云音乐提供者实现
+│   └── ...         # 其他提供者 
+```
+
+## 前端遵守的项目架构
 
 ```
 src/
+├── api/          # 可复用的后端 api 调用封装
 ├── components/          # 可复用的 UI 组件
-│   ├── Button/
-│   ├── Input/
-│   └── Modal/
 ├── hooks/              # 自定义 Hooks
 │   ├── useApi.ts
 │   └── useForm.ts
-├── services/           # API 和业务逻辑
-│   ├── apiClient.ts
-│   └── llmService.ts
+├── pages/              # 页面组件（full page 类型）
+├── patches/            # Decky UI 路由覆盖 
+├── state/              # 全局状态管理
 ├── types/              # TypeScript 类型定义
-│   └── index.ts
 ├── utils/              # 工具函数
-│   ├── formatters.ts
-│   └── validators.ts
-├── constants/          # 常量定义
-│   └── config.ts
-└── App.tsx             # 主应用组件
+└── index.tsx             # 主应用组件
+```
+
+## python 使用
+
+### 1. 代码规范 (PEP 8)
+
+- **严格遵守 PEP 8**：所有代码必须符合 PEP 8 风格指南。
+- **命名规范**：
+    - `snake_case` 用于函数、变量和模块。
+    - `PascalCase` 用于类。
+    - `UPPER_SNAKE_CASE` 用于常量。
+- **行长度**：每行不超过 88 个字符。
+
+### 2. 类型提示 (Type Hinting)
+
+- **强制使用类型提示**：所有函数签名（参数和返回值）和关键变量必须有明确的类型注解。
+- **使用 `typing` 模块**：针对复杂类型（如 `List`, `Dict`, `Optional`, `Tuple`）使用 `typing` 模块。
+
+```python
+from typing import List, Optional
+
+def process_data(items: List[str]) -> Optional[dict]:
+    # ...
+    pass
+```
+
+### 3. 文档字符串 (Docstrings)
+
+- **为所有模块、类和函数编写文档字符串**。
+- **使用 Google 风格**：简洁明了，易于阅读。
+
+```python
+"""一个简短的模块描述。
+
+更详细的模块功能介绍。
+"""
+
+class MyClass:
+    """MyClass 的简要描述。"""
+
+    def my_method(self, arg1: int) -> bool:
+        """方法功能的简要描述。
+
+        Args:
+            arg1: 参数的描述。
+
+        Returns:
+            返回值的描述。
+        """
+        return True
+```
+
+### 4. 结构与设计
+
+- **单一职责原则**：每个函数和类只做一件事。
+- **模块化**：将相关功能组织到独立的模块或包中。
+- **避免硬编码**：使用常量或配置文件管理配置项。
+
+### 5. 错误处理
+
+- **使用具体的异常类型**：避免使用宽泛的 `except Exception:`。
+- **提供有意义的错误信息**。
+
+```python
+try:
+    # ...
+except FileNotFoundError:
+    print("错误：找不到配置文件。")
+except KeyError as e:
+    print(f"错误：配置中缺少键 {e}")
 ```
 
 ## TypeScript 使用
@@ -41,7 +121,7 @@ src/
 ### 应该遵守的技术栈
 
 - **前端**: React 19 + TypeScript + Decky UI
-- **后端**: Python 3 + asyncio + QQMusicApi
+- **后端**: Python 3 + asyncio + QQMusicApi + pyncm
 - **构建**: Rollup + Docker
 - **包管理**: pnpm
 
