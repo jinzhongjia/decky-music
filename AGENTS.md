@@ -246,6 +246,7 @@ async def get_something(self, param: str) -> dict[str, Any]:
 5. **模块化**：提取可复用的逻辑为独立函数或 Hooks
 6. **简洁性**: 无用的代码无需保留
 7. **严格性**: 严格遵守上方的 Python 使用规范和 TypeScript 使用规范
+8. **接口统一**: 前后端接口设计要统一，确保数据结构一致
 
 ### 禁止做
 
