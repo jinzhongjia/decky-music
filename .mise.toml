@@ -12,7 +12,7 @@ description = "使用 Docker 构建插件"
 depends = ["clean"]
 run = """
 mkdir -p out
-DOCKER_BUILDKIT=1 docker build --no-cache --output type=local,dest=out .
+docker buildx build --output out .
 """
 
 [tasks.deploy]
