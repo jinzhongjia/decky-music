@@ -3,711 +3,78 @@
  * 使用全局 Audio 单例，确保关闭面板后音乐继续播放
  * 支持播放列表和自动播放下一首
  * 支持播放历史记录
- * 支持播放时禁止系统休眠
  */
 
-import { useState, useCallback, useEffect } from "react";
-import { toaster } from "@decky/api";
-import { getSongUrl, getSongLyric, getFrontendSettings, saveFrontendSettings } from "../api";
-import type { FrontendSettings, PlayMode, SongInfo, PreferredQuality } from "../types";
-import { parseLyric, type ParsedLyric } from "../utils/lyricParser";
+import { useState, useCallback } from "react";
+import type { PlayMode, SongInfo } from "../types";
+import type { ParsedLyric } from "../utils/lyricParser";
+import {
+  globalPlaylist,
+  globalCurrentIndex,
+  globalCurrentProviderId,
+  resetQueueState,
+} from "./useSongQueue";
+import {
+  setPreferredQuality,
+  savePlayMode,
+  saveVolume,
+  enableSettingsSave,
+} from "./playerSettings";
+import { resetAllShuffleState } from "./playerShuffle";
+import { getAudioCurrentTime, getGlobalVolume, setGlobalVolume, cleanupAudio } from "./playerAudio";
+import {
+  getGlobalCurrentSong,
+  getGlobalLyric,
+  setGlobalPlayMode,
+  getGlobalPlayMode,
+  broadcastPlayerState,
+  resetGlobalPlayerState,
+} from "./playerState";
+import { playSongInternal, clearSkipTimeout } from "./playerPlayback";
+import {
+  setOnPlayNextCallback,
+  setOnNeedMoreSongsCallback,
+  getOnPlayNextCallback,
+} from "./playerNavigation";
+import { createPlayerMethods } from "./playerMethods";
+import {
+  createSyncFromGlobals,
+  usePlayerStateSync,
+  usePlayerInitialization,
+  useAutoFetchLyric,
+  useAudioEndedHandler,
+  usePlaybackTimeSync,
+} from "./playerHooks";
 
-// ==================== 休眠控制 ====================
-// 参考 DeckyInhibitScreenSaver 实现
+// ==================== 全局清理函数 ====================
 
-interface SettingDef {
-  field: number;
-  wireType: number;
+/**
+ * 全局清理函数 - 用于插件卸载时调用
+ */
+export function cleanupPlayer(): void {
+  // 清理音频实例和全局状态
+  cleanupAudio();
+  resetGlobalPlayerState();
+  resetQueueState();
+  resetAllShuffleState();
+  clearSkipTimeout();
+  setOnPlayNextCallback(null);
+  setOnNeedMoreSongsCallback(null);
 }
 
-const SettingDefaults: Record<string, SettingDef> = {
-  battery_idle: { field: 1, wireType: 5 },
-  ac_idle: { field: 2, wireType: 5 },
-  battery_suspend: { field: 3, wireType: 5 },
-  ac_suspend: { field: 4, wireType: 5 },
-};
-
-// 保存原始休眠设置
-interface OriginalSleepSettings {
-  batteryIdle: number;
-  acIdle: number;
-  batterySuspend: number;
-  acSuspend: number;
-}
-
-// 默认休眠设置（作为 fallback）
-const DEFAULT_SLEEP_SETTINGS: OriginalSleepSettings = {
-  batteryIdle: 300,      // 5 分钟
-  acIdle: 300,           // 5 分钟
-  batterySuspend: 600,   // 10 分钟
-  acSuspend: 600,        // 10 分钟
-};
-
-const DEFAULT_PREFERRED_QUALITY: PreferredQuality = "auto";
-
-// 原始设置（在第一次禁用休眠时保存）
-let originalSleepSettings: OriginalSleepSettings | null = null;
-function loadStoredSleepSettings(): OriginalSleepSettings | null {
-  const stored = frontendSettings.sleepBackup;
-  if (
-    stored &&
-    typeof stored.batteryIdle === "number" &&
-    typeof stored.acIdle === "number" &&
-    typeof stored.batterySuspend === "number" &&
-    typeof stored.acSuspend === "number"
-  ) {
-    return stored;
-  }
-  return null;
-}
-
-function saveStoredSleepSettings(settings: OriginalSleepSettings) {
-  updateFrontendSettingsCache({ sleepBackup: settings });
-}
-
-function clearStoredSleepSettings() {
-  updateFrontendSettingsCache({ sleepBackup: undefined });
-}
-
-// 生成 Protobuf 格式的设置数据
-function genSettings(fieldDef: SettingDef, value: number): string {
-  const buf: number[] = [];
-
-  let key = (fieldDef.field << 3) | fieldDef.wireType;
-  do {
-    let b = key & 0x7F;
-    key >>>= 7;
-    if (key) b |= 0x80;
-    buf.push(b);
-  } while (key);
-
-  if (fieldDef.wireType === 0) {
-    do {
-      let b = value & 0x7F;
-      value >>>= 7;
-      if (value) b |= 0x80;
-      buf.push(b);
-    } while (value);
-    return String.fromCharCode(...buf);
-  } else if (fieldDef.wireType === 5) {
-    const valueBytes = new Uint8Array(new Float32Array([value]).buffer);
-    return String.fromCharCode(...buf, ...valueBytes);
-  } else {
-    throw new Error('Unsupported wire type');
-  }
-}
-
-// 获取当前休眠设置
-async function getCurrentSleepSettings(): Promise<OriginalSleepSettings> {
-  try {
-    // @ts-ignore - SteamClient 是全局变量
-    // eslint-disable-next-line no-undef
-    if (typeof SteamClient !== 'undefined' && SteamClient?.Settings?.GetRegisteredSettings) {
-      // @ts-ignore
-      // eslint-disable-next-line no-undef
-      const settings = await SteamClient.Settings.GetRegisteredSettings();
-      console.log("获取到系统休眠设置:", settings);
-      // 尝试解析设置，如果失败则使用默认值
-      // 注意：这里的解析可能需要根据实际返回格式调整
-      if (settings) {
-        return {
-          batteryIdle: settings.battery_idle ?? DEFAULT_SLEEP_SETTINGS.batteryIdle,
-          acIdle: settings.ac_idle ?? DEFAULT_SLEEP_SETTINGS.acIdle,
-          batterySuspend: settings.battery_suspend ?? DEFAULT_SLEEP_SETTINGS.batterySuspend,
-          acSuspend: settings.ac_suspend ?? DEFAULT_SLEEP_SETTINGS.acSuspend,
-        };
-      }
-    }
-  } catch (e) {
-    console.warn("获取系统休眠设置失败，使用默认值:", e);
-  }
-  return { ...DEFAULT_SLEEP_SETTINGS };
-}
-
-// 更新系统休眠设置
-async function updateSleepSettings(batteryIdle: number, acIdle: number, batterySuspend: number, acSuspend: number) {
-  try {
-    // @ts-ignore - SteamClient 是全局变量
-    // eslint-disable-next-line no-undef
-    if (typeof SteamClient === 'undefined' || !SteamClient?.System?.UpdateSettings) {
-      console.warn("SteamClient.System.UpdateSettings 不可用");
-      return;
-    }
-
-    const batteryIdleData = genSettings(SettingDefaults.battery_idle, batteryIdle);
-    const acIdleData = genSettings(SettingDefaults.ac_idle, acIdle);
-    const batterySuspendData = genSettings(SettingDefaults.battery_suspend, batterySuspend);
-    const acSuspendData = genSettings(SettingDefaults.ac_suspend, acSuspend);
-
-    // @ts-ignore
-    // eslint-disable-next-line no-undef
-    await SteamClient.System.UpdateSettings(window.btoa(batteryIdleData + acIdleData + batterySuspendData + acSuspendData));
-  } catch (e) {
-    console.error("更新休眠设置失败:", e);
-  }
-}
-
-// 禁用休眠
-async function inhibitSleep() {
-  // 第一次禁用时保存原始设置
-  if (!originalSleepSettings) {
-    originalSleepSettings = await getCurrentSleepSettings();
-    saveStoredSleepSettings(originalSleepSettings);
-    console.log("保存原始休眠设置:", originalSleepSettings);
-  }
-
-  console.log("禁用系统休眠");
-  await updateSleepSettings(0, 0, 0, 0);
-}
-
-// 恢复休眠（使用保存的原始设置或默认值）
-async function uninhibitSleep() {
-  const settings = originalSleepSettings || DEFAULT_SLEEP_SETTINGS;
-  console.log("恢复系统休眠:", settings);
-  await updateSleepSettings(settings.batteryIdle, settings.acIdle, settings.batterySuspend, settings.acSuspend);
-  clearStoredSleepSettings();
-}
-
-// 全局休眠状态
-let sleepInhibited = false;
-
-interface StoredQueueState {
-  playlist: SongInfo[];
-  currentIndex: number;
-  currentMid?: string;
-}
-
-type FrontendSettingsCache = FrontendSettings & {
-  playlistState?: StoredQueueState;
-};
-
-let frontendSettings: FrontendSettingsCache = {};
-let frontendSettingsLoaded = false;
-let frontendSettingsPromise: Promise<void> | null = null;
-let legacySnapshotCache: LegacySnapshot | null = null;
-let frontendSaveEnabled = true;
-
-// 旧版 localStorage 键，用于迁移
-const LEGACY_PLAYLIST_KEY = "qqmusic_playlist_state";
-const LEGACY_PLAY_MODE_KEY = "qqmusic_play_mode";
-const LEGACY_VOLUME_KEY = "qqmusic_volume";
-const LEGACY_SLEEP_KEY = "qqmusic_sleep_settings_backup";
-
-async function ensureFrontendSettingsLoaded() {
-  if (frontendSettingsLoaded) return;
-  if (frontendSettingsPromise) {
-    await frontendSettingsPromise;
-    return;
-  }
-  frontendSettingsPromise = getFrontendSettings()
-    .then((res) => {
-      if (res?.success && res.settings) {
-        frontendSettings = { ...res.settings };
-      }
-      if (!frontendSettings.preferredQuality) {
-        frontendSettings.preferredQuality = DEFAULT_PREFERRED_QUALITY;
-      }
-      frontendSettingsLoaded = true;
-    })
-    .catch(() => {
-      frontendSettingsLoaded = true;
-    })
-    .finally(() => {
-      frontendSettingsPromise = null;
-    });
-  await frontendSettingsPromise;
-}
-
-function updateFrontendSettingsCache(partial: Partial<FrontendSettingsCache>, commit: boolean = true) {
-  frontendSettings = { ...frontendSettings, ...partial };
-  if (commit && frontendSaveEnabled) {
-    void saveFrontendSettings(frontendSettings as Record<string, unknown>);
-  }
-}
-
-function getPreferredQuality(): PreferredQuality {
-  const pref = frontendSettings.preferredQuality;
-  if (pref === "high" || pref === "balanced" || pref === "compat" || pref === "auto") {
-    return pref;
-  }
-  return DEFAULT_PREFERRED_QUALITY;
-}
-
-function loadQueueStateFromSettings(): StoredQueueState {
-  const stored = frontendSettings.playlistState;
-  if (!stored) return { playlist: [], currentIndex: -1 };
-  const playlist = Array.isArray(stored.playlist) ? stored.playlist : [];
-  const currentIndex = typeof stored.currentIndex === "number" ? stored.currentIndex : -1;
-  const currentMid = stored.currentMid;
-  if (currentMid) {
-    const idx = playlist.findIndex((s) => s.mid === currentMid);
-    if (idx >= 0) {
-      return { playlist, currentIndex: idx, currentMid };
-    }
-  }
-  return {
-    playlist,
-    currentIndex: Math.min(Math.max(currentIndex, -1), Math.max(playlist.length - 1, -1)),
-  };
-}
-
-function saveQueueState(playlist: SongInfo[], currentIndex: number) {
-  updateFrontendSettingsCache({
-    playlistState: {
-      playlist,
-      currentIndex,
-      currentMid: playlist[currentIndex]?.mid,
-    },
-  });
-}
-
-function clearQueueState() {
-  updateFrontendSettingsCache({ playlistState: { playlist: [], currentIndex: -1 } });
-}
-
-function loadPlayMode(): PlayMode {
-  const raw = frontendSettings.playMode;
-  if (raw === "order" || raw === "single" || raw === "shuffle") {
-    return raw;
-  }
-  return "order";
-}
-
-function savePlayMode(mode: PlayMode) {
-  updateFrontendSettingsCache({ playMode: mode });
-}
-
-function loadVolume(): number {
-  const value = frontendSettings.volume;
-  if (typeof value === "number") {
-    return Math.min(1, Math.max(0, value));
-  }
-  return 1;
-}
-
-function saveVolume(volume: number) {
-  updateFrontendSettingsCache({ volume });
-}
-
-function parseLegacyQueue(): StoredQueueState | null {
-  try {
-    // eslint-disable-next-line no-undef
-    const raw = localStorage.getItem(LEGACY_PLAYLIST_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredQueueState;
-    if (!Array.isArray(parsed.playlist) || typeof parsed.currentIndex !== "number") {
-      return null;
-    }
-    if (parsed.currentMid) {
-      const idx = parsed.playlist.findIndex((s) => s.mid === parsed.currentMid);
-      if (idx >= 0) {
-        parsed.currentIndex = idx;
-      }
-    }
-    return {
-      playlist: parsed.playlist,
-      currentIndex: Math.min(Math.max(parsed.currentIndex, -1), parsed.playlist.length - 1),
-      currentMid: parsed.playlist[parsed.currentIndex]?.mid,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseLegacyPlayMode(): PlayMode | null {
-  try {
-    // eslint-disable-next-line no-undef
-    const raw = localStorage.getItem(LEGACY_PLAY_MODE_KEY);
-    if (raw === "order" || raw === "single" || raw === "shuffle") {
-      return raw;
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-function parseLegacyVolume(): number | null {
-  try {
-    // eslint-disable-next-line no-undef
-    const raw = localStorage.getItem(LEGACY_VOLUME_KEY);
-    if (!raw) return null;
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed)) {
-      return Math.min(1, Math.max(0, parsed));
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-function parseLegacySleepBackup(): OriginalSleepSettings | null {
-  try {
-    // eslint-disable-next-line no-undef
-    const raw = localStorage.getItem(LEGACY_SLEEP_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<OriginalSleepSettings>;
-    if (
-      typeof parsed.batteryIdle === "number" &&
-      typeof parsed.acIdle === "number" &&
-      typeof parsed.batterySuspend === "number" &&
-      typeof parsed.acSuspend === "number"
-    ) {
-      return {
-        batteryIdle: parsed.batteryIdle,
-        acIdle: parsed.acIdle,
-        batterySuspend: parsed.batterySuspend,
-        acSuspend: parsed.acSuspend,
-      };
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-interface LegacySnapshot {
-  queue: StoredQueueState | null;
-  mode: PlayMode | null;
-  volume: number | null;
-  sleep: OriginalSleepSettings | null;
-  hasAny: boolean;
-}
-
-function getLegacySnapshot(forceRefresh: boolean = false): LegacySnapshot {
-  if (legacySnapshotCache && !forceRefresh) return legacySnapshotCache;
-  const queue = parseLegacyQueue();
-  const mode = parseLegacyPlayMode();
-  const volume = parseLegacyVolume();
-  const sleep = parseLegacySleepBackup();
-  const hasAny = Boolean(queue || mode || volume !== null || sleep);
-  legacySnapshotCache = { queue, mode, volume, sleep, hasAny };
-  return legacySnapshotCache;
-}
-
-function clearLegacyStorage() {
-  try {
-    // eslint-disable-next-line no-undef
-    localStorage.removeItem(LEGACY_PLAYLIST_KEY);
-    // eslint-disable-next-line no-undef
-    localStorage.removeItem(LEGACY_PLAY_MODE_KEY);
-    // eslint-disable-next-line no-undef
-    localStorage.removeItem(LEGACY_VOLUME_KEY);
-    // eslint-disable-next-line no-undef
-    localStorage.removeItem(LEGACY_SLEEP_KEY);
-  } catch {
-    // ignore
-  }
-}
-
-// 全局状态 - 在模块级别创建，不会因组件卸载而销毁
-let globalAudio: HTMLAudioElement | null = null;
-let globalCurrentSong: SongInfo | null = null;
-let globalLyric: ParsedLyric | null = null;
-let globalPlaylist: SongInfo[] = [];
-let globalCurrentIndex: number = -1;
-let globalPlayMode: PlayMode = loadPlayMode();
-let globalVolume: number = loadVolume();
-
-// 随机播放状态
-let shuffleHistory: number[] = [];
-let shuffleCursor: number = -1;
-let shufflePool: number[] = [];
-
-// 初始化时从本地存储恢复队列
-// 将在 usePlayer 中通过 ensureFrontendSettingsLoaded 后再恢复
-
-function buildShufflePoolFromHistory(currentIndex: number): number[] {
-  const blocked = new Set<number>(shuffleHistory);
-  const pool: number[] = [];
-  for (let i = 0; i < globalPlaylist.length; i += 1) {
-    if (i === currentIndex) continue;
-    if (blocked.has(i)) continue;
-    pool.push(i);
-  }
-  return pool;
-}
-
-function resetShuffleState(currentIndex: number) {
-  if (globalPlaylist.length === 0 || currentIndex < 0) {
-    shuffleHistory = [];
-    shuffleCursor = -1;
-    shufflePool = [];
-    return;
-  }
-  shuffleHistory = [currentIndex];
-  shuffleCursor = 0;
-  shufflePool = buildShufflePoolFromHistory(currentIndex);
-}
-
-function syncShuffleAfterPlaylistChange(currentIndex: number) {
-  if (globalPlaylist.length === 0 || currentIndex < 0) {
-    resetShuffleState(currentIndex);
-    return;
-  }
-
-  // 清理无效索引并去重，保证 currentIndex 在历史中
-  shuffleHistory = shuffleHistory.filter((idx) => idx >= 0 && idx < globalPlaylist.length);
-  const seen = new Set<number>();
-  shuffleHistory = shuffleHistory.filter((idx) => {
-    if (seen.has(idx)) return false;
-    seen.add(idx);
-    return true;
-  });
-
-  const existingPos = shuffleHistory.indexOf(currentIndex);
-  if (existingPos === -1) {
-    shuffleHistory = [currentIndex];
-    shuffleCursor = 0;
-  } else {
-    shuffleHistory = shuffleHistory.slice(0, existingPos + 1);
-    shuffleCursor = existingPos;
-  }
-
-  shufflePool = buildShufflePoolFromHistory(currentIndex);
-}
-
-function getShuffleNextIndex(): number | null {
-  if (globalPlaylist.length === 0) return null;
-
-  if (shuffleCursor < 0 || shuffleHistory.length === 0) {
-    resetShuffleState(globalCurrentIndex >= 0 ? globalCurrentIndex : 0);
-  }
-
-  if (shuffleCursor < shuffleHistory.length - 1) {
-    shuffleCursor += 1;
-    return shuffleHistory[shuffleCursor] ?? null;
-  }
-
-  if (shufflePool.length === 0) {
-    shufflePool = buildShufflePoolFromHistory(globalCurrentIndex);
-  }
-  if (shufflePool.length === 0) {
-    return globalCurrentIndex >= 0 ? globalCurrentIndex : null;
-  }
-
-  const pickedIdx = Math.floor(Math.random() * shufflePool.length);
-  const picked = shufflePool.splice(pickedIdx, 1)[0];
-  shuffleHistory.push(picked);
-  shuffleCursor = shuffleHistory.length - 1;
-  return picked ?? null;
-}
-
-function getShufflePrevIndex(): number | null {
-  if (shuffleCursor > 0) {
-    shuffleCursor -= 1;
-    return shuffleHistory[shuffleCursor] ?? null;
-  }
-  return shuffleHistory[0] ?? (globalCurrentIndex >= 0 ? globalCurrentIndex : null);
-}
-
-resetShuffleState(globalCurrentIndex);
-
-// 插件非正常退出后尝试恢复系统休眠设置
-void (async () => {
-  const storedSettings = loadStoredSleepSettings();
-  if (!storedSettings) return;
-  originalSleepSettings = storedSettings;
-  await uninhibitSleep();
-})();
-
-// 播放下一首的回调（用于在 ended 事件中调用）
-let onPlayNextCallback: (() => void) | null = null;
-
-// 播放列表结束时获取更多歌曲的回调
-let onNeedMoreSongsCallback: (() => Promise<SongInfo[]>) | null = null;
-
-// 自动跳过的 timeout ID，用于取消
-let skipTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-// ==================== 缓存 ====================
-// 歌曲 URL 缓存 (TTL 30分钟)
-const songUrlCache = new Map<string, { url: string, timestamp: number }>();
-const CACHE_TTL = 30 * 60 * 1000;
-
-// 歌词缓存 (持久缓存，直到插件重载)
-const lyricCache = new Map<string, ParsedLyric>();
-
-// 预取任务缓存，避免重复请求
-const prefetchingUrlPromises = new Map<string, Promise<void>>();
-const prefetchingLyricPromises = new Map<string, Promise<ParsedLyric | null>>();
-
-// 订阅者：用于在多个 usePlayer 实例间同步状态（侧边栏/全屏等）
-const playerSubscribers = new Set<() => void>();
-
-function notifyPlayerSubscribers() {
-  playerSubscribers.forEach((fn) => {
-    try {
-      fn();
-    } catch {
-      // ignore
-    }
-  });
-}
-
-function broadcastPlayerState() {
-  notifyPlayerSubscribers();
-}
-
-// 统一的歌词获取函数（带缓存/并发复用）
-async function fetchLyricWithCache(mid: string, onResolved?: (parsed: ParsedLyric) => void) {
-  const cached = lyricCache.get(mid);
-  if (cached) {
-    onResolved?.(cached);
-    globalLyric = cached;
-    notifyPlayerSubscribers();
-    return cached;
-  }
-
-  const existing = prefetchingLyricPromises.get(mid);
-  if (existing) {
-    await existing;
-    const after = lyricCache.get(mid);
-    if (after) {
-      onResolved?.(after);
-      globalLyric = after;
-      return after;
-    }
-    return null;
-  }
-
-  const promise = getSongLyric(mid, true)
-    .then((res) => {
-      if (res.success && res.lyric) {
-        const parsed = parseLyric(res.lyric, res.trans);
-        lyricCache.set(mid, parsed);
-        globalLyric = parsed;
-        onResolved?.(parsed);
-        notifyPlayerSubscribers();
-        return parsed;
-      }
-      return null;
-    })
-    .catch(() => null)
-    .finally(() => prefetchingLyricPromises.delete(mid));
-
-  prefetchingLyricPromises.set(mid, promise);
-  return promise;
-}
-
-// 获取或创建全局音频实例
-function getGlobalAudio(): HTMLAudioElement {
-  if (!globalAudio) {
-    globalAudio = new Audio();
-    globalAudio.preload = "auto";
-    globalAudio.volume = globalVolume;
-
-    // 设置全局的 ended 事件处理
-    globalAudio.addEventListener('ended', () => {
-      const shouldAutoContinue =
-        globalPlayMode === "single" ||
-        globalPlayMode === "shuffle" ||
-        globalPlaylist.length > 1 ||
-        Boolean(onNeedMoreSongsCallback);
-
-      if (onPlayNextCallback && shouldAutoContinue) {
-        onPlayNextCallback();
-        return;
-      }
-
-      if (sleepInhibited) {
-        sleepInhibited = false;
-        uninhibitSleep();
-      }
-    });
-  }
-  return globalAudio;
-}
+// ==================== 导出函数 ====================
 
 /**
  * 获取当前音频播放时间（秒）
- * 直接从 Audio 元素获取，用于高频动画更新
  */
-export function getAudioCurrentTime(): number {
-  return globalAudio?.currentTime || 0;
-}
+export { getAudioCurrentTime };
 
-// 预取下一首的播放链接与歌词，减少切歌延迟
-async function prefetchSongAssets(song: SongInfo) {
-  const tasks: Promise<unknown>[] = [];
+/**
+ * 设置首选音质
+ */
+export { setPreferredQuality };
 
-  const cachedUrl = songUrlCache.get(song.mid);
-  const urlStale = !cachedUrl || Date.now() - cachedUrl.timestamp >= CACHE_TTL;
-  if (urlStale && !prefetchingUrlPromises.has(song.mid)) {
-    const urlPromise = getSongUrl(song.mid, getPreferredQuality())
-      .then((urlResult) => {
-        if (urlResult.success && urlResult.url) {
-          songUrlCache.set(song.mid, { url: urlResult.url, timestamp: Date.now() });
-        }
-      })
-      .catch(() => { })
-      .finally(() => prefetchingUrlPromises.delete(song.mid));
-
-    prefetchingUrlPromises.set(song.mid, urlPromise);
-    tasks.push(urlPromise);
-  }
-
-  if (!lyricCache.has(song.mid) && !prefetchingLyricPromises.has(song.mid)) {
-    const lyricPromise = getSongLyric(song.mid, true)
-      .then((lyricResult) => {
-        if (lyricResult.success && lyricResult.lyric) {
-          const parsed = parseLyric(lyricResult.lyric, lyricResult.trans);
-          lyricCache.set(song.mid, parsed);
-          return parsed;
-        }
-        return null;
-      })
-      .catch(() => null)
-      .finally(() => prefetchingLyricPromises.delete(song.mid));
-
-    prefetchingLyricPromises.set(song.mid, lyricPromise);
-    tasks.push(lyricPromise);
-  }
-
-  if (tasks.length > 0) {
-    await Promise.allSettled(tasks);
-  }
-}
-
-// 全局清理函数 - 用于插件卸载时调用
-export function cleanupPlayer() {
-  console.log("清理播放器资源");
-
-  // 停止播放
-  if (globalAudio) {
-    globalAudio.pause();
-    globalAudio.src = "";
-  }
-
-  // 恢复休眠
-  if (sleepInhibited) {
-    sleepInhibited = false;
-    uninhibitSleep();
-  }
-
-  // 清理原始休眠设置
-  originalSleepSettings = null;
-
-  // 清理全局状态
-  globalCurrentSong = null;
-  globalLyric = null;
-  globalPlaylist = [];
-  globalCurrentIndex = -1;
-  shuffleHistory = [];
-  shuffleCursor = -1;
-  shufflePool = [];
-  onPlayNextCallback = null;
-  onNeedMoreSongsCallback = null;
-
-  if (skipTimeoutId) {
-    clearTimeout(skipTimeoutId);
-    skipTimeoutId = null;
-  }
-
-  clearStoredSleepSettings();
-  clearQueueState();
-}
+// ==================== Hook 接口定义 ====================
 
 export interface UsePlayerReturn {
   // 状态
@@ -718,19 +85,19 @@ export interface UsePlayerReturn {
   loading: boolean;
   error: string;
   lyric: ParsedLyric | null;
-  playlist: SongInfo[]; // 作为“时间线”：currentIndex 前为历史，之后为未来队列
+  playlist: SongInfo[];
   currentIndex: number;
   playMode: PlayMode;
   volume: number;
   settingsRestored: boolean;
-  hasLegacyData: boolean;
+  currentProviderId: string;
 
   // 方法
-  playSong: (song: SongInfo) => Promise<void>; // 插入当前位置并立刻播放
-  playPlaylist: (songs: SongInfo[], startIndex?: number) => Promise<void>; // 将列表插入当前位置并从首曲播放
-  addToQueue: (songs: SongInfo[]) => Promise<void>; // 追加到队尾，不打断当前播放
-  removeFromQueue: (index: number) => void; // 删除未来队列中的歌曲（当前/历史不删除）
-  playAtIndex: (index: number) => Promise<void>; // 在当前队列中跳转播放
+  playSong: (song: SongInfo) => Promise<void>;
+  playPlaylist: (songs: SongInfo[], startIndex?: number) => Promise<void>;
+  addToQueue: (songs: SongInfo[]) => Promise<void>;
+  removeFromQueue: (index: number) => void;
+  playAtIndex: (index: number) => Promise<void>;
   togglePlay: () => void;
   seek: (time: number) => void;
   stop: () => void;
@@ -740,756 +107,151 @@ export interface UsePlayerReturn {
   cyclePlayMode: () => void;
   setPlayMode: (mode: PlayMode) => void;
   setVolume: (volume: number, options?: { commit?: boolean }) => void;
-  enableSettingsSave: (enabled: boolean) => void; // 控制是否允许写入前端设置
-  resetAllState: () => void; // 清空内存状态和设置缓存
-  migrateLegacySettings: () => Promise<boolean>;
+  enableSettingsSave: (enabled: boolean) => void;
+  resetAllState: () => void;
+  clearCurrentQueue: () => void;
 }
+
+// ==================== Hook 实现 ====================
 
 export function usePlayer(): UsePlayerReturn {
   // 从全局状态初始化
-  const [currentSong, setCurrentSong] = useState<SongInfo | null>(globalCurrentSong);
+  const [currentSong, setCurrentSong] = useState<SongInfo | null>(getGlobalCurrentSong());
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [lyric, setLyric] = useState<ParsedLyric | null>(globalLyric);
+  const [lyric, setLyric] = useState<ParsedLyric | null>(getGlobalLyric());
   const [playlist, setPlaylist] = useState<SongInfo[]>(globalPlaylist);
   const [currentIndex, setCurrentIndex] = useState(globalCurrentIndex);
-  const [playMode, setPlayModeState] = useState<PlayMode>(globalPlayMode);
-  const [volume, setVolumeState] = useState(globalVolume);
+  const [playMode, setPlayModeState] = useState<PlayMode>(getGlobalPlayMode());
+  const [volume, setVolumeState] = useState(getGlobalVolume());
   const [settingsRestored, setSettingsRestored] = useState(false);
-  const [hasLegacyData, setHasLegacyData] = useState(false);
+  const [currentProviderId, setCurrentProviderId] = useState(globalCurrentProviderId);
 
-  const syncFromGlobals = useCallback(() => {
-    const audio = getGlobalAudio();
-    setCurrentSong(globalCurrentSong);
-    setLyric(globalLyric);
-    setPlaylist([...globalPlaylist]);
-    setCurrentIndex(globalCurrentIndex);
-    setPlayModeState(globalPlayMode);
-    setVolumeState(globalVolume);
-    setIsPlaying(!audio.paused);
-    setCurrentTime(audio.currentTime);
-    setDuration(audio.duration || globalCurrentSong?.duration || 0);
-  }, []);
+  // 监听全局状态变化
+  const syncFromGlobals = useCallback(
+    createSyncFromGlobals(
+      setCurrentSong,
+      setLyric,
+      setPlaylist,
+      setCurrentIndex,
+      setPlayModeState,
+      setVolumeState,
+      setIsPlaying,
+      setCurrentTime,
+      setDuration,
+      setCurrentProviderId
+    ),
+    []
+  );
 
-  useEffect(() => {
-    playerSubscribers.add(syncFromGlobals);
-    return () => {
-      playerSubscribers.delete(syncFromGlobals);
-    };
-  }, [syncFromGlobals]);
+  usePlayerStateSync(syncFromGlobals);
+  usePlayerInitialization(
+    settingsRestored,
+    setSettingsRestored,
+    setCurrentProviderId,
+    setPlaylist,
+    setCurrentIndex,
+    setCurrentSong,
+    setPlayModeState,
+    setVolumeState
+  );
+  useAutoFetchLyric(settingsRestored, currentSong, lyric, setLyric);
+  useAudioEndedHandler();
+  usePlaybackTimeSync(setIsPlaying, setCurrentTime, setDuration);
 
-  // 恢复前端持久化设置
-  useEffect(() => {
-    if (settingsRestored) return;
-    let cancelled = false;
-    void (async () => {
-      await ensureFrontendSettingsLoaded();
-      if (cancelled) return;
+  // 创建播放内部函数（带状态更新）
+  const playSongInternalWithState = useCallback(
+    async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true) => {
+      const callback = getOnPlayNextCallback();
+      return playSongInternal(
+        song,
+        index,
+        autoSkipOnError,
+        callback || undefined,
+        setLoading,
+        setError,
+        setCurrentSong,
+        setCurrentTime,
+        setDuration,
+        setIsPlaying,
+        setLyric
+      );
+    },
+    []
+  );
 
-      // 恢复播放队列
-      if (globalPlaylist.length === 0) {
-        const stored = loadQueueStateFromSettings();
-        if (stored.playlist.length > 0) {
-          globalPlaylist = stored.playlist;
-          globalCurrentIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
-          globalCurrentSong = globalPlaylist[globalCurrentIndex] || null;
-          setPlaylist([...globalPlaylist]);
-          setCurrentIndex(globalCurrentIndex);
-          setCurrentSong(globalCurrentSong);
-        }
-      }
-
-      // 恢复播放模式
-      globalPlayMode = loadPlayMode();
-      setPlayModeState(globalPlayMode);
-
-      // 恢复音量
-      const restoredVolume = loadVolume();
-      globalVolume = restoredVolume;
-      const audio = getGlobalAudio();
-      audio.volume = restoredVolume;
-      setVolumeState(restoredVolume);
-
-      const snapshot = getLegacySnapshot();
-      setHasLegacyData(snapshot.hasAny);
-      setSettingsRestored(true);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [settingsRestored]);
-
-  // 重启后从存储恢复歌曲时自动拉取歌词
-  useEffect(() => {
-    if (!settingsRestored) return;
-    if (!currentSong) return;
-    if (lyric) return;
-    fetchLyricWithCache(currentSong.mid, setLyric);
-  }, [currentSong, lyric, settingsRestored]);
-
-  const migrateLegacySettings = useCallback(async () => {
-    await ensureFrontendSettingsLoaded();
-    const updates: Partial<FrontendSettingsCache> = {};
-    const snapshot = getLegacySnapshot(true);
-    const legacyQueue = snapshot.queue;
-    const legacyMode = snapshot.mode;
-    const legacyVolume = snapshot.volume;
-    const legacySleep = snapshot.sleep;
-
-    if (legacyQueue && legacyQueue.playlist.length > 0) {
-      updates.playlistState = legacyQueue;
-    }
-    if (legacyMode) {
-      updates.playMode = legacyMode;
-    }
-    if (legacyVolume !== null) {
-      updates.volume = legacyVolume;
-    }
-    if (legacySleep) {
-      updates.sleepBackup = legacySleep;
-    }
-
-    const hasUpdates = Object.keys(updates).length > 0;
-    if (hasUpdates) {
-      updateFrontendSettingsCache(updates, true);
-
-      // 同步队列：以旧数据为主，必要时会暂停当前播放避免状态错乱
-      const storedQueue = updates.playlistState || loadQueueStateFromSettings();
-      if (storedQueue && storedQueue.playlist.length > 0) {
-        const audio = getGlobalAudio();
-        if (!audio.paused) {
-          audio.pause();
-        }
-        globalPlaylist = storedQueue.playlist;
-        globalCurrentIndex =
-          storedQueue.currentIndex >= 0 ? storedQueue.currentIndex : Math.min(0, storedQueue.playlist.length - 1);
-        globalCurrentSong = globalPlaylist[globalCurrentIndex] || null;
-        setPlaylist([...globalPlaylist]);
-        setCurrentIndex(globalCurrentIndex);
-        setCurrentSong(globalCurrentSong);
-        setIsPlaying(false);
-        setCurrentTime(0);
-        setDuration(globalCurrentSong?.duration ?? 0);
-      }
-
-      if (updates.playMode) {
-        globalPlayMode = updates.playMode;
-        setPlayModeState(globalPlayMode);
-      }
-      if (updates.volume !== undefined) {
-        const audio = getGlobalAudio();
-        globalVolume = updates.volume;
-        audio.volume = globalVolume;
-        setVolumeState(globalVolume);
-      }
-
-      broadcastPlayerState();
-    }
-
-    clearLegacyStorage();
-    legacySnapshotCache = { queue: null, mode: null, volume: null, sleep: null, hasAny: false };
-    setHasLegacyData(false);
-    return hasUpdates;
-  }, []);
+  // 创建播放方法
+  const {
+    playNext,
+    playPrev,
+    playAtIndex,
+    playSong,
+    playPlaylist,
+    addToQueue,
+    removeFromQueue,
+    togglePlay,
+    seek,
+    stop,
+    clearQueue,
+    resetAllState,
+  } = createPlayerMethods({
+    playSongInternalWithState,
+    isPlaying,
+    setPlaylist,
+    setCurrentIndex,
+    setCurrentTime,
+    setCurrentSong,
+    setIsPlaying,
+    setDuration,
+    setError,
+    setLyric,
+    setPlayModeState,
+    setVolumeState,
+    setSettingsRestored,
+    enableSettingsSave,
+  });
 
   const updatePlayMode = useCallback((mode: PlayMode) => {
-    globalPlayMode = mode;
+    setGlobalPlayMode(mode);
     setPlayModeState(mode);
     savePlayMode(mode);
     if (mode === "shuffle") {
+      const { syncShuffleAfterPlaylistChange } = require("./playerShuffle");
       syncShuffleAfterPlaylistChange(globalCurrentIndex);
     }
     broadcastPlayerState();
   }, []);
 
   const cyclePlayMode = useCallback(() => {
+    const currentMode = getGlobalPlayMode();
     const nextMode: PlayMode =
-      globalPlayMode === "order" ? "single" : globalPlayMode === "single" ? "shuffle" : "order";
+      currentMode === "order" ? "single" : currentMode === "single" ? "shuffle" : "order";
     updatePlayMode(nextMode);
   }, [updatePlayMode]);
 
   const setVolume = useCallback((value: number, options?: { commit?: boolean }) => {
     const clamped = Math.min(1, Math.max(0, value));
-    globalVolume = clamped;
-    const audio = getGlobalAudio();
-    if (audio.volume !== clamped) {
-      audio.volume = clamped;
-    }
+    setGlobalVolume(clamped);
+    setVolumeState(clamped);
 
-    // 仅在 commit 时写存储/广播，避免拖动时频繁开销
     if (options?.commit) {
       saveVolume(clamped);
       broadcastPlayerState();
     }
-    setVolumeState(clamped);
   }, []);
 
-  // 内部播放歌曲方法
-  const playSongInternal = useCallback(async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true): Promise<boolean> => {
-    const audio = getGlobalAudio();
-
-    // 取消之前的自动跳过 timeout
-    if (skipTimeoutId) {
-      clearTimeout(skipTimeoutId);
-      skipTimeoutId = null;
-    }
-
-    const wasSameSong = globalCurrentSong?.mid === song.mid;
-    const cachedLyric = lyricCache.get(song.mid) || null;
-    const hasAnyLyric = Boolean(globalLyric) || Boolean(cachedLyric);
-
-    setLoading(true);
-    setError("");
-    setCurrentSong(song);
-    setCurrentTime(0);
-    setDuration(song.duration);
-    // 如同一首歌且已有歌词，避免重复清空造成 UI 闪烁
-    if (!wasSameSong) {
-      setLyric(null);
-      globalLyric = null;
-    } else if (globalLyric) {
-      setLyric(globalLyric);
-    }
-
-    // 更新全局状态
-    globalCurrentSong = song;
-    if (index >= 0) {
-      globalCurrentIndex = index;
-      setCurrentIndex(index);
-    }
-    saveQueueState(globalPlaylist, globalCurrentIndex);
-
-    try {
-      // 1. 获取播放链接 (带缓存)
-      let playUrl = "";
-      const cachedUrl = songUrlCache.get(song.mid);
-
-      // 检查缓存是否有效
-      if (cachedUrl && Date.now() - cachedUrl.timestamp < CACHE_TTL) {
-        console.log(`[Player] 使用缓存的 URL: ${song.name}`);
-        playUrl = cachedUrl.url;
-      } else {
-        // 无缓存或已过期，请求 API
-        const urlResult = await getSongUrl(song.mid, getPreferredQuality());
-
-        if (!urlResult.success || !urlResult.url) {
-          const errorMsg = urlResult.error || "该歌曲暂时无法播放";
-          setError(errorMsg);
-          setLoading(false);
-
-          toaster.toast({
-            title: `⚠️ ${song.name}`,
-            body: errorMsg,
-          });
-
-          if (autoSkipOnError && globalPlaylist.length > 1) {
-            skipTimeoutId = setTimeout(() => {
-              skipTimeoutId = null;
-              if (onPlayNextCallback) {
-                onPlayNextCallback();
-              }
-            }, 2000);
-          }
-          return false;
-        }
-
-        playUrl = urlResult.url;
-        // 写入缓存
-        songUrlCache.set(song.mid, { url: playUrl, timestamp: Date.now() });
-      }
-
-      audio.src = playUrl;
-      audio.load();
-
-      try {
-        await audio.play();
-        setIsPlaying(true);
-
-        if (!sleepInhibited) {
-        sleepInhibited = true;
-        inhibitSleep();
-      }
-
-      setLoading(false);
-    } catch (e) {
-        // 播放失败处理 (精简版，复用现有逻辑)
-        const errorMsg = (e as Error).message;
-        setError(errorMsg);
-        setLoading(false);
-        toaster.toast({ title: "播放失败", body: errorMsg });
-
-        // 如果是缓存的 URL 导致播放失败（比如通过某种方式过期了但没超时），或许应该清除缓存？
-        // 暂时简单处理：如果播放失败，清除该歌曲的 URL 缓存，以便下次重试能获取新的
-        songUrlCache.delete(song.mid);
-
-        if (autoSkipOnError && globalPlaylist.length > 1) {
-          skipTimeoutId = setTimeout(() => {
-            skipTimeoutId = null;
-            if (onPlayNextCallback) onPlayNextCallback();
-          }, 2000);
-        }
-        return false;
-      }
-
-      // 2. 获取歌词 (带缓存/并发复用)
-      if (!hasAnyLyric) {
-        fetchLyricWithCache(song.mid, setLyric);
-      } else if (!globalLyric && cachedLyric) {
-        globalLyric = cachedLyric;
-        setLyric(cachedLyric);
-      }
-
-      broadcastPlayerState();
-      return true;
-    } catch (e) {
-      const errorMsg = (e as Error).message;
-      setError(errorMsg);
-      setLoading(false);
-      toaster.toast({ title: "播放出错", body: errorMsg });
-      return false;
-    }
-  }, []);
-
-  // 播放下一首
-  const playNext = useCallback(async () => {
-    if (globalPlaylist.length === 0) return;
-
-    const resolveOrderNext = async (): Promise<number | null> => {
-      let nextIndex = globalCurrentIndex + 1;
-      if (nextIndex >= globalPlaylist.length) {
-        if (onNeedMoreSongsCallback) {
-          try {
-            const moreSongs = await onNeedMoreSongsCallback();
-            if (moreSongs && moreSongs.length > 0) {
-              const insertPos = globalCurrentIndex + 1;
-              globalPlaylist.splice(insertPos, 0, ...moreSongs);
-              setPlaylist([...globalPlaylist]);
-              nextIndex = insertPos;
-            } else {
-              return null; // 没有更多歌曲，停止
-            }
-          } catch (e) {
-            console.error("获取更多歌曲失败:", e);
-            return null;
-          }
-        } else {
-          return null; // 队列结束，停止
-        }
-      }
-      return nextIndex;
-    };
-
-    let targetIndex: number | null = null;
-    if (globalPlayMode === "single") {
-      targetIndex = globalCurrentIndex;
-    } else if (globalPlayMode === "shuffle") {
-      targetIndex = getShuffleNextIndex();
-    } else {
-      targetIndex = await resolveOrderNext();
-    }
-
-    if (targetIndex === null || targetIndex < 0 || targetIndex >= globalPlaylist.length) {
-      return;
-    }
-
-    const nextSong = globalPlaylist[targetIndex];
-    if (globalPlayMode === "shuffle") {
-      syncShuffleAfterPlaylistChange(targetIndex);
-    }
-    if (nextSong) {
-      // 播放下一首时，如果失败也自动跳过
-      playSongInternal(nextSong, targetIndex, true);
-      prefetchSongAssets(globalPlaylist[targetIndex + 1] || nextSong);
-      saveQueueState(globalPlaylist, globalCurrentIndex);
-      broadcastPlayerState();
-    }
-  }, [playSongInternal]);
-
-  // 播放上一首
-  const playPrev = useCallback(() => {
-    if (globalPlaylist.length === 0) return;
-
-    let targetIndex: number | null = null;
-    if (globalPlayMode === "single") {
-      targetIndex = globalCurrentIndex;
-    } else if (globalPlayMode === "shuffle") {
-      targetIndex = getShufflePrevIndex();
-    } else {
-      const prevIndex = globalCurrentIndex - 1;
-      targetIndex = prevIndex >= 0 ? prevIndex : null;
-    }
-
-    if (targetIndex === null || targetIndex < 0 || targetIndex >= globalPlaylist.length) {
-      return;
-    }
-
-    if (globalPlayMode === "shuffle") {
-      syncShuffleAfterPlaylistChange(targetIndex);
-    }
-
-    const prevSong = globalPlaylist[targetIndex];
-    if (prevSong) {
-      playSongInternal(prevSong, targetIndex, true);
-    }
-  }, [playSongInternal]);
-
-  // 注册播放下一首的回调
-  useEffect(() => {
-    onPlayNextCallback = playNext;
-    return () => {
-      // 不要清除回调，因为我们需要在组件卸载后也能自动播放下一首
-    };
-  }, [playNext]);
-
-  // 同步全局音频状态到本地状态
-  useEffect(() => {
-    const audio = getGlobalAudio();
-
-    // 恢复已有的播放状态
-    if (globalCurrentSong) {
-      setCurrentSong(globalCurrentSong);
-      setLyric(globalLyric);
-      setIsPlaying(!audio.paused);
-      setCurrentTime(audio.currentTime);
-      setDuration(audio.duration || globalCurrentSong.duration);
-
-      // 如果没有缓存歌词，尝试拉取
-      if (!globalLyric) {
-        fetchLyricWithCache(globalCurrentSong.mid, setLyric);
-      }
-    }
-    setPlaylist(globalPlaylist);
-    setCurrentIndex(globalCurrentIndex);
-
-    // 设置事件监听
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const handleDurationChange = () => setDuration(audio.duration || 0);
-    const handleCanPlay = () => setLoading(false);
-    const handleError = () => {
-      setError("音频加载失败");
-      setLoading(false);
-    };
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    const handleVolumeChange = () => setVolumeState(audio.volume);
-
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('durationchange', handleDurationChange);
-    audio.addEventListener('canplay', handleCanPlay);
-    audio.addEventListener('error', handleError);
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('pause', handlePause);
-    audio.addEventListener('volumechange', handleVolumeChange);
-
-    // 清理时只移除事件监听，不停止播放
-    return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('durationchange', handleDurationChange);
-      audio.removeEventListener('canplay', handleCanPlay);
-      audio.removeEventListener('error', handleError);
-      audio.removeEventListener('play', handlePlay);
-      audio.removeEventListener('pause', handlePause);
-      audio.removeEventListener('volumechange', handleVolumeChange);
-    };
-  }, []);
-
-  // 播放单曲（会清空播放列表）
-  const playSong = useCallback(async (song: SongInfo) => {
-    if (!globalCurrentSong || globalCurrentIndex < 0) {
-      globalPlaylist = [song];
-      globalCurrentIndex = 0;
-      setPlaylist([song]);
-      setCurrentIndex(0);
-      syncShuffleAfterPlaylistChange(0);
-      await playSongInternal(song, 0);
-      return;
-    }
-
-    // 保证时间线唯一：保留当前曲，移除其他相同 mid
-    const filtered = globalPlaylist.filter((s, idx) => s.mid !== song.mid || idx === globalCurrentIndex);
-
-    const past = filtered.slice(0, globalCurrentIndex + 1); // 含当前曲
-    const future = filtered.slice(globalCurrentIndex + 1);
-    globalPlaylist = [...past, song, ...future];
-    const newIndex = past.length;
-    globalCurrentIndex = newIndex;
-    setPlaylist([...globalPlaylist]);
-    setCurrentIndex(newIndex);
-    syncShuffleAfterPlaylistChange(newIndex);
-    saveQueueState(globalPlaylist, globalCurrentIndex);
-    await playSongInternal(song, newIndex);
-    prefetchSongAssets(globalPlaylist[newIndex + 1] || globalPlaylist[newIndex]);
-    broadcastPlayerState();
-  }, [playSongInternal]);
-
-  // 播放整个播放列表：插入当前位置，播放首曲，之后继续原队列
-  const playPlaylist = useCallback(async (songs: SongInfo[], startIndex: number = 0) => {
-    if (songs.length === 0) return;
-
-    if (!globalCurrentSong || globalCurrentIndex < 0) {
-      globalPlaylist = songs;
-      globalCurrentIndex = startIndex;
-      setPlaylist([...songs]);
-      setCurrentIndex(startIndex);
-      syncShuffleAfterPlaylistChange(startIndex);
-      await playSongInternal(songs[startIndex], startIndex);
-      prefetchSongAssets(songs[startIndex + 1] || songs[startIndex]);
-      return;
-    }
-
-    // 去重后插入：保留当前曲，时间线唯一
-    const currentMid = globalPlaylist[globalCurrentIndex].mid;
-    const seen = new Set<string>([currentMid]);
-    const cleaned = globalPlaylist.filter((s, idx) => {
-      if (idx === globalCurrentIndex) return true; // 当前曲保留
-      if (seen.has(s.mid)) return false;
-      seen.add(s.mid);
-      return true;
-    });
-
-    const songsToInsert = songs.filter((s) => {
-      if (seen.has(s.mid)) return false;
-      seen.add(s.mid);
-      return true;
-    });
-
-    if (songsToInsert.length === 0) {
-      // 所有歌曲已在队列中，仅切换到目标曲目
-      const clampedStartIndex = Math.min(Math.max(startIndex, 0), songs.length - 1);
-      const targetMid = songs[clampedStartIndex]?.mid;
-      const targetIndex = cleaned.findIndex((s) => s.mid === targetMid);
-
-      // 如果找不到，保持当前曲目不变
-      if (targetIndex < 0) {
-        globalPlaylist = cleaned;
-        setPlaylist([...cleaned]);
-        saveQueueState(globalPlaylist, globalCurrentIndex);
-        broadcastPlayerState();
-        return;
-      }
-
-      globalPlaylist = cleaned;
-      globalCurrentIndex = targetIndex;
-      setPlaylist([...cleaned]);
-      setCurrentIndex(targetIndex);
-      syncShuffleAfterPlaylistChange(targetIndex);
-      saveQueueState(globalPlaylist, globalCurrentIndex);
-      await playSongInternal(globalPlaylist[targetIndex], targetIndex);
-      prefetchSongAssets(globalPlaylist[targetIndex + 1] || globalPlaylist[targetIndex]);
-      broadcastPlayerState();
-      return;
-    }
-
-    const past = cleaned.slice(0, globalCurrentIndex + 1); // 含当前曲
-    const future = cleaned.slice(globalCurrentIndex + 1);
-    const clampedStartIndex = Math.min(Math.max(startIndex, 0), songsToInsert.length - 1);
-    globalPlaylist = [...past, ...songsToInsert, ...future];
-    const newIndex = past.length + clampedStartIndex;
-    globalCurrentIndex = newIndex;
-    setPlaylist([...globalPlaylist]);
-    setCurrentIndex(newIndex);
-    syncShuffleAfterPlaylistChange(newIndex);
-    saveQueueState(globalPlaylist, globalCurrentIndex);
-    await playSongInternal(globalPlaylist[newIndex], newIndex);
-    prefetchSongAssets(globalPlaylist[newIndex + 1] || globalPlaylist[newIndex]);
-    broadcastPlayerState();
-  }, [playSongInternal]);
-
-  // 追加歌曲到队列（不打断当前播放；无播放时自动开始）
-  const addToQueue = useCallback(async (songs: SongInfo[]) => {
-    if (songs.length === 0) return;
-    const existingMids = new Set(globalPlaylist.map((s) => s.mid));
-    const songsToAdd = songs.filter((s) => !existingMids.has(s.mid));
-    if (songsToAdd.length === 0) return;
-
-    const prevLength = globalPlaylist.length;
-    const newPlaylist = [...globalPlaylist, ...songsToAdd];
-    globalPlaylist = newPlaylist;
-    setPlaylist(newPlaylist);
-    if (globalPlayMode === "shuffle") {
-      const blocked = new Set(shuffleHistory);
-      songsToAdd.forEach((_, idx) => {
-        const newIndex = prevLength + idx;
-        if (!blocked.has(newIndex) && !shufflePool.includes(newIndex) && newIndex !== globalCurrentIndex) {
-          shufflePool.push(newIndex);
-        }
-      });
-    }
-    saveQueueState(globalPlaylist, globalCurrentIndex);
-    broadcastPlayerState();
-
-    // 如果当前没有播放，自动开始播放追加的第一首
-    if (!globalCurrentSong || globalCurrentIndex < 0) {
-      globalCurrentIndex = 0;
-      setCurrentIndex(globalCurrentIndex);
-      syncShuffleAfterPlaylistChange(0);
-      await playSongInternal(newPlaylist[0], 0);
-      broadcastPlayerState();
-    }
-  }, [playSongInternal]);
-
-  // 删除未来队列中的歌曲
-  const removeFromQueue = useCallback((index: number) => {
-    if (index <= globalCurrentIndex) return; // 不删除当前/历史
-    if (index < 0 || index >= globalPlaylist.length) return;
-    globalPlaylist.splice(index, 1);
-    if (globalPlayMode === "shuffle") {
-      shuffleHistory = shuffleHistory
-        .filter((idx) => idx !== index)
-        .map((idx) => (idx > index ? idx - 1 : idx));
-      shufflePool = shufflePool
-        .filter((idx) => idx !== index)
-        .map((idx) => (idx > index ? idx - 1 : idx));
-      shuffleCursor = Math.min(shuffleCursor, shuffleHistory.length - 1);
-      syncShuffleAfterPlaylistChange(globalCurrentIndex);
-    }
-    setPlaylist([...globalPlaylist]);
-    saveQueueState(globalPlaylist, globalCurrentIndex);
-    broadcastPlayerState();
-  }, []);
-
-  const togglePlay = useCallback(() => {
-    const audio = getGlobalAudio();
-
-    // 若无音频源但已有当前歌曲（例如重启后恢复状态），重新加载并播放
-    const resumeSong = globalCurrentSong;
-    if (!audio.src && resumeSong) {
-      const resumeIndex = globalCurrentIndex >= 0 ? globalCurrentIndex : 0;
-      void playSongInternal(resumeSong, resumeIndex, false);
-      return;
-    }
-
-    if (isPlaying) {
-      audio.pause();
-      // 恢复休眠
-      if (sleepInhibited) {
-        sleepInhibited = false;
-        uninhibitSleep();
-      }
-    } else {
-      audio.play().then(() => {
-        // 禁用休眠
-        if (!sleepInhibited) {
-          sleepInhibited = true;
-          inhibitSleep();
-        }
-      }).catch(e => {
-        toaster.toast({
-          title: "播放失败",
-          body: e.message
-        });
-      });
-    }
-  }, [isPlaying, playSongInternal]);
-
-  const seek = useCallback((time: number) => {
-    const audio = getGlobalAudio();
-    if (audio.duration) {
-      const clampedTime = Math.max(0, Math.min(time, audio.duration));
-      audio.currentTime = clampedTime;
-      setCurrentTime(clampedTime);
-    }
-  }, []);
-
-  const stop = useCallback(() => {
-    const audio = getGlobalAudio();
-    audio.pause();
-    audio.src = "";
-
-    // 取消自动跳过 timeout
-    if (skipTimeoutId) {
-      clearTimeout(skipTimeoutId);
-      skipTimeoutId = null;
-    }
-
-    // 恢复休眠
-    if (sleepInhibited) {
-      sleepInhibited = false;
-      uninhibitSleep();
-    }
-
-    // 清理全局状态
-    globalCurrentSong = null;
-    globalLyric = null;
-    globalPlaylist = [];
-    globalCurrentIndex = -1;
-    onNeedMoreSongsCallback = null;
-
-    setCurrentSong(null);
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setDuration(0);
-    setError("");
-    setLyric(null);
-    setPlaylist([]);
-    setCurrentIndex(-1);
-    saveQueueState([], -1);
-    broadcastPlayerState();
-  }, []);
-
-  // 清空所有内存状态及设置缓存（用于手动清除数据后恢复初始状态）
-  const resetAllState = useCallback(() => {
-    frontendSaveEnabled = false;
-    stop();
-    globalPlayMode = "order";
-    globalVolume = 1;
-    shuffleHistory = [];
-    shuffleCursor = -1;
-    shufflePool = [];
-    originalSleepSettings = null;
-    frontendSettings = {};
-    frontendSettingsLoaded = false;
-    frontendSettingsPromise = null;
-    legacySnapshotCache = null;
-    sleepInhibited = false;
-
-    const audio = getGlobalAudio();
-    audio.volume = globalVolume;
-
-    setPlayModeState(globalPlayMode);
-    setVolumeState(globalVolume);
-    setSettingsRestored(false);
-    setHasLegacyData(false);
-  }, [stop]);
-
-  const enableSettingsSave = useCallback((enabled: boolean) => {
-    frontendSaveEnabled = enabled;
-  }, []);
-
-  // 跳转到当前队列中的指定索引播放
-  const playAtIndex = useCallback(async (index: number) => {
-    if (index < 0 || index >= globalPlaylist.length) return;
-    if (globalPlayMode === "shuffle") {
-      const existingPos = shuffleHistory.indexOf(index);
-      if (existingPos >= 0) {
-        shuffleHistory = shuffleHistory.slice(0, existingPos + 1);
-        shuffleCursor = existingPos;
-      } else {
-        shuffleHistory = shuffleHistory.slice(0, Math.max(shuffleCursor, 0) + 1);
-        shuffleHistory.push(index);
-        shuffleCursor = shuffleHistory.length - 1;
-      }
-      shufflePool = buildShufflePoolFromHistory(index);
-    }
-    globalCurrentIndex = index;
-    setCurrentIndex(index);
-    saveQueueState(globalPlaylist, globalCurrentIndex);
-    const song = globalPlaylist[index];
-    await playSongInternal(song, index, true);
-    prefetchSongAssets(globalPlaylist[index + 1] || song);
-    broadcastPlayerState();
-  }, [playSongInternal]);
-
-  // 设置获取更多歌曲的回调
   const setOnNeedMoreSongs = useCallback((callback: (() => Promise<SongInfo[]>) | null) => {
-    onNeedMoreSongsCallback = callback;
+    setOnNeedMoreSongsCallback(callback);
   }, []);
 
-  // 刷新播放历史（从存储重新加载）
+  const clearCurrentQueue = useCallback(() => {
+    stop();
+    clearQueue();
+  }, [stop, clearQueue]);
+
   return {
     currentSong,
     isPlaying,
@@ -1518,12 +280,8 @@ export function usePlayer(): UsePlayerReturn {
     setVolume,
     enableSettingsSave,
     resetAllState,
+    clearCurrentQueue,
     settingsRestored,
-    hasLegacyData,
-    migrateLegacySettings,
+    currentProviderId,
   };
-}
-
-export function setPreferredQuality(quality: PreferredQuality) {
-  updateFrontendSettingsCache({ preferredQuality: quality }, true);
 }

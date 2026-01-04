@@ -1,85 +1,34 @@
 """工具函数模块
 
-提供版本处理、设置管理、HTTP 请求、数据格式化等通用工具函数。
+提供版本处理、HTTP 请求、数据格式化等通用工具函数。
 """
 
 import json
+from collections.abc import Awaitable, Callable
+from functools import cache, wraps
 from pathlib import Path
-from typing import Any
+from typing import Concatenate, ParamSpec, TypeVar, cast
 
 import requests
 
 import decky
+from backend.types import OperationResult
+
+R = TypeVar("R")
+P = ParamSpec("P")
+Self = TypeVar("Self")
 
 
-def load_plugin_version(plugin_json_path: Path | None = None) -> str:
+@cache
+def load_plugin_version() -> str:
     """读取 plugin.json 中的版本号
 
-    Args:
-        plugin_json_path: plugin.json 文件路径，默认为 main.py 同目录下
+    使用 DECKY_PLUGIN_DIR 环境变量定位 plugin.json 文件。
 
     Returns:
         版本号字符串，读取失败返回空字符串
     """
-    try:
-        if plugin_json_path is None:
-            # 默认使用 main.py 所在目录
-            import __main__
-
-            plugin_json_path = Path(__main__.__file__).with_name("plugin.json")
-        if plugin_json_path.exists():
-            with open(plugin_json_path, encoding="utf-8") as f:
-                data = json.load(f)
-            return str(data.get("version", "")).strip()
-    except Exception as e:
-        decky.logger.warning(f"读取版本号失败: {e}")
-    return ""
-
-
-def get_settings_path() -> Path:
-    """获取凭证设置文件路径"""
-    return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "credential.json"
-
-
-def get_frontend_settings_path() -> Path:
-    """获取前端设置文件路径"""
-    return Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "frontend_settings.json"
-
-
-def load_frontend_settings() -> dict[str, Any]:
-    """加载前端设置
-
-    Returns:
-        设置字典，加载失败返回空字典
-    """
-    try:
-        settings_path = get_frontend_settings_path()
-        if settings_path.exists():
-            with open(settings_path, encoding="utf-8") as f:
-                return json.load(f)
-    except Exception as e:
-        decky.logger.error(f"加载前端设置失败: {e}")
-    return {}
-
-
-def save_frontend_settings(settings: dict[str, Any]) -> bool:
-    """保存前端设置
-
-    Args:
-        settings: 要保存的设置字典
-
-    Returns:
-        是否保存成功
-    """
-    try:
-        settings_path = get_frontend_settings_path()
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(settings_path, "w", encoding="utf-8") as f:
-            json.dump(settings, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        decky.logger.error(f"保存前端设置失败: {e}")
-        return False
+    return decky.DECKY_PLUGIN_VERSION
 
 
 def normalize_version(version: str) -> tuple[int, ...] | None:
@@ -105,7 +54,7 @@ def normalize_version(version: str) -> tuple[int, ...] | None:
     return tuple(parts)
 
 
-def http_get_json(url: str) -> dict[str, Any]:
+def http_get_json(url: str) -> dict[str, object]:
     """同步获取 JSON 数据
 
     Args:
@@ -120,7 +69,7 @@ def http_get_json(url: str) -> dict[str, Any]:
     resp = requests.get(
         url,
         headers={
-            "User-Agent": "decky-qqmusic",
+            "User-Agent": "decky-music",
             "Accept": "application/vnd.github+json",
         },
         timeout=15,
@@ -139,7 +88,7 @@ def download_file(url: str, dest: Path) -> None:
     """
     with requests.get(
             url,
-            headers={"User-Agent": "decky-qqmusic"},
+            headers={"User-Agent": "decky-music"},
             timeout=120,
             stream=True,
             verify=True,
@@ -151,88 +100,73 @@ def download_file(url: str, dest: Path) -> None:
                     f.write(chunk)
 
 
-def format_song(item: dict[str, Any]) -> dict[str, Any]:
-    """格式化歌曲信息为统一格式
+def require_provider(
+    **default_fields: object,
+) -> Callable[
+    [Callable[Concatenate[Self, P], Awaitable[R]]],
+    Callable[Concatenate[Self, P], Awaitable[R]],
+]:
+    """装饰器：检查 Provider 是否可用，不可用时返回错误响应
 
     Args:
-        item: 原始歌曲数据
+        **default_fields: 当 Provider 不可用时的默认返回值字段
 
     Returns:
-        格式化后的歌曲信息字典
+        装饰器函数
     """
-    # 处理歌手信息
-    singers = item.get("singer", [])
-    if isinstance(singers, list):
-        singer_name = ", ".join(
-            [s.get("name", "") for s in singers if s.get("name")])
-    else:
-        singer_name = str(singers)
 
-    # 获取专辑信息
-    album = item.get("album", {})
-    if isinstance(album, dict):
-        album_name = album.get("name", "")
-        album_mid = album.get("mid", "")
-    else:
-        album_name = ""
-        album_mid = ""
+    def decorator(
+        func: Callable[Concatenate[Self, P], Awaitable[R]],
+    ) -> Callable[Concatenate[Self, P], Awaitable[R]]:
+        @wraps(func)
+        async def wrapper(self: Self, *args: P.args, **kwargs: P.kwargs) -> R:
+            provider = getattr(self, "_provider", None)
+            if not provider:
+                base_response: dict[str, object] = {
+                    "success": False,
+                    "error": "No active provider",
+                }
+                base_response.update(default_fields)
+                return cast(R, base_response)
+            return await func(self, *args, **kwargs)
 
-    # 获取歌曲 mid
-    mid = item.get("mid", "") or item.get("songmid", "")
+        return wrapper
 
-    return {
-        "id":
-        item.get("id", 0) or item.get("songid", 0),
-        "mid":
-        mid,
-        "name":
-        item.get("name", "") or item.get("title", "")
-        or item.get("songname", ""),
-        "singer":
-        singer_name,
-        "album":
-        album_name,
-        "albumMid":
-        album_mid,
-        "duration":
-        item.get("interval", 0),
-        "cover":
-        f"https://y.qq.com/music/photo_new/T002R300x300M000{album_mid}.jpg"
-        if album_mid else "",
-    }
+    return decorator
 
 
-def format_playlist_item(item: dict[str, Any],
-                         is_collected: bool = False) -> dict[str, Any]:
-    """格式化歌单项为统一格式
+def log_from_frontend(
+    level: str,
+    message: str,
+    data: dict[str, object] | None = None,
+) -> OperationResult:
+    """接收前端日志并输出到后端日志系统
 
     Args:
-        item: 原始歌单数据
-        is_collected: 是否为收藏的歌单（影响 creator 字段）
+        level: 日志级别，支持 'info', 'warn', 'warning', 'error', 'debug'
+        message: 日志消息
+        data: 可选的额外数据（会以 JSON 格式附加到日志中）
 
     Returns:
-        格式化后的歌单信息字典
+        操作结果
     """
-    creator = item.get("creator", {})
-    creator_name = creator.get("nick", "") if isinstance(
-        creator, dict) else item.get("creator_name", "")
+    try:
+        log_message = message
+        if data:
+            data_str = json.dumps(data, ensure_ascii=False)
+            log_message = f"{message} | 数据: {data_str}"
 
-    return {
-        "id":
-        item.get("tid", 0) or item.get("dissid", 0),
-        "dirid":
-        item.get("dirid", 0),
-        "name":
-        item.get("dirName", "") or item.get("diss_name", "")
-        or item.get("name", "") or item.get("title", ""),
-        "cover":
-        item.get("picUrl", "") or item.get("diss_cover", "")
-        or item.get("logo", "") or item.get("pic", ""),
-        "songCount":
-        item.get("songNum", 0) or item.get("song_cnt", 0)
-        or item.get("songnum", 0) or item.get("song_count", 0),
-        "playCount":
-        item.get("listen_num", 0),
-        "creator":
-        creator_name if is_collected else "",
-    }
+        level_lower = level.lower()
+        if level_lower in ("error", "err"):
+            decky.logger.error(f"[前端] {log_message}")
+        elif level_lower in ("warn", "warning"):
+            decky.logger.warning(f"[前端] {log_message}")
+        elif level_lower == "debug":
+            decky.logger.debug(f"[前端] {log_message}")
+        else:  # info 或其他
+            decky.logger.info(f"[前端] {log_message}")
+
+        return {"success": True}
+    except Exception as e:
+        decky.logger.error(f"处理前端日志失败: {e}")
+        return {"success": False, "error": str(e)}

@@ -3,15 +3,16 @@
  * 使用全局数据管理器，与全屏页面共享数据
  */
 
-import { FC, useCallback, memo } from "react";
+import { FC, useCallback, memo, useEffect } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
-import { FaSearch, FaSignOutAlt, FaSyncAlt, FaListUl, FaHistory, FaCog } from "react-icons/fa";
+import { FaSignOutAlt, FaListUl, FaHistory, FaCog } from "react-icons/fa";
 import type { SongInfo } from "../types";
 import { SongList } from "./SongList";
-import { SongItem } from "./SongItem";
+import { GuessLikeSection } from "./GuessLikeSection";
 import { useDataManager } from "../hooks/useDataManager";
-import { LoadingSpinner } from "./LoadingSpinner";
-import { EmptyState } from "./EmptyState";
+import { useProvider } from "../hooks/useProvider";
+import { useAuthStatus } from "../state/authState";
+import { useAutoLoadGuessLike } from "../hooks/useAutoLoadGuessLike";
 
 // 清除缓存（保持向后兼容）
 export function clearRecommendCache() {
@@ -22,38 +23,53 @@ export function clearRecommendCache() {
 
 interface HomePageProps {
   onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
-  onGoToSearch: () => void;
   onGoToPlaylists?: () => void;
   onGoToHistory?: () => void;
   onGoToSettings?: () => void;
   onLogout: () => void;
   currentPlayingMid?: string;
   onAddSongToQueue?: (song: SongInfo) => void;
-  onMigrateLegacyData?: () => void;
-  migratingLegacy?: boolean;
-  hasLegacyData?: boolean;
 }
 
 const HomePageComponent: FC<HomePageProps> = ({
   onSelectSong,
-  onGoToSearch,
   onGoToPlaylists,
   onGoToHistory,
   onGoToSettings,
   onLogout,
   currentPlayingMid,
   onAddSongToQueue,
-  onMigrateLegacyData,
-  migratingLegacy = false,
-  hasLegacyData = false,
 }) => {
   const dataManager = useDataManager();
+  const { hasCapability, provider } = useProvider();
+  const isLoggedIn = useAuthStatus();
+
+  const canViewPlaylists = hasCapability("playlist.user");
+  const canRecommendPersonalized = hasCapability("recommend.personalized");
+  const canRecommendDaily = hasCapability("recommend.daily");
+  const isNetease = provider?.id === "netease";
+
+  // 登录后自动加载每日推荐
+  useEffect(() => {
+    if (
+      isLoggedIn &&
+      canRecommendDaily &&
+      !dataManager.dailyLoaded &&
+      !dataManager.dailyLoading &&
+      dataManager.dailySongs.length === 0
+    ) {
+      void dataManager.loadDailyRecommend();
+    }
+  }, [isLoggedIn, canRecommendDaily, dataManager]);
+
+  // 按需加载猜你喜欢（组件挂载时加载）
+  useAutoLoadGuessLike();
 
   const handleRefreshGuessLike = useCallback(() => {
     dataManager.refreshGuessLike();
   }, [dataManager]);
 
-  const handleSongClick = useCallback(
+  const handleGuessLikeSongClick = useCallback(
     (song: SongInfo) => {
       onSelectSong(song, dataManager.guessLikeSongs, "guess-like");
     },
@@ -71,13 +87,7 @@ const HomePageComponent: FC<HomePageProps> = ({
     <>
       {/* 操作按钮 */}
       <PanelSection>
-        <PanelSectionRow>
-          <ButtonItem layout="below" onClick={onGoToSearch}>
-            <FaSearch style={{ marginRight: "8px" }} />
-            搜索歌曲
-          </ButtonItem>
-        </PanelSectionRow>
-        {onGoToPlaylists && (
+        {canViewPlaylists && onGoToPlaylists && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={onGoToPlaylists}>
               <FaListUl style={{ marginRight: "8px" }} />
@@ -93,14 +103,6 @@ const HomePageComponent: FC<HomePageProps> = ({
             </ButtonItem>
           </PanelSectionRow>
         )}
-        {onMigrateLegacyData && hasLegacyData && (
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={onMigrateLegacyData} disabled={migratingLegacy}>
-              <FaSyncAlt style={{ marginRight: "8px" }} />
-              {migratingLegacy ? "迁移中..." : "迁移旧数据"}
-            </ButtonItem>
-          </PanelSectionRow>
-        )}
         {onGoToSettings && (
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={onGoToSettings}>
@@ -112,50 +114,30 @@ const HomePageComponent: FC<HomePageProps> = ({
       </PanelSection>
 
       {/* 猜你喜欢 */}
-      <PanelSection title="💡 猜你喜欢">
-        <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            onClick={handleRefreshGuessLike}
-            disabled={dataManager.guessLoading}
-          >
-            <FaSyncAlt
-              size={12}
-              style={{
-                marginRight: "8px",
-                animation: dataManager.guessLoading ? "spin 1s linear infinite" : "none",
-              }}
-            />
-            换一批
-          </ButtonItem>
-        </PanelSectionRow>
-
-        {dataManager.guessLoading && dataManager.guessLikeSongs.length === 0 ? (
-          <LoadingSpinner />
-        ) : dataManager.guessLikeSongs.length === 0 ? (
-          <EmptyState message="暂无推荐，请稍后再试" />
-        ) : (
-          dataManager.guessLikeSongs.map((song, idx) => (
-            <SongItem
-              key={song.mid || idx}
-              song={song}
-              onClick={handleSongClick}
-              onAddToQueue={onAddSongToQueue}
-            />
-          ))
-        )}
-      </PanelSection>
+      {canRecommendPersonalized && (
+        <GuessLikeSection
+          songs={dataManager.guessLikeSongs}
+          loading={dataManager.guessLoading}
+          onRefresh={handleRefreshGuessLike}
+          onSelectSong={handleGuessLikeSongClick}
+          onAddToQueue={onAddSongToQueue}
+          disableRefresh={isNetease}
+          variant="panel"
+        />
+      )}
 
       {/* 每日推荐 */}
-      <SongList
-        title="📅 每日推荐"
-        songs={dataManager.dailySongs}
-        loading={dataManager.dailyLoading}
-        currentPlayingMid={currentPlayingMid}
-        emptyText="登录后查看每日推荐"
-        onSelectSong={handleDailySongClick}
-        onAddToQueue={onAddSongToQueue}
-      />
+      {canRecommendDaily && (
+        <SongList
+          title="📅 每日推荐"
+          songs={dataManager.dailySongs}
+          loading={dataManager.dailyLoading}
+          currentPlayingMid={currentPlayingMid}
+          emptyText={isLoggedIn ? "暂无每日推荐" : "登录后查看每日推荐"}
+          onSelectSong={handleDailySongClick}
+          onAddToQueue={onAddSongToQueue}
+        />
+      )}
 
       {/* 退出登录 */}
       <PanelSection>
@@ -170,6 +152,6 @@ const HomePageComponent: FC<HomePageProps> = ({
   );
 };
 
-HomePageComponent.displayName = 'HomePage';
+HomePageComponent.displayName = "HomePage";
 
 export const HomePage = memo(HomePageComponent);

@@ -10,6 +10,7 @@ export interface SongInfo {
   albumMid?: string;
   duration: number;
   cover: string;
+  provider: string;
 }
 
 /** 歌单信息 */
@@ -21,6 +22,7 @@ export interface PlaylistInfo {
   songCount: number;
   playCount?: number;
   creator?: string;
+  provider: string;
 }
 
 // ==================== 登录相关 ====================
@@ -32,7 +34,7 @@ export interface QrCodeResponse {
   error?: string;
 }
 
-export type QrStatus = 'waiting' | 'scanned' | 'timeout' | 'success' | 'refused' | 'unknown';
+export type QrStatus = "waiting" | "scanned" | "timeout" | "success" | "refused" | "unknown";
 
 export interface QrStatusResponse {
   success: boolean;
@@ -77,6 +79,7 @@ export interface SongUrlResponse {
   url: string;
   mid: string;
   quality?: string;
+  fallback_provider?: string;
   error?: string;
 }
 
@@ -85,6 +88,7 @@ export interface SongLyricResponse {
   lyric: string;
   trans: string;
   mid: string;
+  fallback_provider?: string;
   error?: string;
 }
 
@@ -119,14 +123,15 @@ export interface ApiResponse<T = unknown> {
 
 /** 页面类型 */
 export type PageType =
-  | 'login'
-  | 'home'
-  | 'search'
-  | 'player'
-  | 'playlists'
-  | 'playlist-detail'
-  | 'history'
-  | 'settings';
+  | "login"
+  | "home"
+  | "search"
+  | "player"
+  | "playlists"
+  | "playlist-detail"
+  | "history"
+  | "settings"
+  | "provider-settings";
 
 /** 用户歌单响应 */
 export interface UserPlaylistsResponse {
@@ -144,12 +149,20 @@ export interface PlaylistSongsResponse {
   error?: string;
 }
 
+export interface StoredQueueState {
+  playlist: SongInfo[];
+  currentIndex: number;
+  currentMid?: string;
+}
+
 export interface FrontendSettings {
-  playlistState?: {
-    playlist: SongInfo[];
-    currentIndex: number;
-    currentMid?: string;
-  };
+  // 按 provider ID 隔离的播放队列状态
+  // key: providerId, value: 队列状态
+  providerQueues?: Record<string, StoredQueueState>;
+  
+  // 当前激活的 provider ID（可选，也可依赖后端状态，但前端存一份方便恢复 UI）
+  lastProviderId?: string;
+
   playMode?: PlayMode;
   volume?: number;
   sleepBackup?: {
@@ -194,6 +207,13 @@ export interface FrontendSettingsResponse {
   settings: FrontendSettings;
 }
 
+export interface ProviderSelectionResponse {
+  success: boolean;
+  mainProvider: string | null;
+  fallbackProviders: string[];
+  error?: string;
+}
+
 /** 播放状态 */
 export interface PlayerState {
   currentSong: SongInfo | null;
@@ -204,3 +224,62 @@ export interface PlayerState {
 }
 
 export type PlayMode = "order" | "single" | "shuffle";
+
+// ==================== Provider 相关 ====================
+
+/** Provider 能力类型 - 匹配后端 Capability 枚举值 */
+export type Capability =
+  // 认证相关
+  | "auth.qr_login"
+  // 搜索相关
+  | "search.song"
+  | "search.suggest"
+  | "search.hot"
+  // 播放相关
+  | "play.song"
+  | "play.quality.lossless"
+  | "play.quality.high"
+  | "play.quality.standard"
+  // 歌词相关
+  | "lyric.basic"
+  | "lyric.word"
+  | "lyric.translation"
+  // 推荐相关
+  | "recommend.daily"
+  | "recommend.personalized"
+  | "recommend.playlist"
+  // 歌单相关
+  | "playlist.user"
+  | "playlist.favorite";
+
+/** Provider 基本信息 */
+export interface ProviderBasicInfo {
+  id: string;
+  name: string;
+}
+
+/** Provider 完整信息（包含能力列表） */
+export interface ProviderFullInfo extends ProviderBasicInfo {
+  capabilities: Capability[];
+}
+
+/** 获取当前 Provider 信息响应 */
+export interface ProviderInfoResponse {
+  success: boolean;
+  provider: ProviderBasicInfo | null;
+  capabilities: Capability[];
+  error?: string;
+}
+
+/** 获取所有 Provider 列表响应 */
+export interface ListProvidersResponse {
+  success: boolean;
+  providers: ProviderFullInfo[];
+  error?: string;
+}
+
+/** 切换 Provider 响应 */
+export interface SwitchProviderResponse {
+  success: boolean;
+  error?: string;
+}

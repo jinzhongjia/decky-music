@@ -1,21 +1,34 @@
-from backend.qqmusic import QQMusicService
+from backend.config_manager import ConfigManager
+from backend.providers import (
+    Capability,
+    MusicProvider,
+    NeteaseProvider,
+    ProviderManager,
+    QQMusicProvider,
+)
+from backend.update_checker import check_for_update, download_update
 from backend.util import (
     download_file,
-    get_frontend_settings_path,
     http_get_json,
-    load_frontend_settings,
     load_plugin_version,
+    log_from_frontend,
     normalize_version,
-    save_frontend_settings,
+    require_provider,
 )
 
 __all__ = [
-    "QQMusicService",
+    "Capability",
+    "MusicProvider",
+    "NeteaseProvider",
+    "ProviderManager",
+    "QQMusicProvider",
+    "ConfigManager",
+    "check_for_update",
     "download_file",
-    "get_frontend_settings_path",
+    "download_update",
     "http_get_json",
-    "load_frontend_settings",
     "load_plugin_version",
+    "log_from_frontend",
     "normalize_version",
-    "save_frontend_settings",
+    "require_provider",
 ]

@@ -1,81 +1,198 @@
-# AGENTS.md
+## 文件大小限制
 
-本文档为 AI 助手（如 LLM、Copilot 等）提供项目上下文和开发指导。
+硬性限制：每个文件不超过 300 行代码
+建议目标：每个文件 150-200 行代码
+超过限制处理：必须拆分为多个文件或提取为独立模块
 
-## 项目概述
+## python 前端遵守的项目架构
 
-**Decky QQ Music 插件** - 在 Steam Deck 上享受 QQ 音乐的 Decky Loader 插件。
+```
+main.py
+backend/           # 后端逻辑
+├── config_manager.py        # 配置管理
+├── types.py            # 类型定义
+├── update_checker.py   # 更新检查器
+├── util.py   # 工具函数 
+├── providers/
+│   ├── base.py     # 提供者基类
+│   ├── manager.py  # 提供者管理器
+│   ├── qqmusic.py  # QQ 音乐提供者实现
+│   ├── netease.py  # 网易云音乐提供者实现
+│   └── ...         # 其他提供者 
+```
 
-### 技术栈
-
-- **前端**: React 19 + TypeScript + Decky UI
-- **后端**: Python 3 + asyncio + QQMusicApi
-- **构建**: Rollup + Docker
-- **包管理**: pnpm
-
-### 核心功能
-
-- 扫码登录（QQ/微信）
-- 歌曲搜索
-- 每日推荐/猜你喜欢
-- 音乐播放（后台播放、播放列表、播放历史）
-- 歌词显示
-- 歌单管理
-
-### 目标用户
-
-Steam Deck 用户，希望在设备上使用 QQ 音乐服务。
-
-本项目旨在提供流畅的音乐体验，集成到 Decky Loader 环境中，插件实现要轻量、高效、稳定、高性能！
-
----
-
-## 项目架构
-
-### 前端结构
+## 前端遵守的项目架构
 
 ```
 src/
-├── index.tsx                 # 插件主入口，定义路由和插件生命周期
-├── api/index.ts              # API 调用封装（通过 callable 与 Python 后端通信）
-├── components/               # React 组件
-│   ├── LoginPage.tsx         # 登录页面（扫码）
-│   ├── HomePage.tsx          # 首页（推荐、历史等）
-│   ├── SearchPage.tsx        # 搜索页面
-│   ├── PlayerPage.tsx        # 全屏播放器
-│   ├── PlayerBar.tsx         # 迷你播放条
-│   ├── PlaylistsPage.tsx     # 歌单列表
-│   ├── PlaylistDetailPage.tsx# 歌单详情
-│   ├── HistoryPage.tsx       # 播放历史
-│   ├── SongItem.tsx          # 歌曲列表项
-│   ├── SongList.tsx          # 歌曲列表
-│   └── ...
-├── hooks/
-│   ├── usePlayer.ts          # 播放器状态管理（全局 Audio 单例）
-│   ├── useDataManager.ts     # 数据预加载和缓存
-│   ├── useDebounce.ts        # 防抖
-│   ├── useMountedRef.ts      # 组件挂载状态 ref
-│   └── useSearchHistory.ts  # 搜索历史
-├── pages/
-│   └── FullscreenPlayer.tsx  # 全屏播放器页面（Decky 路由）
-├── patches/
-│   └── menuPatch.tsx         # 左侧菜单补丁
-├── utils/
-│   ├── format.ts             # 格式化工具（时间、数字）
-│   ├── lyricParser.ts        # 歌词解析（LRC 和 QRC）
-│   └── styles.ts             # 样式工具
-└── types.d.ts                # TypeScript 类型定义
+├── api/          # 可复用的后端 api 调用封装
+├── components/          # 可复用的 UI 组件
+├── hooks/              # 自定义 Hooks
+│   ├── useApi.ts
+│   └── useForm.ts
+├── pages/              # 页面组件（full page 类型）
+├── patches/            # Decky UI 路由覆盖 
+├── state/              # 全局状态管理
+├── types/              # TypeScript 类型定义
+├── utils/              # 工具函数
+└── index.tsx             # 主应用组件
 ```
 
-### 后端结构
+## Python 使用规范
 
-```
-main.py                      # Python 后端主文件
-py_modules/
-└── qqmusic_api/             # QQ 音乐 API 库（第三方）
+main.py 只是方法暴露和少量初始化代码，复杂业务逻辑都必须放在 backend/ 目录下的各个模块中。
+
+### 1. 代码规范 (PEP 8)
+
+- **严格遵守 PEP 8**：所有代码必须符合 PEP 8 风格指南。
+- **命名规范**：
+    - `snake_case` 用于函数、变量和模块。
+    - `PascalCase` 用于类。
+    - `UPPER_SNAKE_CASE` 用于常量。
+- **行长度**：每行不超过 88 个字符。
+
+### 2. 类型提示 (Type Hinting)
+
+- **强制使用类型提示**：所有函数签名（参数和返回值）和关键变量必须有明确的类型注解。
+- **使用 `typing` 模块**：针对复杂类型（如 `List`, `Dict`, `Optional`, `Tuple`）使用 `typing` 模块。
+
+```python
+from typing import List, Optional
+
+def process_data(items: List[str]) -> Optional[dict]:
+    # ...
+    pass
 ```
 
-### 关键设计模式
+### 3. 文档字符串 (Docstrings)
+
+- **为所有模块、类和函数编写文档字符串**。
+- **使用 Google 风格**：简洁明了，易于阅读。
+
+```python
+"""一个简短的模块描述。
+
+更详细的模块功能介绍。
+"""
+
+class MyClass:
+    """MyClass 的简要描述。"""
+
+    def my_method(self, arg1: int) -> bool:
+        """方法功能的简要描述。
+
+        Args:
+            arg1: 参数的描述。
+
+        Returns:
+            返回值的描述。
+        """
+        return True
+```
+
+### 4. 结构与设计
+
+- **单一职责原则**：每个函数和类只做一件事。
+- **模块化**：将相关功能组织到独立的模块或包中。
+- **避免硬编码**：使用常量或配置文件管理配置项。
+
+### 5. 错误处理
+
+- **使用具体的异常类型**：避免使用宽泛的 `except Exception:`。
+- **提供有意义的错误信息**。
+
+```python
+try:
+    # ...
+except FileNotFoundError:
+    print("错误：找不到配置文件。")
+except KeyError as e:
+    print(f"错误：配置中缺少键 {e}")
+```
+
+## TypeScript 使用规范
+
+index.tsx 只是应用入口，复杂业务逻辑都必须放在对应模块中。
+
+必须使用 TypeScript，所有文件使用 .ts 或 .tsx 扩展名
+
+- 严格模式：启用 strict: true
+
+- 类型定义：所有函数参数和返回值必须有明确的类型注解
+
+- 避免 any：除非必要，否则禁止使用 any 类型
+
+### 应该遵守的技术栈
+
+- **前端**: React 19 + TypeScript + Decky UI
+- **后端**: Python 3 + asyncio + QQMusicApi + pyncm
+- **构建**: Rollup + Docker
+- **包管理**: pnpm
+
+### 命名规范
+
+| 类型 | 规范 | 示例 |
+|------|------|------|
+| 组件 | PascalCase | `UserProfile`, `ChatMessage` |
+| 函数/变量 | camelCase | `getUserData`, `isLoading` |
+| 常量 | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT`, `API_TIMEOUT` |
+| 类型/接口 | PascalCase | `UserData`, `ApiResponse` |
+| 文件 | kebab-case (组件) / camelCase (其他) | `user-profile.tsx`, `apiClient.ts` |
+
+### React 组件规范
+
+#### 函数式组件
+
+```typescript
+interface ComponentProps {
+  title: string;
+  onClose?: () => void;
+}
+
+export const MyComponent: React.FC<ComponentProps> = ({ title, onClose }) => {
+  // 逻辑代码
+  return <div>{title}</div>;
+};
+```
+
+#### Hooks 使用原则
+
+- 仅在函数式组件或自定义 Hooks 中使用
+- 不在条件语句中调用 Hooks
+- 自定义 Hooks 命名以 `use` 开头
+- 合理使用 `useMemo` 和 `useCallback` 避免不必要的重新渲染
+
+#### 性能优化
+
+```typescript
+// 使用 React.memo 包装经常重新渲染的组件
+export const OptimizedComponent = React.memo(({ data }: Props) => {
+  return <div>{data}</div>;
+});
+
+// 使用 useCallback 缓存回调函数
+const handleClick = useCallback(() => {
+  // 处理逻辑
+}, [dependency]);
+
+// 使用 useMemo 缓存计算结果
+const memoizedValue = useMemo(() => {
+  return expensiveCalculation(data);
+}, [data]);
+```
+
+## 性能优化清单
+
+| 优化项 | 说明 |
+|--------|------|
+| 代码分割 | 使用 React.lazy 和 Suspense 进行路由级别代码分割 |
+| 列表渲染 | 为列表项添加稳定的 key，使用虚拟化处理大列表 |
+| 状态管理 | 避免不必要的全局状态，合理使用 Context 和 Redux |
+| 网络请求 | 实现请求缓存、去重和超时控制 |
+| 包体积 | 定期检查依赖，移除未使用的库 |
+| 渲染优化 | 使用 React.memo、useMemo、useCallback 避免重新渲染 |
+
+## 关键设计模式
 
 #### 1. 前后端通信
 
@@ -94,173 +211,7 @@ async def get_song_url(self, mid: str) -> dict[str, Any]:
     # 实现...
 ```
 
-#### 2. 全局状态管理
-
-**播放器状态**使用全局单例模式（`usePlayer.ts`）：
-
-- 全局 `HTMLAudioElement` 实例，确保关闭面板后音乐继续播放
-- 播放列表、播放历史、歌词等状态在模块级别保存
-- 通过 `cleanupPlayer()` 在插件卸载时清理资源
-
-**数据缓存**使用 `useDataManager`：
-
-- 预加载每日推荐、猜你喜欢等数据
-- 使用 Map 缓存 API 响应
-- 提供清理缓存接口
-
-#### 3. Decky 集成
-
-- **插件注册**: 通过 `definePlugin()` 定义插件
-- **路由注册**: 使用 `routerHook.addRoute()` 注册全屏路由
-- **菜单补丁**: 通过 `menuPatch.tsx` 在左侧添加快捷入口
-
----
-
-## 开发规范
-
-### TypeScript 配置
-
-- **严格模式**: `strict: true` 启用所有严格类型检查
-- **目标**: ES2020
-- **模块**: ESNext
-- **JSX**: react-jsx（自动导入）
-
-### ESLint 规则
-
-重点规则：
-
-```javascript
-{
-  '@typescript-eslint/no-unused-vars': 'warn',  // 未使用变量警告
-  '@typescript-eslint/no-explicit-any': 'warn', // 禁止 any（警告级别）
-  'react-hooks/rules-of-hooks': 'error',      // 强制 Hooks 规则
-  'react-hooks/exhaustive-deps': 'warn',       // 依赖检查警告
-  'no-console': 'off'                           // 允许 console
-}
-```
-
-### Prettier 配置
-
-```json
-{
-  "semi": true,                    // 分号
-  "singleQuote": false,            // 双引号
-  "tabWidth": 2,                   // 2 空格缩进
-  "trailingComma": "es5",          // 尾随逗号
-  "printWidth": 100,              // 行宽 100
-  "arrowParens": "always"         // 箭头函数参数括号
-}
-```
-
-### 代码风格指南
-
-#### 1. 组件结构
-
-```tsx
-// 1. 导入（外部库 → 内部模块 → 类型）
-import { useState } from "react";
-import { PanelSection } from "@decky/ui";
-import type { SongInfo } from "./types";
-
-// 2. 组件定义（优先使用函数组件）
-function MyComponent({ prop }: Props) {
-  // 3. Hooks 调用
-  const [state, setState] = useState();
-
-  // 4. 事件处理函数
-  const handleClick = () => {};
-
-  // 5. 渲染
-  return <div>...</div>;
-}
-
-export default MyComponent;
-```
-
-#### 2. 类型定义
-
-- 组件 Props 使用 `interface` 定义
-- 简单对象类型使用 `type`
-- 避免 `any`，使用 `unknown` 或具体类型
-
-```typescript
-// ✅ 推荐
-interface SongInfo {
-  mid: string;
-  name: string;
-  singer: string;
-}
-
-// ❌ 避免
-interface SongInfo {
-  data: any;  // 不要用 any
-}
-```
-
-#### 3. 错误处理
-
-```typescript
-// ✅ 推荐 - 具体错误类型
-try {
-  await apiCall();
-} catch (e) {
-  const error = e as Error;
-  console.error("操作失败:", error.message);
-  toaster.toast({ title: "错误", body: error.message });
-}
-
-// ❌ 避免
-try {
-  await apiCall();
-} catch (e) {
-  console.log(e);  // 日志不明确
-}
-```
-
-#### 4. 异步处理
-
-- API 调用使用 `async/await`
-- 组件中使用 `useEffect` 处理副作用
-- 注意内存泄漏：检查 `isMountedRef` 或使用 AbortController
-
-```typescript
-const mountedRef = useMountedRef();
-
-useEffect(() => {
-  async function loadData() {
-    try {
-      const result = await fetchData();
-      if (!mountedRef.current) return;  // 防止卸载后更新
-      setData(result);
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  loadData();
-}, []);
-```
-
-#### 5. 全局变量
-
-- 使用 `@ts-ignore` 注释 SteamClient 等全局对象
-- 优先使用 ref 存储跨组件状态
-
-```typescript
-// SteamClient 是全局变量
-// @ts-ignore
-// eslint-disable-next-line no-undef
-if (typeof SteamClient === 'undefined') return;
-```
-
----
-
 ## 常见任务指南
-
-### 数据持久化
-
-- 前端设置统一走 Decky SettingsManager（参考 `main.py` 的 `get_frontend_settings/save_frontend_settings` 和前端 `usePlayer` 的调用），不要再使用 `localStorage`。
-- 需要迁移旧 `localStorage` 数据时，可参考项目中已有的迁移按钮与逻辑。
 
 ### 添加新 API 接口
 
@@ -284,190 +235,23 @@ async def get_something(self, param: str) -> dict[str, Any]:
         return {"success": False, "error": str(e)}
 ```
 
-### 创建新页面组件
+## 生成代码时的要求
 
-1. 创建组件文件 `src/pages/NewPage.tsx`：
+### 必须做
 
-```tsx
-import { PanelSection, PanelSectionRow } from "@decky/ui";
-import type { FC } from "react";
+1. **拆分文件**：当功能复杂时，主动拆分为多个文件
+2. **类型优先**：先定义类型，再实现逻辑
+3. **性能考虑**：在编写代码时考虑性能影响
+4. **可读性**：使用有意义的变量名和函数名，前端新手也可以轻松读懂代码
+5. **模块化**：提取可复用的逻辑为独立函数或 Hooks
+6. **简洁性**: 无用的代码无需保留
+7. **严格性**: 严格遵守上方的 Python 使用规范和 TypeScript 使用规范
+8. **接口统一**: 前后端接口设计要统一，确保数据结构一致
 
-interface Props {
-  onBack: () => void;
-}
+### 禁止做
 
-const NewPage: FC<Props> = ({ onBack }) => {
-  return (
-    <PanelSection title="新页面">
-      {/* 内容 */}
-    </PanelSection>
-  );
-};
-
-export default NewPage;
-```
-
-2. 在 `src/index.tsx` 添加页面状态和路由：
-
-```tsx
-const [currentPage, setCurrentPage] = useState<PageType>('login');
-
-// 在 renderPage switch 中添加 case
-case 'new-page':
-  return <NewPage onBack={() => setCurrentPage('home')} />;
-```
-
-3. 导入组件（如果在新文件）
-
-### 修改播放器行为
-
-播放器逻辑在 `src/hooks/usePlayer.ts`：
-
-- `playSong()` - 播放单曲
-- `playPlaylist()` - 播放列表
-- `togglePlay()` - 播放/暂停
-- `playNext()` / `playPrev()` - 下一首/上一首
-- `seek()` - 进度跳转
-- `stop()` - 停止播放
-
-修改时注意：
-- 保持全局状态一致性（`globalAudio`, `globalPlaylist` 等）
-- 正确处理休眠控制（`inhibitSleep` / `uninhibitSleep`）
-- 清理资源避免内存泄漏
-
-### 添加新功能到首页
-
-在 `src/components/HomePage.tsx` 中：
-
-1. 定义 Props 接口：
-
-```typescript
-interface Props {
-  onGoToNewFeature: () => void;
-}
-```
-
-2. 添加按钮或入口：
-
-```tsx
-<PanelSectionRow>
-  <ButtonItem
-    layout="below"
-    onClick={onGoToNewFeature}
-  >
-    新功能
-  </ButtonItem>
-</PanelSectionRow>
-```
-
-3. 在 `src/index.tsx` 传递回调：
-
-```tsx
-<HomePage
-  onGoToNewFeature={() => setCurrentPage('new-feature')}
-  // ...其他 props
-/>
-```
-
----
-
-## 调试和测试
-
-### 前端调试
-
-由于开发环境在 Steam Deck 上，所以我们难以查看到浏览器控制台，无法获得 log，但是可以要求开发者提供 steamdeck 的照片
-
-### 后端调试
-
-日志通过 `decky.logger` 输出：
-
-```python
-decky.logger.info("信息")
-decky.logger.warning("警告")
-decky.logger.error("错误")
-```
-
-查看日志位置：`DECKY_PLUGIN_LOG_DIR`
-
-### 常见问题
-
-#### 1. API 调用失败
-
-- 检查 Python 方法是否正确实现
-- 查看后端日志
-- 确认凭证是否有效（需要登录）
-
-#### 2. 播放器状态不同步
-
-- 检查是否正确更新全局状态
-- 确认 `usePlayer` 的返回值正确传递给组件
-- 查看控制台是否有 React 警告
-
-#### 3. 组件卸载后报错
-
-- 使用 `useMountedRef` 检查组件是否已卸载
-- 清理事件监听器和定时器
-- 使用 AbortController 取消异步请求
-
----
-
-## 构建和部署
-
-### 开发环境设置
-
-可以参考 README.md 文件
-
-### 部署到 Steam Deck
-
-通过 Decky Loader 在 Steam Deck 上加载未打包的插件进行调试。
-
-我们通过使用 rsync 工具将代码同步到 Steam Deck 上，默认开发者在 Steam Deck 开启 SSH 服务。
-
-并且 steamdeck 使用 `sudo` 不需要密码
-
-### Docker 构建（推荐）
-
-使用 `mise` 工具：
-
-```bash
-# 构建
-mise run build
-
-# 构建并部署到 Steam Deck
-mise run deploy
-
-# 输出文件: out/QQMusic.zip 和 out/QQMusic/
-```
-
-### 发版流程
-
-1. 更新版本号（`plugin.json` 和 `package.json`）
-2. 提交代码：`git add . && git commit -m "release: v0.0.x"`
-3. 打 tag：`git tag v0.0.x`
-4. 推送：`git push && git push --tags`
-5. GitHub Actions 会自动构建并创建 Release
-
----
-
-## 外部依赖
-
-### 前端依赖
-
-- `@decky/api` - Decky 插件 API
-- `@decky/ui` - Decky UI 组件库
-- `react-icons` - 图标库
-
-### 后端依赖
-
-- `qqmusic_api` - QQ 音乐 API 库（来自 [L-1124/QQMusicApi](https://github.com/L-1124/QQMusicApi)）
-
-### Decky Loader 相关
-
-- [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) - 插件加载器
-- [decky-plugin-template](https://github.com/SteamDeckHomebrew/decky-plugin-template) - 插件模板
-
----
-
-## 许可证
-
-BSD-3-Clause License
+1. **超大文件**：不生成超过 300 行的单个文件
+2. **使用 any**：避免使用 TypeScript 的 `any` 类型
+3. **硬编码**：不在代码中硬编码配置值或常量
+4. **过度注释**：不为显而易见的代码添加注释
+5. **忽视性能**：不忽视可能的性能问题

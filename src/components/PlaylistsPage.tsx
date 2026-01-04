@@ -3,11 +3,13 @@
  * 使用全局数据管理器，与全屏页面共享数据
  */
 
-import { FC, useCallback, memo, useMemo } from "react";
+import { FC, useCallback, memo, useMemo, useEffect } from "react";
 import { PanelSection, Field } from "@decky/ui";
 import type { PlaylistInfo } from "../types";
 import { formatPlayCount } from "../utils/format";
 import { useDataManager } from "../hooks/useDataManager";
+import { useProvider } from "../hooks/useProvider";
+import { useAuthStatus } from "../state/authState";
 import { BackButton } from "./BackButton";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { EmptyState } from "./EmptyState";
@@ -97,6 +99,24 @@ const PlaylistItem = memo(PlaylistItemComponent);
 
 const PlaylistsPageComponent: FC<PlaylistsPageProps> = ({ onSelectPlaylist, onBack }) => {
   const dataManager = useDataManager();
+  const { hasCapability } = useProvider();
+  const isLoggedIn = useAuthStatus();
+
+  const canViewPlaylists = hasCapability("playlist.user");
+
+  // 登录后自动加载歌单
+  useEffect(() => {
+    if (
+      isLoggedIn &&
+      canViewPlaylists &&
+      !dataManager.playlistsLoaded &&
+      !dataManager.playlistsLoading &&
+      dataManager.createdPlaylists.length === 0 &&
+      dataManager.collectedPlaylists.length === 0
+    ) {
+      void dataManager.loadPlaylists();
+    }
+  }, [isLoggedIn, canViewPlaylists, dataManager]);
 
   const handlePlaylistClick = useCallback(
     (playlist: PlaylistInfo) => {

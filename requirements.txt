@@ -1,7 +1,13 @@
 # Decky QQ Music Plugin - Python Dependencies
 # CI/CD 构建时安装到 py_modules 目录
 
-# 从 GitHub 拉取指定 tag 的代码
-# 使用 L-1124/QQMusicApi 仓库的 v0.4.1 版本
+# QQ 音乐 API
 git+https://github.com/L-1124/QQMusicApi.git@v0.4.1
+
+# 网易云音乐 API
+pyncm>=1.8.1
+
+# QR code generation for NetEase login
+qrcode[pil]>=8.0
+
 requests>=2.32.3

@@ -187,9 +187,10 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
 
   const handleSearchResultSelect = useCallback(
     (song: SongInfo) => {
-      onSelectSong(song, songs);
+      // 搜索结果中选择歌曲时，只播放选中的歌曲，不将整个搜索结果列表加入队列
+      onSelectSong(song, undefined, "search");
     },
-    [songs, onSelectSong]
+    [onSelectSong]
   );
 
   return (

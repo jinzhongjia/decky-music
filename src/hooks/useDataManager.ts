@@ -151,8 +151,8 @@ export const loadGuessLike = async (forceRefresh = false): Promise<SongInfo[]> =
         // 预加载封面图片
         preloadSongCovers(result.songs);
       }
-    } catch (e) {
-      console.error("[DataManager] 加载猜你喜欢失败:", e);
+    } catch {
+      // 忽略错误
     } finally {
       cache.guessLoading = false;
       notifyListeners();
@@ -187,8 +187,8 @@ export const fetchGuessLikeRaw = async (): Promise<SongInfo[]> => {
       if (result.success && result.songs.length > 0) {
         return result.songs;
       }
-    } catch (e) {
-      console.error("[DataManager] 预取猜你喜欢失败:", e);
+    } catch {
+      // 忽略错误
     } finally {
       guessLikeRawPromise = null;
     }
@@ -223,8 +223,8 @@ export const loadDailyRecommend = async (): Promise<SongInfo[]> => {
         // 预加载封面图片
         preloadSongCovers(result.songs);
       }
-    } catch (e) {
-      console.error("[DataManager] 加载每日推荐失败:", e);
+    } catch {
+      // 忽略错误
     } finally {
       cache.dailyLoading = false;
       notifyListeners();
@@ -262,8 +262,8 @@ export const loadPlaylists = async (): Promise<{ created: PlaylistInfo[], collec
         // 预加载歌单封面
         preloadPlaylistCovers([...cache.createdPlaylists, ...cache.collectedPlaylists]);
       }
-    } catch (e) {
-      console.error("[DataManager] 加载歌单失败:", e);
+    } catch {
+      // 忽略错误
     } finally {
       cache.playlistsLoading = false;
       notifyListeners();
@@ -280,10 +280,10 @@ export const loadPlaylists = async (): Promise<{ created: PlaylistInfo[], collec
 
 /**
  * 预加载所有数据（在插件初始化时调用）
+ * 已弃用，保留为空函数以兼容
  */
-export const preloadData = async () => {
-  await Promise.all([loadGuessLike(), loadDailyRecommend(), loadPlaylists()]);
-};
+export const preloadData = async () => {};
+
 
 // ==================== 清理 ====================
 
@@ -337,24 +337,24 @@ export const replaceGuessLikeSongs = (songs: SongInfo[]) => {
 
 // ==================== Hook ====================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 /**
  * 使用数据管理器的 Hook
  * 自动订阅数据变化
  */
 export function useDataManager() {
-  const [, forceUpdate] = useState({});
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    const listener = () => forceUpdate({});
+    const listener = () => setVersion((v) => v + 1);
     listeners.add(listener);
     return () => {
       listeners.delete(listener);
     };
   }, []);
 
-  return {
+  return useMemo(() => ({
     // 猜你喜欢
     guessLikeSongs: cache.guessLikeSongs,
     guessLoading: cache.guessLoading,
@@ -379,5 +379,6 @@ export function useDataManager() {
     // 其他
     preloadData,
     clearDataCache,
-  };
+    provider: null as { id: string; name: string } | null, // 占位，需要 useProvider 获取
+  }), [version]);
 }
