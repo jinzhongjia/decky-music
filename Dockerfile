@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-# Decky QQ Music 插件构建 Dockerfile
+# Decky Music 插件构建 Dockerfile
 # 使用 Python 3.11 以匹配 Decky Loader 内嵌的 Python 版本
 
 FROM python:3.11-slim AS python-deps
