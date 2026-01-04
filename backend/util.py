@@ -28,13 +28,7 @@ def load_plugin_version() -> str:
     Returns:
         版本号字符串，读取失败返回空字符串
     """
-    plugin_json_path = Path(decky.DECKY_PLUGIN_DIR) / "plugin.json"
-    if not plugin_json_path.exists():
-        decky.logger.error(f"未找到 plugin.json 文件: {plugin_json_path}")
-        return ""
-    with open(plugin_json_path, encoding="utf-8") as f:
-        data = json.load(f)
-    return str(data.get("version", "")).strip()
+    return decky.DECKY_PLUGIN_VERSION
 
 
 def normalize_version(version: str) -> tuple[int, ...] | None:
