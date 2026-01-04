@@ -20,15 +20,15 @@ Self = TypeVar("Self")
 
 
 @cache
-def load_plugin_version(plugin_json_path: Path) -> str:
+def load_plugin_version() -> str:
     """读取 plugin.json 中的版本号
 
-    Args:
-        plugin_json_path: plugin.json 文件路径，默认为 main.py 同目录下
+    使用 DECKY_PLUGIN_DIR 环境变量定位 plugin.json 文件。
 
     Returns:
         版本号字符串，读取失败返回空字符串
     """
+    plugin_json_path = Path(decky.DECKY_PLUGIN_DIR) / "plugin.json"
     if not plugin_json_path.exists():
         decky.logger.error(f"未找到 plugin.json 文件: {plugin_json_path}")
         return ""

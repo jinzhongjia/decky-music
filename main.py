@@ -64,8 +64,7 @@ class Plugin:
     """Decky Music 插件主类"""
 
     def __init__(self) -> None:
-        plugin_path = Path(__file__).with_name("plugin.json")
-        self.current_version = load_plugin_version(plugin_path)
+        self.current_version = load_plugin_version()
         self.config = ConfigManager()
         self._manager = ProviderManager()
 
