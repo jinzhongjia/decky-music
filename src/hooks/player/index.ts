@@ -1,24 +1,15 @@
-import { useState, useCallback, useEffect } from "react";
-import { getProviderInfo } from "../../api";
+import { useState, useCallback } from "react";
 import type { PlayMode, SongInfo } from "../../types";
 import type { ParsedLyric } from "../../utils/lyricParser";
-import { usePlayerStore, getPlayerState } from "./store";
-import { getGlobalAudio, getAudioCurrentTime, getGlobalVolume, setGlobalVolume, cleanupAudio, setGlobalEndedHandler } from "./audio";
-import { ensureFrontendSettingsLoaded, getFrontendSettingsCache, loadPlayMode, loadVolume, savePlayMode, saveVolume, enableSettingsSave, setPreferredQuality } from "./persistence";
-import { fetchLyricWithCache } from "./lyrics";
+import { getPlayerState } from "./store";
+import { getGlobalVolume, setGlobalVolume, cleanupAudio } from "./audio";
+import { enableSettingsSave, savePlayMode, saveVolume, setPreferredQuality } from "./persistence";
 import { resetAllShuffleState, syncShuffleAfterPlaylistChange } from "./shuffle";
 import { playSongInternal, clearSkipTimeout, createTogglePlay, createSeek, createStop, createClearQueue, createResetAllState, setOnNeedMoreSongsCallback } from "./playback";
 import {
   broadcastPlayerState,
-  subscribePlayerState,
   setOnPlayNextCallback,
   getOnPlayNextCallback,
-  loadQueueStateFromSettings,
-  setPlaylist as setQueuePlaylist,
-  setCurrentIndex as setQueueCurrentIndex,
-  setProviderId as setQueueProviderId,
-  setCurrentSong as setGlobalCurrentSong,
-  setLyric as setGlobalLyric,
   setPlayMode as setGlobalPlayMode,
   getPlayMode as getGlobalPlayMode,
   resetQueueState,
@@ -31,8 +22,18 @@ import {
   createAddToQueue,
   createRemoveFromQueue,
 } from "./queue";
+import {
+  useSyncFromGlobals,
+  useSettingsRestoration,
+  useLyricFetch,
+  useAudioTimeSync,
+  usePlayNextHandler,
+  createSyncFromGlobals,
+} from "./effects";
 
-export { getAudioCurrentTime, setPreferredQuality, usePlayerStore };
+export { getAudioCurrentTime } from "./audio";
+export { setPreferredQuality };
+export { usePlayerStore } from "./store";
 
 export function cleanupPlayer(): void {
   cleanupAudio();
@@ -94,94 +95,21 @@ export function usePlayer(): UsePlayerReturn {
   const [settingsRestored, setSettingsRestored] = useState(false);
   const [currentProviderId, setCurrentProviderId] = useState(state.currentProviderId);
 
-  const syncFromGlobals = useCallback(() => {
-    const audio = getGlobalAudio();
-    const s = getPlayerState();
-    setCurrentSong(s.currentSong);
-    setLyric(s.lyric);
-    setPlaylist([...s.playlist]);
-    setCurrentIndex(s.currentIndex);
-    setPlayModeState(s.playMode);
-    setVolumeState(getGlobalVolume());
-    setIsPlaying(!audio.paused);
-    setCurrentTime(audio.currentTime);
-    setDuration(audio.duration || s.currentSong?.duration || 0);
-    setCurrentProviderId(s.currentProviderId);
-  }, []);
+  const syncFromGlobals = useCallback(
+    createSyncFromGlobals({
+      setCurrentSong, setLyric, setPlaylist, setCurrentIndex, setPlayModeState,
+      setVolumeState, setIsPlaying, setCurrentTime, setDuration, setCurrentProviderId, setSettingsRestored,
+    }),
+    []
+  );
 
-  useEffect(() => subscribePlayerState(syncFromGlobals), [syncFromGlobals]);
-
-  useEffect(() => {
-    if (settingsRestored) return;
-    let cancelled = false;
-
-    void (async () => {
-      await ensureFrontendSettingsLoaded();
-      if (cancelled) return;
-
-      const providerRes = await getProviderInfo();
-      if (!providerRes.success || !providerRes.provider) {
-        setSettingsRestored(true);
-        return;
-      }
-
-      const newProviderId = providerRes.provider.id;
-      setQueueProviderId(newProviderId);
-      setCurrentProviderId(newProviderId);
-
-      const frontendSettings = getFrontendSettingsCache();
-      const { playlist: storePlaylist } = getPlayerState();
-      if (storePlaylist.length === 0) {
-        const stored = loadQueueStateFromSettings(newProviderId, frontendSettings);
-        if (stored.playlist.length > 0) {
-          setQueuePlaylist(stored.playlist);
-          const restoredIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
-          setQueueCurrentIndex(restoredIndex);
-          const restoredSong = stored.playlist[restoredIndex] || null;
-          setGlobalCurrentSong(restoredSong);
-          setPlaylist([...stored.playlist]);
-          setCurrentIndex(restoredIndex);
-          setCurrentSong(restoredSong);
-        }
-      }
-
-      const restoredPlayMode = loadPlayMode();
-      setGlobalPlayMode(restoredPlayMode);
-      setPlayModeState(restoredPlayMode);
-
-      const restoredVolume = loadVolume();
-      setGlobalVolume(restoredVolume);
-      getGlobalAudio().volume = restoredVolume;
-      setVolumeState(restoredVolume);
-
-      setSettingsRestored(true);
-    })();
-
-    return () => { cancelled = true; };
-  }, [settingsRestored]);
-
-  useEffect(() => {
-    if (!settingsRestored || !currentSong || lyric) return;
-    void fetchLyricWithCache(currentSong.mid, currentSong.name, currentSong.singer, (parsed) => {
-      setGlobalLyric(parsed);
-      setLyric(parsed);
-      broadcastPlayerState();
-    });
-  }, [settingsRestored, currentSong, lyric]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const audio = getGlobalAudio();
-      if (!audio.paused) {
-        setCurrentTime(audio.currentTime);
-        setDuration(audio.duration || 0);
-        setIsPlaying(true);
-      } else {
-        setIsPlaying(false);
-      }
-    }, 100);
-    return () => clearInterval(interval);
-  }, []);
+  useSyncFromGlobals(syncFromGlobals);
+  useSettingsRestoration(settingsRestored, {
+    setCurrentSong, setPlaylist, setCurrentIndex, setPlayModeState,
+    setVolumeState, setCurrentProviderId, setSettingsRestored,
+  });
+  useLyricFetch(settingsRestored, currentSong, lyric, setLyric);
+  useAudioTimeSync(setCurrentTime, setDuration, setIsPlaying);
 
   const playSongInternalWithState = useCallback(
     async (song: SongInfo, index: number = -1, autoSkipOnError: boolean = true) => {
@@ -265,17 +193,7 @@ export function usePlayer(): UsePlayerReturn {
     return fn();
   }, [stop, clearQueue]);
 
-  useEffect(() => {
-    setOnPlayNextCallback(playNext);
-    const endedHandler = () => {
-      const pm = getGlobalPlayMode();
-      const callback = getOnPlayNextCallback();
-      const { playlist: pl } = getPlayerState();
-      const shouldAutoContinue = pm === "single" || pm === "shuffle" || pl.length > 1;
-      if (callback && shouldAutoContinue) void callback();
-    };
-    setGlobalEndedHandler(endedHandler);
-  }, [playNext]);
+  usePlayNextHandler(playNext);
 
   const updatePlayMode = useCallback((mode: PlayMode) => {
     setGlobalPlayMode(mode);

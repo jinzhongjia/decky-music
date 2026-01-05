@@ -8,10 +8,13 @@ interface UseSteamInputProps {
   setCurrentPage: (page: PageType) => void;
 }
 
+const DEBOUNCE_MS = 200;
+
 export function useSteamInput({ player, currentPage, setCurrentPage }: UseSteamInputProps) {
   // Refs to avoid closures in event listener
   const playerRef = useRef(player);
   const currentPageRef = useRef(currentPage);
+  const lastButtonTimeRef = useRef<Record<number, number>>({});
 
   useEffect(() => {
     playerRef.current = player;
@@ -33,6 +36,13 @@ export function useSteamInput({ player, currentPage, setCurrentPage }: UseSteamI
       (_controllerIndex: number, button: number, pressed: boolean) => {
         // Only handle press events
         if (!pressed) return;
+
+        const now = Date.now();
+        const lastTime = lastButtonTimeRef.current[button] || 0;
+        if (now - lastTime < DEBOUNCE_MS) {
+          return;
+        }
+        lastButtonTimeRef.current[button] = now;
 
         const p = playerRef.current;
         const page = currentPageRef.current;

@@ -7,17 +7,16 @@ import { NAV_ITEMS } from "./navItems";
 import type { FullscreenPageType } from "./types";
 import type { UsePlayerReturn } from "../../hooks/player";
 
-/**
- * 使用手柄快捷键
- */
+const DEBOUNCE_MS = 200;
+
 export function useFullscreenGamepad(
   player: UsePlayerReturn,
   currentPage: FullscreenPageType,
   navigateToPage: (page: FullscreenPageType) => void
 ): void {
-  // 保存最新状态到 ref，用于手柄快捷键回调
   const playerRef = useRef(player);
   const currentPageRef = useRef(currentPage);
+  const lastButtonTimeRef = useRef<Record<number, number>>({});
 
   useEffect(() => {
     playerRef.current = player;
@@ -37,21 +36,28 @@ export function useFullscreenGamepad(
       (_controllerIndex: number, button: number, pressed: boolean) => {
         if (!pressed) return;
 
+        const now = Date.now();
+        const lastTime = lastButtonTimeRef.current[button] || 0;
+        if (now - lastTime < DEBOUNCE_MS) {
+          return;
+        }
+        lastButtonTimeRef.current[button] = now;
+
         const p = playerRef.current;
         const page = currentPageRef.current;
 
         switch (button) {
-          case 2: // X - 播放/暂停
+          case 2: // X
             if (p.currentSong) p.togglePlay();
             break;
-          case 30: // L1 - 上一曲
+          case 30: // L1
             if (p.playlist.length > 1) p.playPrev();
             break;
-          case 31: // R1 - 下一曲
+          case 31: // R1
             if (p.playlist.length > 1) p.playNext();
             break;
-          case 28: // LT - 底部导航左切换
-          case 29: { // RT - 底部导航右切换
+          case 28: // LT
+          case 29: { // RT
             const activeId = page === 'playlist-detail' ? 'playlists' : page;
             const currentIndex = NAV_ITEMS.findIndex((item) => item.id === activeId);
             if (currentIndex === -1) break;
