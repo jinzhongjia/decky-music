@@ -8,7 +8,7 @@ import { HistoryPage } from "./HistoryPage";
 import { SettingsPage } from "./SettingsPage";
 import { ProviderSettingsPage } from "./ProviderSettingsPage";
 import type { PageType, SongInfo, PlaylistInfo } from "../types";
-import type { usePlayer } from "../hooks/usePlayer";
+import type { usePlayer } from "../hooks/player";
 
 export interface NavigationHandlers {
   onLoginSuccess: () => void;

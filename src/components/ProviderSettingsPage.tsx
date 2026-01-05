@@ -9,9 +9,8 @@ import { useMountedRef } from "../hooks/useMountedRef";
 import { useProvider } from "../hooks/useProvider";
 import { setAuthLoggedIn } from "../state/authState";
 import { useDataManager } from "../hooks/useDataManager";
-import { usePlayer } from "../hooks/usePlayer";
-import { restoreQueueForProvider } from "../hooks/playerHooks";
-import { setProviderId as setQueueProviderId } from "../hooks/useSongQueue";
+import { usePlayer } from "../hooks/player";
+import { restoreQueueForProvider, setProviderId as setQueueProviderId } from "../hooks/player/queue";
 import { BackButton } from "./BackButton";
 import type { ProviderFullInfo } from "../types";
 

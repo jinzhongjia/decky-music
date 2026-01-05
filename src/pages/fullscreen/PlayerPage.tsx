@@ -10,7 +10,7 @@ import { PlayerCover } from "./PlayerCover";
 import { PlayerMeta } from "./PlayerMeta";
 import { PlayerProgress } from "./PlayerProgress";
 import { KaraokeLyrics } from "./KaraokeLyrics";
-import type { UsePlayerReturn } from "../../hooks/usePlayer";
+import type { UsePlayerReturn } from "../../hooks/player";
 
 interface PlayerPageProps {
   player: UsePlayerReturn;

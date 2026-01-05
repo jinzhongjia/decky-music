@@ -20,7 +20,7 @@ import {
 } from "../api";
 import { useMountedRef } from "../hooks/useMountedRef";
 import { useProvider } from "../hooks/useProvider";
-import { setPreferredQuality } from "../hooks/usePlayer";
+import { setPreferredQuality } from "../hooks/player";
 import type { PreferredQuality, UpdateInfo } from "../types";
 import { BackButton } from "./BackButton";
 import { setAuthLoggedIn } from "../state/authState";

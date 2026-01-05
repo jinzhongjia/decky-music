@@ -8,7 +8,7 @@ import { FaMusic } from "react-icons/fa";
 
 import { getProviderSelection } from "./api";
 import { setAuthLoggedIn } from "./state/authState";
-import { cleanupPlayer } from "./hooks/usePlayer";
+import { cleanupPlayer } from "./hooks/player";
 import { useAppLogic } from "./hooks/useAppLogic";
 import { PlayerBar, ErrorBoundary } from "./components";
 import { Router } from "./components/Router";

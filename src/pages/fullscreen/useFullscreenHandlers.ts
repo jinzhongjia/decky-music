@@ -6,7 +6,7 @@ import { useCallback, useRef } from "react";
 import { toaster } from "@decky/api";
 import type { SongInfo, PlaylistInfo } from "../../types";
 import type { FullscreenPageType, UseDataManagerReturn } from "./types";
-import type { UsePlayerReturn } from "../../hooks/usePlayer";
+import type { UsePlayerReturn } from "../../hooks/player";
 import { fetchGuessLikeRaw, replaceGuessLikeSongs } from "../../hooks/useDataManager";
 
 /**

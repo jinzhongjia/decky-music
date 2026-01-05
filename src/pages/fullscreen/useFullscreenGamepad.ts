@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { NAV_ITEMS } from "./navItems";
 import type { FullscreenPageType } from "./types";
-import type { UsePlayerReturn } from "../../hooks/usePlayer";
+import type { UsePlayerReturn } from "../../hooks/player";
 
 /**
  * 使用手柄快捷键

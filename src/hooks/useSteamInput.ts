@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PageType } from "../types";
-import type { usePlayer } from "./usePlayer";
+import type { usePlayer } from "./player";
 
 interface UseSteamInputProps {
   player: ReturnType<typeof usePlayer>;

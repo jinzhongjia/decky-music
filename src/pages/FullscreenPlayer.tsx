@@ -11,7 +11,7 @@ import { setAuthLoggedIn, useAuthStatus } from "../state/authState";
 import { useDataManager } from "../hooks/useDataManager";
 import { useProvider } from "../hooks/useProvider";
 import { useMountedRef } from "../hooks/useMountedRef";
-import { usePlayer } from "../hooks/usePlayer";
+import { usePlayer } from "../hooks/player";
 import { useAutoLoadGuessLike } from "../hooks/useAutoLoadGuessLike";
 import { FaListOl, FaRandom, FaRedo } from "react-icons/fa";
 import { NavBar } from "./fullscreen/NavBar";

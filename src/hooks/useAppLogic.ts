@@ -3,7 +3,7 @@ import { toaster } from "@decky/api";
 import { logout, clearAllData, getProviderSelection } from "../api";
 import { setAuthLoggedIn } from "../state/authState";
 import { clearDataCache, fetchGuessLikeRaw, replaceGuessLikeSongs } from "./useDataManager";
-import { usePlayer } from "./usePlayer";
+import { usePlayer } from "./player";
 import { useMountedRef } from "./useMountedRef";
 import { useSteamInput } from "./useSteamInput";
 import { clearRecommendCache } from "../components/HomePage";

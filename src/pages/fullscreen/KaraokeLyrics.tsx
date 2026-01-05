@@ -2,7 +2,7 @@ import { FC, memo, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { CSSProperties, KeyboardEvent, RefObject } from "react";
 import { Focusable } from "@decky/ui";
 
-import { getAudioCurrentTime } from "../../hooks/usePlayer";
+import { getAudioCurrentTime } from "../../hooks/player";
 import type { ParsedLyric, QrcLyricLine, LyricWord } from "../../utils/lyricParser";
 
 interface KaraokeLyricsProps {
