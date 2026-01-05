@@ -359,7 +359,7 @@ class NeteaseProvider(MusicProvider):
             }
             level = level_map.get(preferred_quality or "auto", "exhigh")
 
-            result_raw = track.GetTrackAudioV1([song_id], level=level)
+            result_raw = track.GetTrackAudioV1([song_id], level=level, encodeType="aac")
             # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
             result = cast(dict[str, object], result_raw)
 
@@ -676,19 +676,26 @@ class NeteaseProvider(MusicProvider):
             if not track_ids:
                 return {"success": True, "songs": [], "playlist_id": playlist_id}
 
-            ids = [t.get("id", 0) for t in track_ids[:100] if isinstance(t, dict)]
-            detail_result_raw = track.GetTrackDetail(ids)
-            # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
-            detail_result = cast(dict[str, object], detail_result_raw)
+            all_ids = [t.get("id", 0) for t in track_ids if isinstance(t, dict)]
 
-            detail_code_raw = detail_result.get("code", 0)
-            detail_code = int(detail_code_raw) if isinstance(detail_code_raw, (int, float)) else 0
-            if detail_code != 200:
-                return {"success": False, "error": "获取歌曲详情失败", "songs": [], "playlist_id": playlist_id}
+            # 分批获取歌曲详情，API 单次限制 1000 首
+            batch_size = 500
+            songs: list[SongInfo] = []
 
-            songs_data_raw = detail_result.get("songs", [])
-            songs_data = songs_data_raw if isinstance(songs_data_raw, list) else []
-            songs = [_format_netease_song(s) for s in songs_data if isinstance(s, dict)]
+            for i in range(0, len(all_ids), batch_size):
+                batch_ids = all_ids[i : i + batch_size]
+                detail_result_raw = track.GetTrackDetail(batch_ids)
+                detail_result = cast(dict[str, object], detail_result_raw)
+
+                detail_code_raw = detail_result.get("code", 0)
+                detail_code = int(detail_code_raw) if isinstance(detail_code_raw, (int, float)) else 0
+                if detail_code != 200:
+                    decky.logger.warning(f"获取歌曲详情批次 {i // batch_size + 1} 失败")
+                    continue
+
+                songs_data_raw = detail_result.get("songs", [])
+                songs_data = songs_data_raw if isinstance(songs_data_raw, list) else []
+                songs.extend([_format_netease_song(s) for s in songs_data if isinstance(s, dict)])
 
             decky.logger.info(f"网易云获取歌单 {playlist_id} 的歌曲: {len(songs)} 首")
             return {
