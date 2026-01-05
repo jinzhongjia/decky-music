@@ -4,7 +4,7 @@
  */
 
 import { Component, type ReactNode } from "react";
-import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
+import { PanelSection, PanelSectionRow } from "@decky/ui";
 
 interface Props {
   children: ReactNode;

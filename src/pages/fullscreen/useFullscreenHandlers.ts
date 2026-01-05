@@ -14,7 +14,7 @@ import { fetchGuessLikeRaw, replaceGuessLikeSongs } from "../../hooks/useDataMan
  */
 export function useFullscreenHandlers(
   player: UsePlayerReturn,
-  dataManager: UseDataManagerReturn,
+  _dataManager: UseDataManagerReturn,
   navigateToPage: (page: FullscreenPageType) => void
 ) {
   const {
