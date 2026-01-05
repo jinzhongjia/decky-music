@@ -4,14 +4,16 @@
  */
 
 import { useCallback, useEffect } from "react";
-import { broadcastPlayerState } from "./playerState";
+import { broadcastPlayerState, getGlobalPlayMode } from "./playerState";
 import {
   createPlayNext,
   createPlayPrev,
   createPlayAtIndex,
   setOnPlayNextCallback,
-  setOnNeedMoreSongsCallback,
+  getOnPlayNextCallback,
 } from "./playerNavigation";
+import { setGlobalEndedHandler } from "./playerAudio";
+import { globalPlaylist } from "./useSongQueue";
 import {
   createPlaySong,
   createPlayPlaylist,
@@ -171,12 +173,23 @@ export function createPlayerMethods(params: CreatePlayerMethodsParams) {
     return fn();
   }, [stop, clearQueue, setPlayModeState, setVolumeState, setSettingsRestored, enableSettingsSave]);
 
-  // 设置播放下一首回调
   useEffect(() => {
     setOnPlayNextCallback(playNext);
-    return () => {
-      setOnPlayNextCallback(null);
+
+    const endedHandler = () => {
+      const playMode = getGlobalPlayMode();
+      const callback = getOnPlayNextCallback();
+      const shouldAutoContinue =
+        playMode === "single" ||
+        playMode === "shuffle" ||
+        globalPlaylist.length > 1;
+
+      if (callback && shouldAutoContinue) {
+        void callback();
+      }
     };
+
+    setGlobalEndedHandler(endedHandler);
   }, [playNext]);
 
   return {

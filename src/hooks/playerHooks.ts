@@ -32,7 +32,6 @@ import {
   subscribePlayerState,
   broadcastPlayerState,
 } from "./playerState";
-import { getOnPlayNextCallback } from "./playerNavigation";
 import type { SongInfo, PlayMode } from "../types";
 import type { ParsedLyric } from "../utils/lyricParser";
 
@@ -166,32 +165,6 @@ export function useAutoFetchLyric(
       broadcastPlayerState();
     });
   }, [settingsRestored, currentSong, lyric, setLyric]);
-}
-
-/**
- * 音频 ended 事件处理的 Hook
- */
-export function useAudioEndedHandler(): void {
-  useEffect(() => {
-    const audio = getGlobalAudio();
-    const handleEnded = () => {
-      const shouldAutoContinue =
-        getGlobalPlayMode() === "single" ||
-        getGlobalPlayMode() === "shuffle" ||
-        globalPlaylist.length > 1 ||
-        Boolean(getOnPlayNextCallback());
-
-      const callback = getOnPlayNextCallback();
-      if (callback && shouldAutoContinue) {
-        void callback();
-      }
-    };
-
-    audio.addEventListener("ended", handleEnded);
-    return () => {
-      audio.removeEventListener("ended", handleEnded);
-    };
-  }, []);
 }
 
 /**

@@ -1,21 +1,27 @@
-/**
- * 音频实例管理模块
- * 负责管理全局 Audio 单例和相关操作
- */
-
-// ==================== 全局音频实例 ====================
-
 let globalAudio: HTMLAudioElement | null = null;
 let globalVolume: number = 1;
+let endedHandlerRegistered = false;
+let globalEndedHandler: (() => void) | null = null;
 
-/**
- * 获取或创建全局音频实例
- */
+export function setGlobalEndedHandler(handler: (() => void) | null): void {
+  globalEndedHandler = handler;
+}
+
+function handleAudioEnded(): void {
+  if (globalEndedHandler) {
+    globalEndedHandler();
+  }
+}
+
 export function getGlobalAudio(): HTMLAudioElement {
   if (!globalAudio) {
     globalAudio = new Audio();
     globalAudio.preload = "auto";
     globalAudio.volume = globalVolume;
+  }
+  if (!endedHandlerRegistered && globalAudio) {
+    globalAudio.addEventListener("ended", handleAudioEnded);
+    endedHandlerRegistered = true;
   }
   return globalAudio;
 }
@@ -47,21 +53,14 @@ export function getGlobalVolume(): number {
   return globalVolume;
 }
 
-/**
- * 设置音频的 ended 事件处理
- */
-export function setAudioEndedHandler(handler: () => void): void {
-  const audio = getGlobalAudio();
-  audio.addEventListener("ended", handler);
-}
-
-/**
- * 清理音频实例
- */
 export function cleanupAudio(): void {
   if (globalAudio) {
+    globalAudio.removeEventListener("ended", handleAudioEnded);
     globalAudio.pause();
     globalAudio.src = "";
+    globalAudio = null;
   }
+  endedHandlerRegistered = false;
+  globalEndedHandler = null;
 }
 

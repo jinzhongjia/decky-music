@@ -42,7 +42,6 @@ import {
   usePlayerStateSync,
   usePlayerInitialization,
   useAutoFetchLyric,
-  useAudioEndedHandler,
   usePlaybackTimeSync,
 } from "./playerHooks";
 
@@ -159,7 +158,6 @@ export function usePlayer(): UsePlayerReturn {
     setVolumeState
   );
   useAutoFetchLyric(settingsRestored, currentSong, lyric, setLyric);
-  useAudioEndedHandler();
   usePlaybackTimeSync(setIsPlaying, setCurrentTime, setDuration);
 
   // 创建播放内部函数（带状态更新）
