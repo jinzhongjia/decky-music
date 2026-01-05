@@ -1,13 +1,8 @@
-/**
- * 全屏播放器手柄快捷键 Hook
- */
-
 import { useEffect, useRef } from "react";
 import { NAV_ITEMS } from "./navItems";
 import type { FullscreenPageType } from "./types";
 import type { UsePlayerReturn } from "../../hooks/player";
-
-const DEBOUNCE_MS = 200;
+import { setActiveInputSource, isInputSourceActive } from "../../utils/inputManager";
 
 export function useFullscreenGamepad(
   player: UsePlayerReturn,
@@ -16,7 +11,6 @@ export function useFullscreenGamepad(
 ): void {
   const playerRef = useRef(player);
   const currentPageRef = useRef(currentPage);
-  const lastButtonTimeRef = useRef<Record<number, number>>({});
 
   useEffect(() => {
     playerRef.current = player;
@@ -24,6 +18,8 @@ export function useFullscreenGamepad(
   }, [player, currentPage]);
 
   useEffect(() => {
+    setActiveInputSource("fullscreen");
+
     // @ts-ignore
     // eslint-disable-next-line no-undef
     if (typeof SteamClient === 'undefined' || !SteamClient?.Input?.RegisterForControllerInputMessages) {
@@ -35,13 +31,7 @@ export function useFullscreenGamepad(
     const unregister = SteamClient.Input.RegisterForControllerInputMessages(
       (_controllerIndex: number, button: number, pressed: boolean) => {
         if (!pressed) return;
-
-        const now = Date.now();
-        const lastTime = lastButtonTimeRef.current[button] || 0;
-        if (now - lastTime < DEBOUNCE_MS) {
-          return;
-        }
-        lastButtonTimeRef.current[button] = now;
+        if (!isInputSourceActive("fullscreen")) return;
 
         const p = playerRef.current;
         const page = currentPageRef.current;
@@ -62,8 +52,7 @@ export function useFullscreenGamepad(
             const currentIndex = NAV_ITEMS.findIndex((item) => item.id === activeId);
             if (currentIndex === -1) break;
             const delta = button === 28 ? -1 : 1;
-            const nextIndex =
-              (currentIndex + delta + NAV_ITEMS.length) % NAV_ITEMS.length;
+            const nextIndex = (currentIndex + delta + NAV_ITEMS.length) % NAV_ITEMS.length;
             navigateToPage(NAV_ITEMS[nextIndex].id as FullscreenPageType);
             break;
           }
@@ -76,4 +65,3 @@ export function useFullscreenGamepad(
     };
   }, [navigateToPage]);
 }
-
