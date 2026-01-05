@@ -4,6 +4,14 @@
  */
 
 import { globalPlaylist, globalCurrentIndex } from "./useSongQueue";
+import { usePlayerStore } from "./player/store";
+
+function syncShuffleStateToStore(): void {
+  const store = usePlayerStore.getState();
+  store.setShuffleHistory(shuffleHistory);
+  store.setShuffleCursor(shuffleCursor);
+  store.setShufflePool(shufflePool);
+}
 
 // ==================== 随机播放状态 ====================
 
@@ -33,11 +41,13 @@ export function resetShuffleState(currentIndex: number): void {
     shuffleHistory = [];
     shuffleCursor = -1;
     shufflePool = [];
+    syncShuffleStateToStore();
     return;
   }
   shuffleHistory = [currentIndex];
   shuffleCursor = 0;
   shufflePool = buildShufflePoolFromHistory(currentIndex);
+  syncShuffleStateToStore();
 }
 
 /**
@@ -68,6 +78,7 @@ export function syncShuffleAfterPlaylistChange(currentIndex: number): void {
   }
 
   shufflePool = buildShufflePoolFromHistory(currentIndex);
+  syncShuffleStateToStore();
 }
 
 /**
@@ -82,6 +93,7 @@ export function getShuffleNextIndex(): number | null {
 
   if (shuffleCursor < shuffleHistory.length - 1) {
     shuffleCursor += 1;
+    syncShuffleStateToStore();
     return shuffleHistory[shuffleCursor] ?? null;
   }
 
@@ -96,6 +108,7 @@ export function getShuffleNextIndex(): number | null {
   const picked = shufflePool.splice(pickedIdx, 1)[0];
   shuffleHistory.push(picked);
   shuffleCursor = shuffleHistory.length - 1;
+  syncShuffleStateToStore();
   return picked ?? null;
 }
 
@@ -105,6 +118,7 @@ export function getShuffleNextIndex(): number | null {
 export function getShufflePrevIndex(): number | null {
   if (shuffleCursor > 0) {
     shuffleCursor -= 1;
+    syncShuffleStateToStore();
     return shuffleHistory[shuffleCursor] ?? null;
   }
   return shuffleHistory[0] ?? (globalCurrentIndex >= 0 ? globalCurrentIndex : null);
@@ -121,6 +135,7 @@ export function handleShuffleRemove(index: number): void {
     .filter((idx) => idx !== index)
     .map((idx) => (idx > index ? idx - 1 : idx));
   shuffleCursor = Math.min(shuffleCursor, shuffleHistory.length - 1);
+  syncShuffleStateToStore();
 }
 
 /**
@@ -137,6 +152,7 @@ export function handleShuffleAdd(newIndices: number[]): void {
       shufflePool.push(newIndex);
     }
   });
+  syncShuffleStateToStore();
 }
 
 /**
@@ -153,6 +169,7 @@ export function handleShuffleJumpTo(index: number): void {
     shuffleCursor = shuffleHistory.length - 1;
   }
   shufflePool = buildShufflePoolFromHistory(index);
+  syncShuffleStateToStore();
 }
 
 /**
@@ -162,5 +179,6 @@ export function resetAllShuffleState(): void {
   shuffleHistory = [];
   shuffleCursor = -1;
   shufflePool = [];
+  syncShuffleStateToStore();
 }
 

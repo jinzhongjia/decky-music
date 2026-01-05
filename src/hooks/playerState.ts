@@ -5,6 +5,7 @@
 
 import type { SongInfo, PlayMode } from "../types";
 import type { ParsedLyric } from "../utils/lyricParser";
+import { usePlayerStore } from "./player/store";
 
 // ==================== 全局状态 ====================
 
@@ -61,6 +62,7 @@ export function subscribePlayerState(callback: () => void): () => void {
  */
 export function setGlobalCurrentSong(song: SongInfo | null): void {
   globalCurrentSong = song;
+  usePlayerStore.getState().setCurrentSong(song);
 }
 
 /**
@@ -75,6 +77,7 @@ export function getGlobalCurrentSong(): SongInfo | null {
  */
 export function setGlobalLyric(lyric: ParsedLyric | null): void {
   globalLyric = lyric;
+  usePlayerStore.getState().setLyric(lyric);
 }
 
 /**
@@ -89,6 +92,7 @@ export function getGlobalLyric(): ParsedLyric | null {
  */
 export function setGlobalPlayMode(mode: PlayMode): void {
   globalPlayMode = mode;
+  usePlayerStore.getState().setPlayMode(mode);
 }
 
 /**
@@ -106,5 +110,6 @@ export function resetGlobalPlayerState(): void {
   globalLyric = null;
   globalPlayMode = "order";
   playerSubscribers.clear();
+  usePlayerStore.getState().reset();
 }
 
