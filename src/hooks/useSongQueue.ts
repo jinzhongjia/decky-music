@@ -4,6 +4,7 @@
  */
 
 import type { SongInfo, FrontendSettings, StoredQueueState } from "../types";
+import { usePlayerStore } from "./player/store";
 
 // ==================== 全局队列状态 ====================
 
@@ -96,6 +97,7 @@ export function clearQueueState(
  */
 export function setPlaylist(playlist: SongInfo[]) {
   globalPlaylist = playlist;
+  usePlayerStore.getState().setPlaylist(playlist);
 }
 
 /**
@@ -103,6 +105,7 @@ export function setPlaylist(playlist: SongInfo[]) {
  */
 export function setCurrentIndex(index: number) {
   globalCurrentIndex = index;
+  usePlayerStore.getState().setCurrentIndex(index);
 }
 
 /**
@@ -110,6 +113,7 @@ export function setCurrentIndex(index: number) {
  */
 export function setProviderId(providerId: string) {
   globalCurrentProviderId = providerId;
+  usePlayerStore.getState().setCurrentProviderId(providerId);
 }
 
 /**
@@ -119,5 +123,9 @@ export function resetQueueState() {
   globalPlaylist = [];
   globalCurrentIndex = -1;
   globalCurrentProviderId = "";
+  const store = usePlayerStore.getState();
+  store.setPlaylist([]);
+  store.setCurrentIndex(-1);
+  store.setCurrentProviderId("");
 }
 

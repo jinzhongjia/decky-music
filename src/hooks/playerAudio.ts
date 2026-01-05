@@ -1,3 +1,5 @@
+import { usePlayerStore } from "./player/store";
+
 let globalAudio: HTMLAudioElement | null = null;
 let globalVolume: number = 1;
 let endedHandlerRegistered = false;
@@ -44,6 +46,7 @@ export function setGlobalVolume(volume: number): void {
   if (audio.volume !== clamped) {
     audio.volume = clamped;
   }
+  usePlayerStore.getState().setVolume(clamped);
 }
 
 /**
