@@ -1,14 +1,12 @@
-/* global HTMLDivElement */
-
 import { FC, memo, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
 import { formatDuration } from "../../utils/format";
+import { usePlayerStore } from "../../hooks/player";
 
 interface PlayerProgressProps {
   hasSong: boolean;
-  currentTime: number;
-  duration: number;
+  songDuration: number;
   onSeek: (time: number) => void;
 }
 
@@ -48,7 +46,11 @@ const thumbStyle: CSSProperties = {
 };
 
 export const PlayerProgress: FC<PlayerProgressProps> = memo(
-  ({ hasSong, currentTime, duration, onSeek }) => {
+  ({ hasSong, songDuration, onSeek }) => {
+    const currentTime = usePlayerStore((s) => s.currentTime);
+    const storeDuration = usePlayerStore((s) => s.duration);
+    const duration = storeDuration || songDuration;
+
     const barRef = useRef<HTMLDivElement | null>(null);
     const [dragTime, setDragTime] = useState<number | null>(null);
     const activePointerRef = useRef<number | null>(null);
@@ -189,3 +191,4 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
 );
 
 PlayerProgress.displayName = "PlayerProgress";
+/* global HTMLDivElement */

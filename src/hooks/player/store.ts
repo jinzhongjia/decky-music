@@ -16,6 +16,9 @@ interface PlayerState {
   lyric: ParsedLyric | null;
   volume: number;
   currentProviderId: string;
+  loading: boolean;
+  error: string;
+  settingsRestored: boolean;
 }
 
 interface PlayerActions {
@@ -32,6 +35,9 @@ interface PlayerActions {
   setLyric: (lyric: ParsedLyric | null) => void;
   setVolume: (volume: number) => void;
   setCurrentProviderId: (id: string) => void;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string) => void;
+  setSettingsRestored: (restored: boolean) => void;
   reset: () => void;
 }
 
@@ -49,6 +55,9 @@ const initialState: PlayerState = {
   lyric: null,
   volume: 1,
   currentProviderId: "",
+  loading: false,
+  error: "",
+  settingsRestored: false,
 };
 
 export const usePlayerStore = create<PlayerState & PlayerActions>((set) => ({
@@ -66,6 +75,9 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set) => ({
   setLyric: (lyric) => set({ lyric: lyric }),
   setVolume: (volume) => set({ volume: volume }),
   setCurrentProviderId: (id) => set({ currentProviderId: id }),
+  setLoading: (loading) => set({ loading: loading }),
+  setError: (error) => set({ error: error }),
+  setSettingsRestored: (restored) => set({ settingsRestored: restored }),
   reset: () => set(initialState),
 }));
 

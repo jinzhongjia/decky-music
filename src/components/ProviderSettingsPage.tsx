@@ -1,4 +1,3 @@
-
 import { FC, useCallback, useState } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
@@ -9,7 +8,7 @@ import { useMountedRef } from "../hooks/useMountedRef";
 import { useProvider } from "../hooks/useProvider";
 import { setAuthLoggedIn } from "../state/authState";
 import { useDataManager } from "../hooks/useDataManager";
-import { usePlayer } from "../hooks/player";
+import { stop as stopPlayer } from "../hooks/player/actions";
 import { restoreQueueForProvider, setProviderId as setQueueProviderId } from "../hooks/player/queue";
 import { BackButton } from "./BackButton";
 import type { ProviderFullInfo } from "../types";
@@ -23,7 +22,6 @@ export const ProviderSettingsPage: FC<Props> = ({ onBack, onGoToLogin }) => {
   const mountedRef = useMountedRef();
   const { provider, allProviders, switchProvider, loading: providerLoading } = useProvider();
   const dataManager = useDataManager();
-  const player = usePlayer();
   
   const [switchingProvider, setSwitchingProvider] = useState(false);
   const [focusedProvider, setFocusedProvider] = useState<string | null>(null);
@@ -34,7 +32,6 @@ export const ProviderSettingsPage: FC<Props> = ({ onBack, onGoToLogin }) => {
       setSwitchingProvider(true);
       
       try {
-        // 1. 切换 Provider（队列已在修改时自动保存，无需手动保存）
         const success = await switchProvider(providerId);
         if (!mountedRef.current) return;
         
@@ -42,29 +39,21 @@ export const ProviderSettingsPage: FC<Props> = ({ onBack, onGoToLogin }) => {
           const providerName = allProviders.find((p) => p.id === providerId)?.name || providerId;
           toaster.toast({ title: "音源已切换", body: providerName });
           
-          // 3. 停止当前播放（避免旧 Provider 的音频继续播放）
-          // stop() 现在只停止播放，不清空队列
-          player.stop();
+          stopPlayer();
           
-          // 4. 更新全局 provider ID
           setQueueProviderId(providerId);
           
-          // 5. 恢复新 provider 的队列
-          // 使用 getProviderInfo 确保 provider 信息已更新
           await getProviderInfo();
           await restoreQueueForProvider(providerId);
           
-          // 6. 检查登录状态
           const selection = await getProviderSelection();
           if (!mountedRef.current) return;
           
           const isLoggedIn = Boolean(selection.success && selection.mainProvider);
           setAuthLoggedIn(isLoggedIn);
           
-          // 7. 刷新首页推荐数据
-          dataManager.clearDataCache(); // 清空旧数据
+          dataManager.clearDataCache();
           
-          // 8. 如果未登录，跳转登录页
           if (!isLoggedIn) {
             onGoToLogin();
           }
@@ -80,7 +69,7 @@ export const ProviderSettingsPage: FC<Props> = ({ onBack, onGoToLogin }) => {
         }
       }
     },
-    [switchingProvider, provider?.id, switchProvider, mountedRef, allProviders, player, dataManager, onGoToLogin]
+    [switchingProvider, provider?.id, switchProvider, mountedRef, allProviders, dataManager, onGoToLogin]
   );
 
   return (

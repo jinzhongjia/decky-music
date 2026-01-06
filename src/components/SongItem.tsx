@@ -1,9 +1,4 @@
-/**
- * 歌曲列表项组件
- * 使用 Field 组件获得焦点高亮效果
- */
-
-import React, { FC, memo } from "react";
+import React, { FC, memo, useCallback } from "react";
 import { Field } from "@decky/ui";
 import { FaPlus, FaTrash, FaVolumeUp } from "react-icons/fa";
 import type { SongInfo } from "../types";
@@ -28,15 +23,15 @@ const SongItemComponent: FC<SongItemProps> = ({
   onRemoveFromQueue,
   preferredFocus = false,
 }) => {
-  const handleClick = () => onClick(song);
-  const handleAdd = (e: React.MouseEvent) => {
+  const handleClick = useCallback(() => onClick(song), [onClick, song]);
+  const handleAdd = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onAddToQueue?.(song);
-  };
-  const handleRemove = (e: React.MouseEvent) => {
+  }, [onAddToQueue, song]);
+  const handleRemove = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onRemoveFromQueue?.(song);
-  };
+  }, [onRemoveFromQueue, song]);
   
   return (
     <div

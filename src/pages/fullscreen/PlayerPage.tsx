@@ -1,19 +1,14 @@
-/**
- * 全屏播放器页面组件
- * 显示封面、控制按钮和歌词
- */
-
-import { FC, ReactElement } from "react";
+import { FC, ReactElement, memo } from "react";
 import { Spinner } from "@decky/ui";
 import { FaPause, FaPlay, FaStepBackward, FaStepForward } from "react-icons/fa";
 import { PlayerCover } from "./PlayerCover";
 import { PlayerMeta } from "./PlayerMeta";
 import { PlayerProgress } from "./PlayerProgress";
 import { KaraokeLyrics } from "./KaraokeLyrics";
-import type { UsePlayerReturn } from "../../hooks/player";
+import { usePlayerStore } from "../../hooks/player";
+import { togglePlay, playNext, playPrev, cyclePlayMode, seek } from "../../hooks/player/actions";
 
 interface PlayerPageProps {
-  player: UsePlayerReturn;
   playModeConfig: {
     icon: ReactElement;
     title: string;
@@ -21,25 +16,17 @@ interface PlayerPageProps {
   onLyricSeek: (timeSec: number) => void;
 }
 
-export const PlayerPage: FC<PlayerPageProps> = ({
-  player,
+export const PlayerPage: FC<PlayerPageProps> = memo(({
   playModeConfig,
   onLyricSeek,
 }) => {
-  const {
-    currentSong: song,
-    isPlaying,
-    currentTime,
-    duration,
-    loading: playerLoading,
-    lyric,
-    playlist,
-    togglePlay,
-    seek,
-    playNext,
-    playPrev,
-    cyclePlayMode,
-  } = player;
+  const song = usePlayerStore((s) => s.currentSong);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const playerLoading = usePlayerStore((s) => s.loading);
+  const lyric = usePlayerStore((s) => s.lyric);
+  const playlistLength = usePlayerStore((s) => s.playlist.length);
+
+  const hasMultipleSongs = playlistLength > 1;
 
   return (
     <div
@@ -52,7 +39,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
         boxSizing: 'border-box'
       }}
     >
-      {/* 左侧：封面和控制 */}
       <div style={{
         width: '320px',
         flexShrink: 0,
@@ -67,12 +53,10 @@ export const PlayerPage: FC<PlayerPageProps> = ({
 
         <PlayerProgress
           hasSong={!!song}
-          currentTime={currentTime}
-          duration={duration || song?.duration || 0}
+          songDuration={song?.duration || 0}
           onSeek={seek}
         />
 
-        {/* 控制按钮 */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -97,7 +81,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
           </div>
 
           <div
-            onClick={() => playlist.length > 1 && playPrev()}
+            onClick={() => hasMultipleSongs && playPrev()}
             style={{
               width: '36px',
               height: '36px',
@@ -106,8 +90,8 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: playlist.length > 1 ? 'pointer' : 'not-allowed',
-              opacity: playlist.length > 1 ? 1 : 0.4
+              cursor: hasMultipleSongs ? 'pointer' : 'not-allowed',
+              opacity: hasMultipleSongs ? 1 : 0.4
             }}
           >
             <FaStepBackward size={14} />
@@ -137,7 +121,7 @@ export const PlayerPage: FC<PlayerPageProps> = ({
           </div>
 
           <div
-            onClick={() => playlist.length > 1 && playNext()}
+            onClick={() => hasMultipleSongs && playNext()}
             style={{
               width: '36px',
               height: '36px',
@@ -146,15 +130,14 @@ export const PlayerPage: FC<PlayerPageProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: playlist.length > 1 ? 'pointer' : 'not-allowed',
-              opacity: playlist.length > 1 ? 1 : 0.4
+              cursor: hasMultipleSongs ? 'pointer' : 'not-allowed',
+              opacity: hasMultipleSongs ? 1 : 0.4
             }}
           >
             <FaStepForward size={14} />
           </div>
         </div>
 
-        {/* 快捷键提示 */}
         <div style={{
           fontSize: '10px',
           color: '#555',
@@ -167,7 +150,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
         </div>
       </div>
 
-      {/* 右侧：Spotify 风格歌词区域 */}
       <div style={{
         flex: 1,
         display: 'flex',
@@ -186,5 +168,6 @@ export const PlayerPage: FC<PlayerPageProps> = ({
       </div>
     </div>
   );
-};
+});
 
+PlayerPage.displayName = "PlayerPage";

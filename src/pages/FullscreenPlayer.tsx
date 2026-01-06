@@ -1,7 +1,3 @@
-/**
- * 全屏音乐播放器页面
- * 从左侧菜单进入的独立页面
- */
 /* global HTMLDivElement, HTMLElement, requestAnimationFrame */
 
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,8 +7,9 @@ import { setAuthLoggedIn, useAuthStatus } from "../state/authState";
 import { useDataManager } from "../hooks/useDataManager";
 import { useProvider } from "../hooks/useProvider";
 import { useMountedRef } from "../hooks/useMountedRef";
-import { usePlayer } from "../hooks/player";
+import { usePlayer, usePlayerStore } from "../hooks/player";
 import { useAutoLoadGuessLike } from "../hooks/useAutoLoadGuessLike";
+import { seek as seekAction, togglePlay as togglePlayAction } from "../hooks/player/actions";
 import { FaListOl, FaRandom, FaRedo } from "react-icons/fa";
 import { NavBar } from "./fullscreen/NavBar";
 import { PlayerPage } from "./fullscreen/PlayerPage";
@@ -35,20 +32,17 @@ export const FullscreenPlayer: FC = () => {
   const player = usePlayer();
   const dataManager = useDataManager();
   const { provider } = useProvider();
-  const {
-    currentSong,
-    isPlaying,
-    duration,
-    playMode,
-    seek,
-    togglePlay,
-  } = player;
+
+  const currentSong = usePlayerStore((s) => s.currentSong);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const duration = usePlayerStore((s) => s.duration);
+  const playMode = usePlayerStore((s) => s.playMode);
+
   const { preloadData } = dataManager;
 
   const isNetease = provider?.id === "netease";
   const currentPlayingMid = currentSong?.mid;
 
-  // 播放模式配置
   const playModeConfig = useMemo(() => {
     switch (playMode) {
       case "shuffle":
@@ -60,70 +54,59 @@ export const FullscreenPlayer: FC = () => {
     }
   }, [playMode]);
 
-  // 歌词跳转处理
   const handleLyricSeek = useCallback((timeSec: number) => {
     if (!currentSong) return;
     const total = duration || currentSong.duration || 0;
     if (!total || !isFinite(total)) return;
     const clamped = Math.max(0, Math.min(timeSec, total));
-    seek(clamped);
+    seekAction(clamped);
     if (!isPlaying) {
-      togglePlay();
+      togglePlayAction();
     }
-  }, [currentSong, duration, isPlaying, seek, togglePlay]);
+  }, [currentSong, duration, isPlaying]);
 
-  // 页面导航（直接使用 setCurrentPage）
   const navigateToPage = setCurrentPage;
 
-  // 检查登录状态
   const checkLoginStatus = useCallback(async () => {
     try {
       const result = await getProviderSelection();
       if (!mountedRef.current) return;
-      const isLoggedIn = Boolean(result.success && result.mainProvider);
-      setAuthLoggedIn(isLoggedIn);
+      const loggedIn = Boolean(result.success && result.mainProvider);
+      setAuthLoggedIn(loggedIn);
     } catch {
-      // 忽略错误
+      // ignore
     }
   }, [mountedRef]);
 
-  // 如果首次没有登录状态（初始渲染时 auth 状态未知），进行一次检查
   useEffect(() => {
     if (isLoggedIn === false || isLoggedIn === true) return;
     checkLoginStatus();
   }, [isLoggedIn, checkLoginStatus]);
 
-  // 进入猜你喜欢页面时自动加载数据（按需加载模式）
   useAutoLoadGuessLike(currentPage === 'guess-like');
 
-  // 手柄快捷键
   useFullscreenGamepad(player, currentPage, navigateToPage);
 
-  // 事件处理函数
   const {
     handleSelectSong,
     handleSelectPlaylist: handleSelectPlaylistRaw,
     handleAddPlaylistToQueue,
   } = useFullscreenHandlers(player, dataManager, navigateToPage);
 
-  // 包装 handleSelectPlaylist 以设置 selectedPlaylist
   const handleSelectPlaylist = useCallback((playlistInfo: PlaylistInfo) => {
     setSelectedPlaylist(playlistInfo);
     handleSelectPlaylistRaw(playlistInfo);
   }, [handleSelectPlaylistRaw]);
 
-  // 登录成功处理
   const handleLoginSuccess = useCallback(() => {
     setAuthLoggedIn(true);
     navigateToPage('player');
     preloadData();
   }, [navigateToPage, preloadData]);
 
-  // 导航辅助函数
   const goBackToPlayer = useCallback(() => navigateToPage('player'), [navigateToPage]);
   const goBackToPlaylists = useCallback(() => navigateToPage('playlists'), [navigateToPage]);
 
-  // 页面内容
   const {
     pageRefs,
     content,
@@ -141,7 +124,6 @@ export const FullscreenPlayer: FC = () => {
     goBackToPlaylists,
   });
 
-  // 页面焦点管理
   const focusCurrentPage = useCallback((page: FullscreenPageType) => {
     const pageRefMap: Record<string, HTMLElement | null> = {
       'player': playerPageRef.current,
@@ -167,18 +149,15 @@ export const FullscreenPlayer: FC = () => {
     focusCurrentPage(currentPage);
   }, [currentPage, focusCurrentPage]);
 
-  // 渲染播放器页面
   const renderPlayerPage = () => (
     <div ref={playerPageRef} tabIndex={-1} style={{ height: '100%', overflow: 'hidden' }}>
       <PlayerPage
-        player={player}
         playModeConfig={playModeConfig}
         onLyricSeek={handleLyricSeek}
       />
     </div>
   );
 
-  // 渲染非历史页面内容
   const renderNonHistoryContent = () => {
     const contentMap: Record<string, React.ReactElement | null> = {
       'player': renderPlayerPage(),
@@ -190,7 +169,6 @@ export const FullscreenPlayer: FC = () => {
     return contentMap[currentPage] ?? null;
   };
 
-  // 未登录
   if (!isLoggedIn) {
     return (
       <div style={{
@@ -219,7 +197,6 @@ export const FullscreenPlayer: FC = () => {
       flexDirection: 'column',
       overflow: 'hidden'
     }}>
-      {/* 主内容区 - 固定高度，内部滚动 */}
       <div style={{
         flex: 1,
         overflow: 'hidden',
@@ -252,7 +229,6 @@ export const FullscreenPlayer: FC = () => {
         )}
       </div>
 
-      {/* 底部导航栏 - 固定高度 */}
       <NavBar currentPage={currentPage} onNavigate={navigateToPage} />
     </div>
   );

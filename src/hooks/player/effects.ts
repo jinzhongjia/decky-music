@@ -1,52 +1,40 @@
 import { useEffect } from "react";
-import type { SongInfo, PlayMode } from "../../types";
-import type { ParsedLyric } from "../../utils/lyricParser";
+import type { SongInfo, FrontendSettings, StoredQueueState } from "../../types";
 import { getProviderInfo } from "../../api";
-import { getPlayerState } from "./store";
-import { getGlobalAudio, getGlobalVolume, setGlobalEndedHandler } from "./audio";
+import { usePlayerStore, getPlayerState } from "./store";
+import { getGlobalAudio, setGlobalVolume } from "./audio";
 import { ensureFrontendSettingsLoaded, getFrontendSettingsCache, loadPlayMode, loadVolume } from "./persistence";
 import { fetchLyricWithCache } from "./lyrics";
-import {
-  broadcastPlayerState,
-  subscribePlayerState,
-  setOnPlayNextCallback,
-  getOnPlayNextCallback,
-  loadQueueStateFromSettings,
-  setPlaylist as setQueuePlaylist,
-  setCurrentIndex as setQueueCurrentIndex,
-  setProviderId as setQueueProviderId,
-  setCurrentSong as setGlobalCurrentSong,
-  setLyric as setGlobalLyric,
-  setPlayMode as setGlobalPlayMode,
-  getPlayMode as getGlobalPlayMode,
-} from "./queue";
-import { setGlobalVolume } from "./audio";
+import { initPlayNextHandler } from "./actions";
 
-type SetStateFn<T> = React.Dispatch<React.SetStateAction<T>>;
+function loadQueueStateFromSettings(
+  providerId: string,
+  frontendSettings: FrontendSettings
+): StoredQueueState {
+  const queues = frontendSettings.providerQueues || {};
+  const stored = queues[providerId];
 
-interface EffectSetters {
-  setCurrentSong: SetStateFn<SongInfo | null>;
-  setLyric: SetStateFn<ParsedLyric | null>;
-  setPlaylist: SetStateFn<SongInfo[]>;
-  setCurrentIndex: SetStateFn<number>;
-  setPlayModeState: SetStateFn<PlayMode>;
-  setVolumeState: SetStateFn<number>;
-  setIsPlaying: SetStateFn<boolean>;
-  setCurrentTime: SetStateFn<number>;
-  setDuration: SetStateFn<number>;
-  setCurrentProviderId: SetStateFn<string>;
-  setSettingsRestored: SetStateFn<boolean>;
+  if (!stored) return { playlist: [], currentIndex: -1 };
+
+  const playlist = Array.isArray(stored.playlist) ? stored.playlist : [];
+  const currentIndex = typeof stored.currentIndex === "number" ? stored.currentIndex : -1;
+  const currentMid = stored.currentMid;
+
+  if (currentMid) {
+    const idx = playlist.findIndex((s: SongInfo) => s.mid === currentMid);
+    if (idx >= 0) {
+      return { playlist, currentIndex: idx, currentMid };
+    }
+  }
+
+  return {
+    playlist,
+    currentIndex: Math.min(Math.max(currentIndex, -1), Math.max(playlist.length - 1, -1)),
+  };
 }
 
-export function useSyncFromGlobals(syncFromGlobals: () => void): void {
-  useEffect(() => subscribePlayerState(syncFromGlobals), [syncFromGlobals]);
-}
-
-export function useSettingsRestoration(
-  settingsRestored: boolean,
-  setters: Pick<EffectSetters, "setCurrentSong" | "setPlaylist" | "setCurrentIndex" | "setPlayModeState" | "setVolumeState" | "setCurrentProviderId" | "setSettingsRestored">
-): void {
-  const { setCurrentSong, setPlaylist, setCurrentIndex, setPlayModeState, setVolumeState, setCurrentProviderId, setSettingsRestored } = setters;
+export function useSettingsRestoration(): void {
+  const settingsRestored = usePlayerStore((s) => s.settingsRestored);
 
   useEffect(() => {
     if (settingsRestored) return;
@@ -58,111 +46,85 @@ export function useSettingsRestoration(
 
       const providerRes = await getProviderInfo();
       if (!providerRes.success || !providerRes.provider) {
-        setSettingsRestored(true);
+        usePlayerStore.getState().setSettingsRestored(true);
         return;
       }
 
+      const store = usePlayerStore.getState();
       const newProviderId = providerRes.provider.id;
-      setQueueProviderId(newProviderId);
-      setCurrentProviderId(newProviderId);
+      store.setCurrentProviderId(newProviderId);
 
       const frontendSettings = getFrontendSettingsCache();
       const { playlist: storePlaylist } = getPlayerState();
       if (storePlaylist.length === 0) {
         const stored = loadQueueStateFromSettings(newProviderId, frontendSettings);
         if (stored.playlist.length > 0) {
-          setQueuePlaylist(stored.playlist);
+          store.setPlaylist([...stored.playlist]);
           const restoredIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
-          setQueueCurrentIndex(restoredIndex);
+          store.setCurrentIndex(restoredIndex);
           const restoredSong = stored.playlist[restoredIndex] || null;
-          setGlobalCurrentSong(restoredSong);
-          setPlaylist([...stored.playlist]);
-          setCurrentIndex(restoredIndex);
-          setCurrentSong(restoredSong);
+          store.setCurrentSong(restoredSong);
         }
       }
 
       const restoredPlayMode = loadPlayMode();
-      setGlobalPlayMode(restoredPlayMode);
-      setPlayModeState(restoredPlayMode);
+      store.setPlayMode(restoredPlayMode);
 
       const restoredVolume = loadVolume();
       setGlobalVolume(restoredVolume);
       getGlobalAudio().volume = restoredVolume;
-      setVolumeState(restoredVolume);
+      store.setVolume(restoredVolume);
 
-      setSettingsRestored(true);
+      store.setSettingsRestored(true);
     })();
 
     return () => { cancelled = true; };
-  }, [settingsRestored, setCurrentSong, setPlaylist, setCurrentIndex, setPlayModeState, setVolumeState, setCurrentProviderId, setSettingsRestored]);
+  }, [settingsRestored]);
 }
 
-export function useLyricFetch(
-  settingsRestored: boolean,
-  currentSong: SongInfo | null,
-  lyric: ParsedLyric | null,
-  setLyric: SetStateFn<ParsedLyric | null>
-): void {
+export function useLyricFetch(): void {
+  const settingsRestored = usePlayerStore((s) => s.settingsRestored);
+  const currentSong = usePlayerStore((s) => s.currentSong);
+  const lyric = usePlayerStore((s) => s.lyric);
+
   useEffect(() => {
     if (!settingsRestored || !currentSong || lyric) return;
     void fetchLyricWithCache(currentSong.mid, currentSong.name, currentSong.singer, (parsed) => {
-      setGlobalLyric(parsed);
-      setLyric(parsed);
-      broadcastPlayerState();
+      usePlayerStore.getState().setLyric(parsed);
     });
-  }, [settingsRestored, currentSong, lyric, setLyric]);
+  }, [settingsRestored, currentSong, lyric]);
 }
 
-export function useAudioTimeSync(
-  setCurrentTime: SetStateFn<number>,
-  setDuration: SetStateFn<number>,
-  setIsPlaying: SetStateFn<boolean>
-): void {
+export function useAudioTimeSync(): void {
   useEffect(() => {
     const interval = setInterval(() => {
       const audio = getGlobalAudio();
+      const store = usePlayerStore.getState();
       if (!audio.paused) {
-        setCurrentTime(audio.currentTime);
-        setDuration(audio.duration || 0);
-        setIsPlaying(true);
+        store.setCurrentTime(audio.currentTime);
+        store.setDuration(audio.duration || 0);
+        if (!store.isPlaying) {
+          store.setIsPlaying(true);
+        }
       } else {
-        setIsPlaying(false);
+        if (store.isPlaying) {
+          store.setIsPlaying(false);
+        }
       }
     }, 100);
     return () => clearInterval(interval);
-  }, [setCurrentTime, setDuration, setIsPlaying]);
+  }, []);
 }
 
-export function usePlayNextHandler(playNext: () => void): void {
+export function usePlayNextHandler(): void {
   useEffect(() => {
-    setOnPlayNextCallback(playNext);
-    const endedHandler = () => {
-      const pm = getGlobalPlayMode();
-      const callback = getOnPlayNextCallback();
-      const { playlist: pl } = getPlayerState();
-      const shouldAutoContinue = pm === "single" || pm === "shuffle" || pl.length > 1;
-      if (callback && shouldAutoContinue) void callback();
-    };
-    setGlobalEndedHandler(endedHandler);
-  }, [playNext]);
+    initPlayNextHandler();
+  }, []);
 }
 
-export function createSyncFromGlobals(setters: EffectSetters): () => void {
-  const { setCurrentSong, setLyric, setPlaylist, setCurrentIndex, setPlayModeState, setVolumeState, setIsPlaying, setCurrentTime, setDuration, setCurrentProviderId } = setters;
-  
-  return () => {
-    const audio = getGlobalAudio();
-    const s = getPlayerState();
-    setCurrentSong(s.currentSong);
-    setLyric(s.lyric);
-    setPlaylist([...s.playlist]);
-    setCurrentIndex(s.currentIndex);
-    setPlayModeState(s.playMode);
-    setVolumeState(getGlobalVolume());
-    setIsPlaying(!audio.paused);
-    setCurrentTime(audio.currentTime);
-    setDuration(audio.duration || s.currentSong?.duration || 0);
-    setCurrentProviderId(s.currentProviderId);
-  };
+export function usePlayerEffects(): void {
+  useSettingsRestoration();
+  useLyricFetch();
+  useAudioTimeSync();
+  usePlayNextHandler();
 }

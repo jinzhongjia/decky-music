@@ -1,8 +1,3 @@
-/**
- * 搜索页面组件
- * 支持拼音搜索、搜索建议、搜索历史
- */
-
 import { FC, useState, useEffect, useCallback, memo, useRef } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, TextField, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
@@ -30,6 +25,103 @@ interface Suggestion {
   singer?: string;
 }
 
+interface SuggestionItemProps {
+  suggestion: Suggestion;
+  onSelect: (suggestion: Suggestion) => void;
+}
+
+const SuggestionItem = memo<SuggestionItemProps>(({ suggestion, onSelect }) => {
+  const handleActivate = useCallback(() => onSelect(suggestion), [onSelect, suggestion]);
+
+  return (
+    <Focusable
+      onActivate={handleActivate}
+      onClick={handleActivate}
+      style={{
+        padding: "10px 12px",
+        cursor: "pointer",
+        borderRadius: "6px",
+        background: COLORS.backgroundMedium,
+        fontSize: "13px",
+      }}
+    >
+      <span style={{ color: COLORS.textPrimary }}>{suggestion.keyword}</span>
+      {suggestion.singer && (
+        <span style={{ color: COLORS.textSecondary, marginLeft: "8px" }}>
+          - {suggestion.singer}
+        </span>
+      )}
+      <span style={{ color: "#666", fontSize: "11px", marginLeft: "8px" }}>
+        {suggestion.type === "song" ? "歌曲" : suggestion.type === "singer" ? "歌手" : "专辑"}
+      </span>
+    </Focusable>
+  );
+});
+
+SuggestionItem.displayName = "SuggestionItem";
+
+interface HistoryItemProps {
+  keyword: string;
+  onSelect: (keyword: string) => void;
+}
+
+const HistoryItem = memo<HistoryItemProps>(({ keyword, onSelect }) => {
+  const handleActivate = useCallback(() => onSelect(keyword), [onSelect, keyword]);
+
+  return (
+    <Focusable
+      onActivate={handleActivate}
+      onClick={handleActivate}
+      style={{
+        background: COLORS.backgroundDark,
+        padding: "8px 14px",
+        borderRadius: "16px",
+        fontSize: "13px",
+        cursor: "pointer",
+        color: "#dcdedf",
+      }}
+    >
+      {keyword}
+    </Focusable>
+  );
+});
+
+HistoryItem.displayName = "HistoryItem";
+
+interface HotkeyItemProps {
+  keyword: string;
+  index: number;
+  onSelect: (keyword: string) => void;
+}
+
+const HotkeyItem = memo<HotkeyItemProps>(({ keyword, index, onSelect }) => {
+  const handleActivate = useCallback(() => onSelect(keyword), [onSelect, keyword]);
+  const isTop3 = index < 3;
+
+  return (
+    <Focusable
+      onActivate={handleActivate}
+      onClick={handleActivate}
+      style={{
+        background: isTop3
+          ? "linear-gradient(135deg, rgba(255,100,100,0.2), rgba(255,150,100,0.2))"
+          : COLORS.backgroundDark,
+        padding: "8px 14px",
+        borderRadius: "16px",
+        fontSize: "13px",
+        cursor: "pointer",
+        color: isTop3 ? "#ffaa80" : "#dcdedf",
+        border: isTop3 ? "1px solid rgba(255,150,100,0.3)" : "none",
+      }}
+    >
+      {isTop3 && <span style={{ marginRight: "4px" }}>{index + 1}</span>}
+      {keyword}
+    </Focusable>
+  );
+});
+
+HotkeyItem.displayName = "HotkeyItem";
+
 const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, currentPlayingMid, onAddSongToQueue }) => {
   const [keyword, setKeyword] = useState("");
   const [songs, setSongs] = useState<SongInfo[]>([]);
@@ -44,10 +136,8 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
   const searchRequestId = useRef(0);
   const suggestionRequestId = useRef(0);
 
-  // 防抖处理搜索关键词
   const debouncedKeyword = useDebounce(keyword, 300);
 
-  // 防抖获取搜索建议
   const fetchSuggestions = useCallback(
     async (kw: string) => {
       if (!kw.trim()) {
@@ -83,7 +173,6 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
     loadHotSearch();
   }, [loadHotSearch]);
 
-  // 监听防抖后的关键词，自动获取搜索建议
   useEffect(() => {
     if (debouncedKeyword.trim()) {
       fetchSuggestions(debouncedKeyword);
@@ -93,7 +182,6 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
     }
   }, [debouncedKeyword, fetchSuggestions]);
 
-  // 处理输入变化
   const handleInputChange = useCallback((value: string) => {
     setKeyword(value);
   }, []);
@@ -107,7 +195,6 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
       setHasSearched(true);
       setShowSuggestions(false);
 
-      // 保存到搜索历史
       addToHistory(kw);
 
       const requestId = ++searchRequestId.current;
@@ -133,7 +220,7 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
     [keyword, addToHistory, mountedRef]
   );
 
-  const handleSuggestionClick = useCallback(
+  const handleSuggestionSelect = useCallback(
     (suggestion: Suggestion) => {
       const searchTerm = suggestion.singer
         ? `${suggestion.keyword} ${suggestion.singer}`
@@ -144,41 +231,12 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
     [handleSearch]
   );
 
-  const handleHotkeyClick = useCallback(
+  const handleKeywordSelect = useCallback(
     (key: string) => {
       setKeyword(key);
       handleSearch(key);
     },
     [handleSearch]
-  );
-
-  const handleHistoryClick = useCallback(
-    (key: string) => {
-      setKeyword(key);
-      handleSearch(key);
-    },
-    [handleSearch]
-  );
-
-  const handleHistoryItemClick = useCallback(
-    (key: string) => {
-      handleHistoryClick(key);
-    },
-    [handleHistoryClick]
-  );
-
-  const handleSuggestionItemClick = useCallback(
-    (suggestion: Suggestion) => {
-      handleSuggestionClick(suggestion);
-    },
-    [handleSuggestionClick]
-  );
-
-  const handleHotkeyItemClick = useCallback(
-    (key: string) => {
-      handleHotkeyClick(key);
-    },
-    [handleHotkeyClick]
   );
 
   const handleSearchButtonClick = useCallback(() => {
@@ -187,17 +245,30 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
 
   const handleSearchResultSelect = useCallback(
     (song: SongInfo) => {
-      // 搜索结果中选择歌曲时，只播放选中的歌曲，不将整个搜索结果列表加入队列
       onSelectSong(song, undefined, "search");
     },
     [onSelectSong]
+  );
+
+  const handleFocus = useCallback(() => {
+    if (keyword.trim() && suggestions.length > 0) {
+      setShowSuggestions(true);
+    }
+  }, [keyword, suggestions.length]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") {
+        handleSearch();
+      }
+    },
+    [handleSearch]
   );
 
   return (
     <>
       <BackButton onClick={onBack} label="返回首页" />
 
-      {/* 搜索框 */}
       <PanelSection title="🔍 搜索音乐">
         <PanelSectionRow>
           <div
@@ -208,7 +279,7 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
               padding: "0 4px",
             }}
           >
-            💡 提示：支持拼音搜索，如输入 "zhoujielun" 搜索周杰伦
+            支持拼音搜索，如输入 "zhoujielun" 搜索周杰伦
           </div>
         </PanelSectionRow>
         <PanelSectionRow>
@@ -216,12 +287,11 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
             label="搜索歌曲、歌手（支持拼音）"
             value={keyword}
             onChange={(e) => handleInputChange(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            onFocus={() => keyword.trim() && suggestions.length > 0 && setShowSuggestions(true)}
+            onKeyDown={handleKeyDown}
+            onFocus={handleFocus}
           />
         </PanelSectionRow>
 
-        {/* 搜索建议 */}
         {showSuggestions && suggestions.length > 0 && (
           <PanelSectionRow>
             <Focusable
@@ -236,34 +306,7 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
               }}
             >
               {suggestions.map((s, idx) => (
-                <Focusable
-                  key={idx}
-                  onActivate={() => handleSuggestionItemClick(s)}
-                  onClick={() => handleSuggestionItemClick(s)}
-                  style={{
-                    padding: "10px 12px",
-                    cursor: "pointer",
-                    borderRadius: "6px",
-                    background: COLORS.backgroundMedium,
-                    fontSize: "13px",
-                  }}
-                >
-                  <span style={{ color: COLORS.textPrimary }}>{s.keyword}</span>
-                  {s.singer && (
-                    <span style={{ color: COLORS.textSecondary, marginLeft: "8px" }}>
-                      - {s.singer}
-                    </span>
-                  )}
-                  <span
-                    style={{
-                      color: "#666",
-                      fontSize: "11px",
-                      marginLeft: "8px",
-                    }}
-                  >
-                    {s.type === "song" ? "歌曲" : s.type === "singer" ? "歌手" : "专辑"}
-                  </span>
-                </Focusable>
+                <SuggestionItem key={idx} suggestion={s} onSelect={handleSuggestionSelect} />
               ))}
             </Focusable>
           </PanelSectionRow>
@@ -281,7 +324,6 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
         </PanelSectionRow>
       </PanelSection>
 
-      {/* 搜索历史 */}
       {searchHistory.length > 0 && !hasSearched && (
         <PanelSection title="🕐 搜索历史">
           <PanelSectionRow>
@@ -293,60 +335,25 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
           <PanelSectionRow>
             <FocusableList gap="8px" column={false} wrap>
               {searchHistory.map((key, idx) => (
-                <Focusable
-                  key={idx}
-                  onActivate={() => handleHistoryItemClick(key)}
-                  onClick={() => handleHistoryItemClick(key)}
-                  style={{
-                    background: COLORS.backgroundDark,
-                    padding: "8px 14px",
-                    borderRadius: "16px",
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    color: "#dcdedf",
-                  }}
-                >
-                  {key}
-                </Focusable>
+                <HistoryItem key={idx} keyword={key} onSelect={handleKeywordSelect} />
               ))}
             </FocusableList>
           </PanelSectionRow>
         </PanelSection>
       )}
 
-      {/* 热门搜索 */}
       {hotkeys.length > 0 && !hasSearched && (
         <PanelSection title="🔥 热门搜索">
           <PanelSectionRow>
             <FocusableList gap="8px" column={false} wrap>
               {hotkeys.map((key, idx) => (
-                <Focusable
-                  key={idx}
-                  onActivate={() => handleHotkeyItemClick(key)}
-                  onClick={() => handleHotkeyItemClick(key)}
-                  style={{
-                    background:
-                      idx < 3
-                        ? "linear-gradient(135deg, rgba(255,100,100,0.2), rgba(255,150,100,0.2))"
-                        : COLORS.backgroundDark,
-                    padding: "8px 14px",
-                    borderRadius: "16px",
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    color: idx < 3 ? "#ffaa80" : "#dcdedf",
-                    border: idx < 3 ? "1px solid rgba(255,150,100,0.3)" : "none",
-                  }}
-                >
-                  {idx < 3 && <span style={{ marginRight: "4px" }}>{idx + 1}</span>}
-                  {key}
-                </Focusable>
+                <HotkeyItem key={idx} keyword={key} index={idx} onSelect={handleKeywordSelect} />
               ))}
             </FocusableList>
           </PanelSectionRow>
         </PanelSection>
       )}
 
-      {/* 搜索结果 */}
       {hasSearched && (
         <SongList
           title={`搜索结果${songs.length > 0 ? ` (${songs.length})` : ""}`}
@@ -362,6 +369,6 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
   );
 };
 
-SearchPageComponent.displayName = 'SearchPage';
+SearchPageComponent.displayName = "SearchPage";
 
 export const SearchPage = memo(SearchPageComponent);

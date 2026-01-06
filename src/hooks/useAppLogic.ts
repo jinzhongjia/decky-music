@@ -3,7 +3,7 @@ import { toaster } from "@decky/api";
 import { logout, clearAllData, getProviderSelection } from "../api";
 import { setAuthLoggedIn } from "../state/authState";
 import { clearDataCache, fetchGuessLikeRaw, replaceGuessLikeSongs } from "./useDataManager";
-import { usePlayer } from "./player";
+import { usePlayer, usePlayerStore } from "./player";
 import { useMountedRef } from "./useMountedRef";
 import { useSteamInput } from "./useSteamInput";
 import { clearRecommendCache } from "../components/HomePage";
@@ -25,6 +25,8 @@ export function useAppLogic() {
     enableSettingsSave,
     resetAllState
   } = player;
+
+  const hasCurrentSong = usePlayerStore((s) => s.currentSong !== null);
 
   // Handle controller input
   useSteamInput({
@@ -147,7 +149,6 @@ export function useAppLogic() {
     [addToQueue]
   );
 
-  // Navigation handlers
   const nav: NavigationHandlers = useMemo(() => ({
     onLoginSuccess: handleLoginSuccess,
     onLogout: handleLogout,
@@ -159,13 +160,12 @@ export function useAppLogic() {
     onBackToPlaylists: () => setCurrentPage("playlists"),
     onGoToLogin: () => setCurrentPage("login"),
     onGoToPlayer: () => {
-      // Only allow navigation if song is playing/loaded
-      if (player.currentSong) {
+      if (hasCurrentSong) {
         setCurrentPage("player");
       }
     },
     onClearAllData: handleClearAllData,
-  }), [handleLoginSuccess, handleLogout, handleClearAllData, player.currentSong]);
+  }), [handleLoginSuccess, handleLogout, handleClearAllData, hasCurrentSong]);
 
   // Data handlers
   const data: DataHandlers = useMemo(() => ({

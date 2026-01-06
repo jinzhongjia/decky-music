@@ -1,31 +1,14 @@
 import { FC, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent, RefObject } from "react";
-import { Focusable } from "@decky/ui";
+import type { CSSProperties } from "react";
 
 import { getAudioCurrentTime } from "../../hooks/player";
-import type { ParsedLyric, QrcLyricLine, LyricWord } from "../../utils/lyricParser";
+import type { ParsedLyric } from "../../utils/lyricParser";
+import { QrcLine, LrcLine } from "./LyricLine";
 
 interface KaraokeLyricsProps {
   lyric: ParsedLyric | null;
   isPlaying: boolean;
   hasSong: boolean;
-  onSeek: (timeSec: number) => void;
-}
-
-interface QrcLineProps {
-  line: QrcLyricLine;
-  index: number;
-  activeIndex: number;
-  currentTimeSec: number | null;
-  activeRef: RefObject<HTMLDivElement | null>;
-  onSeek: (timeSec: number) => void;
-}
-
-interface LrcLineProps {
-  line: { text: string; trans?: string; time: number };
-  index: number;
-  activeIndex: number;
-  activeRef: RefObject<HTMLDivElement | null>;
   onSeek: (timeSec: number) => void;
 }
 
@@ -52,207 +35,6 @@ const NO_LYRIC_STYLE: CSSProperties = {
   fontWeight: 500,
 };
 
-const getWordProgress = (word: LyricWord, timeSec: number): number => {
-  if (timeSec >= word.start + word.duration) return 100;
-  if (timeSec > word.start) return ((timeSec - word.start) / word.duration) * 100;
-  return 0;
-};
-
-const isInterludeLine = (text: string): boolean => {
-  const trimmed = text.trim();
-  return /^[-/\\*~\\s]+$/.test(trimmed) || trimmed.length === 0;
-};
-
-const QrcLine = memo<QrcLineProps>(
-  ({ line, index, activeIndex, currentTimeSec, activeRef, onSeek }) => {
-    const isActive = index === activeIndex;
-    const isPast = index < activeIndex;
-    const isInterlude = isInterludeLine(line.text);
-    const handleActivate = useCallback(() => onSeek(line.time), [line.time, onSeek]);
-    const handleKeyDown = useCallback(
-      (e: KeyboardEvent) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          handleActivate();
-        }
-      },
-      [handleActivate]
-    );
-
-    if (isInterlude) {
-      return (
-        <div
-          ref={isActive ? activeRef : null}
-          style={{
-            padding: "14px 16px",
-            marginBottom: "8px",
-            fontSize: isActive ? "20px" : "16px",
-            fontWeight: 500,
-            lineHeight: 1.4,
-            transition: "font-size 0.3s ease, opacity 0.3s ease",
-            color: isActive ? "rgba(29, 185, 84, 0.6)" : "rgba(255,255,255,0.25)",
-            textAlign: "center",
-          }}
-        >
-          ♪ ♪ ♪
-        </div>
-      );
-    }
-
-    return (
-      <Focusable
-        onActivate={handleActivate}
-        onClick={handleActivate}
-        onKeyDown={handleKeyDown}
-        style={{
-          padding: "14px 16px",
-          marginBottom: "8px",
-          fontSize: isActive ? "24px" : "18px",
-          fontWeight: 700,
-          lineHeight: 1.4,
-          transition: "font-size 0.3s ease, transform 0.3s ease, background 0.3s ease",
-          borderRadius: "8px",
-          background: isActive ? "rgba(255, 255, 255, 0.05)" : "transparent",
-          transform: isActive ? "scale(1.02)" : "scale(1)",
-          transformOrigin: "left center",
-          outline: "none",
-        }}
-        ref={isActive ? activeRef : null}
-      >
-        <div style={{ lineHeight: 1.6 }}>
-          {line.words.map((word, wordIndex) => {
-            const progress =
-              isActive && currentTimeSec !== null
-                ? getWordProgress(word, currentTimeSec)
-                : isPast
-                ? 100
-                : 0;
-            return (
-              <span
-                key={wordIndex}
-                style={{ position: "relative", display: "inline-block", whiteSpace: "pre" }}
-              >
-                <span
-                  style={{
-                    color:
-                      progress >= 100
-                        ? "#1DB954"
-                        : isPast
-                        ? "rgba(255,255,255,0.5)"
-                        : "rgba(255,255,255,0.4)",
-                  }}
-                >
-                  {word.text}
-                </span>
-                {progress > 0 && progress < 100 && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      color: "#1DB954",
-                      clipPath: `inset(0 ${100 - progress}% 0 0)`,
-                      pointerEvents: "none",
-                    }}
-                  >
-                    {word.text}
-                  </span>
-                )}
-              </span>
-            );
-          })}
-        </div>
-
-        {line.trans && (
-          <div
-            style={{
-              fontSize: isActive ? "14px" : "12px",
-              fontWeight: 500,
-              color: isPast
-                ? "rgba(255,255,255,0.4)"
-                : isActive
-                ? "rgba(29, 185, 84, 0.85)"
-                : "rgba(255,255,255,0.3)",
-              marginTop: "6px",
-              transition: "font-size 0.3s ease, color 0.3s ease",
-            }}
-          >
-            {line.trans}
-          </div>
-        )}
-      </Focusable>
-    );
-  }
-);
-
-QrcLine.displayName = "QrcLine";
-
-const LrcLine = memo<LrcLineProps>(({ line, index, activeIndex, activeRef, onSeek }) => {
-  const isActive = index === activeIndex;
-  const isPast = index < activeIndex;
-  const handleActivate = useCallback(() => onSeek(line.time / 1000), [line.time, onSeek]);
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        handleActivate();
-      }
-    },
-    [handleActivate]
-  );
-  return (
-    <Focusable
-      onActivate={handleActivate}
-      onClick={handleActivate}
-      onKeyDown={handleKeyDown}
-      ref={isActive ? activeRef : null}
-      style={{
-        padding: "14px 16px",
-        marginBottom: "8px",
-        fontSize: isActive ? "24px" : "18px",
-        fontWeight: 700,
-        lineHeight: 1.4,
-        transition: "all 0.35s cubic-bezier(0.25, 0.1, 0.25, 1)",
-        borderRadius: "8px",
-        background: isActive ? "rgba(255, 255, 255, 0.05)" : "transparent",
-        transform: isActive ? "scale(1.02)" : "scale(1)",
-        transformOrigin: "left center",
-        color: isActive
-          ? "#1DB954"
-          : isPast
-          ? "rgba(255,255,255,0.5)"
-          : "rgba(255,255,255,0.35)",
-        outline: "none",
-      }}
-    >
-      <div>{line.text || "♪"}</div>
-      {line.trans && (
-        <div
-          style={{
-            fontSize: isActive ? "15px" : "13px",
-            fontWeight: 500,
-            color: isPast
-              ? "rgba(255,255,255,0.4)"
-              : isActive
-              ? "rgba(29, 185, 84, 0.8)"
-              : "rgba(255,255,255,0.3)",
-            marginTop: "6px",
-            transition: "all 0.35s ease",
-          }}
-        >
-          {line.trans}
-        </div>
-      )}
-    </Focusable>
-  );
-});
-
-LrcLine.displayName = "LrcLine";
-
-/**
- * 独立的歌词组件，只有这个组件需要高频刷新
- * 使用 memo 避免父组件重渲染时不必要的更新
- */
 export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
   ({ lyric, isPlaying, hasSong, onSeek }) => {
     const [currentTime, setCurrentTime] = useState(0);
@@ -276,8 +58,7 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
       }
 
       const isQrc = lyric.isQrc && (lyric.qrcLines || []).length > 0;
-      // QRC 格式需要高频更新（16ms）以实现逐字效果
-      // LRC 格式只需要较低频率更新（100ms）以实现滚动效果
+      // QRC: 16ms for word-by-word effect; LRC: 100ms for scroll only
       const updateInterval = isQrc ? 16 : 100;
 
       const updateLoop = () => {
@@ -349,8 +130,6 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
     );
 
     const isQrc = lyric?.isQrc && (lyric?.qrcLines || []).length > 0;
-    // 对于 QRC 和 LRC 格式都使用 currentTime，确保歌词能够滚动
-    // currentTime 会在 useEffect 中定期更新
     const effectiveTime = currentTime;
     const currentLyricIndex = useMemo(
       () => getCurrentLyricIndex(effectiveTime),
