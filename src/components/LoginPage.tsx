@@ -30,7 +30,7 @@ type LoginStatus =
 export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [qrData, setQrData] = useState<string>("");
   const [status, setStatus] = useState<LoginStatus>("idle");
-  const [loginType, setLoginType] = useState<"qq" | "wx" | "netease">("qq");
+  const [loginType, setLoginType] = useState<"qq" | "wx" | "netease" | "spotify">("qq");
   const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrContainerRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useMountedRef();
@@ -39,6 +39,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
   const hasNetease = allProviders.some((p) => p.id === "netease");
   const hasQQ = allProviders.some((p) => p.id === "qqmusic");
+  const hasSpotify = allProviders.some((p) => p.id === "spotify");
 
   const resetQrState = () => {
     if (checkIntervalRef.current) {
@@ -56,7 +57,7 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
     });
   }, [qrData, status]);
 
-  const fetchQrCode = async (type: "qq" | "wx" | "netease", targetProviderId?: string) => {
+  const fetchQrCode = async (type: "qq" | "wx" | "netease" | "spotify", targetProviderId?: string) => {
     if (targetProviderId && targetProviderId !== provider?.id) {
       setSwitchingProvider(true);
       resetQrState();
@@ -168,7 +169,8 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  const loginTypeLabel = loginType === "qq" ? "QQ" : loginType === "wx" ? "微信" : "网易云";
+  const loginTypeLabel =
+    loginType === "qq" ? "QQ" : loginType === "wx" ? "微信" : loginType === "spotify" ? "Spotify" : "网易云";
 
   return (
     <PanelSection title={`🎵 ${provider?.name || "音乐"}登录`}>
@@ -220,6 +222,14 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
               <FaQrcode style={{ marginRight: "8px" }} />
               网易云扫码登录
             </ButtonItem>
+            <ButtonItem
+              layout="below"
+              disabled={switchingProvider || providerLoading || !hasSpotify}
+              onClick={() => fetchQrCode("spotify", "spotify")}
+            >
+              <FaQrcode style={{ marginRight: "8px" }} />
+              Spotify 扫码登录
+            </ButtonItem>
           </div>
           {!hasNetease && (
             <div style={{ fontSize: 12, color: COLORS.textSecondary }}>
@@ -229,6 +239,11 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
           {!hasQQ && (
             <div style={{ fontSize: 12, color: COLORS.textSecondary }}>
               未检测到 QQ 音源，请检查后端依赖或设置。
+            </div>
+          )}
+          {!hasSpotify && (
+            <div style={{ fontSize: 12, color: COLORS.textSecondary }}>
+              未检测到 Spotify 音源，请检查后端依赖或设置。
             </div>
           )}
         </div>

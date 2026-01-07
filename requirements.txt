@@ -12,5 +12,4 @@ qrcode[pil]>=8.0
 
 requests>=2.32.3
 
-# Spotify API (async HTTP client)
-aiohttp>=3.9.0
+

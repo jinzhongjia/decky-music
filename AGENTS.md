@@ -110,6 +110,11 @@ except KeyError as e:
     print(f"错误：配置中缺少键 {e}")
 ```
 
+### 6. HTTP 请求库
+
+- **必须使用 `requests` 库**：所有 HTTP 请求统一使用 `requests`，禁止使用 `aiohttp`。
+- **原因**：Steam Deck 的 Decky Python 环境中，`aiohttp` 存在 SSL 证书验证问题（`SSLCertVerificationError`），而 `requests` 库能正确处理系统证书。
+
 ## TypeScript 使用规范
 
 index.tsx 只是应用入口，复杂业务逻辑都必须放在对应模块中。

@@ -9,6 +9,9 @@ import base64
 import io
 import time
 from typing import cast
+from urllib.parse import quote
+
+import requests
 
 import decky
 from backend.config_manager import ConfigManager
@@ -48,6 +51,9 @@ SPOTIFY_SCOPES = [
 
 # LRCLIB API
 LRCLIB_API_BASE = "https://lrclib.net/api"
+
+# HTTP 请求超时时间
+REQUEST_TIMEOUT = 15
 
 
 def _format_spotify_song(item: dict) -> SongInfo:
@@ -170,16 +176,17 @@ class SpotifyProvider(MusicProvider):
             data = self._config.get_spotify_credential()
             if not data:
                 return False
-            self._access_token = data.get("access_token")
-            self._refresh_token = data.get("refresh_token")
-            self._token_expires_at = data.get("expires_at", 0)
+            self._access_token = str(data.get("access_token", "")) or None
+            self._refresh_token = str(data.get("refresh_token", "")) or None
+            raw_expires = data.get("expires_at")
+            self._token_expires_at = float(raw_expires) if isinstance(raw_expires, (int, float)) else 0.0
             decky.logger.info("Spotify 凭证加载成功")
             return True
         except Exception as e:
             decky.logger.error(f"加载 Spotify 凭证失败: {e}")
             return False
 
-    async def _ensure_token_valid(self) -> bool:
+    def _ensure_token_valid(self) -> bool:
         """确保 access_token 有效，必要时刷新"""
         if not self._access_token:
             return False
@@ -192,66 +199,63 @@ class SpotifyProvider(MusicProvider):
             return False
 
         try:
-            return await self._refresh_access_token()
+            return self._refresh_access_token()
         except Exception as e:
             decky.logger.error(f"刷新 Spotify token 失败: {e}")
             return False
 
-    async def _refresh_access_token(self) -> bool:
+    def _refresh_access_token(self) -> bool:
         """使用 refresh_token 刷新 access_token"""
-        import aiohttp
-
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://accounts.spotify.com/api/token",
-                    data={
-                        "grant_type": "refresh_token",
-                        "refresh_token": self._refresh_token,
-                        "client_id": SPOTIFY_CLIENT_ID,
-                    },
-                ) as resp:
-                    if resp.status != 200:
-                        return False
-                    data = await resp.json()
-                    self._access_token = data.get("access_token")
-                    expires_in = data.get("expires_in", 3600)
-                    self._token_expires_at = time.time() + expires_in
-                    # 如果返回了新的 refresh_token，更新它
-                    if data.get("refresh_token"):
-                        self._refresh_token = data.get("refresh_token")
-                    self.save_credential()
-                    decky.logger.info("Spotify token 刷新成功")
-                    return True
+            resp = requests.post(
+                "https://accounts.spotify.com/api/token",
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": self._refresh_token,
+                    "client_id": SPOTIFY_CLIENT_ID,
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+            if resp.status_code != 200:
+                return False
+            data = resp.json()
+            self._access_token = data.get("access_token")
+            expires_in = data.get("expires_in", 3600)
+            self._token_expires_at = time.time() + expires_in
+            # 如果返回了新的 refresh_token，更新它
+            if data.get("refresh_token"):
+                self._refresh_token = data.get("refresh_token")
+            self.save_credential()
+            decky.logger.info("Spotify token 刷新成功")
+            return True
         except Exception as e:
             decky.logger.error(f"刷新 Spotify token 失败: {e}")
             return False
 
-    async def _spotify_api_get(self, endpoint: str) -> dict:
+    def _spotify_api_get(self, endpoint: str) -> dict:
         """调用 Spotify Web API"""
-        import aiohttp
-
-        if not await self._ensure_token_valid():
+        if not self._ensure_token_valid():
             return {"error": "Token 无效"}
 
         try:
-            async with aiohttp.ClientSession() as session:
-                headers = {"Authorization": f"Bearer {self._access_token}"}
-                async with session.get(
-                    f"https://api.spotify.com/v1{endpoint}",
-                    headers=headers,
-                ) as resp:
-                    if resp.status == 401:
-                        # Token 过期，尝试刷新
-                        if await self._refresh_access_token():
-                            headers = {"Authorization": f"Bearer {self._access_token}"}
-                            async with session.get(
-                                f"https://api.spotify.com/v1{endpoint}",
-                                headers=headers,
-                            ) as retry_resp:
-                                return await retry_resp.json()
-                        return {"error": "认证失败"}
-                    return await resp.json()
+            headers = {"Authorization": f"Bearer {self._access_token}"}
+            resp = requests.get(
+                f"https://api.spotify.com/v1{endpoint}",
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+            )
+            if resp.status_code == 401:
+                # Token 过期，尝试刷新
+                if self._refresh_access_token():
+                    headers = {"Authorization": f"Bearer {self._access_token}"}
+                    retry_resp = requests.get(
+                        f"https://api.spotify.com/v1{endpoint}",
+                        headers=headers,
+                        timeout=REQUEST_TIMEOUT,
+                    )
+                    return retry_resp.json()
+                return {"error": "认证失败"}
+            return resp.json()
         except Exception as e:
             decky.logger.error(f"Spotify API 请求失败: {e}")
             return {"error": str(e)}
@@ -259,57 +263,56 @@ class SpotifyProvider(MusicProvider):
     async def get_qr_code(self, login_type: str = "qq") -> QrCodeResponse:
         """获取 Spotify 登录二维码（Device Authorization Flow）"""
         del login_type
-        import aiohttp
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://accounts.spotify.com/api/device/code",
-                    data={
-                        "client_id": SPOTIFY_CLIENT_ID,
-                        "scope": " ".join(SPOTIFY_SCOPES),
-                    },
-                ) as resp:
-                    if resp.status != 200:
-                        error_text = await resp.text()
-                        return {"success": False, "error": f"获取设备码失败: {error_text}"}
+            resp = requests.post(
+                "https://accounts.spotify.com/api/device/code",
+                data={
+                    "client_id": SPOTIFY_CLIENT_ID,
+                    "scope": " ".join(SPOTIFY_SCOPES),
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+            if resp.status_code != 200:
+                error_text = resp.text
+                return {"success": False, "error": f"获取设备码失败: {error_text}"}
 
-                    data = await resp.json()
-                    self._device_code = data.get("device_code")
-                    self._user_code = data.get("user_code")
-                    verification_uri = data.get("verification_uri_complete") or data.get(
-                        "verification_uri"
-                    )
-                    expires_in = data.get("expires_in", 600)
-                    self._device_code_expires_at = time.time() + expires_in
-                    self._poll_interval = data.get("interval", 5)
+            data = resp.json()
+            self._device_code = data.get("device_code")
+            self._user_code = data.get("user_code")
+            verification_uri = data.get("verification_uri_complete") or data.get(
+                "verification_uri"
+            )
+            expires_in = data.get("expires_in", 600)
+            self._device_code_expires_at = time.time() + expires_in
+            self._poll_interval = data.get("interval", 5)
 
-                    # 生成 QR 码
-                    try:
-                        import qrcode
+            # 生成 QR 码
+            try:
+                import qrcode
 
-                        qr = qrcode.QRCode(version=1, box_size=10, border=2)
-                        qr.add_data(verification_uri)
-                        qr.make(fit=True)
-                        img = qr.make_image(fill_color="black", back_color="white")
+                qr = qrcode.QRCode(version=1, box_size=10, border=2)
+                qr.add_data(verification_uri)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
 
-                        buffer = io.BytesIO()
-                        img.save(buffer, format="PNG")
-                        qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                buffer = io.BytesIO()
+                img.save(buffer, format="PNG")
+                qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-                        decky.logger.info("获取 Spotify 二维码成功")
-                        return {
-                            "success": True,
-                            "qr_data": f"data:image/png;base64,{qr_base64}",
-                            "login_type": "spotify",
-                        }
-                    except ImportError:
-                        # 如果没有 qrcode 库，返回 URL
-                        return {
-                            "success": True,
-                            "qr_data": verification_uri,
-                            "login_type": "spotify",
-                        }
+                decky.logger.info("获取 Spotify 二维码成功")
+                return {
+                    "success": True,
+                    "qr_data": f"data:image/png;base64,{qr_base64}",
+                    "login_type": "spotify",
+                }
+            except ImportError:
+                # 如果没有 qrcode 库，返回 URL
+                return {
+                    "success": True,
+                    "qr_data": verification_uri,
+                    "login_type": "spotify",
+                }
 
         except Exception as e:
             decky.logger.error(f"获取 Spotify 二维码失败: {e}")
@@ -325,50 +328,48 @@ class SpotifyProvider(MusicProvider):
             self._device_code = None
             return {"success": True, "status": "timeout"}
 
-        import aiohttp
-
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://accounts.spotify.com/api/token",
-                    data={
-                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                        "device_code": self._device_code,
-                        "client_id": SPOTIFY_CLIENT_ID,
-                    },
-                ) as resp:
-                    data = await resp.json()
+            resp = requests.post(
+                "https://accounts.spotify.com/api/token",
+                data={
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    "device_code": self._device_code,
+                    "client_id": SPOTIFY_CLIENT_ID,
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+            data = resp.json()
 
-                    if resp.status == 200:
-                        # 授权成功
-                        self._access_token = data.get("access_token")
-                        self._refresh_token = data.get("refresh_token")
-                        expires_in = data.get("expires_in", 3600)
-                        self._token_expires_at = time.time() + expires_in
-                        self._device_code = None
-                        self.save_credential()
+            if resp.status_code == 200:
+                # 授权成功
+                self._access_token = data.get("access_token")
+                self._refresh_token = data.get("refresh_token")
+                expires_in = data.get("expires_in", 3600)
+                self._token_expires_at = time.time() + expires_in
+                self._device_code = None
+                self.save_credential()
 
-                        decky.logger.info("Spotify 登录成功")
-                        return {
-                            "success": True,
-                            "status": "success",
-                            "logged_in": True,
-                        }
+                decky.logger.info("Spotify 登录成功")
+                return {
+                    "success": True,
+                    "status": "success",
+                    "logged_in": True,
+                }
 
-                    error = data.get("error", "")
-                    if error == "authorization_pending":
-                        return {"success": True, "status": "waiting"}
-                    elif error == "slow_down":
-                        self._poll_interval += 5
-                        return {"success": True, "status": "waiting"}
-                    elif error == "expired_token":
-                        self._device_code = None
-                        return {"success": True, "status": "timeout"}
-                    elif error == "access_denied":
-                        self._device_code = None
-                        return {"success": True, "status": "refused"}
-                    else:
-                        return {"success": False, "error": error, "status": "unknown"}
+            error = data.get("error", "")
+            if error == "authorization_pending":
+                return {"success": True, "status": "waiting"}
+            elif error == "slow_down":
+                self._poll_interval += 5
+                return {"success": True, "status": "waiting"}
+            elif error == "expired_token":
+                self._device_code = None
+                return {"success": True, "status": "timeout"}
+            elif error == "access_denied":
+                self._device_code = None
+                return {"success": True, "status": "refused"}
+            else:
+                return {"success": False, "error": error, "status": "unknown"}
 
         except Exception as e:
             decky.logger.error(f"检查 Spotify 授权状态失败: {e}")
@@ -382,13 +383,14 @@ class SpotifyProvider(MusicProvider):
             if not self._access_token:
                 return {"logged_in": False}
 
-            if not await self._ensure_token_valid():
+            if not self._ensure_token_valid():
                 return {"logged_in": False, "expired": True}
 
             # 验证 token 有效性
-            result = await self._spotify_api_get("/me")
+            result = self._spotify_api_get("/me")
             if "error" in result:
-                return {"logged_in": False, "error": result.get("error")}
+                err = result.get("error")
+                return {"logged_in": False, "error": str(err) if err else "Unknown error"}
 
             return {
                 "logged_in": True,
@@ -422,10 +424,8 @@ class SpotifyProvider(MusicProvider):
         """搜索歌曲"""
         try:
             offset = (page - 1) * num
-            from urllib.parse import quote
-
             encoded_keyword = quote(keyword)
-            result = await self._spotify_api_get(
+            result = self._spotify_api_get(
                 f"/search?q={encoded_keyword}&type=track&limit={num}&offset={offset}"
             )
 
@@ -482,7 +482,7 @@ class SpotifyProvider(MusicProvider):
         del qrc
         try:
             # 先获取歌曲信息
-            result = await self._spotify_api_get(f"/tracks/{mid}")
+            result = self._spotify_api_get(f"/tracks/{mid}")
             if "error" in result:
                 return {
                     "success": False,
@@ -500,9 +500,6 @@ class SpotifyProvider(MusicProvider):
             duration = duration_ms // 1000 if duration_ms else 0
 
             # 调用 LRCLIB API
-            import aiohttp
-            from urllib.parse import quote
-
             lrclib_url = (
                 f"{LRCLIB_API_BASE}/get?"
                 f"artist_name={quote(artist_name)}&"
@@ -512,21 +509,26 @@ class SpotifyProvider(MusicProvider):
             )
 
             lyric_result = None
-            async with aiohttp.ClientSession() as session:
-                async with session.get(lrclib_url) as resp:
-                    if resp.status == 200:
-                        lyric_result = await resp.json()
+            try:
+                resp = requests.get(lrclib_url, timeout=REQUEST_TIMEOUT)
+                if resp.status_code == 200:
+                    lyric_result = resp.json()
+            except Exception:
+                pass
 
-                if not lyric_result or "error" in lyric_result:
-                    # 尝试不带专辑名搜索
-                    lrclib_url_simple = (
-                        f"{LRCLIB_API_BASE}/get?"
-                        f"artist_name={quote(artist_name)}&"
-                        f"track_name={quote(track_name)}"
-                    )
-                    async with session.get(lrclib_url_simple) as resp:
-                        if resp.status == 200:
-                            lyric_result = await resp.json()
+            if not lyric_result or "error" in lyric_result:
+                # 尝试不带专辑名搜索
+                lrclib_url_simple = (
+                    f"{LRCLIB_API_BASE}/get?"
+                    f"artist_name={quote(artist_name)}&"
+                    f"track_name={quote(track_name)}"
+                )
+                try:
+                    resp = requests.get(lrclib_url_simple, timeout=REQUEST_TIMEOUT)
+                    if resp.status_code == 200:
+                        lyric_result = resp.json()
+                except Exception:
+                    pass
 
             if not lyric_result:
                 return {
@@ -564,9 +566,7 @@ class SpotifyProvider(MusicProvider):
         """获取用户收藏的歌曲"""
         try:
             offset = (page - 1) * num
-            result = await self._spotify_api_get(
-                f"/me/tracks?limit={num}&offset={offset}"
-            )
+            result = self._spotify_api_get(f"/me/tracks?limit={num}&offset={offset}")
 
             if "error" in result:
                 return {
@@ -594,7 +594,7 @@ class SpotifyProvider(MusicProvider):
     async def get_user_playlists(self) -> UserPlaylistsResponse:
         """获取用户歌单"""
         try:
-            result = await self._spotify_api_get("/me/playlists?limit=50")
+            result = self._spotify_api_get("/me/playlists?limit=50")
 
             if "error" in result:
                 return {
@@ -605,7 +605,7 @@ class SpotifyProvider(MusicProvider):
                 }
 
             # 获取当前用户 ID
-            me_result = await self._spotify_api_get("/me")
+            me_result = self._spotify_api_get("/me")
             current_user_id = me_result.get("id", "")
 
             items = result.get("items", [])
@@ -643,7 +643,7 @@ class SpotifyProvider(MusicProvider):
             # Spotify playlist ID 是字符串，但接口定义是 int
             # 实际使用时前端会传递字符串形式的 ID
             playlist_id_str = str(playlist_id)
-            result = await self._spotify_api_get(
+            result = self._spotify_api_get(
                 f"/playlists/{playlist_id_str}/tracks?limit=100"
             )
 
@@ -678,9 +678,7 @@ class SpotifyProvider(MusicProvider):
         """获取推荐歌曲（基于用户最近播放）"""
         try:
             # 获取用户最近播放的歌曲作为种子
-            recent_result = await self._spotify_api_get(
-                "/me/player/recently-played?limit=5"
-            )
+            recent_result = self._spotify_api_get("/me/player/recently-played?limit=5")
             seed_tracks = []
 
             items = recent_result.get("items", [])
@@ -691,7 +689,7 @@ class SpotifyProvider(MusicProvider):
 
             if not seed_tracks:
                 # 如果没有最近播放，使用用户收藏的歌曲
-                fav_result = await self._spotify_api_get("/me/tracks?limit=5")
+                fav_result = self._spotify_api_get("/me/tracks?limit=5")
                 for item in fav_result.get("items", []):
                     track = item.get("track", {})
                     if track and track.get("id"):
@@ -702,7 +700,7 @@ class SpotifyProvider(MusicProvider):
 
             # 使用种子获取推荐
             seed_str = ",".join(seed_tracks[:5])
-            result = await self._spotify_api_get(
+            result = self._spotify_api_get(
                 f"/recommendations?seed_tracks={seed_str}&limit=30"
             )
 
@@ -726,16 +724,17 @@ class SpotifyProvider(MusicProvider):
     async def get_daily_recommend(self) -> DailyRecommendResponse:
         """获取每日推荐（使用 recommendations API）"""
         result = await self.get_guess_like()
+        err = result.get("error")
         return {
             "success": result.get("success", False),
             "songs": result.get("songs", []),
-            "error": result.get("error"),
+            "error": str(err) if err else "",
         }
 
     async def get_recommend_playlists(self) -> RecommendPlaylistResponse:
         """获取推荐歌单（Featured Playlists）"""
         try:
-            result = await self._spotify_api_get("/browse/featured-playlists?limit=20")
+            result = self._spotify_api_get("/browse/featured-playlists?limit=20")
 
             if "error" in result:
                 return {
@@ -768,7 +767,7 @@ class SpotifyProvider(MusicProvider):
             if not self._access_token:
                 return {"success": False, "error": "未登录"}
 
-            if not await self._ensure_token_valid():
+            if not self._ensure_token_valid():
                 return {"success": False, "error": "Token 已过期，请重新登录"}
 
             return {
