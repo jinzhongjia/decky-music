@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 
 from backend.types import (
+    AccessTokenResponse,
     DailyRecommendResponse,
     FavSongsResponse,
     HotSearchResponse,
@@ -166,6 +167,17 @@ class MusicProvider(ABC):
 
         Returns:
             操作结果
+        """
+        return {"success": False, "error": "Not implemented"}
+
+    async def get_access_token(self) -> AccessTokenResponse:
+        """获取访问令牌（用于前端 SDK）
+
+        某些服务（如 Spotify）需要前端 SDK 直接播放，
+        此方法返回用于前端 SDK 初始化的访问令牌。
+
+        Returns:
+            访问令牌响应
         """
         return {"success": False, "error": "Not implemented"}
 

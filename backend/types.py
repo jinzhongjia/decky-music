@@ -306,3 +306,11 @@ class SongInfoResponse(TypedDict, total=False):
     success: bool
     info: dict[str, object]
     error: NotRequired[str]
+
+
+class AccessTokenResponse(TypedDict, total=False):
+    """访问令牌响应（用于 Spotify 等需要前端 SDK 的服务）"""
+
+    success: bool
+    access_token: NotRequired[str]
+    error: NotRequired[str]

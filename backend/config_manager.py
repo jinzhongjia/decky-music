@@ -171,6 +171,19 @@ class ConfigManager:
     def delete_netease_session(self) -> bool:
         return self.delete_data("netease_session")
 
+    def get_spotify_credential(self) -> dict[str, object] | None:
+        """获取 Spotify 凭证"""
+        cred = self.get_data("spotify_credential")
+        return cred if isinstance(cred, dict) else None
+
+    def set_spotify_credential(self, credential: Mapping[str, object]) -> dict[str, object]:
+        """保存 Spotify 凭证"""
+        return self.merge_data_dict("spotify_credential", credential)
+
+    def delete_spotify_credential(self) -> bool:
+        """删除 Spotify 凭证"""
+        return self.delete_data("spotify_credential")
+
     def get_main_provider_id(self) -> str | None:
         provider_id = self.get_setting("main_provider_id")
         return provider_id if isinstance(provider_id, str) else None

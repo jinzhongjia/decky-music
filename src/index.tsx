@@ -8,9 +8,9 @@ import { FaMusic } from "react-icons/fa";
 
 import { getProviderSelection } from "./api";
 import { setAuthLoggedIn } from "./state/authState";
-import { cleanupPlayer } from "./hooks/player";
+import { cleanupPlayer, disconnectSpotify } from "./hooks/player";
 import { useAppLogic } from "./hooks/useAppLogic";
-import { PlayerBar, ErrorBoundary } from "./components";
+import { PlayerBar, ErrorBoundary, SpotifySDKProvider } from "./components";
 import { Router } from "./components/Router";
 import { FullscreenPlayer } from "./pages";
 import { ROUTE_PATH, menuManager } from "./patches";
@@ -98,7 +98,9 @@ export default definePlugin(() => {
         ),
         content: (
             <ErrorBoundary>
-                <Content />
+                <SpotifySDKProvider>
+                    <Content />
+                </SpotifySDKProvider>
             </ErrorBoundary>
         ),
         icon: <FaMusic />,
@@ -112,6 +114,9 @@ export default definePlugin(() => {
 
             // 清理播放器
             cleanupPlayer();
+
+            // 清理 Spotify 连接
+            disconnectSpotify();
 
             // 移除全局样式
             const styleEl = document.getElementById("decky-music-styles");

@@ -153,6 +153,19 @@ export const getProviderSelection = callable<[], ProviderSelectionResponse>(
   "get_provider_selection"
 );
 
+// ==================== Spotify 相关 ====================
+
+/** 获取 Spotify access token，供 Web Playback SDK 使用 */
+export const getSpotifyToken = callable<
+  [],
+  {
+    success: boolean;
+    access_token?: string;
+    expires_at?: number;
+    error?: string;
+  }
+>("get_spotify_token");
+
 // ==================== 日志相关 ====================
 
 /** 前端日志输出到后端 */

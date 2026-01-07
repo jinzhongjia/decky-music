@@ -51,6 +51,7 @@ from backend import (  # noqa: E402
     NeteaseProvider,
     ProviderManager,
     QQMusicProvider,
+    SpotifyProvider,
     check_for_update,
     download_update,
     load_plugin_version,
@@ -73,6 +74,8 @@ class Plugin:
         self._manager.register(qqmusic_provider)
         netease_provider = NeteaseProvider()
         self._manager.register(netease_provider)
+        spotify_provider = SpotifyProvider()
+        self._manager.register(spotify_provider)
 
         # 在初始化时加载所有 providers 的凭证
         # 这样在检查登录状态时，凭证已经准备好了
@@ -260,6 +263,22 @@ class Plugin:
         # 装饰器已确保 _provider 不为 None
         provider = cast(MusicProvider, self._provider)
         return await provider.get_playlist_songs(playlist_id, dirid)
+
+    async def get_spotify_token(self) -> dict[str, object]:
+        """获取 Spotify access token，供前端 Web Playback SDK 使用
+
+        Returns:
+            包含 access_token 和 expires_at 的字典
+        """
+        provider = self._manager.get_provider("spotify")
+        if not provider:
+            return {"success": False, "error": "Spotify provider 未注册"}
+
+        # 使用 SpotifyProvider 的 get_access_token 方法
+        if hasattr(provider, "get_access_token"):
+            return await provider.get_access_token()
+
+        return {"success": False, "error": "不支持的操作"}
 
     async def log_from_frontend(
         self, level: str, message: str, data: dict[str, object] | None = None

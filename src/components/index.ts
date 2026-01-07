@@ -20,3 +20,4 @@ export { PlayAllButton } from "./PlayAllButton";
 export { FocusableList } from "./FocusableList";
 export { SettingsPage } from "./SettingsPage";
 export { ErrorBoundary } from "./ErrorBoundary";
+export { SpotifySDKProvider } from "./SpotifyProvider";

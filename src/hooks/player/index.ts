@@ -31,6 +31,20 @@ export { getAudioCurrentTime } from "./audio";
 export { setPreferredQuality };
 export { usePlayerStore };
 
+// Spotify 相关导出
+export { useSpotify } from "./useSpotify";
+export {
+  isSpotifyReady,
+  getSpotifyDeviceId,
+  playSpotifyTrack,
+  pauseSpotify,
+  resumeSpotify,
+  toggleSpotifyPlay,
+  seekSpotify,
+  setSpotifyVolume,
+  disconnectSpotify,
+} from "./spotifyState";
+
 export function cleanupPlayer(): void {
   cleanupAudio();
   resetGlobalPlayerState();

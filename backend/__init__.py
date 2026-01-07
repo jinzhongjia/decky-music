@@ -5,6 +5,7 @@ from backend.providers import (
     NeteaseProvider,
     ProviderManager,
     QQMusicProvider,
+    SpotifyProvider,
 )
 from backend.update_checker import check_for_update, download_update
 from backend.util import (
@@ -22,6 +23,7 @@ __all__ = [
     "NeteaseProvider",
     "ProviderManager",
     "QQMusicProvider",
+    "SpotifyProvider",
     "ConfigManager",
     "check_for_update",
     "download_file",
