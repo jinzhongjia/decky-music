@@ -12,9 +12,9 @@
  */
 
 import { useEffect } from "react";
-import { useDataManager } from "./useDataManager";
+import { useDataManager } from "../features/data";
 import { useProvider } from "./useProvider";
-import { useAuthStatus } from "../state/authState";
+import { useAuthStatus } from "../features/auth";
 
 export function useAutoLoadGuessLike(
   enabled: boolean = true

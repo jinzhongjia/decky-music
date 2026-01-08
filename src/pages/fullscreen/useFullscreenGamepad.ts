@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { NAV_ITEMS } from "./navItems";
 import type { FullscreenPageType } from "./types";
-import type { UsePlayerReturn } from "../../hooks/player";
+import type { UsePlayerReturn } from "../../features/player";
 import { setActiveInputSource, isInputSourceActive } from "../../utils/inputManager";
 
 export function useFullscreenGamepad(

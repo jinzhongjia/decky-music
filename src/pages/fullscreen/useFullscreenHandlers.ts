@@ -6,8 +6,8 @@ import { useCallback, useRef } from "react";
 import { toaster } from "@decky/api";
 import type { SongInfo, PlaylistInfo } from "../../types";
 import type { FullscreenPageType, UseDataManagerReturn } from "./types";
-import type { UsePlayerReturn } from "../../hooks/player";
-import { fetchGuessLikeRaw, replaceGuessLikeSongs } from "../../hooks/useDataManager";
+import type { UsePlayerReturn } from "../../features/player";
+import { fetchGuessLikeRaw, replaceGuessLikeSongs } from "../../features/data";
 
 /**
  * 创建全屏播放器的事件处理函数

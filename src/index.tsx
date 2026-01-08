@@ -7,11 +7,11 @@ import { definePlugin, routerHook } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
 import { getProviderSelection } from "./api";
-import { setAuthLoggedIn } from "./state/authState";
-import { cleanupPlayer } from "./hooks/player";
-import { useAppLogic } from "./hooks/useAppLogic";
+import { setAuthLoggedIn } from "./features/auth";
+import { cleanupPlayer } from "./features/player";
+import { useAppLogicNew as useAppLogic } from "./hooks/useAppLogicNew";
 import { PlayerBar, ErrorBoundary } from "./components";
-import { Router } from "./components/Router";
+import { Router } from "./navigation/Router";
 import { FullscreenPlayer } from "./pages";
 import { ROUTE_PATH, menuManager } from "./patches";
 import type { PageType } from "./types";

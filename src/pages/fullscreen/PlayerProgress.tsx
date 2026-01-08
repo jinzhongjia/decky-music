@@ -2,7 +2,7 @@ import { FC, memo, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
 import { formatDuration } from "../../utils/format";
-import { usePlayerStore } from "../../hooks/player";
+import { usePlayerStore } from "../../stores";
 
 interface PlayerProgressProps {
   hasSong: boolean;

@@ -2,21 +2,41 @@
  * 组件导出
  */
 
-export { LoginPage } from "./LoginPage";
-export { HomePage, clearRecommendCache } from "./HomePage";
-export { SearchPage } from "./SearchPage";
-export { PlayerPage } from "./PlayerPage";
-export { PlayerBar } from "./PlayerBar";
-export { SongItem } from "./SongItem";
-export { SongList } from "./SongList";
-export { PlaylistsPage } from "./PlaylistsPage";
-export { PlaylistDetailPage } from "./PlaylistDetailPage";
-export { HistoryPage } from "./HistoryPage";
-export { BackButton } from "./BackButton";
-export { LoadingSpinner } from "./LoadingSpinner";
-export { EmptyState } from "./EmptyState";
-export { SafeImage } from "./SafeImage";
-export { PlayAllButton } from "./PlayAllButton";
-export { FocusableList } from "./FocusableList";
-export { SettingsPage } from "./SettingsPage";
-export { ErrorBoundary } from "./ErrorBoundary";
+// 页面组件 - 从 pages/sidebar 重新导出
+export {
+  LoginPage,
+  HomePage,
+  clearRecommendCache,
+  SearchPage,
+  PlayerPage,
+  PlaylistsPage,
+  PlaylistDetailPage,
+  HistoryPage,
+  SettingsPage,
+  ProviderSettingsPage,
+} from "../pages/sidebar";
+
+// 通用基础组件
+export {
+  SafeImage,
+  LoadingSpinner,
+  EmptyState,
+  BackButton,
+  ErrorBoundary,
+} from "./common";
+
+// 歌曲相关组件
+export {
+  SongItem,
+  SongList,
+  GuessLikeSection,
+} from "./song";
+
+// 播放器 UI 组件
+export { PlayerBar } from "./player";
+
+// 布局组件
+export {
+  FocusableList,
+  PlayAllButton,
+} from "./layout";

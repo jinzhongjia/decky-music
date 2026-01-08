@@ -3,13 +3,14 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoginPage } from "../components";
 import { getProviderSelection } from "../api";
-import { setAuthLoggedIn, useAuthStatus } from "../state/authState";
-import { useDataManager } from "../hooks/useDataManager";
+import { setAuthLoggedIn, useAuthStatus } from "../features/auth";
+import { useDataManager } from "../features/data";
 import { useProvider } from "../hooks/useProvider";
 import { useMountedRef } from "../hooks/useMountedRef";
-import { usePlayer, usePlayerStore } from "../hooks/player";
+import { usePlayer } from "../features/player";
+import { usePlayerStore } from "../stores";
 import { useAutoLoadGuessLike } from "../hooks/useAutoLoadGuessLike";
-import { seek as seekAction, togglePlay as togglePlayAction } from "../hooks/player/actions";
+import { seek as seekAction, togglePlay as togglePlayAction } from "../features/player/services/playbackService";
 import { FaListOl, FaRandom, FaRedo } from "react-icons/fa";
 import { NavBar } from "./fullscreen/NavBar";
 import { PlayerPage } from "./fullscreen/PlayerPage";
