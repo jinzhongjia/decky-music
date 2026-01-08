@@ -1,22 +1,23 @@
 /**
  * 迷你播放器组件 - 底部播放条
  * 不可获取焦点，只响应点击
+ *
+ * 使用 useAudioTime hook 获取时间状态，避免高频更新影响父组件
  */
 
 /* global HTMLDivElement */
 
-import React, { FC, useCallback, useMemo, useRef, useState } from "react";
+import React, { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaPlay, FaPause, FaStepForward, FaStepBackward, FaRandom, FaRedo, FaListOl } from "react-icons/fa";
 import type { PlayMode, SongInfo } from "../../types";
 import { formatDuration } from "../../utils/format";
 import { SafeImage } from "../common";
 import { TEXT_ELLIPSIS, TEXT_CONTAINER, FLEX_CENTER, COLORS } from "../../utils/styles";
+import { useAudioTime } from "../../features/player";
 
 interface PlayerBarProps {
   song: SongInfo;
   isPlaying: boolean;
-  currentTime: number;
-  duration: number;
   loading?: boolean;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
@@ -30,8 +31,6 @@ interface PlayerBarProps {
 export const PlayerBar: FC<PlayerBarProps> = ({
   song,
   isPlaying,
-  currentTime,
-  duration,
   loading = false,
   onTogglePlay,
   onSeek,
@@ -41,39 +40,25 @@ export const PlayerBar: FC<PlayerBarProps> = ({
   playMode,
   onTogglePlayMode,
 }) => {
+  // 使用 useAudioTime 获取时间状态，仅在此组件内触发重渲染
+  const { currentTime, duration: audioDuration } = useAudioTime();
+  const duration = audioDuration || song.duration;
   const barRef = useRef<HTMLDivElement | null>(null);
   const [dragTime, setDragTime] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const draggingIdRef = useRef<number | null>(null);
-  const pendingDragTimeRef = useRef<number | null>(null);
-  const rafRef = useRef<number | null>(null);
+  // 缓存 rect 避免拖动时频繁调用 getBoundingClientRect 导致重排
+  const cachedRectRef = useRef<DOMRect | null>(null);
 
   const getTimeFromClientX = useCallback(
-    (clientX: number) => {
-      if (!duration || !barRef.current) return null;
-      const rect = barRef.current.getBoundingClientRect();
-      const ratio = (clientX - rect.left) / rect.width;
+    (clientX: number, rect?: DOMRect | null) => {
+      const useRect = rect || cachedRectRef.current || barRef.current?.getBoundingClientRect();
+      if (!duration || !useRect) return null;
+      const ratio = (clientX - useRect.left) / useRect.width;
       const clamped = Math.min(1, Math.max(0, ratio));
       return clamped * duration;
     },
     [duration]
-  );
-
-  const handleSeek = useCallback(
-    (clientX: number) => {
-      const next = getTimeFromClientX(clientX);
-      if (next === null) return;
-      pendingDragTimeRef.current = next;
-      if (rafRef.current === null) {
-        rafRef.current = window.requestAnimationFrame(() => {
-          rafRef.current = null;
-          if (pendingDragTimeRef.current !== null) {
-            setDragTime(pendingDragTimeRef.current);
-          }
-        });
-      }
-    },
-    [getTimeFromClientX]
   );
 
   const commitSeek = useCallback(
@@ -87,33 +72,51 @@ export const PlayerBar: FC<PlayerBarProps> = ({
       }
       setIsDragging(false);
       draggingIdRef.current = null;
-      pendingDragTimeRef.current = null;
-      if (rafRef.current !== null) {
-        window.cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      cachedRectRef.current = null;
     },
     [getTimeFromClientX, onSeek]
   );
+
+  // 智能清除：当 audio 追上 seek 目标时自动清除 dragTime
+  useEffect(() => {
+    if (dragTime !== null && !isDragging) {
+      if (Math.abs(currentTime - dragTime) < 0.5) {
+        setDragTime(null);
+      }
+    }
+  }, [currentTime, dragTime, isDragging]);
 
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!duration) return;
       if (event.pointerType === "mouse" && event.button !== 0) return;
+      if (!barRef.current) return;
+
+      // 缓存 rect 避免拖动过程中频繁重排
+      const rect = barRef.current.getBoundingClientRect();
+      cachedRectRef.current = rect;
+
       draggingIdRef.current = event.pointerId;
-      barRef.current?.setPointerCapture(event.pointerId);
+      barRef.current.setPointerCapture(event.pointerId);
       setIsDragging(true);
-      handleSeek(event.clientX);
+
+      const nextTime = getTimeFromClientX(event.clientX, rect);
+      if (nextTime !== null) {
+        setDragTime(nextTime);
+      }
     },
-    [duration, handleSeek]
+    [duration, getTimeFromClientX]
   );
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!isDragging || event.pointerId !== draggingIdRef.current) return;
-      handleSeek(event.clientX);
+      const nextTime = getTimeFromClientX(event.clientX);
+      if (nextTime !== null) {
+        setDragTime(nextTime);
+      }
     },
-    [handleSeek, isDragging]
+    [isDragging, getTimeFromClientX]
   );
 
   const handlePointerUp = useCallback(
@@ -132,15 +135,6 @@ export const PlayerBar: FC<PlayerBarProps> = ({
     () => (duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0),
     [displayTime, duration]
   );
-
-  React.useEffect(() => {
-    return () => {
-      if (rafRef.current !== null) {
-        window.cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-  }, []);
 
   const modeConfig = useMemo(() => {
     if (!playMode) return null;

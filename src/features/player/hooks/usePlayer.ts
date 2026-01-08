@@ -47,8 +47,6 @@ export function cleanupPlayer(): void {
 export interface UsePlayerReturn {
   currentSong: SongInfo | null;
   isPlaying: boolean;
-  currentTime: number;
-  duration: number;
   loading: boolean;
   error: string;
   lyric: ParsedLyric | null;
@@ -78,13 +76,17 @@ export interface UsePlayerReturn {
   clearCurrentQueue: () => void;
 }
 
+/**
+ * 播放器主 Hook
+ *
+ * 注意：currentTime 和 duration 已从此 hook 移除以避免高频重渲染。
+ * 需要时间信息的组件请使用 useAudioTime() hook。
+ */
 export function usePlayer(): UsePlayerReturn {
   usePlayerEffects();
 
   const currentSong = usePlayerStore((s) => s.currentSong);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const duration = usePlayerStore((s) => s.duration);
   const loading = usePlayerStore((s) => s.loading);
   const error = usePlayerStore((s) => s.error);
   const lyric = usePlayerStore((s) => s.lyric);
@@ -98,8 +100,6 @@ export function usePlayer(): UsePlayerReturn {
   return {
     currentSong,
     isPlaying,
-    currentTime,
-    duration,
     loading,
     error,
     lyric,

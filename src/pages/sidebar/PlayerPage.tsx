@@ -13,12 +13,11 @@ import {
   useProgressDrag,
   useVolumeDrag,
 } from "../../components/sidebar-player";
+import { useAudioTime } from "../../features/player";
 
 interface PlayerPageProps {
   song: SongInfo;
   isPlaying: boolean;
-  currentTime: number;
-  duration: number;
   volume: number;
   loading: boolean;
   error: string;
@@ -36,8 +35,6 @@ interface PlayerPageProps {
 export const PlayerPage: FC<PlayerPageProps> = ({
   song,
   isPlaying,
-  currentTime,
-  duration,
   loading,
   error,
   hasPlaylist = false,
@@ -51,9 +48,11 @@ export const PlayerPage: FC<PlayerPageProps> = ({
   volume,
   onVolumeChange,
 }) => {
-  const actualDuration = duration > 0 ? duration : song.duration;
+  // 使用 useAudioTime 获取时间状态，仅在此组件内触发重渲染
+  const { currentTime, duration: audioDuration } = useAudioTime();
+  const actualDuration = audioDuration > 0 ? audioDuration : song.duration;
 
-  const progressDrag = useProgressDrag({ duration: actualDuration, onSeek });
+  const progressDrag = useProgressDrag({ duration: actualDuration, currentTime, onSeek });
   const volumeDrag = useVolumeDrag({ onVolumeChange });
 
   const handlePrev = useCallback(() => {

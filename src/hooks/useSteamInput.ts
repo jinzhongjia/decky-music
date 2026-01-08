@@ -3,6 +3,9 @@ import type { PageType } from "../types";
 import type { usePlayer } from "../features/player";
 import { setActiveInputSource, isInputSourceActive } from "../utils/inputManager";
 
+/** 防抖间隔（毫秒） */
+const DEBOUNCE_INTERVAL = 300;
+
 interface UseSteamInputProps {
   player: ReturnType<typeof usePlayer>;
   currentPage: PageType;
@@ -12,6 +15,7 @@ interface UseSteamInputProps {
 export function useSteamInput({ player, currentPage, setCurrentPage }: UseSteamInputProps) {
   const playerRef = useRef(player);
   const currentPageRef = useRef(currentPage);
+  const lastPressTimeRef = useRef<Record<number, number>>({});
 
   useEffect(() => {
     playerRef.current = player;
@@ -33,6 +37,12 @@ export function useSteamInput({ player, currentPage, setCurrentPage }: UseSteamI
       (_controllerIndex: number, button: number, pressed: boolean) => {
         if (!pressed) return;
         if (!isInputSourceActive("sidebar")) return;
+
+        // 防抖检查
+        const now = Date.now();
+        const lastPress = lastPressTimeRef.current[button] || 0;
+        if (now - lastPress < DEBOUNCE_INTERVAL) return;
+        lastPressTimeRef.current[button] = now;
 
         const p = playerRef.current;
         const page = currentPageRef.current;

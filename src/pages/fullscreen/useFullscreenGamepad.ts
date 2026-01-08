@@ -4,6 +4,9 @@ import type { FullscreenPageType } from "./types";
 import type { UsePlayerReturn } from "../../features/player";
 import { setActiveInputSource, isInputSourceActive } from "../../utils/inputManager";
 
+/** 防抖间隔（毫秒） */
+const DEBOUNCE_INTERVAL = 300;
+
 export function useFullscreenGamepad(
   player: UsePlayerReturn,
   currentPage: FullscreenPageType,
@@ -11,6 +14,7 @@ export function useFullscreenGamepad(
 ): void {
   const playerRef = useRef(player);
   const currentPageRef = useRef(currentPage);
+  const lastPressTimeRef = useRef<Record<number, number>>({});
 
   useEffect(() => {
     playerRef.current = player;
@@ -32,6 +36,12 @@ export function useFullscreenGamepad(
       (_controllerIndex: number, button: number, pressed: boolean) => {
         if (!pressed) return;
         if (!isInputSourceActive("fullscreen")) return;
+
+        // 防抖检查
+        const now = Date.now();
+        const lastPress = lastPressTimeRef.current[button] || 0;
+        if (now - lastPress < DEBOUNCE_INTERVAL) return;
+        lastPressTimeRef.current[button] = now;
 
         const p = playerRef.current;
         const page = currentPageRef.current;

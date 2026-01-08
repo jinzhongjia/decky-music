@@ -38,6 +38,7 @@ const SafeImageComponent: FC<SafeImageProps> = ({
       src={finalSrc}
       alt={alt}
       style={style}
+      loading="lazy"
       onError={handleError}
       {...otherProps}
     />

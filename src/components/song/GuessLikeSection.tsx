@@ -3,7 +3,7 @@
  * 右侧 UI 和全屏 UI 使用完全相同的渲染内容，只是容器不同
  */
 
-import { FC, useMemo } from "react";
+import { FC, memo, useMemo } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, Focusable } from "@decky/ui";
 import { FaSyncAlt } from "react-icons/fa";
 import type { SongInfo } from "../../types";
@@ -25,7 +25,7 @@ interface GuessLikeSectionProps {
  * 猜你喜欢组件
  * 统一渲染逻辑，panel 和 fullscreen 使用相同的内容，只是容器不同
  */
-export const GuessLikeSection: FC<GuessLikeSectionProps> = ({
+const GuessLikeSectionComponent: FC<GuessLikeSectionProps> = ({
   songs,
   loading,
   onRefresh,
@@ -107,3 +107,4 @@ export const GuessLikeSection: FC<GuessLikeSectionProps> = ({
   );
 };
 
+export const GuessLikeSection = memo(GuessLikeSectionComponent);

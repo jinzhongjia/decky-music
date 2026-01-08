@@ -80,14 +80,16 @@ export function useLyricFetch(): void {
   }, [settingsRestored, currentSong, lyric]);
 }
 
-export function useAudioTimeSync(): void {
+/**
+ * 同步播放状态（仅同步 isPlaying，不同步高频的 currentTime/duration）
+ * currentTime 和 duration 由各组件通过 useAudioTime hook 独立获取
+ */
+export function useAudioPlayingSync(): void {
   useEffect(() => {
     const interval = setInterval(() => {
       const audio = getGlobalAudio();
       const store = usePlayerStore.getState();
       if (!audio.paused) {
-        store.setCurrentTime(audio.currentTime);
-        store.setDuration(audio.duration || 0);
         if (!store.isPlaying) {
           store.setIsPlaying(true);
         }
@@ -101,6 +103,9 @@ export function useAudioTimeSync(): void {
   }, []);
 }
 
+/** @deprecated 使用 useAudioPlayingSync 替代 */
+export const useAudioTimeSync = useAudioPlayingSync;
+
 export function usePlayNextHandler(): void {
   useEffect(() => {
     initPlayNextHandler();
@@ -110,6 +115,6 @@ export function usePlayNextHandler(): void {
 export function usePlayerEffects(): void {
   useSettingsRestoration();
   useLyricFetch();
-  useAudioTimeSync();
+  useAudioPlayingSync();
   usePlayNextHandler();
 }

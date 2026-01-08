@@ -2,7 +2,7 @@ import { FC, memo, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
 import { formatDuration } from "../../utils/format";
-import { usePlayerStore } from "../../stores";
+import { useAudioTime } from "../../features/player";
 
 interface PlayerProgressProps {
   hasSong: boolean;
@@ -47,42 +47,25 @@ const thumbStyle: CSSProperties = {
 
 export const PlayerProgress: FC<PlayerProgressProps> = memo(
   ({ hasSong, songDuration, onSeek }) => {
-    const currentTime = usePlayerStore((s) => s.currentTime);
-    const storeDuration = usePlayerStore((s) => s.duration);
-    const duration = storeDuration || songDuration;
+    const { currentTime, duration: audioDuration } = useAudioTime({ enabled: hasSong });
+    const duration = audioDuration || songDuration;
 
     const barRef = useRef<HTMLDivElement | null>(null);
     const [dragTime, setDragTime] = useState<number | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
     const activePointerRef = useRef<number | null>(null);
-    const pendingDragTimeRef = useRef<number | null>(null);
-    const rafRef = useRef<number | null>(null);
+    // 缓存 rect 避免拖动时频繁调用 getBoundingClientRect 导致重排
+    const cachedRectRef = useRef<DOMRect | null>(null);
 
     const getTimeFromClientX = useCallback(
-      (clientX: number) => {
-        if (!duration || !barRef.current) return null;
-        const rect = barRef.current.getBoundingClientRect();
-        const ratio = (clientX - rect.left) / rect.width;
+      (clientX: number, rect?: DOMRect | null) => {
+        const useRect = rect || cachedRectRef.current || barRef.current?.getBoundingClientRect();
+        if (!duration || !useRect) return null;
+        const ratio = (clientX - useRect.left) / useRect.width;
         const clamped = Math.min(1, Math.max(0, ratio));
         return clamped * duration;
       },
       [duration]
-    );
-
-    const updateDrag = useCallback(
-      (clientX: number) => {
-        const nextTime = getTimeFromClientX(clientX);
-        if (nextTime === null) return;
-        pendingDragTimeRef.current = nextTime;
-        if (rafRef.current === null) {
-          rafRef.current = window.requestAnimationFrame(() => {
-            rafRef.current = null;
-            if (pendingDragTimeRef.current !== null) {
-              setDragTime(pendingDragTimeRef.current);
-            }
-          });
-        }
-      },
-      [getTimeFromClientX]
     );
 
     const endDrag = useCallback(
@@ -91,18 +74,24 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
           const finalTime = getTimeFromClientX(clientX);
           if (finalTime !== null) {
             onSeek(finalTime);
+            setDragTime(finalTime);
           }
         }
-        setDragTime(null);
+        setIsDragging(false);
         activePointerRef.current = null;
-        pendingDragTimeRef.current = null;
-        if (rafRef.current !== null) {
-          window.cancelAnimationFrame(rafRef.current);
-          rafRef.current = null;
-        }
+        cachedRectRef.current = null;
       },
       [getTimeFromClientX, onSeek]
     );
+
+    // 智能清除：当 audio 追上 seek 目标时自动清除 dragTime
+    useEffect(() => {
+      if (dragTime !== null && !isDragging) {
+        if (Math.abs(currentTime - dragTime) < 0.5) {
+          setDragTime(null);
+        }
+      }
+    }, [currentTime, dragTime, isDragging]);
 
     const handlePointerDown = useCallback(
       (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -110,10 +99,15 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
         if (event.pointerType === "mouse" && event.button !== 0) return;
         if (!barRef.current) return;
 
+        // 缓存 rect 避免拖动过程中频繁重排
+        const rect = barRef.current.getBoundingClientRect();
+        cachedRectRef.current = rect;
+
         activePointerRef.current = event.pointerId;
         barRef.current.setPointerCapture(event.pointerId);
+        setIsDragging(true);
 
-        const initialTime = getTimeFromClientX(event.clientX);
+        const initialTime = getTimeFromClientX(event.clientX, rect);
         if (initialTime === null) return;
 
         setDragTime(initialTime);
@@ -125,9 +119,12 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
     const handlePointerMove = useCallback(
       (event: ReactPointerEvent<HTMLDivElement>) => {
         if (event.pointerId !== activePointerRef.current) return;
-        updateDrag(event.clientX);
+        const nextTime = getTimeFromClientX(event.clientX);
+        if (nextTime !== null) {
+          setDragTime(nextTime);
+        }
       },
-      [updateDrag]
+      [getTimeFromClientX]
     );
 
     const handlePointerUp = useCallback(
@@ -140,15 +137,6 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
       },
       [endDrag]
     );
-
-    useEffect(() => {
-      return () => {
-        if (rafRef.current !== null) {
-          window.cancelAnimationFrame(rafRef.current);
-          rafRef.current = null;
-        }
-      };
-    }, []);
 
     if (!hasSong) return null;
 

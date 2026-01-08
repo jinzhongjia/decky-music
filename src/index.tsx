@@ -51,8 +51,6 @@ function Content() {
                 <PlayerBar
                     song={player.currentSong}
                     isPlaying={player.isPlaying}
-                    currentTime={player.currentTime}
-                    duration={player.duration || player.currentSong.duration}
                     loading={player.loading}
                     onTogglePlay={player.togglePlay}
                     onSeek={player.seek}

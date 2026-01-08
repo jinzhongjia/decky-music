@@ -109,8 +109,6 @@ export const Router: FC<RouterProps> = ({
         <PlayerPage
           song={player.currentSong}
           isPlaying={player.isPlaying}
-          currentTime={player.currentTime}
-          duration={player.duration}
           volume={player.volume}
           loading={player.loading}
           error={player.error}

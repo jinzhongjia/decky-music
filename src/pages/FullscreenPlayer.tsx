@@ -7,7 +7,7 @@ import { setAuthLoggedIn, useAuthStatus } from "../features/auth";
 import { useDataManager } from "../features/data";
 import { useProvider } from "../hooks/useProvider";
 import { useMountedRef } from "../hooks/useMountedRef";
-import { usePlayer } from "../features/player";
+import { usePlayer, getAudioTime } from "../features/player";
 import { usePlayerStore } from "../stores";
 import { useAutoLoadGuessLike } from "../hooks/useAutoLoadGuessLike";
 import { seek as seekAction, togglePlay as togglePlayAction } from "../features/player/services/playbackService";
@@ -36,7 +36,6 @@ export const FullscreenPlayer: FC = () => {
 
   const currentSong = usePlayerStore((s) => s.currentSong);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const duration = usePlayerStore((s) => s.duration);
   const playMode = usePlayerStore((s) => s.playMode);
 
   const { preloadData } = dataManager;
@@ -57,6 +56,7 @@ export const FullscreenPlayer: FC = () => {
 
   const handleLyricSeek = useCallback((timeSec: number) => {
     if (!currentSong) return;
+    const { duration } = getAudioTime();
     const total = duration || currentSong.duration || 0;
     if (!total || !isFinite(total)) return;
     const clamped = Math.max(0, Math.min(timeSec, total));
@@ -64,7 +64,7 @@ export const FullscreenPlayer: FC = () => {
     if (!isPlaying) {
       togglePlayAction();
     }
-  }, [currentSong, duration, isPlaying]);
+  }, [currentSong, isPlaying]);
 
   const navigateToPage = setCurrentPage;
 
