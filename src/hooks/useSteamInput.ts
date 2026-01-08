@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PageType } from "../types";
-import type { usePlayer } from "./player";
+import type { usePlayer } from "../features/player";
 import { setActiveInputSource, isInputSourceActive } from "../utils/inputManager";
 
 interface UseSteamInputProps {

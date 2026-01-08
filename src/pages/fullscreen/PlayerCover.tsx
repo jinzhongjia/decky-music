@@ -1,7 +1,7 @@
 import React, { FC, memo } from "react";
 import { FaMusic } from "react-icons/fa";
 
-import { SafeImage } from "../../components/SafeImage";
+import { SafeImage } from "../../components/common";
 import type { SongInfo } from "../../types";
 
 interface PlayerCoverProps {

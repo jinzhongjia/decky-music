@@ -1,7 +1,7 @@
 import { FC, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
-import { getAudioCurrentTime } from "../../hooks/player";
+import { getAudioCurrentTime } from "../../features/player";
 import type { ParsedLyric } from "../../utils/lyricParser";
 import { QrcLine, LrcLine } from "./LyricLine";
 

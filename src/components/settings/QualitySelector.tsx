@@ -3,7 +3,7 @@ import { PanelSection, PanelSectionRow, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
 
 import { saveFrontendSettings } from "../../api";
-import { setPreferredQuality } from "../../hooks/player";
+import { setPreferredQuality } from "../../features/player";
 import type { PreferredQuality } from "../../types";
 
 interface QualitySelectorProps {

@@ -1,6 +1,6 @@
 import { FC, memo } from "react";
 import { PanelSectionRow } from "@decky/ui";
-import { SafeImage } from "../SafeImage";
+import { SafeImage } from "../common";
 
 interface PlayerCoverProps {
   cover: string;

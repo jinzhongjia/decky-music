@@ -4,7 +4,7 @@
  */
 
 import { FC, memo } from "react";
-import { GuessLikeSection } from "../../components/GuessLikeSection";
+import { GuessLikeSection } from "../../components/song";
 import type { SongInfo } from "../../types";
 
 interface GuessLikePageProps {

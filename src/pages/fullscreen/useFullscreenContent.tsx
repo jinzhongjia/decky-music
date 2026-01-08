@@ -6,7 +6,7 @@ import { memo, useMemo, useRef } from "react";
 import { HistoryPage, PlaylistDetailPage, PlaylistsPage, SearchPage } from "../../components";
 import { GuessLikePage } from "./GuessLikePage";
 import type { SongInfo, PlaylistInfo } from "../../types";
-import type { UsePlayerReturn } from "../../hooks/player";
+import type { UsePlayerReturn } from "../../features/player";
 import type { UseDataManagerReturn } from "./types";
 
 const MemoSearchPage = memo(SearchPage);

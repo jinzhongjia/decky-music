@@ -5,8 +5,8 @@ import { PlayerCover } from "./PlayerCover";
 import { PlayerMeta } from "./PlayerMeta";
 import { PlayerProgress } from "./PlayerProgress";
 import { KaraokeLyrics } from "./KaraokeLyrics";
-import { usePlayerStore } from "../../hooks/player";
-import { togglePlay, playNext, playPrev, cyclePlayMode, seek } from "../../hooks/player/actions";
+import { usePlayerStore } from "../../stores";
+import { togglePlay, playNext, playPrev, cyclePlayMode, seek } from "../../features/player/services/playbackService";
 
 interface PlayerPageProps {
   playModeConfig: {
