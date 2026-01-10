@@ -9,8 +9,8 @@ import { getGlobalAudio, setGlobalVolume } from "../services/audioService";
 import {
   ensureFrontendSettingsLoaded,
   getFrontendSettingsCache,
-  loadPlayMode,
-  loadVolume,
+  loadPlayModeFromBackend,
+  loadVolumeFromBackend,
   loadQueueStateFromSettings,
 } from "../services/persistenceService";
 import { fetchLyricWithCache } from "../services/lyricService";
@@ -60,10 +60,10 @@ export function useSettingsRestoration(): void {
         }
       }
 
-      const restoredPlayMode = loadPlayMode();
+      const restoredPlayMode = await loadPlayModeFromBackend();
       store.setPlayMode(restoredPlayMode);
 
-      const restoredVolume = loadVolume();
+      const restoredVolume = await loadVolumeFromBackend();
       setGlobalVolume(restoredVolume);
       getGlobalAudio().volume = restoredVolume;
       store.setVolume(restoredVolume);

@@ -21,6 +21,8 @@ import type {
   LastProviderIdResponse,
   MainProviderIdResponse,
   FallbackProviderIdsResponse,
+  PlayModeResponse,
+  VolumeResponse,
   UpdateInfo,
   DownloadResult,
   PluginVersionResponse,
@@ -29,6 +31,7 @@ import type {
   ListProvidersResponse,
   SwitchProviderResponse,
   ProviderSelectionResponse,
+  PlayMode,
 } from "../types";
 
 // ==================== 登录相关 ====================
@@ -150,6 +153,22 @@ export const setFallbackProviderIds = callable<
   [providerIds: string[]],
   { success: boolean; error?: string }
 >("set_fallback_provider_ids");
+
+/** 获取播放模式 */
+export const getPlayMode = callable<[], PlayModeResponse>("get_play_mode");
+
+/** 设置播放模式 */
+export const setPlayMode = callable<[playMode: PlayMode], { success: boolean; error?: string }>(
+  "set_play_mode"
+);
+
+/** 获取音量 */
+export const getVolume = callable<[], VolumeResponse>("get_volume");
+
+/** 设置音量 */
+export const setVolume = callable<[volume: number], { success: boolean; error?: string }>(
+  "set_volume"
+);
 
 /** 手动清除插件数据（凭证与前端设置） */
 export const clearAllData = callable<[], { success: boolean; error?: string }>(

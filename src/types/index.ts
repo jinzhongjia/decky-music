@@ -48,6 +48,8 @@ export type {
   LastProviderIdResponse,
   MainProviderIdResponse,
   FallbackProviderIdsResponse,
+  PlayModeResponse,
+  VolumeResponse,
   UpdateInfo,
   DownloadResult,
   PluginVersionResponse,

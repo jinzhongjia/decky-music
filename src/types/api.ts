@@ -167,6 +167,18 @@ export interface FallbackProviderIdsResponse {
   error?: string;
 }
 
+export interface PlayModeResponse {
+  success: boolean;
+  playMode: "order" | "single" | "shuffle";
+  error?: string;
+}
+
+export interface VolumeResponse {
+  success: boolean;
+  volume: number;
+  error?: string;
+}
+
 // ==================== 更新相关 ====================
 
 export interface UpdateInfo {

@@ -169,6 +169,70 @@ class Plugin:
             decky.logger.error(f"设置 fallback provider IDs 失败: {e}")
             return {"success": False, "error": str(e)}
 
+    async def get_play_mode(self) -> dict[str, object]:
+        """获取播放模式"""
+        try:
+            settings = self.config.get_frontend_settings()
+            play_mode = settings.get("playMode", "order")
+            # 确保返回的是有效的播放模式
+            if play_mode not in ["order", "single", "shuffle"]:
+                play_mode = "order"
+            return {
+                "success": True,
+                "playMode": play_mode,
+            }
+        except Exception as e:
+            decky.logger.error(f"获取播放模式失败: {e}")
+            return {"success": False, "error": str(e), "playMode": "order"}
+
+    async def set_play_mode(self, play_mode: str) -> OperationResult:
+        """设置播放模式"""
+        try:
+            # 验证播放模式
+            if play_mode not in ["order", "single", "shuffle"]:
+                return {"success": False, "error": f"无效的播放模式: {play_mode}"}
+
+            settings = self.config.get_frontend_settings()
+            settings["playMode"] = play_mode
+            self.config.update_frontend_settings(settings)
+            return {"success": True}
+        except Exception as e:
+            decky.logger.error(f"设置播放模式失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def get_volume(self) -> dict[str, object]:
+        """获取音量"""
+        try:
+            settings = self.config.get_frontend_settings()
+            volume = settings.get("volume", 1.0)
+            # 确保音量在 0.0 到 1.0 之间
+            if not isinstance(volume, (int, float)):
+                volume = 1.0
+            volume = max(0.0, min(1.0, float(volume)))
+            return {
+                "success": True,
+                "volume": volume,
+            }
+        except Exception as e:
+            decky.logger.error(f"获取音量失败: {e}")
+            return {"success": False, "error": str(e), "volume": 1.0}
+
+    async def set_volume(self, volume: float) -> OperationResult:
+        """设置音量"""
+        try:
+            # 验证音量范围
+            if not isinstance(volume, (int, float)):
+                return {"success": False, "error": "音量必须是数字"}
+
+            volume = max(0.0, min(1.0, float(volume)))
+            settings = self.config.get_frontend_settings()
+            settings["volume"] = volume
+            self.config.update_frontend_settings(settings)
+            return {"success": True}
+        except Exception as e:
+            decky.logger.error(f"设置音量失败: {e}")
+            return {"success": False, "error": str(e)}
+
     async def get_provider_selection(self) -> dict[str, object]:
         """获取当前配置的主 Provider 和 fallback Provider（仅返回已登录的）"""
         return await self._manager.get_provider_selection(self.config)

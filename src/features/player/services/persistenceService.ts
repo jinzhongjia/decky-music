@@ -2,7 +2,7 @@
  * 持久化服务 - 管理前端设置的保存和加载
  */
 
-import { getFrontendSettings, saveFrontendSettings } from "../../../api";
+import { getFrontendSettings, saveFrontendSettings, getPlayMode as getPlayModeApi, setPlayMode as setPlayModeApi, getVolume as getVolumeApi, setVolume as setVolumeApi } from "../../../api";
 import type { FrontendSettings, PlayMode, PreferredQuality, StoredQueueState, SongInfo } from "../../../types";
 
 const DEFAULT_PREFERRED_QUALITY: PreferredQuality = "auto";
@@ -120,6 +120,40 @@ export function savePlayMode(mode: PlayMode): void {
   updateFrontendSettingsCache({ playMode: mode });
 }
 
+/**
+ * 从后端 API 加载播放模式
+ */
+export async function loadPlayModeFromBackend(): Promise<PlayMode> {
+  try {
+    const res = await getPlayModeApi();
+    if (res.success && res.playMode) {
+      // 同步更新本地缓存
+      updateFrontendSettingsCache({ playMode: res.playMode }, false);
+      return res.playMode;
+    }
+  } catch (error) {
+    console.error("Failed to load play mode from backend:", error);
+  }
+  return "order";
+}
+
+/**
+ * 保存播放模式到后端 API
+ */
+export async function savePlayModeToBackend(mode: PlayMode): Promise<boolean> {
+  try {
+    const res = await setPlayModeApi(mode);
+    if (res.success) {
+      // 同步更新本地缓存
+      updateFrontendSettingsCache({ playMode: mode }, false);
+      return true;
+    }
+  } catch (error) {
+    console.error("Failed to save play mode to backend:", error);
+  }
+  return false;
+}
+
 export function loadVolume(): number {
   const value = frontendSettings.volume;
   if (typeof value === "number") {
@@ -130,6 +164,40 @@ export function loadVolume(): number {
 
 export function saveVolume(volume: number): void {
   updateFrontendSettingsCache({ volume });
+}
+
+/**
+ * 从后端 API 加载音量
+ */
+export async function loadVolumeFromBackend(): Promise<number> {
+  try {
+    const res = await getVolumeApi();
+    if (res.success && typeof res.volume === "number") {
+      // 同步更新本地缓存
+      updateFrontendSettingsCache({ volume: res.volume }, false);
+      return res.volume;
+    }
+  } catch (error) {
+    console.error("Failed to load volume from backend:", error);
+  }
+  return 1.0;
+}
+
+/**
+ * 保存音量到后端 API
+ */
+export async function saveVolumeToBackend(volume: number): Promise<boolean> {
+  try {
+    const res = await setVolumeApi(volume);
+    if (res.success) {
+      // 同步更新本地缓存
+      updateFrontendSettingsCache({ volume }, false);
+      return true;
+    }
+  } catch (error) {
+    console.error("Failed to save volume to backend:", error);
+  }
+  return false;
 }
 
 export function enableSettingsSave(enabled: boolean): void {

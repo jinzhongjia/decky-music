@@ -186,13 +186,6 @@ class PlaylistSongsResponse(TypedDict, total=False):
 PlayMode = Literal["order", "single", "shuffle"]
 
 
-class SleepBackup(TypedDict):
-    batteryIdle: int
-    acIdle: int
-    batterySuspend: int
-    acSuspend: int
-
-
 class PlaylistState(TypedDict, total=False):
     playlist: list[SongInfo]
     currentIndex: int
@@ -205,7 +198,6 @@ class FrontendSettings(TypedDict, total=False):
     playlistState: PlaylistState
     playMode: PlayMode
     volume: float
-    sleepBackup: SleepBackup
     preferredQuality: PreferredQuality
 
 

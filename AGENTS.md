@@ -23,6 +23,8 @@ backend/           # 后端逻辑
 
 ## 前端遵守的项目架构
 
+项目使用 pnpm 进行包管理，使用 Rollup 进行构建，使用 Decky UI 进行 UI 开发。
+
 ```
 src/
 ├── api/          # 可复用的后端 api 调用封装

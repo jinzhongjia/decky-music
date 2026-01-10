@@ -90,11 +90,5 @@ export interface FrontendSettings {
   lastProviderId?: string;
   playMode?: PlayMode;
   volume?: number;
-  sleepBackup?: {
-    batteryIdle: number;
-    acIdle: number;
-    batterySuspend: number;
-    acSuspend: number;
-  };
   preferredQuality?: PreferredQuality;
 }
