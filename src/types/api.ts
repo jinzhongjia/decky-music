@@ -149,6 +149,24 @@ export interface FrontendSettingsResponse {
   settings: FrontendSettings;
 }
 
+export interface LastProviderIdResponse {
+  success: boolean;
+  lastProviderId: string | null;
+  error?: string;
+}
+
+export interface MainProviderIdResponse {
+  success: boolean;
+  mainProviderId: string | null;
+  error?: string;
+}
+
+export interface FallbackProviderIdsResponse {
+  success: boolean;
+  fallbackProviderIds: string[];
+  error?: string;
+}
+
 // ==================== 更新相关 ====================
 
 export interface UpdateInfo {

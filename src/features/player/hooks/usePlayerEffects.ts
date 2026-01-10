@@ -3,7 +3,7 @@
  */
 
 import { useEffect } from "react";
-import { getProviderInfo } from "../../../api";
+import { getProviderInfo, getLastProviderId } from "../../../api";
 import { usePlayerStore, getPlayerState } from "../../../stores";
 import { getGlobalAudio, setGlobalVolume } from "../services/audioService";
 import {
@@ -27,6 +27,10 @@ export function useSettingsRestoration(): void {
       await ensureFrontendSettingsLoaded();
       if (cancelled) return;
 
+      // 获取上次使用的 provider ID（用于日志或验证）
+      const lastProviderRes = await getLastProviderId();
+      const lastProviderId = lastProviderRes.success ? lastProviderRes.lastProviderId : null;
+
       const providerRes = await getProviderInfo();
       if (!providerRes.success || !providerRes.provider) {
         usePlayerStore.getState().setSettingsRestored(true);
@@ -35,6 +39,12 @@ export function useSettingsRestoration(): void {
 
       const store = usePlayerStore.getState();
       const newProviderId = providerRes.provider.id;
+
+      // 如果当前 provider 与上次不同，可以在这里记录或处理
+      if (lastProviderId && lastProviderId !== newProviderId) {
+        console.log(`Provider changed from ${lastProviderId} to ${newProviderId}`);
+      }
+
       store.setCurrentProviderId(newProviderId);
 
       const frontendSettings = getFrontendSettingsCache();
