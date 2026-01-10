@@ -2,7 +2,7 @@
  * API 响应相关类型定义
  */
 
-import type { SongInfo, PlaylistInfo, FrontendSettings } from "./player";
+import type { SongInfo, PlaylistInfo, FrontendSettings, ParsedLyric } from "./player";
 import type { Capability, ProviderBasicInfo, ProviderFullInfo } from "./provider";
 
 // ==================== 登录相关 ====================
@@ -71,10 +71,11 @@ export interface SongUrlResponse {
 
 export interface SongLyricResponse {
   success: boolean;
-  lyric: string;
-  trans: string;
-  mid: string;
+  parsed: ParsedLyric; // 解析后的歌词（替代原 lyric 和 trans 字段）
+  mid?: string;
   fallback_provider?: string;
+  original_provider?: string;
+  qrc?: boolean;
   error?: string;
 }
 
@@ -176,6 +177,22 @@ export interface PlayModeResponse {
 export interface VolumeResponse {
   success: boolean;
   volume: number;
+  error?: string;
+}
+
+export interface PreferredQualityResponse {
+  success: boolean;
+  preferredQuality: "auto" | "high" | "balanced" | "compat";
+  error?: string;
+}
+
+export interface ProviderQueueResponse {
+  success: boolean;
+  queue: {
+    playlist: Array<Record<string, unknown>>;
+    currentIndex: number;
+    currentMid?: string;
+  };
   error?: string;
 }
 

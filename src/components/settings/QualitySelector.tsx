@@ -2,8 +2,7 @@ import { FC, useCallback, useState } from "react";
 import { PanelSection, PanelSectionRow, Focusable } from "@decky/ui";
 import { toaster } from "@decky/api";
 
-import { saveFrontendSettings } from "../../api";
-import { setPreferredQuality } from "../../features/player";
+import { setPreferredQuality as setPreferredQualityApi } from "../../api";
 import type { PreferredQuality } from "../../types";
 
 interface QualitySelectorProps {
@@ -28,13 +27,16 @@ export const QualitySelector: FC<QualitySelectorProps> = ({ value, onChange }) =
   const handleQualityChange = useCallback(
     async (newValue: PreferredQuality) => {
       onChange(newValue);
-      setPreferredQuality(newValue);
       try {
-        await saveFrontendSettings({ preferredQuality: newValue });
-        toaster.toast({
-          title: "音质偏好已更新",
-          body: QUALITY_OPTIONS.find((o) => o.value === newValue)?.label,
-        });
+        const res = await setPreferredQualityApi(newValue);
+        if (res.success) {
+          toaster.toast({
+            title: "音质偏好已更新",
+            body: QUALITY_OPTIONS.find((o) => o.value === newValue)?.label,
+          });
+        } else {
+          toaster.toast({ title: "保存失败", body: res.error || "未知错误" });
+        }
       } catch (e) {
         toaster.toast({ title: "保存失败", body: (e as Error).message });
       }

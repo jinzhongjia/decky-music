@@ -2,7 +2,7 @@ import { memo, useCallback } from "react";
 import type { CSSProperties, KeyboardEvent, RefObject } from "react";
 import { Focusable } from "@decky/ui";
 
-import type { QrcLyricLine, LyricWord } from "../../utils/lyricParser";
+import type { QrcLyricLine, LyricWord } from "../../types/player";
 
 export interface QrcLineProps {
   line: QrcLyricLine;

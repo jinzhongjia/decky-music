@@ -50,6 +50,8 @@ export type {
   FallbackProviderIdsResponse,
   PlayModeResponse,
   VolumeResponse,
+  PreferredQualityResponse,
+  ProviderQueueResponse,
   UpdateInfo,
   DownloadResult,
   PluginVersionResponse,

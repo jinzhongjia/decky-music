@@ -23,6 +23,8 @@ import type {
   FallbackProviderIdsResponse,
   PlayModeResponse,
   VolumeResponse,
+  PreferredQualityResponse,
+  ProviderQueueResponse,
   UpdateInfo,
   DownloadResult,
   PluginVersionResponse,
@@ -169,6 +171,26 @@ export const getVolume = callable<[], VolumeResponse>("get_volume");
 export const setVolume = callable<[volume: number], { success: boolean; error?: string }>(
   "set_volume"
 );
+
+/** 获取首选音质 */
+export const getPreferredQuality = callable<[], PreferredQualityResponse>("get_preferred_quality");
+
+/** 设置首选音质 */
+export const setPreferredQuality = callable<
+  [quality: PreferredQuality],
+  { success: boolean; error?: string }
+>("set_preferred_quality");
+
+/** 获取指定 Provider 的队列状态 */
+export const getProviderQueue = callable<[providerId: string], ProviderQueueResponse>(
+  "get_provider_queue"
+);
+
+/** 保存指定 Provider 的队列状态 */
+export const saveProviderQueue = callable<
+  [providerId: string, playlist: Array<Record<string, unknown>>, currentIndex: number, currentMid?: string],
+  { success: boolean; error?: string }
+>("save_provider_queue");
 
 /** 手动清除插件数据（凭证与前端设置） */
 export const clearAllData = callable<[], { success: boolean; error?: string }>(

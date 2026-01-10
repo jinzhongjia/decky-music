@@ -33,7 +33,6 @@ export function useAppLogicNew() {
     playSong,
     setOnNeedMoreSongs,
     addToQueue,
-    enableSettingsSave,
     resetAllState,
   } = player;
 
@@ -71,14 +70,12 @@ export function useAppLogicNew() {
   }, [checkLoginStatus]);
 
   const handleLoginSuccess = useCallback(() => {
-    enableSettingsSave(true);
     setLoggedIn(true);
     setCurrentPage("home");
     menuManager.enable();
-  }, [enableSettingsSave, setLoggedIn, setCurrentPage]);
+  }, [setLoggedIn, setCurrentPage]);
 
   const handleLogout = useCallback(async () => {
-    enableSettingsSave(false);
     await logout();
     player.clearCurrentQueue();
     clearRecommendCache();
@@ -86,7 +83,7 @@ export function useAppLogicNew() {
     menuManager.disable();
     setCurrentPage("login");
     setLoggedIn(false);
-  }, [enableSettingsSave, player, setCurrentPage, setLoggedIn]);
+  }, [player, setCurrentPage, setLoggedIn]);
 
   const fetchMoreGuessLikeSongs = useCallback(async (): Promise<SongInfo[]> => {
     const songs = await fetchGuessLikeRaw();
@@ -121,7 +118,6 @@ export function useAppLogicNew() {
       throw new Error(res.error || "清除失败");
     }
 
-    enableSettingsSave(false);
     resetAllState();
     clearDataCache();
     menuManager.disable();
@@ -129,7 +125,7 @@ export function useAppLogicNew() {
     setCurrentPage("login");
     setLoggedIn(false);
     return true;
-  }, [enableSettingsSave, resetAllState, setSelectedPlaylist, setCurrentPage, setLoggedIn]);
+  }, [resetAllState, setSelectedPlaylist, setCurrentPage, setLoggedIn]);
 
   const handleSelectPlaylist = useCallback(
     (playlist: PlaylistInfo) => {

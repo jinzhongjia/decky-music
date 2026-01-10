@@ -3,7 +3,7 @@ import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaTrash, FaMusic } from "react-icons/fa";
 
-import { getPluginVersion, getFrontendSettings } from "../../api";
+import { getPluginVersion, getPreferredQuality } from "../../api";
 import { useMountedRef } from "../../hooks/useMountedRef";
 import { useProvider } from "../../hooks/useProvider";
 import type { PreferredQuality } from "../../types";
@@ -41,9 +41,9 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
   const loadPreferredQuality = useCallback(async () => {
     try {
-      const res = await getFrontendSettings();
+      const res = await getPreferredQuality();
       if (!mountedRef.current) return;
-      const value = res.settings?.preferredQuality;
+      const value = res.preferredQuality;
       if (value === "auto" || value === "high" || value === "balanced" || value === "compat") {
         setPreferredQuality(value);
       }

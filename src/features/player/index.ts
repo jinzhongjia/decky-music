@@ -3,7 +3,7 @@
  */
 
 // Hooks
-export { usePlayer, cleanupPlayer, getAudioCurrentTime, setPreferredQuality } from "./hooks/usePlayer";
+export { usePlayer, cleanupPlayer, getAudioCurrentTime } from "./hooks/usePlayer";
 export type { UsePlayerReturn } from "./hooks/usePlayer";
 export { usePlayerEffects } from "./hooks/usePlayerEffects";
 export { useAudioTime, useAudioTimeRAF, getAudioTime } from "./hooks/useAudioTime";
@@ -26,8 +26,9 @@ export {
   setVolume,
   resetAllState,
   setOnNeedMoreSongs,
-  enableSettingsSave,
   initPlayNextHandler,
+  getPreferredQuality,
+  initializePreferredQuality,
 } from "./services/playbackService";
 
 export {
@@ -37,13 +38,6 @@ export {
   broadcastPlayerState,
   subscribePlayerState,
 } from "./services/queueService";
-
-export {
-  ensureFrontendSettingsLoaded,
-  getFrontendSettingsCache,
-  updateFrontendSettingsCache,
-  getPreferredQuality,
-} from "./services/persistenceService";
 
 export { fetchLyricWithCache } from "./services/lyricService";
 export { getGlobalAudio, cleanupAudio, setGlobalVolume } from "./services/audioService";

@@ -4,17 +4,19 @@
 
 import { toaster } from "@decky/api";
 import { getSongUrl } from "../../../api";
-import type { SongInfo, PlayMode } from "../../../types";
+import type { SongInfo, PlayMode, PreferredQuality } from "../../../types";
 import { usePlayerStore, getPlayerState } from "../../../stores";
-import { getGlobalAudio, setGlobalVolume as setAudioVolume, setGlobalEndedHandler } from "./audioService";
 import {
-  getPreferredQuality,
-  getFrontendSettingsCache,
-  updateFrontendSettingsCache,
-  savePlayMode,
-  saveVolume,
-  resetSettingsCache,
-  enableSettingsSave as setSettingsSaveEnabled,
+  getGlobalAudio,
+  setGlobalVolume as setAudioVolume,
+  setGlobalEndedHandler,
+  setGlobalErrorHandler,
+} from "./audioService";
+import {
+  savePlayModeToBackend,
+  saveVolumeToBackend,
+  saveProviderQueueToBackend,
+  loadPreferredQualityFromBackend,
 } from "./persistenceService";
 import { fetchLyricWithCache } from "./lyricService";
 import {
@@ -28,8 +30,20 @@ import {
 } from "./shuffleService";
 
 let skipTimeoutId: ReturnType<typeof setTimeout> | null = null;
+let loadTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let onNeedMoreSongsCallback: (() => Promise<SongInfo[]>) | null = null;
 let onPlayNextCallback: (() => void) | null = null;
+let preferredQuality: PreferredQuality = "auto";
+
+const AUDIO_LOAD_TIMEOUT = 15000; // 15秒超时
+
+export function getPreferredQuality(): PreferredQuality {
+  return preferredQuality;
+}
+
+export async function initializePreferredQuality(): Promise<void> {
+  preferredQuality = await loadPreferredQualityFromBackend();
+}
 
 function clearSkipTimeout(): void {
   if (skipTimeoutId) {
@@ -46,16 +60,26 @@ function setSkipTimeout(callback: () => void): void {
   }, 2000);
 }
 
-function saveQueueState(providerId: string): void {
+function clearLoadTimeout(): void {
+  if (loadTimeoutId) {
+    clearTimeout(loadTimeoutId);
+    loadTimeoutId = null;
+  }
+}
+
+function setLoadTimeout(callback: () => void): void {
+  clearLoadTimeout();
+  loadTimeoutId = setTimeout(() => {
+    loadTimeoutId = null;
+    callback();
+  }, AUDIO_LOAD_TIMEOUT);
+}
+
+async function saveQueueState(providerId: string): Promise<void> {
   if (!providerId) return;
   const { playlist, currentIndex } = getPlayerState();
-  const frontendSettings = getFrontendSettingsCache();
-  updateFrontendSettingsCache({
-    providerQueues: {
-      ...(frontendSettings.providerQueues || {}),
-      [providerId]: { playlist, currentIndex, currentMid: playlist[currentIndex]?.mid },
-    },
-  });
+  const currentMid = playlist[currentIndex]?.mid;
+  await saveProviderQueueToBackend(providerId, playlist, currentIndex, currentMid);
 }
 
 async function playSongInternal(
@@ -67,6 +91,7 @@ async function playSongInternal(
   const store = usePlayerStore.getState();
 
   clearSkipTimeout();
+  clearLoadTimeout();
 
   const wasSameSong = store.currentSong?.mid === song.mid;
 
@@ -85,19 +110,22 @@ async function playSongInternal(
   }
 
   const { playlist, currentIndex, currentProviderId } = getPlayerState();
-  const frontendSettings = getFrontendSettingsCache();
   if (currentProviderId) {
-    updateFrontendSettingsCache({
-      providerQueues: {
-        ...(frontendSettings.providerQueues || {}),
-        [currentProviderId]: {
-          playlist,
-          currentIndex,
-          currentMid: playlist[currentIndex]?.mid,
-        },
-      },
-    });
+    const currentMid = playlist[currentIndex]?.mid;
+    void saveProviderQueueToBackend(currentProviderId, playlist, currentIndex, currentMid);
   }
+
+  // 设置音频错误处理器
+  setGlobalErrorHandler((errorMsg: string, shouldAutoSkip: boolean) => {
+    store.setError(errorMsg);
+    store.setLoading(false);
+    toaster.toast({ title: `${song.name}`, body: errorMsg });
+
+    // 只有明确是歌曲文件问题时才自动跳过
+    if (shouldAutoSkip && autoSkipOnError && playlist.length > 1 && onPlayNextCallback) {
+      setSkipTimeout(onPlayNextCallback);
+    }
+  });
 
   try {
     const urlResult = await getSongUrl(song.mid, getPreferredQuality(), song.name, song.singer);
@@ -121,11 +149,24 @@ async function playSongInternal(
     audio.src = urlResult.url;
     audio.load();
 
+    // 设置加载超时保护
+    setLoadTimeout(() => {
+      store.setError("音频加载超时");
+      store.setLoading(false);
+      toaster.toast({
+        title: `${song.name}`,
+        body: "音频加载超时，可能是网络问题\n请手动切换下一首或重试",
+      });
+      // 超时不自动跳过，避免网络慢时连续触发
+    });
+
     try {
       await audio.play();
+      clearLoadTimeout(); // 播放成功，清除超时
       store.setIsPlaying(true);
       store.setLoading(false);
     } catch (e) {
+      clearLoadTimeout(); // 播放失败，清除超时
       const errorMsg = (e as Error).message;
       store.setError(errorMsg);
       store.setLoading(false);
@@ -148,7 +189,11 @@ async function playSongInternal(
     const errorMsg = (e as Error).message;
     store.setError(errorMsg);
     store.setLoading(false);
-    toaster.toast({ title: "播放出错", body: errorMsg });
+    toaster.toast({
+      title: "播放出错",
+      body: `${errorMsg}\n这可能是网络或服务问题，请检查后重试`,
+    });
+    // 意外错误不自动跳过，避免连续触发系统性问题
     return false;
   }
 }
@@ -161,10 +206,6 @@ export function getOnNeedMoreSongs(): (() => Promise<SongInfo[]>) | null {
   return onNeedMoreSongsCallback;
 }
 
-export function enableSettingsSave(enabled: boolean): void {
-  setSettingsSaveEnabled(enabled);
-}
-
 export async function playSong(song: SongInfo): Promise<void> {
   const store = usePlayerStore.getState();
   const { currentSong, currentIndex, currentProviderId } = getPlayerState();
@@ -173,7 +214,7 @@ export async function playSong(song: SongInfo): Promise<void> {
     store.setPlaylist([song]);
     store.setCurrentIndex(0);
     syncShuffleAfterPlaylistChange(0);
-    saveQueueState(currentProviderId);
+    void saveQueueState(currentProviderId);
     await playSongInternal(song, 0, false);
     return;
   }
@@ -188,7 +229,7 @@ export async function playSong(song: SongInfo): Promise<void> {
   store.setPlaylist(newPlaylist);
   store.setCurrentIndex(newIndex);
   syncShuffleAfterPlaylistChange(newIndex);
-  saveQueueState(currentProviderId);
+  void saveQueueState(currentProviderId);
   await playSongInternal(song, newIndex, false);
 }
 
@@ -202,7 +243,7 @@ export async function playPlaylist(songs: SongInfo[], startIndex: number = 0): P
     store.setPlaylist(songs);
     store.setCurrentIndex(startIndex);
     syncShuffleAfterPlaylistChange(startIndex);
-    saveQueueState(currentProviderId);
+    void saveQueueState(currentProviderId);
     await playSongInternal(songs[startIndex], startIndex, false);
     return;
   }
@@ -232,7 +273,7 @@ export async function playPlaylist(songs: SongInfo[], startIndex: number = 0): P
       store.setPlaylist(cleaned);
       store.setCurrentIndex(targetIdx);
       syncShuffleAfterPlaylistChange(targetIdx);
-      saveQueueState(currentProviderId);
+      void saveQueueState(currentProviderId);
       await playSongInternal(cleaned[targetIdx], targetIdx, false);
     }
     return;
@@ -247,7 +288,7 @@ export async function playPlaylist(songs: SongInfo[], startIndex: number = 0): P
   store.setPlaylist(newPlaylist);
   store.setCurrentIndex(newIndex);
   syncShuffleAfterPlaylistChange(newIndex);
-  saveQueueState(currentProviderId);
+  void saveQueueState(currentProviderId);
   await playSongInternal(newPlaylist[newIndex], newIndex, false);
 }
 
@@ -269,12 +310,12 @@ export async function addToQueue(songs: SongInfo[]): Promise<void> {
     const newIndices = songsToAdd.map((_, idx) => prevLength + idx);
     handleShuffleAdd(newIndices);
   }
-  saveQueueState(currentProviderId);
+  void saveQueueState(currentProviderId);
 
   if (!currentSong || currentIndex < 0) {
     store.setCurrentIndex(0);
     syncShuffleAfterPlaylistChange(0);
-    saveQueueState(currentProviderId);
+    void saveQueueState(currentProviderId);
     await playSongInternal(newPlaylist[0], 0, false);
   }
 }
@@ -294,7 +335,7 @@ export function removeFromQueue(index: number): void {
   }
 
   store.setPlaylist(newPlaylist);
-  saveQueueState(currentProviderId);
+  void saveQueueState(currentProviderId);
 }
 
 export async function playAtIndex(index: number): Promise<void> {
@@ -312,7 +353,7 @@ export async function playAtIndex(index: number): Promise<void> {
   store.setCurrentIndex(index);
   const song = playlist[index];
   await playSongInternal(song, index, true);
-  saveQueueState(currentProviderId);
+  void saveQueueState(currentProviderId);
 }
 
 export function togglePlay(): void {
@@ -355,6 +396,7 @@ export function stop(): void {
   audio.pause();
   audio.src = "";
   clearSkipTimeout();
+  clearLoadTimeout();
   onNeedMoreSongsCallback = null;
 
   store.setCurrentSong(null);
@@ -363,6 +405,7 @@ export function stop(): void {
   store.setCurrentTime(0);
   store.setDuration(0);
   store.setError("");
+  store.setLoading(false);
 }
 
 export async function playNext(): Promise<void> {
@@ -391,7 +434,7 @@ export async function playNext(): Promise<void> {
   }
   if (nextSong) {
     await playSongInternal(nextSong, targetIndex, true);
-    saveQueueState(currentProviderId);
+    void saveQueueState(currentProviderId);
   }
 }
 
@@ -422,7 +465,7 @@ export function playPrev(): void {
   const prevSong = playlist[targetIndex];
   if (prevSong) {
     void playSongInternal(prevSong, targetIndex, true);
-    saveQueueState(currentProviderId);
+    void saveQueueState(currentProviderId);
   }
 }
 
@@ -434,13 +477,7 @@ export function clearQueue(): void {
   store.setCurrentIndex(-1);
 
   if (currentProviderId) {
-    const frontendSettings = getFrontendSettingsCache();
-    updateFrontendSettingsCache({
-      providerQueues: {
-        ...(frontendSettings.providerQueues || {}),
-        [currentProviderId]: { playlist: [], currentIndex: -1 },
-      },
-    });
+    void saveProviderQueueToBackend(currentProviderId, [], -1);
   }
 }
 
@@ -452,7 +489,7 @@ export function clearCurrentQueue(): void {
 export function setPlayMode(mode: PlayMode): void {
   const store = usePlayerStore.getState();
   store.setPlayMode(mode);
-  savePlayMode(mode);
+  void savePlayModeToBackend(mode);
   if (mode === "shuffle") {
     const { currentIndex } = getPlayerState();
     syncShuffleAfterPlaylistChange(currentIndex);
@@ -469,21 +506,19 @@ export function setVolume(value: number, options?: { commit?: boolean }): void {
   const clamped = Math.min(1, Math.max(0, value));
   setAudioVolume(clamped);
   if (options?.commit) {
-    saveVolume(clamped);
+    void saveVolumeToBackend(clamped);
   }
 }
 
 export function resetAllState(): void {
   const store = usePlayerStore.getState();
 
-  setSettingsSaveEnabled(false);
   stop();
   clearQueue();
 
   store.setPlayMode("order");
   setAudioVolume(1);
   resetAllShuffleState();
-  resetSettingsCache();
 
   store.setSettingsRestored(false);
 }

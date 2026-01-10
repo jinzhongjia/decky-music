@@ -34,6 +34,39 @@ class PlaylistInfo(TypedDict, total=False):
     provider: str
 
 
+class LyricWord(TypedDict):
+    """QRC 格式的逐字信息"""
+
+    text: str
+    start: float  # 开始时间（秒）
+    duration: float  # 持续时间（秒）
+
+
+class LyricLine(TypedDict):
+    """LRC 格式的歌词行"""
+
+    time: int  # 毫秒
+    text: str  # 原文
+    trans: NotRequired[str]  # 翻译
+
+
+class QrcLyricLine(TypedDict):
+    """QRC 格式的歌词行（带逐字时间）"""
+
+    time: float  # 行开始时间（秒）
+    words: list[LyricWord]  # 逐字数组
+    text: str  # 完整文本（用于回退显示）
+    trans: NotRequired[str]  # 翻译
+
+
+class ParsedLyric(TypedDict):
+    """解析后的歌词"""
+
+    lines: list[LyricLine]  # LRC 格式行
+    qrcLines: NotRequired[list[QrcLyricLine]]  # QRC 格式行（如果有）
+    isQrc: bool  # 是否是 QRC 格式
+
+
 class HotKey(TypedDict):
     keyword: str
     score: int
@@ -129,8 +162,7 @@ class SongUrlBatchResponse(TypedDict, total=False):
 
 class SongLyricResponse(TypedDict, total=False):
     success: bool
-    lyric: str
-    trans: str
+    parsed: ParsedLyric  # 解析后的歌词（替代原 lyric 和 trans 字段）
     mid: NotRequired[str]
     fallback_provider: NotRequired[str]
     original_provider: NotRequired[str]
@@ -195,7 +227,6 @@ class PlaylistState(TypedDict, total=False):
 class FrontendSettings(TypedDict, total=False):
     providerQueues: NotRequired[dict[str, PlaylistState]]
     lastProviderId: NotRequired[str]
-    playlistState: PlaylistState
     playMode: PlayMode
     volume: float
     preferredQuality: PreferredQuality

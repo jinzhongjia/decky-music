@@ -3,7 +3,7 @@
  */
 
 // Player 功能
-export { usePlayer, cleanupPlayer, getAudioCurrentTime, setPreferredQuality } from "./player";
+export { usePlayer, cleanupPlayer, getAudioCurrentTime } from "./player";
 export type { UsePlayerReturn } from "./player";
 
 // Auth 功能

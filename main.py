@@ -57,6 +57,7 @@ from backend import (  # noqa: E402
     log_from_frontend,
     require_provider,
 )
+from backend.lyric_parser import parse_lyric  # noqa: E402
 from backend.types import FrontendSettingsResponse
 
 
@@ -233,6 +234,95 @@ class Plugin:
             decky.logger.error(f"设置音量失败: {e}")
             return {"success": False, "error": str(e)}
 
+    async def get_preferred_quality(self) -> dict[str, object]:
+        """获取首选音质"""
+        try:
+            settings = self.config.get_frontend_settings()
+            quality = settings.get("preferredQuality", "auto")
+            # 验证音质值
+            valid_qualities = ["auto", "high", "balanced", "compat"]
+            if quality not in valid_qualities:
+                quality = "auto"
+            return {
+                "success": True,
+                "preferredQuality": quality,
+            }
+        except Exception as e:
+            decky.logger.error(f"获取首选音质失败: {e}")
+            return {"success": False, "error": str(e), "preferredQuality": "auto"}
+
+    async def set_preferred_quality(self, quality: str) -> OperationResult:
+        """设置首选音质"""
+        try:
+            # 验证音质值
+            valid_qualities = ["auto", "high", "balanced", "compat"]
+            if quality not in valid_qualities:
+                return {"success": False, "error": f"无效的音质选项: {quality}"}
+
+            settings = self.config.get_frontend_settings()
+            settings["preferredQuality"] = quality
+            self.config.update_frontend_settings(settings)
+            return {"success": True}
+        except Exception as e:
+            decky.logger.error(f"设置首选音质失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def get_provider_queue(self, provider_id: str) -> dict[str, object]:
+        """获取指定 Provider 的队列状态"""
+        try:
+            settings = self.config.get_frontend_settings()
+            provider_queues = settings.get("providerQueues", {})
+
+            if not isinstance(provider_queues, dict):
+                provider_queues = {}
+
+            queue = provider_queues.get(provider_id, {})
+
+            # 确保返回的数据结构正确
+            if not isinstance(queue, dict):
+                queue = {}
+
+            return {
+                "success": True,
+                "queue": {
+                    "playlist": queue.get("playlist", []),
+                    "currentIndex": queue.get("currentIndex", -1),
+                    "currentMid": queue.get("currentMid"),
+                },
+            }
+        except Exception as e:
+            decky.logger.error(f"获取 Provider 队列失败: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "queue": {"playlist": [], "currentIndex": -1},
+            }
+
+    async def save_provider_queue(
+        self, provider_id: str, playlist: list[dict[str, object]], current_index: int, current_mid: str | None = None
+    ) -> OperationResult:
+        """保存指定 Provider 的队列状态"""
+        try:
+            settings = self.config.get_frontend_settings()
+            provider_queues = settings.get("providerQueues", {})
+
+            if not isinstance(provider_queues, dict):
+                provider_queues = {}
+
+            # 保存队列状态
+            provider_queues[provider_id] = {
+                "playlist": playlist,
+                "currentIndex": current_index,
+                "currentMid": current_mid,
+            }
+
+            settings["providerQueues"] = provider_queues
+            self.config.update_frontend_settings(settings)
+            return {"success": True}
+        except Exception as e:
+            decky.logger.error(f"保存 Provider 队列失败: {e}")
+            return {"success": False, "error": str(e)}
+
     async def get_provider_selection(self) -> dict[str, object]:
         """获取当前配置的主 Provider 和 fallback Provider（仅返回已登录的）"""
         return await self._manager.get_provider_selection(self.config)
@@ -370,11 +460,40 @@ class Plugin:
         singer: str | None = None,
     ) -> SongLyricResponse:
         if not self._provider:
-            return {"success": False, "error": "No active provider", "lyric": "", "trans": ""}
+            return {
+                "success": False,
+                "error": "No active provider",
+                "parsed": {"lines": [], "isQrc": False},
+            }
 
+        # Get raw lyric from provider
         if song_name and singer:
-            return await self._manager.get_song_lyric_with_fallback(mid, song_name, singer, qrc)
-        return await self._provider.get_song_lyric(mid, qrc)
+            result = await self._manager.get_song_lyric_with_fallback(mid, song_name, singer, qrc)
+        else:
+            result = await self._provider.get_song_lyric(mid, qrc)
+
+        # Parse the lyrics
+        if result.get("success"):
+            lyric_text = result.get("lyric", "")
+            trans_text = result.get("trans", "")
+            parsed = parse_lyric(lyric_text, trans_text)
+
+            # Return parsed response
+            return {
+                "success": True,
+                "parsed": parsed,
+                "mid": result.get("mid"),
+                "fallback_provider": result.get("fallback_provider"),
+                "original_provider": result.get("original_provider"),
+                "qrc": result.get("qrc"),
+            }
+        else:
+            # Return error with empty parsed structure
+            return {
+                "success": False,
+                "error": result.get("error", "Unknown error"),
+                "parsed": {"lines": [], "isQrc": False},
+            }
 
     @require_provider(info={})
     async def get_song_info(self, mid: str) -> SongInfoResponse:

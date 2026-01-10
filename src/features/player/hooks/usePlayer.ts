@@ -5,7 +5,6 @@
 import type { PlayMode, SongInfo, ParsedLyric } from "../../../types";
 import { usePlayerStore } from "../../../stores";
 import { cleanupAudio, getAudioCurrentTime } from "../services/audioService";
-import { setPreferredQuality } from "../services/persistenceService";
 import { resetAllShuffleState } from "../services/shuffleService";
 import { clearSkipTimeout } from "../services/playbackService";
 import {
@@ -31,7 +30,6 @@ import {
   setVolume,
   resetAllState,
   setOnNeedMoreSongs,
-  enableSettingsSave as enableSettingsSaveAction,
 } from "../services/playbackService";
 
 export function cleanupPlayer(): void {
@@ -71,7 +69,6 @@ export interface UsePlayerReturn {
   cyclePlayMode: () => void;
   setPlayMode: (mode: PlayMode) => void;
   setVolume: (volume: number, options?: { commit?: boolean }) => void;
-  enableSettingsSave: (enabled: boolean) => void;
   resetAllState: () => void;
   clearCurrentQueue: () => void;
 }
@@ -124,10 +121,9 @@ export function usePlayer(): UsePlayerReturn {
     cyclePlayMode,
     setPlayMode,
     setVolume,
-    enableSettingsSave: enableSettingsSaveAction,
     resetAllState,
     clearCurrentQueue,
   };
 }
 
-export { getAudioCurrentTime, setPreferredQuality };
+export { getAudioCurrentTime };

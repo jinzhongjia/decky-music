@@ -4,7 +4,7 @@
 
 import { usePlayerStore, getPlayerState } from "../../../stores";
 import type { SongInfo, PlayMode, ParsedLyric } from "../../../types";
-import { getFrontendSettingsCache, updateFrontendSettingsCache, loadQueueStateFromSettings } from "./persistenceService";
+import { loadProviderQueueFromBackend, saveProviderQueueToBackend } from "./persistenceService";
 
 // ==================== 回调管理 ====================
 
@@ -95,35 +95,20 @@ export function resetGlobalPlayerState(): void {
 
 // ==================== 队列状态持久化 ====================
 
-export function saveQueueState(providerId: string): void {
+export async function saveQueueState(providerId: string): Promise<void> {
   if (!providerId) return;
   const { playlist, currentIndex } = getPlayerState();
-  const frontendSettings = getFrontendSettingsCache();
-
-  updateFrontendSettingsCache({
-    providerQueues: {
-      ...(frontendSettings.providerQueues || {}),
-      [providerId]: { playlist, currentIndex, currentMid: playlist[currentIndex]?.mid },
-    },
-  });
+  const currentMid = playlist[currentIndex]?.mid;
+  await saveProviderQueueToBackend(providerId, playlist, currentIndex, currentMid);
 }
 
-export function clearQueueState(providerId: string): void {
+export async function clearQueueState(providerId: string): Promise<void> {
   if (!providerId) return;
-  const frontendSettings = getFrontendSettingsCache();
-  updateFrontendSettingsCache({
-    providerQueues: {
-      ...(frontendSettings.providerQueues || {}),
-      [providerId]: { playlist: [], currentIndex: -1 },
-    },
-  });
+  await saveProviderQueueToBackend(providerId, [], -1);
 }
 
 export async function restoreQueueForProvider(providerId: string): Promise<void> {
-  const { ensureFrontendSettingsLoaded } = await import("./persistenceService");
-  await ensureFrontendSettingsLoaded();
-  const frontendSettings = getFrontendSettingsCache();
-  const stored = loadQueueStateFromSettings(providerId, frontendSettings);
+  const stored = await loadProviderQueueFromBackend(providerId);
   const store = usePlayerStore.getState();
 
   if (stored.playlist.length > 0) {
@@ -140,7 +125,3 @@ export async function restoreQueueForProvider(providerId: string): Promise<void>
 
   broadcastPlayerState();
 }
-
-// ==================== 导出 loadQueueStateFromSettings ====================
-
-export { loadQueueStateFromSettings };

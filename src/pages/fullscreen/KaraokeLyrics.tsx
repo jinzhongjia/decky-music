@@ -2,7 +2,7 @@ import { FC, memo, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { CSSProperties } from "react";
 
 import { getAudioCurrentTime } from "../../features/player";
-import type { ParsedLyric } from "../../utils/lyricParser";
+import type { ParsedLyric } from "../../types/player";
 import { QrcLine, LrcLine } from "./LyricLine";
 
 interface KaraokeLyricsProps {

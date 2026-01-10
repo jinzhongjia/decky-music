@@ -7,14 +7,12 @@ import { getProviderInfo, getLastProviderId } from "../../../api";
 import { usePlayerStore, getPlayerState } from "../../../stores";
 import { getGlobalAudio, setGlobalVolume } from "../services/audioService";
 import {
-  ensureFrontendSettingsLoaded,
-  getFrontendSettingsCache,
   loadPlayModeFromBackend,
   loadVolumeFromBackend,
-  loadQueueStateFromSettings,
+  loadProviderQueueFromBackend,
 } from "../services/persistenceService";
 import { fetchLyricWithCache } from "../services/lyricService";
-import { initPlayNextHandler } from "../services/playbackService";
+import { initPlayNextHandler, initializePreferredQuality } from "../services/playbackService";
 
 export function useSettingsRestoration(): void {
   const settingsRestored = usePlayerStore((s) => s.settingsRestored);
@@ -24,9 +22,6 @@ export function useSettingsRestoration(): void {
     let cancelled = false;
 
     void (async () => {
-      await ensureFrontendSettingsLoaded();
-      if (cancelled) return;
-
       // 获取上次使用的 provider ID（用于日志或验证）
       const lastProviderRes = await getLastProviderId();
       const lastProviderId = lastProviderRes.success ? lastProviderRes.lastProviderId : null;
@@ -47,10 +42,11 @@ export function useSettingsRestoration(): void {
 
       store.setCurrentProviderId(newProviderId);
 
-      const frontendSettings = getFrontendSettingsCache();
+      // 加载队列状态
       const { playlist: storePlaylist } = getPlayerState();
       if (storePlaylist.length === 0) {
-        const stored = loadQueueStateFromSettings(newProviderId, frontendSettings);
+        const stored = await loadProviderQueueFromBackend(newProviderId);
+        if (cancelled) return;
         if (stored.playlist.length > 0) {
           store.setPlaylist([...stored.playlist]);
           const restoredIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
@@ -61,12 +57,18 @@ export function useSettingsRestoration(): void {
       }
 
       const restoredPlayMode = await loadPlayModeFromBackend();
+      if (cancelled) return;
       store.setPlayMode(restoredPlayMode);
 
       const restoredVolume = await loadVolumeFromBackend();
+      if (cancelled) return;
       setGlobalVolume(restoredVolume);
       getGlobalAudio().volume = restoredVolume;
       store.setVolume(restoredVolume);
+
+      // 初始化首选音质
+      await initializePreferredQuality();
+      if (cancelled) return;
 
       store.setSettingsRestored(true);
     })();
