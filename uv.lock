@@ -239,7 +239,7 @@ wheels = [
 ]
 
 [[package]]
-name = "decky-qqmusic"
+name = "decky-music"
 version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
