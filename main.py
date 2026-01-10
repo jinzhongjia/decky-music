@@ -103,6 +103,72 @@ class Plugin:
             decky.logger.error(f"保存前端设置失败: {e}")
             return {"success": False, "error": str(e)}
 
+    async def get_last_provider_id(self) -> dict[str, object]:
+        """获取上次使用的 provider ID"""
+        try:
+            settings = self.config.get_frontend_settings()
+            last_provider_id = settings.get("lastProviderId")
+            return {
+                "success": True,
+                "lastProviderId": last_provider_id if last_provider_id else None,
+            }
+        except Exception as e:
+            decky.logger.error(f"获取 last provider ID 失败: {e}")
+            return {"success": False, "error": str(e), "lastProviderId": None}
+
+    async def set_last_provider_id(self, provider_id: str) -> OperationResult:
+        """设置上次使用的 provider ID"""
+        try:
+            settings = self.config.get_frontend_settings()
+            settings["lastProviderId"] = provider_id
+            self.config.update_frontend_settings(settings)
+            return {"success": True}
+        except Exception as e:
+            decky.logger.error(f"设置 last provider ID 失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def get_main_provider_id(self) -> dict[str, object]:
+        """获取主 Provider ID"""
+        try:
+            main_provider_id = self.config.get_main_provider_id()
+            return {
+                "success": True,
+                "mainProviderId": main_provider_id if main_provider_id else None,
+            }
+        except Exception as e:
+            decky.logger.error(f"获取 main provider ID 失败: {e}")
+            return {"success": False, "error": str(e), "mainProviderId": None}
+
+    async def set_main_provider_id(self, provider_id: str) -> OperationResult:
+        """设置主 Provider ID"""
+        try:
+            self.config.set_main_provider_id(provider_id)
+            return {"success": True}
+        except Exception as e:
+            decky.logger.error(f"设置 main provider ID 失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def get_fallback_provider_ids(self) -> dict[str, object]:
+        """获取 Fallback Provider IDs"""
+        try:
+            fallback_ids = self.config.get_fallback_provider_ids()
+            return {
+                "success": True,
+                "fallbackProviderIds": fallback_ids,
+            }
+        except Exception as e:
+            decky.logger.error(f"获取 fallback provider IDs 失败: {e}")
+            return {"success": False, "error": str(e), "fallbackProviderIds": []}
+
+    async def set_fallback_provider_ids(self, provider_ids: list[str]) -> OperationResult:
+        """设置 Fallback Provider IDs"""
+        try:
+            self.config.set_fallback_provider_ids(provider_ids)
+            return {"success": True}
+        except Exception as e:
+            decky.logger.error(f"设置 fallback provider IDs 失败: {e}")
+            return {"success": False, "error": str(e)}
+
     async def get_provider_selection(self) -> dict[str, object]:
         """获取当前配置的主 Provider 和 fallback Provider（仅返回已登录的）"""
         return await self._manager.get_provider_selection(self.config)
@@ -125,7 +191,10 @@ class Plugin:
     async def switch_provider(self, provider_id: str) -> SwitchProviderResponse:
         try:
             self._manager.switch(provider_id)
-            self.config.set_main_provider_id(provider_id)
+            # 设置主 provider ID
+            await self.set_main_provider_id(provider_id)
+            # 同时更新 frontend settings 中的 lastProviderId
+            await self.set_last_provider_id(provider_id)
             return {"success": True}
         except ValueError as e:
             return {"success": False, "error": str(e)}
@@ -281,6 +350,10 @@ class Plugin:
         await self._manager.apply_provider_config(self.config)
         if self._provider:
             decky.logger.info(f"当前 Provider: {self._provider.name}")
+            # 保存初始 provider ID 到 frontend settings
+            last_provider_res = await self.get_last_provider_id()
+            if not (last_provider_res.get("success") and last_provider_res.get("lastProviderId")):
+                await self.set_last_provider_id(self._provider.id)
 
     async def _unload(self):
         decky.logger.info("Decky Music 插件正在卸载")

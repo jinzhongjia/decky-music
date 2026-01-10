@@ -18,6 +18,9 @@ import type {
   UserPlaylistsResponse,
   PlaylistSongsResponse,
   FrontendSettingsResponse,
+  LastProviderIdResponse,
+  MainProviderIdResponse,
+  FallbackProviderIdsResponse,
   UpdateInfo,
   DownloadResult,
   PluginVersionResponse,
@@ -120,6 +123,33 @@ export const saveFrontendSettings = callable<
   [settings: Record<string, unknown>],
   { success: boolean }
 >("save_frontend_settings");
+
+/** 获取上次使用的 Provider ID */
+export const getLastProviderId = callable<[], LastProviderIdResponse>("get_last_provider_id");
+
+/** 设置上次使用的 Provider ID */
+export const setLastProviderId = callable<[providerId: string], { success: boolean; error?: string }>(
+  "set_last_provider_id"
+);
+
+/** 获取主 Provider ID */
+export const getMainProviderId = callable<[], MainProviderIdResponse>("get_main_provider_id");
+
+/** 设置主 Provider ID */
+export const setMainProviderId = callable<[providerId: string], { success: boolean; error?: string }>(
+  "set_main_provider_id"
+);
+
+/** 获取 Fallback Provider IDs */
+export const getFallbackProviderIds = callable<[], FallbackProviderIdsResponse>(
+  "get_fallback_provider_ids"
+);
+
+/** 设置 Fallback Provider IDs */
+export const setFallbackProviderIds = callable<
+  [providerIds: string[]],
+  { success: boolean; error?: string }
+>("set_fallback_provider_ids");
 
 /** 手动清除插件数据（凭证与前端设置） */
 export const clearAllData = callable<[], { success: boolean; error?: string }>(

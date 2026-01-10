@@ -200,6 +200,8 @@ class PlaylistState(TypedDict, total=False):
 
 
 class FrontendSettings(TypedDict, total=False):
+    providerQueues: NotRequired[dict[str, PlaylistState]]
+    lastProviderId: NotRequired[str]
     playlistState: PlaylistState
     playMode: PlayMode
     volume: float
