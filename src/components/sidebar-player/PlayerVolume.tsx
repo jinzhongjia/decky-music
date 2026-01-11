@@ -24,6 +24,7 @@ const PlayerVolumeComponent: FC<PlayerVolumeProps> = ({
 }) => {
   const displayVolume = volumeDraft ?? volume;
   const volumePercent = Math.round(displayVolume * 100);
+  const isLowVolume = displayVolume < 0.1;
 
   return (
     <PanelSectionRow>
@@ -38,7 +39,10 @@ const PlayerVolumeComponent: FC<PlayerVolumeProps> = ({
           }}
         >
           <span>音量</span>
-          <span>{volumePercent}%</span>
+          <span style={{ color: isLowVolume ? "#f59e0b" : COLORS.textSecondary }}>
+            {volumePercent}%
+            {isLowVolume && " ⚠"}
+          </span>
         </div>
         <div
           ref={barRef}

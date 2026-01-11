@@ -225,7 +225,9 @@ class Plugin:
             if not isinstance(volume, (int, float)):
                 return {"success": False, "error": "音量必须是数字"}
 
-            volume = max(0.0, min(1.0, float(volume)))
+            # 限制最小音量为 5%，避免完全静音造成用户困惑
+            MIN_VOLUME = 0.05
+            volume = max(MIN_VOLUME, min(1.0, float(volume)))
             settings = self.config.get_frontend_settings()
             settings["volume"] = volume
             self.config.update_frontend_settings(settings)

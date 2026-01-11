@@ -79,7 +79,9 @@ export async function loadVolumeFromBackend(): Promise<number> {
   try {
     const res = await getVolumeApi();
     if (res.success && typeof res.volume === "number") {
-      return res.volume;
+      // 如果音量过低（< 5%），使用默认值避免用户困惑
+      const MIN_VOLUME = 0.05;
+      return res.volume < MIN_VOLUME ? 1.0 : res.volume;
     }
   } catch (error) {
     console.error("Failed to load volume from backend:", error);

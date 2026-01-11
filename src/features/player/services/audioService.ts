@@ -85,7 +85,9 @@ export function getAudioCurrentTime(): number {
 }
 
 export function setGlobalVolume(volume: number): void {
-  const clamped = Math.min(1, Math.max(0, volume));
+  // 限制最小音量为 5%，避免完全静音造成用户困惑
+  const MIN_VOLUME = 0.05;
+  const clamped = Math.min(1, Math.max(MIN_VOLUME, volume));
   globalVolume = clamped;
   const audio = getGlobalAudio();
   if (audio.volume !== clamped) {

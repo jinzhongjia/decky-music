@@ -351,15 +351,16 @@ class NeteaseProvider(MusicProvider):
         try:
             song_id = int(mid)
 
+            # FLAC 格式需要使用 lossless/hires 音质等级
             level_map = {
-                "high": "exhigh",
-                "balanced": "standard",
-                "compat": "standard",
-                "auto": "exhigh",
+                "high": "lossless",  # 高音质使用无损
+                "balanced": "lossless",  # 平衡音质使用无损
+                "compat": "higher",  # 兼容模式使用较高音质
+                "auto": "lossless",  # 自动使用无损
             }
-            level = level_map.get(preferred_quality or "auto", "exhigh")
+            level = level_map.get(preferred_quality or "auto", "lossless")
 
-            result_raw = track.GetTrackAudioV1([song_id], level=level, encodeType="aac")
+            result_raw = track.GetTrackAudioV1([song_id], level=level, encodeType="flac")
             # EapiCryptoRequest 装饰器实际返回 dict，但类型检查器认为是 tuple
             result = cast(dict[str, object], result_raw)
 
