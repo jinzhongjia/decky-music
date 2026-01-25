@@ -26,6 +26,8 @@ from backend.types import (  # noqa: E402
     LoginStatusResponse,
     OperationResult,
     PlaylistSongsResponse,
+    PlaylistState,
+    PlayMode,
     PluginVersionResponse,
     PreferredQuality,
     ProviderInfoResponse,
@@ -35,6 +37,7 @@ from backend.types import (  # noqa: E402
     RecommendResponse,
     SearchResponse,
     SearchSuggestResponse,
+    SongInfo,
     SongInfoResponse,
     SongLyricResponse,
     SongUrlBatchResponse,
@@ -190,11 +193,12 @@ class Plugin:
         """设置播放模式"""
         try:
             # 验证播放模式
-            if play_mode not in ["order", "single", "shuffle"]:
+            valid_modes: list[PlayMode] = ["order", "single", "shuffle"]
+            if play_mode not in valid_modes:
                 return {"success": False, "error": f"无效的播放模式: {play_mode}"}
 
             settings = self.config.get_frontend_settings()
-            settings["playMode"] = play_mode
+            settings["playMode"] = cast(PlayMode, play_mode)
             self.config.update_frontend_settings(settings)
             return {"success": True}
         except Exception as e:
@@ -257,12 +261,12 @@ class Plugin:
         """设置首选音质"""
         try:
             # 验证音质值
-            valid_qualities = ["auto", "high", "balanced", "compat"]
+            valid_qualities: list[PreferredQuality] = ["auto", "high", "balanced", "compat"]
             if quality not in valid_qualities:
                 return {"success": False, "error": f"无效的音质选项: {quality}"}
 
             settings = self.config.get_frontend_settings()
-            settings["preferredQuality"] = quality
+            settings["preferredQuality"] = cast(PreferredQuality, quality)
             self.config.update_frontend_settings(settings)
             return {"success": True}
         except Exception as e:
@@ -301,7 +305,7 @@ class Plugin:
             }
 
     async def save_provider_queue(
-        self, provider_id: str, playlist: list[dict[str, object]], current_index: int, current_mid: str | None = None
+        self, provider_id: str, playlist: list[SongInfo], current_index: int, current_mid: str | None = None
     ) -> OperationResult:
         """保存指定 Provider 的队列状态"""
         try:
@@ -312,11 +316,14 @@ class Plugin:
                 provider_queues = {}
 
             # 保存队列状态
-            provider_queues[provider_id] = {
+            queue_state: PlaylistState = {
                 "playlist": playlist,
                 "currentIndex": current_index,
-                "currentMid": current_mid,
             }
+            if current_mid is not None:
+                queue_state["currentMid"] = current_mid
+
+            provider_queues[provider_id] = queue_state
 
             settings["providerQueues"] = provider_queues
             self.config.update_frontend_settings(settings)
@@ -480,15 +487,23 @@ class Plugin:
             trans_text = result.get("trans", "")
             parsed = parse_lyric(lyric_text, trans_text)
 
-            # Return parsed response
-            return {
+            # Build response with only non-None optional fields
+            response: SongLyricResponse = {
                 "success": True,
                 "parsed": parsed,
-                "mid": result.get("mid"),
-                "fallback_provider": result.get("fallback_provider"),
-                "original_provider": result.get("original_provider"),
-                "qrc": result.get("qrc"),
             }
+            # Use cast since result is a dict with dynamic keys from provider
+            result_dict = cast(dict[str, object], result)
+            if result_dict.get("mid") is not None:
+                response["mid"] = cast(str, result_dict["mid"])
+            if result_dict.get("fallback_provider") is not None:
+                response["fallback_provider"] = cast(str, result_dict["fallback_provider"])
+            if result_dict.get("original_provider") is not None:
+                response["original_provider"] = cast(str, result_dict["original_provider"])
+            if result_dict.get("qrc") is not None:
+                response["qrc"] = cast(bool, result_dict["qrc"])
+
+            return response
         else:
             # Return error with empty parsed structure
             return {
