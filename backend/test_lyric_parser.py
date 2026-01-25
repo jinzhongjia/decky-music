@@ -100,8 +100,8 @@ class TestLyricParser(unittest.TestCase):
 
         self.assertEqual(len(result["lines"]), 2)
         self.assertEqual(result["lines"][0]["text"], "你好世界")
-        self.assertEqual(result["lines"][0]["trans"], "Hello World")
-        self.assertEqual(result["lines"][1]["trans"], "Goodbye World")
+        self.assertEqual(result["lines"][0].get("trans"), "Hello World")
+        self.assertEqual(result["lines"][1].get("trans"), "Goodbye World")
 
     def test_parse_lrc_multiple_time_tags(self):
         """测试多时间标签（合唱）"""
@@ -139,10 +139,11 @@ class TestLyricParser(unittest.TestCase):
 
         self.assertTrue(result["isQrc"])
         self.assertIn("qrcLines", result)
-        self.assertEqual(len(result["qrcLines"]), 2)
+        qrc_lines = result.get("qrcLines")
+        assert qrc_lines is not None
+        self.assertEqual(len(qrc_lines), 2)
 
-        # 检查第一行
-        first_line = result["qrcLines"][0]
+        first_line = qrc_lines[0]
         self.assertEqual(first_line["time"], 0)
         self.assertEqual(first_line["text"], "你好世界")
         self.assertEqual(len(first_line["words"]), 4)
@@ -158,7 +159,9 @@ class TestLyricParser(unittest.TestCase):
         result = parse_lyric(qrc, trans)
 
         self.assertTrue(result["isQrc"])
-        self.assertEqual(result["qrcLines"][0]["trans"], "Hello")
+        qrc_lines = result.get("qrcLines")
+        assert qrc_lines is not None
+        self.assertEqual(qrc_lines[0].get("trans"), "Hello")
 
     def test_parse_qrc_netease_yrc_format(self):
         """测试网易云 YRC 格式（三个参数）"""
@@ -167,8 +170,10 @@ class TestLyricParser(unittest.TestCase):
         result = parse_lyric(qrc)
 
         self.assertTrue(result["isQrc"])
-        self.assertEqual(len(result["qrcLines"]), 1)
-        self.assertEqual(result["qrcLines"][0]["text"], "歌词")
+        qrc_lines = result.get("qrcLines")
+        assert qrc_lines is not None
+        self.assertEqual(len(qrc_lines), 1)
+        self.assertEqual(qrc_lines[0]["text"], "歌词")
 
     def test_parse_qrc_no_word_timing(self):
         """测试 QRC 格式但没有逐字时间标记"""
@@ -177,9 +182,11 @@ class TestLyricParser(unittest.TestCase):
         result = parse_lyric(qrc)
 
         self.assertTrue(result["isQrc"])
-        self.assertEqual(len(result["qrcLines"]), 1)
-        self.assertEqual(result["qrcLines"][0]["text"], "整行歌词没有逐字标记")
-        self.assertEqual(len(result["qrcLines"][0]["words"]), 1)
+        qrc_lines = result.get("qrcLines")
+        assert qrc_lines is not None
+        self.assertEqual(len(qrc_lines), 1)
+        self.assertEqual(qrc_lines[0]["text"], "整行歌词没有逐字标记")
+        self.assertEqual(len(qrc_lines[0]["words"]), 1)
 
     def test_parse_qrc_filter_metadata(self):
         """测试 QRC 过滤元数据行"""
@@ -190,10 +197,11 @@ class TestLyricParser(unittest.TestCase):
 
         result = parse_lyric(qrc)
 
-        # 应该过滤掉标题行和元数据行
-        self.assertEqual(len(result["qrcLines"]), 2)
-        self.assertEqual(result["qrcLines"][0]["text"], "正常歌词")
-        self.assertEqual(result["qrcLines"][1]["text"], "另一句")
+        qrc_lines = result.get("qrcLines")
+        assert qrc_lines is not None
+        self.assertEqual(len(qrc_lines), 2)
+        self.assertEqual(qrc_lines[0]["text"], "正常歌词")
+        self.assertEqual(qrc_lines[1]["text"], "另一句")
 
     def test_parse_empty_lyric(self):
         """测试空歌词"""
@@ -231,9 +239,10 @@ class TestLyricParser(unittest.TestCase):
 
         result = parse_lyric(qrc)
 
-        # 应该使用默认的 0.1 秒 duration
         self.assertTrue(result["isQrc"])
-        word = result["qrcLines"][0]["words"][0]
+        qrc_lines = result.get("qrcLines")
+        assert qrc_lines is not None
+        word = qrc_lines[0]["words"][0]
         self.assertEqual(word["duration"], 0.1)
 
 
