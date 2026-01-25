@@ -248,8 +248,7 @@ class MusicProvider(ABC):
         return {
             "success": False,
             "error": "Not implemented",
-            "lyric": "",
-            "trans": "",
+            "parsed": {"lines": [], "isQrc": False},
         }
 
     async def get_song_info(self, mid: str) -> SongInfoResponse:
