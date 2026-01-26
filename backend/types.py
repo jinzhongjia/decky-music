@@ -162,12 +162,14 @@ class SongUrlBatchResponse(TypedDict, total=False):
 
 class SongLyricResponse(TypedDict, total=False):
     success: bool
-    parsed: ParsedLyric  # 解析后的歌词（替代原 lyric 和 trans 字段）
-    mid: NotRequired[str]
-    fallback_provider: NotRequired[str]
-    original_provider: NotRequired[str]
-    qrc: NotRequired[bool]
-    error: NotRequired[str]
+    parsed: ParsedLyric
+    lyric: str
+    trans: str
+    mid: str
+    fallback_provider: str
+    original_provider: str
+    qrc: bool
+    error: str
 
 # ==================== 推荐相关 ====================
 
