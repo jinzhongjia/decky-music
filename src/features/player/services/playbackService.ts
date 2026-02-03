@@ -34,8 +34,14 @@ let loadTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let onNeedMoreSongsCallback: (() => Promise<SongInfo[]>) | null = null;
 let onPlayNextCallback: (() => void) | null = null;
 let preferredQuality: PreferredQuality = "auto";
+let isTrackChanging = false;
+let currentRequestId = 0;
 
-const AUDIO_LOAD_TIMEOUT = 15000; // 15秒超时
+const AUDIO_LOAD_TIMEOUT = 15000;
+
+export function isTrackChangeInProgress(): boolean {
+  return isTrackChanging;
+}
 
 export function getPreferredQuality(): PreferredQuality {
   return preferredQuality;
@@ -87,6 +93,10 @@ async function playSongInternal(
   index: number = -1,
   autoSkipOnError: boolean = true
 ): Promise<boolean> {
+  if (isTrackChanging) return false;
+  isTrackChanging = true;
+  const requestId = ++currentRequestId;
+
   const audio = getGlobalAudio();
   const store = usePlayerStore.getState();
 
@@ -115,13 +125,12 @@ async function playSongInternal(
     void saveProviderQueueToBackend(currentProviderId, playlist, currentIndex, currentMid);
   }
 
-  // 设置音频错误处理器
   setGlobalErrorHandler((errorMsg: string, shouldAutoSkip: boolean) => {
+    if (requestId !== currentRequestId) return;
     store.setError(errorMsg);
     store.setLoading(false);
     toaster.toast({ title: `${song.name}`, body: errorMsg });
 
-    // 只有明确是歌曲文件问题时才自动跳过
     if (shouldAutoSkip && autoSkipOnError && playlist.length > 1 && onPlayNextCallback) {
       setSkipTimeout(onPlayNextCallback);
     }
@@ -129,6 +138,10 @@ async function playSongInternal(
 
   try {
     const urlResult = await getSongUrl(song.mid, getPreferredQuality(), song.name, song.singer);
+
+    if (requestId !== currentRequestId) {
+      return false;
+    }
 
     if (!urlResult.success || !urlResult.url) {
       const errorMsg = urlResult.error || "该歌曲暂时无法播放";
@@ -139,6 +152,7 @@ async function playSongInternal(
       if (autoSkipOnError && playlist.length > 1 && onPlayNextCallback) {
         setSkipTimeout(onPlayNextCallback);
       }
+      isTrackChanging = false;
       return false;
     }
 
@@ -149,24 +163,26 @@ async function playSongInternal(
     audio.src = urlResult.url;
     audio.load();
 
-    // 设置加载超时保护
     setLoadTimeout(() => {
+      if (requestId !== currentRequestId) return;
       store.setError("音频加载超时");
       store.setLoading(false);
+      isTrackChanging = false;
       toaster.toast({
         title: `${song.name}`,
         body: "音频加载超时，可能是网络问题\n请手动切换下一首或重试",
       });
-      // 超时不自动跳过，避免网络慢时连续触发
     });
 
     try {
       await audio.play();
-      clearLoadTimeout(); // 播放成功，清除超时
+      if (requestId !== currentRequestId) return false;
+      clearLoadTimeout();
       store.setIsPlaying(true);
       store.setLoading(false);
     } catch (e) {
-      clearLoadTimeout(); // 播放失败，清除超时
+      if (requestId !== currentRequestId) return false;
+      clearLoadTimeout();
       const errorMsg = (e as Error).message;
       store.setError(errorMsg);
       store.setLoading(false);
@@ -175,17 +191,22 @@ async function playSongInternal(
       if (autoSkipOnError && playlist.length > 1 && onPlayNextCallback) {
         setSkipTimeout(onPlayNextCallback);
       }
+      isTrackChanging = false;
       return false;
     }
 
     if (!wasSameSong) {
       void fetchLyricWithCache(song.mid, song.name, song.singer, (parsed) => {
-        store.setLyric(parsed);
+        if (requestId === currentRequestId) {
+          store.setLyric(parsed);
+        }
       });
     }
 
+    isTrackChanging = false;
     return true;
   } catch (e) {
+    if (requestId !== currentRequestId) return false;
     const errorMsg = (e as Error).message;
     store.setError(errorMsg);
     store.setLoading(false);
@@ -193,7 +214,7 @@ async function playSongInternal(
       title: "播放出错",
       body: `${errorMsg}\n这可能是网络或服务问题，请检查后重试`,
     });
-    // 意外错误不自动跳过，避免连续触发系统性问题
+    isTrackChanging = false;
     return false;
   }
 }
@@ -207,6 +228,8 @@ export function getOnNeedMoreSongs(): (() => Promise<SongInfo[]>) | null {
 }
 
 export async function playSong(song: SongInfo): Promise<void> {
+  if (isTrackChanging) return;
+
   const store = usePlayerStore.getState();
   const { currentProviderId } = getPlayerState();
 
@@ -218,7 +241,7 @@ export async function playSong(song: SongInfo): Promise<void> {
 }
 
 export async function playPlaylist(songs: SongInfo[], startIndex: number = 0): Promise<void> {
-  if (songs.length === 0) return;
+  if (songs.length === 0 || isTrackChanging) return;
 
   const store = usePlayerStore.getState();
   const { currentProviderId } = getPlayerState();
@@ -279,6 +302,8 @@ export function removeFromQueue(index: number): void {
 }
 
 export async function playAtIndex(index: number): Promise<void> {
+  if (isTrackChanging) return;
+
   const store = usePlayerStore.getState();
   const { playlist, playMode, currentProviderId } = getPlayerState();
   if (index < 0 || index >= playlist.length) return;
@@ -349,6 +374,8 @@ export function stop(): void {
 }
 
 export async function playNext(): Promise<void> {
+  if (isTrackChanging) return;
+
   const { playlist, currentIndex, playMode, currentProviderId } = getPlayerState();
   if (playlist.length === 0) return;
 
@@ -396,6 +423,8 @@ export async function playNext(): Promise<void> {
 }
 
 export function playPrev(): void {
+  if (isTrackChanging) return;
+
   const { playlist, currentIndex, playMode, currentProviderId } = getPlayerState();
   if (playlist.length === 0) return;
 
