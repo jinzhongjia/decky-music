@@ -29,6 +29,7 @@ export {
   initPlayNextHandler,
   getPreferredQuality,
   initializePreferredQuality,
+  isTrackChangeInProgress,
 } from "./services/playbackService";
 
 export {
