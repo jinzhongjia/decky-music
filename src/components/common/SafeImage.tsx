@@ -1,5 +1,6 @@
 import React, { FC, CSSProperties, memo, useCallback } from "react";
 import { getDefaultCover } from "../../utils/format";
+import { addToBoundedSet } from "../../utils/boundedSet";
 
 type SafeImageProps = {
   src?: string;
@@ -9,6 +10,7 @@ type SafeImageProps = {
 } & Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src" | "alt" | "style">;
 
 const failedImages = new Set<string>();
+const MAX_FAILED_IMAGE_CACHE_SIZE = 1000;
 
 const SafeImageComponent: FC<SafeImageProps> = ({
   src,
@@ -25,7 +27,7 @@ const SafeImageComponent: FC<SafeImageProps> = ({
     const target = e.target as HTMLImageElement;
 
     if (src && src !== defaultCover) {
-      failedImages.add(src);
+      addToBoundedSet(failedImages, src, MAX_FAILED_IMAGE_CACHE_SIZE);
     }
 
     if (target.src !== defaultCover) {

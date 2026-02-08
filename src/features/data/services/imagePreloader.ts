@@ -3,8 +3,10 @@
  */
 
 import type { SongInfo, PlaylistInfo } from "../../../types";
+import { addToBoundedSet } from "../../../utils/boundedSet";
 
 const MAX_PRELOAD_COVERS = 80;
+const MAX_PRELOADED_COVER_CACHE_SIZE = 1000;
 const PRELOAD_BATCH_SIZE = 5;
 const PRELOAD_IDLE_TIMEOUT = 1000;
 const preloadedCoverUrls = new Set<string>();
@@ -23,7 +25,9 @@ const schedulePreloadImages = (covers: string[]) => {
   if (pending.length === 0) return;
 
   const capped = pending.slice(0, MAX_PRELOAD_COVERS);
-  capped.forEach((cover) => preloadedCoverUrls.add(cover));
+  capped.forEach((cover) => {
+    addToBoundedSet(preloadedCoverUrls, cover, MAX_PRELOADED_COVER_CACHE_SIZE);
+  });
 
   let index = 0;
   const runBatch = () => {

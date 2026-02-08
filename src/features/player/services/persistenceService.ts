@@ -15,6 +15,60 @@ import {
 import type { PlayMode, PreferredQuality, StoredQueueState, SongInfo } from "../../../types";
 
 const DEFAULT_PREFERRED_QUALITY: PreferredQuality = "auto";
+const QUEUE_SAVE_DEBOUNCE_MS = 400;
+
+interface QueueSavePayload {
+  providerId: string;
+  playlist: SongInfo[];
+  currentIndex: number;
+  currentMid?: string;
+}
+
+interface PendingQueueSave {
+  timerId: ReturnType<typeof setTimeout>;
+  payload: QueueSavePayload;
+  resolvers: Array<(result: boolean) => void>;
+}
+
+const lastQueueSnapshots = new Map<string, string>();
+const pendingQueueSaves = new Map<string, PendingQueueSave>();
+
+function buildQueueSnapshot(payload: QueueSavePayload): string {
+  const mids = payload.playlist.map((song) => song.mid).join(",");
+  return `${payload.currentIndex}|${payload.currentMid ?? ""}|${mids}`;
+}
+
+async function flushProviderQueueSave(providerId: string): Promise<void> {
+  const pending = pendingQueueSaves.get(providerId);
+  if (!pending) return;
+
+  pendingQueueSaves.delete(providerId);
+
+  const { payload, resolvers } = pending;
+  const snapshot = buildQueueSnapshot(payload);
+  if (lastQueueSnapshots.get(providerId) === snapshot) {
+    resolvers.forEach((resolve) => resolve(true));
+    return;
+  }
+
+  let success = false;
+  try {
+    const res = await saveProviderQueueApi(
+      providerId,
+      payload.playlist as unknown as Array<Record<string, unknown>>,
+      payload.currentIndex,
+      payload.currentMid
+    );
+    success = res.success;
+    if (success) {
+      lastQueueSnapshots.set(providerId, snapshot);
+    }
+  } catch (error) {
+    console.error("Failed to save provider queue to backend:", error);
+  }
+
+  resolvers.forEach((resolve) => resolve(success));
+}
 
 /**
  * 从后端 API 加载首选音质
@@ -115,13 +169,37 @@ export async function loadProviderQueueFromBackend(providerId: string): Promise<
       if (currentMid) {
         const idx = typedPlaylist.findIndex((s) => s.mid === currentMid);
         if (idx >= 0) {
+          lastQueueSnapshots.set(
+            providerId,
+            buildQueueSnapshot({
+              providerId,
+              playlist: typedPlaylist,
+              currentIndex: idx,
+              currentMid,
+            })
+          );
           return { playlist: typedPlaylist, currentIndex: idx, currentMid };
         }
       }
 
+      const normalizedIndex = Math.min(
+        Math.max(currentIndex, -1),
+        Math.max(typedPlaylist.length - 1, -1)
+      );
+      const normalizedMid = typedPlaylist[normalizedIndex]?.mid;
+      lastQueueSnapshots.set(
+        providerId,
+        buildQueueSnapshot({
+          providerId,
+          playlist: typedPlaylist,
+          currentIndex: normalizedIndex,
+          currentMid: normalizedMid,
+        })
+      );
+
       return {
         playlist: typedPlaylist,
-        currentIndex: Math.min(Math.max(currentIndex, -1), Math.max(typedPlaylist.length - 1, -1)),
+        currentIndex: normalizedIndex,
       };
     }
   } catch (error) {
@@ -139,16 +217,45 @@ export async function saveProviderQueueToBackend(
   currentIndex: number,
   currentMid?: string
 ): Promise<boolean> {
-  try {
-    const res = await saveProviderQueueApi(
-      providerId,
-      playlist as unknown as Array<Record<string, unknown>>,
-      currentIndex,
-      currentMid
-    );
-    return res.success;
-  } catch (error) {
-    console.error("Failed to save provider queue to backend:", error);
+  if (!providerId) {
     return false;
   }
+
+  const payload: QueueSavePayload = {
+    providerId,
+    playlist,
+    currentIndex,
+    currentMid,
+  };
+  const snapshot = buildQueueSnapshot(payload);
+
+  if (
+    lastQueueSnapshots.get(providerId) === snapshot &&
+    !pendingQueueSaves.has(providerId)
+  ) {
+    return true;
+  }
+
+  return new Promise<boolean>((resolve) => {
+    const existing = pendingQueueSaves.get(providerId);
+    if (existing) {
+      clearTimeout(existing.timerId);
+      existing.payload = payload;
+      existing.resolvers.push(resolve);
+      existing.timerId = setTimeout(() => {
+        void flushProviderQueueSave(providerId);
+      }, QUEUE_SAVE_DEBOUNCE_MS);
+      return;
+    }
+
+    const timerId = setTimeout(() => {
+      void flushProviderQueueSave(providerId);
+    }, QUEUE_SAVE_DEBOUNCE_MS);
+
+    pendingQueueSaves.set(providerId, {
+      timerId,
+      payload,
+      resolvers: [resolve],
+    });
+  });
 }

@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { getGlobalAudio } from "../services/audioService";
 
 interface AudioTimeState {
@@ -20,6 +21,24 @@ interface UseAudioTimeOptions {
   interval?: number;
   /** 是否启用更新，默认 true */
   enabled?: boolean;
+}
+
+const TIME_EPSILON = 0.05;
+const DURATION_EPSILON = 0.01;
+
+function updateAudioState(
+  setState: Dispatch<SetStateAction<AudioTimeState>>,
+  currentTime: number,
+  duration: number
+): void {
+  setState((prev) => {
+    const sameTime = Math.abs(prev.currentTime - currentTime) < TIME_EPSILON;
+    const sameDuration = Math.abs(prev.duration - duration) < DURATION_EPSILON;
+    if (sameTime && sameDuration) {
+      return prev;
+    }
+    return { currentTime, duration };
+  });
 }
 
 /**
@@ -41,10 +60,7 @@ export function useAudioTime(options: UseAudioTimeOptions = {}): AudioTimeState 
 
     const updateTime = () => {
       const audio = getGlobalAudio();
-      setState({
-        currentTime: audio.currentTime,
-        duration: audio.duration || 0,
-      });
+      updateAudioState(setState, audio.currentTime, audio.duration || 0);
     };
 
     // 立即更新一次
@@ -84,10 +100,7 @@ export function useAudioTimeRAF(enabled: boolean = true): AudioTimeState {
       if (now - lastUpdateRef.current >= 16) {
         lastUpdateRef.current = now;
         const audio = getGlobalAudio();
-        setState({
-          currentTime: audio.currentTime,
-          duration: audio.duration || 0,
-        });
+        updateAudioState(setState, audio.currentTime, audio.duration || 0);
       }
       rafRef.current = requestAnimationFrame(update);
     };
@@ -116,3 +129,5 @@ export function getAudioTime(): AudioTimeState {
     duration: audio.duration || 0,
   };
 }
+
+/* global requestAnimationFrame, cancelAnimationFrame, performance */

@@ -61,9 +61,11 @@ const MenuItemWrapper: FC<MenuItemWrapperProps> = ({
 // 全局状态
 let isPatched = false;
 let unpatchFn: (() => void) | null = null;
+let retryTimerId: ReturnType<typeof setTimeout> | null = null;
+const PATCH_RETRY_INTERVAL_MS = 1000;
 
 // Patch 主菜单
-const doPatchMenu = (): (() => void) => {
+const doPatchMenu = (): (() => void) | null => {
   try {
     const menuNode = findInReactTree(
       getReactTree(), 
@@ -71,7 +73,7 @@ const doPatchMenu = (): (() => void) => {
     );
 
     if (!menuNode || !menuNode.return?.type) {
-      return () => {};
+      return null;
     }
 
     const orig = menuNode.return.type;
@@ -163,7 +165,7 @@ const doPatchMenu = (): (() => void) => {
 
     return restoreOriginal;
   } catch {
-    return () => {};
+    return null;
   }
 };
 
@@ -171,20 +173,49 @@ const doPatchMenu = (): (() => void) => {
  * 菜单管理器 - 用于动态控制菜单的显示/隐藏
  */
 export const menuManager = {
-  /**
-   * 启用菜单（登录后调用）
-   */
-  enable: () => {
+  tryEnable: () => {
     if (isPatched) return;
-    unpatchFn = doPatchMenu();
+    const restore = doPatchMenu();
+    if (!restore) return;
+    unpatchFn = restore;
     isPatched = true;
   },
 
   /**
-   * 禁用菜单（退出登录后调用）
+   * 启用菜单（插件加载时调用，必要时自动重试）
+   */
+  enable: () => {
+    if (isPatched) return;
+    if (retryTimerId) return;
+
+    const scheduleRetry = () => {
+      retryTimerId = setTimeout(() => {
+        retryTimerId = null;
+        menuManager.enable();
+      }, PATCH_RETRY_INTERVAL_MS);
+    };
+
+    menuManager.tryEnable();
+    if (!isPatched) {
+      scheduleRetry();
+    }
+  },
+
+  /**
+   * 禁用菜单（按需手动调用，通常仅用于特殊场景）
    */
   disable: () => {
-    if (!isPatched || !unpatchFn) return;
+    if (retryTimerId) {
+      clearTimeout(retryTimerId);
+      retryTimerId = null;
+    }
+
+    if (!isPatched || !unpatchFn) {
+      isPatched = false;
+      unpatchFn = null;
+      return;
+    }
+
     unpatchFn();
     unpatchFn = null;
     isPatched = false;
@@ -194,6 +225,11 @@ export const menuManager = {
    * 清理（插件卸载时调用）
    */
   cleanup: () => {
+    if (retryTimerId) {
+      clearTimeout(retryTimerId);
+      retryTimerId = null;
+    }
+
     if (unpatchFn) {
       unpatchFn();
       unpatchFn = null;

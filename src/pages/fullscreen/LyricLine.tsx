@@ -1,6 +1,7 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, RefObject } from "react";
 import { Focusable } from "@decky/ui";
+import { getAudioCurrentTime } from "../../features/player";
 
 import type { QrcLyricLine, LyricWord } from "../../types/player";
 
@@ -8,7 +9,7 @@ export interface QrcLineProps {
   line: QrcLyricLine;
   index: number;
   activeIndex: number;
-  currentTimeSec: number | null;
+  isPlaying: boolean;
   activeRef: RefObject<HTMLDivElement | null>;
   onSeek: (timeSec: number) => void;
 }
@@ -42,10 +43,12 @@ const LINE_BASE_STYLE: CSSProperties = {
 };
 
 export const QrcLine = memo<QrcLineProps>(
-  ({ line, index, activeIndex, currentTimeSec, activeRef, onSeek }) => {
+  ({ line, index, activeIndex, isPlaying, activeRef, onSeek }) => {
     const isActive = index === activeIndex;
     const isPast = index < activeIndex;
     const isInterlude = isInterludeLine(line.text);
+    const rafRef = useRef<number | null>(null);
+    const [activeTimeSec, setActiveTimeSec] = useState(0);
     const handleActivate = useCallback(() => onSeek(line.time), [line.time, onSeek]);
     const handleKeyDown = useCallback(
       (e: KeyboardEvent) => {
@@ -56,6 +59,37 @@ export const QrcLine = memo<QrcLineProps>(
       },
       [handleActivate]
     );
+
+    useEffect(() => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+
+      if (!isActive) return;
+
+      const syncTime = () => {
+        const next = getAudioCurrentTime();
+        setActiveTimeSec((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
+      };
+
+      syncTime();
+      if (!isPlaying) return;
+
+      const update = () => {
+        syncTime();
+        rafRef.current = requestAnimationFrame(update);
+      };
+
+      rafRef.current = requestAnimationFrame(update);
+
+      return () => {
+        if (rafRef.current !== null) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
+      };
+    }, [isActive, isPlaying]);
 
     if (isInterlude) {
       return (
@@ -95,11 +129,7 @@ export const QrcLine = memo<QrcLineProps>(
         <div style={{ lineHeight: 1.6 }}>
           {line.words.map((word, wordIndex) => {
             const progress =
-              isActive && currentTimeSec !== null
-                ? getWordProgress(word, currentTimeSec)
-                : isPast
-                ? 100
-                : 0;
+              isActive ? getWordProgress(word, activeTimeSec) : isPast ? 100 : 0;
             return (
               <span
                 key={wordIndex}
@@ -217,3 +247,5 @@ export const LrcLine = memo<LrcLineProps>(({ line, index, activeIndex, activeRef
 });
 
 LrcLine.displayName = "LrcLine";
+
+/* global HTMLDivElement, requestAnimationFrame, cancelAnimationFrame */

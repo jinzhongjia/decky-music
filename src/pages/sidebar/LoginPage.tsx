@@ -7,9 +7,11 @@ import { FC, useEffect, useRef, useState } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { FaQrcode } from "react-icons/fa";
-import { getQrCode, checkQrStatus } from "../../api";
+import { getQrCode } from "../../api";
 import { LoadingSpinner } from "../../components/common";
 import { useMountedRef } from "../../hooks/useMountedRef";
+import type { QrPollingStatus } from "../../hooks/useQrStatusPolling";
+import { useQrStatusPolling } from "../../hooks/useQrStatusPolling";
 import { useProvider } from "../../hooks/useProvider";
 import { COLORS } from "../../utils/styles";
 
@@ -31,7 +33,6 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [qrData, setQrData] = useState<string>("");
   const [status, setStatus] = useState<LoginStatus>("idle");
   const [loginType, setLoginType] = useState<"qq" | "wx" | "netease">("qq");
-  const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrContainerRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useMountedRef();
   const { provider, allProviders, switchProvider, loading: providerLoading } = useProvider();
@@ -40,11 +41,25 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const hasNetease = allProviders.some((p) => p.id === "netease");
   const hasQQ = allProviders.some((p) => p.id === "qqmusic");
 
-  const resetQrState = () => {
-    if (checkIntervalRef.current) {
-      clearInterval(checkIntervalRef.current);
-      checkIntervalRef.current = null;
+  const handlePollingStatus = (nextStatus: QrPollingStatus) => {
+    setStatus(nextStatus);
+
+    if (nextStatus === "success") {
+      toaster.toast({
+        title: "登录成功",
+        body: "欢迎回来！",
+      });
+      setTimeout(onLoginSuccess, 800);
     }
+  };
+
+  const { startCheckingStatus, stopCheckingStatus } = useQrStatusPolling({
+    mountedRef,
+    onStatus: handlePollingStatus,
+  });
+
+  const resetQrState = () => {
+    stopCheckingStatus();
     setQrData("");
     setStatus("idle");
   };
@@ -87,50 +102,6 @@ export const LoginPage: FC<LoginPageProps> = ({ onLoginSuccess }) => {
       });
     }
   };
-
-  const startCheckingStatus = () => {
-    if (checkIntervalRef.current) {
-      clearInterval(checkIntervalRef.current);
-    }
-
-    checkIntervalRef.current = setInterval(async () => {
-      const result = await checkQrStatus();
-      if (!mountedRef.current) return;
-
-      if (result.success) {
-        switch (result.status) {
-          case "success":
-            clearInterval(checkIntervalRef.current!);
-            setStatus("success");
-            toaster.toast({
-              title: "登录成功",
-              body: "欢迎回来！",
-            });
-            setTimeout(onLoginSuccess, 800);
-            break;
-          case "scanned":
-            setStatus("scanned");
-            break;
-          case "timeout":
-            clearInterval(checkIntervalRef.current!);
-            setStatus("timeout");
-            break;
-          case "refused":
-            clearInterval(checkIntervalRef.current!);
-            setStatus("refused");
-            break;
-        }
-      }
-    }, 2000);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
-      }
-    };
-  }, []);
 
   const getStatusText = () => {
     switch (status) {

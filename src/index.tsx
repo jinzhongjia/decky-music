@@ -6,8 +6,6 @@ import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui
 import { definePlugin, routerHook } from "@decky/api";
 import { FaMusic } from "react-icons/fa";
 
-import { getProviderSelection } from "./api";
-import { setAuthLoggedIn } from "./features/auth";
 import { cleanupPlayer } from "./features/player";
 import { useAppLogicNew as useAppLogic } from "./hooks/useAppLogicNew";
 import { PlayerBar, ErrorBoundary } from "./components";
@@ -70,21 +68,8 @@ export default definePlugin(() => {
     // TODO: 修复 full screen 的错误
     // 注册全屏路由
     routerHook.addRoute(ROUTE_PATH, FullscreenPlayer);
-
-    // 插件初始化时检查登录状态，已登录则启用左侧菜单并预加载数据
-    // 以前是 getLoginStatus()，现在改为 getProviderSelection()
-    getProviderSelection()
-        .then((result) => {
-            // 只要 mainProvider 存在，就视为已登录
-            const isLoggedIn = Boolean(result.success && result.mainProvider);
-            setAuthLoggedIn(isLoggedIn);
-            if (isLoggedIn) {
-                menuManager.enable();
-            }
-        })
-        .catch(() => {
-            // 忽略错误
-        });
+    // 插件加载即注册菜单 patch，不依赖首次进入插件页面
+    menuManager.enable();
 
     return {
         name: "Decky Music",

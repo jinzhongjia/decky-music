@@ -1,6 +1,7 @@
 /* global HTMLDivElement, HTMLElement, requestAnimationFrame */
 
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactElement } from "react";
 import { LoginPage } from "../components";
 import { getProviderSelection } from "../api";
 import { setAuthLoggedIn, useAuthStatus } from "../features/auth";
@@ -80,8 +81,8 @@ export const FullscreenPlayer: FC = () => {
   }, [mountedRef]);
 
   useEffect(() => {
-    if (isLoggedIn === false || isLoggedIn === true) return;
-    checkLoginStatus();
+    if (isLoggedIn) return;
+    void checkLoginStatus();
   }, [isLoggedIn, checkLoginStatus]);
 
   useAutoLoadGuessLike(currentPage === 'guess-like');
@@ -160,7 +161,7 @@ export const FullscreenPlayer: FC = () => {
   );
 
   const renderNonHistoryContent = () => {
-    const contentMap: Record<string, React.ReactElement | null> = {
+    const contentMap: Record<string, ReactElement | null> = {
       'player': renderPlayerPage(),
       'guess-like': content.guessLikeContent,
       'search': content.searchPageContent,
