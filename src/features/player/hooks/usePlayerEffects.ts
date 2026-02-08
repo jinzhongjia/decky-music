@@ -98,20 +98,39 @@ export function useLyricFetch(): void {
  */
 export function useAudioPlayingSync(): void {
   useEffect(() => {
-    const interval = setInterval(() => {
-      const audio = getGlobalAudio();
+    const audio = getGlobalAudio();
+
+    const setPlaying = (value: boolean) => {
       const store = usePlayerStore.getState();
-      if (!audio.paused) {
-        if (!store.isPlaying) {
-          store.setIsPlaying(true);
-        }
-      } else {
-        if (store.isPlaying) {
-          store.setIsPlaying(false);
-        }
+      if (store.isPlaying !== value) {
+        store.setIsPlaying(value);
       }
-    }, 100);
-    return () => clearInterval(interval);
+    };
+
+    const syncFromAudio = () => {
+      const playing = !audio.paused && !audio.ended;
+      setPlaying(playing);
+    };
+
+    const handlePlay = () => setPlaying(true);
+    const handlePause = () => setPlaying(false);
+    const handleEnded = () => setPlaying(false);
+
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("playing", handlePlay);
+    audio.addEventListener("pause", handlePause);
+    audio.addEventListener("waiting", handlePause);
+    audio.addEventListener("ended", handleEnded);
+
+    syncFromAudio();
+
+    return () => {
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("playing", handlePlay);
+      audio.removeEventListener("pause", handlePause);
+      audio.removeEventListener("waiting", handlePause);
+      audio.removeEventListener("ended", handleEnded);
+    };
   }, []);
 }
 

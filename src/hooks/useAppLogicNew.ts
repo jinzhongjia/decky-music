@@ -11,7 +11,6 @@ import { clearDataCache, fetchGuessLikeRaw, replaceGuessLikeSongs } from "../fea
 import { useMountedRef } from "./useMountedRef";
 import { useSteamInput } from "./useSteamInput";
 import { clearRecommendCache } from "../pages/sidebar/HomePage";
-import { menuManager } from "../patches";
 import type { SongInfo, PlaylistInfo, PageType } from "../types";
 import type { NavigationHandlers, DataHandlers } from "../navigation/Router";
 
@@ -54,10 +53,6 @@ export function useAppLogicNew() {
 
       setCurrentPage(isLoggedIn ? "home" : "login");
       setLoggedIn(isLoggedIn);
-
-      if (isLoggedIn) {
-        menuManager.enable();
-      }
     } catch {
       if (!mountedRef.current) return;
       setCurrentPage("login");
@@ -72,7 +67,6 @@ export function useAppLogicNew() {
   const handleLoginSuccess = useCallback(() => {
     setLoggedIn(true);
     setCurrentPage("home");
-    menuManager.enable();
   }, [setLoggedIn, setCurrentPage]);
 
   const handleLogout = useCallback(async () => {
@@ -80,7 +74,6 @@ export function useAppLogicNew() {
     player.clearCurrentQueue();
     clearRecommendCache();
     clearDataCache();
-    menuManager.disable();
     setCurrentPage("login");
     setLoggedIn(false);
   }, [player, setCurrentPage, setLoggedIn]);
@@ -120,7 +113,6 @@ export function useAppLogicNew() {
 
     resetAllState();
     clearDataCache();
-    menuManager.disable();
     setSelectedPlaylist(null);
     setCurrentPage("login");
     setLoggedIn(false);

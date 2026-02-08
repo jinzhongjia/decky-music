@@ -3,10 +3,12 @@
 管理所有 Provider，处理路由和 fallback。
 """
 
+from time import monotonic
 from typing import TYPE_CHECKING
 
 import decky
 from backend.providers.base import Capability, MusicProvider
+from backend.providers.fallback_matcher import collect_provider_matches
 from backend.types import (
     PreferredQuality,
     ProviderFullInfo,
@@ -27,6 +29,9 @@ class ProviderManager:
         self._providers: dict[str, MusicProvider] = {}
         self._active_id: str | None = None
         self._fallback_ids: list[str] = []
+        self._login_status_cache: dict[str, tuple[bool, float]] = {}
+        self._login_status_ttl = 15.0
+        self._fallback_match_timeout = 4.0
 
     def register(self, provider: MusicProvider) -> None:
         self._providers[provider.id] = provider
@@ -49,7 +54,15 @@ class ProviderManager:
         if provider_id not in self._providers:
             raise ValueError(f"Unknown provider: {provider_id}")
         self._active_id = provider_id
+        self.clear_login_status_cache(provider_id)
         decky.logger.info(f"切换到 Provider: {provider_id}")
+
+    def clear_login_status_cache(self, provider_id: str | None = None) -> None:
+        """清理 provider 登录状态缓存。"""
+        if provider_id is None:
+            self._login_status_cache.clear()
+            return
+        self._login_status_cache.pop(provider_id, None)
 
     def get_provider(self, provider_id: str) -> MusicProvider | None:
         return self._providers.get(provider_id)
@@ -77,6 +90,24 @@ class ProviderManager:
             }
             for p in self._providers.values()
         ]
+
+    def _iter_fallback_providers(
+        self,
+        require_lyric_capability: bool = False,
+    ) -> list[tuple[str, MusicProvider]]:
+        providers: list[tuple[str, MusicProvider]] = []
+        for fb_id in self._fallback_ids:
+            if fb_id == self._active_id:
+                continue
+            fb_provider = self._providers.get(fb_id)
+            if not fb_provider:
+                continue
+            if require_lyric_capability and not fb_provider.has_capability(
+                Capability.LYRIC_BASIC
+            ):
+                continue
+            providers.append((fb_id, fb_provider))
+        return providers
 
     async def _match_song_in_provider(self, provider: MusicProvider, song_name: str, singer: str) -> SongInfo | None:
         """在指定 provider 中搜索匹配的歌曲"""
@@ -117,19 +148,16 @@ class ProviderManager:
             return result
 
         original_error = result.get("error", "Unknown error")
-
-        for fb_id in self._fallback_ids:
-            if fb_id == self._active_id:
-                continue
-            fb_provider = self._providers.get(fb_id)
-            if not fb_provider:
-                continue
-
-            matched = await self._match_song_in_provider(fb_provider, song_name, singer)
-            if not matched:
-                continue
-
-            fb_result = await fb_provider.get_song_url(matched.get("mid", ""), preferred_quality)
+        matches = await collect_provider_matches(
+            self._iter_fallback_providers(),
+            lambda provider: self._match_song_in_provider(provider, song_name, singer),
+            self._fallback_match_timeout,
+        )
+        for fb_id, fb_provider, matched in matches:
+            fb_result = await fb_provider.get_song_url(
+                matched.get("mid", ""),
+                preferred_quality,
+            )
             if fb_result.get("success") and fb_result.get("url"):
                 fb_result["fallback_provider"] = fb_id
                 if self._active_id:
@@ -159,17 +187,12 @@ class ProviderManager:
         if result.get("success") and result.get("lyric"):
             return result
 
-        for fb_id in self._fallback_ids:
-            if fb_id == self._active_id:
-                continue
-            fb_provider = self._providers.get(fb_id)
-            if not fb_provider or not fb_provider.has_capability(Capability.LYRIC_BASIC):
-                continue
-
-            matched = await self._match_song_in_provider(fb_provider, song_name, singer)
-            if not matched:
-                continue
-
+        matches = await collect_provider_matches(
+            self._iter_fallback_providers(require_lyric_capability=True),
+            lambda provider: self._match_song_in_provider(provider, song_name, singer),
+            self._fallback_match_timeout,
+        )
+        for fb_id, fb_provider, matched in matches:
             fb_result = await fb_provider.get_song_lyric(matched.get("mid", ""), qrc)
             if fb_result.get("success") and fb_result.get("lyric"):
                 fb_result["fallback_provider"] = fb_id
@@ -188,12 +211,23 @@ class ProviderManager:
         Returns:
             已登录返回 True，否则返回 False
         """
+        now = monotonic()
+        cached = self._login_status_cache.get(provider.id)
+        if cached and cached[1] > now:
+            return cached[0]
+
         try:
             status = await provider.get_login_status()
-            return bool(status.get("logged_in"))
+            logged_in = bool(status.get("logged_in"))
         except Exception as e:  # pragma: no cover - 依赖外部接口
             decky.logger.error(f"检查 {provider.id} 登录状态失败: {e}")
-            return False
+            logged_in = False
+
+        self._login_status_cache[provider.id] = (
+            logged_in,
+            now + self._login_status_ttl,
+        )
+        return logged_in
 
     async def apply_provider_config(self, config: "ConfigManager") -> None:
         """根据配置选择主 Provider 和 fallback Provider（仅使用已登录的 Provider）

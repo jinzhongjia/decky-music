@@ -540,14 +540,50 @@ class QQMusicProvider(MusicProvider):
         return {"success": False, "url": "", "mid": mid, "error": error_msg}
 
     async def get_song_urls_batch(self, mids: list[str]) -> SongUrlBatchResponse:
+        if not mids:
+            return {"success": True, "urls": {}}
+
+        valid_mids = [mid for mid in mids if mid]
+        if not valid_mids:
+            return {"success": False, "error": "无有效歌曲 ID", "urls": {}}
+
+        unique_mids = list(dict.fromkeys(valid_mids))
+
         try:
-            urls = await song.get_song_urls(
-                mid=mids,
+            result = await song.get_song_urls(
+                mid=unique_mids,
                 file_type=song.SongFileType.MP3_128,
                 credential=self.credential,
             )
 
-            return {"success": True, "urls": urls}
+            urls_by_mid: dict[str, str] = {}
+            if isinstance(result, Mapping):
+                for key, value in result.items():
+                    if value:
+                        urls_by_mid[str(key)] = str(value)
+
+            urls = {
+                mid: urls_by_mid[mid]
+                for mid in valid_mids
+                if mid in urls_by_mid
+            }
+
+            missing_unique = [
+                mid for mid in set(valid_mids)
+                if mid not in urls_by_mid
+            ]
+            invalid_count = len(mids) - len(valid_mids)
+            if not missing_unique and invalid_count == 0:
+                return {"success": True, "urls": urls}
+
+            parts: list[str] = []
+            if invalid_count > 0:
+                parts.append(f"{invalid_count} 个歌曲 ID 无效")
+            if missing_unique:
+                parts.append(f"{len(missing_unique)} 首歌曲无可用音源")
+
+            error = "，".join(parts) if parts else "部分歌曲获取失败"
+            return {"success": False, "error": error, "urls": urls}
 
         except Exception as e:
             decky.logger.error(f"批量获取播放链接失败: {e}")

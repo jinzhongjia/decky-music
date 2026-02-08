@@ -10,9 +10,11 @@ import type { SongInfo } from "../../types";
 import { BackButton, EmptyState } from "../../components/common";
 import { SongItem } from "../../components/song";
 import { useVirtualList } from "../../hooks/useVirtualList";
+import { addToBoundedSet } from "../../utils/boundedSet";
 
 const HISTORY_COVER_PRELOAD_RADIUS = 12;
 const preloadedHistoryCovers = new Set<string>();
+const MAX_HISTORY_COVER_CACHE_SIZE = 1000;
 // 每个 SongItem 的高度：40px(图片) + 16px(padding) + 2px(border) + 6px(margin) = 64px
 const ITEM_HEIGHT = 64;
 // 容器高度（70vh 约等于 504px @ 720p）
@@ -92,7 +94,11 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
 
     candidates.forEach((song) => {
       if (!song.cover || preloadedHistoryCovers.has(song.cover)) return;
-      preloadedHistoryCovers.add(song.cover);
+      addToBoundedSet(
+        preloadedHistoryCovers,
+        song.cover,
+        MAX_HISTORY_COVER_CACHE_SIZE
+      );
       const img = new window.Image();
       img.src = song.cover;
     });

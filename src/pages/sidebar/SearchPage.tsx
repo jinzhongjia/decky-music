@@ -1,16 +1,22 @@
-import { FC, useState, useEffect, useCallback, memo, useRef } from "react";
+import { FC, useState, useEffect, useCallback, memo } from "react";
+import type { KeyboardEvent } from "react";
 import { PanelSection, PanelSectionRow, ButtonItem, TextField, Focusable } from "@decky/ui";
-import { toaster } from "@decky/api";
 import { FaSearch, FaTimes } from "react-icons/fa";
-import { searchSongs, getHotSearch, getSearchSuggest } from "../../api";
 import type { SongInfo } from "../../types";
 import { SongList } from "../../components/song";
 import { BackButton } from "../../components/common";
+import {
+  SuggestionItem,
+  HistoryItem,
+  HotkeyItem,
+  type Suggestion,
+} from "../../components/search/search-items";
 import { FocusableList } from "../../components/layout";
 import { useMountedRef } from "../../hooks/useMountedRef";
 import { useSearchHistory } from "../../hooks/useSearchHistory";
 import { useDebounce } from "../../hooks/useDebounce";
 import { COLORS } from "../../utils/styles";
+import { useSearchRequests } from "./useSearchRequests";
 
 interface SearchPageProps {
   onSelectSong: (song: SongInfo, playlist?: SongInfo[], source?: string) => void;
@@ -19,206 +25,46 @@ interface SearchPageProps {
   onAddSongToQueue?: (song: SongInfo) => void;
 }
 
-interface Suggestion {
-  type: string;
-  keyword: string;
-  singer?: string;
-}
-
-interface SuggestionItemProps {
-  suggestion: Suggestion;
-  onSelect: (suggestion: Suggestion) => void;
-}
-
-const SuggestionItem = memo<SuggestionItemProps>(({ suggestion, onSelect }) => {
-  const handleActivate = useCallback(() => onSelect(suggestion), [onSelect, suggestion]);
-
-  return (
-    <Focusable
-      onActivate={handleActivate}
-      onClick={handleActivate}
-      style={{
-        padding: "10px 12px",
-        cursor: "pointer",
-        borderRadius: "6px",
-        background: COLORS.backgroundMedium,
-        fontSize: "13px",
-      }}
-    >
-      <span style={{ color: COLORS.textPrimary }}>{suggestion.keyword}</span>
-      {suggestion.singer && (
-        <span style={{ color: COLORS.textSecondary, marginLeft: "8px" }}>
-          - {suggestion.singer}
-        </span>
-      )}
-      <span style={{ color: "#666", fontSize: "11px", marginLeft: "8px" }}>
-        {suggestion.type === "song" ? "歌曲" : suggestion.type === "singer" ? "歌手" : "专辑"}
-      </span>
-    </Focusable>
-  );
-});
-
-SuggestionItem.displayName = "SuggestionItem";
-
-interface HistoryItemProps {
-  keyword: string;
-  onSelect: (keyword: string) => void;
-}
-
-const HistoryItem = memo<HistoryItemProps>(({ keyword, onSelect }) => {
-  const handleActivate = useCallback(() => onSelect(keyword), [onSelect, keyword]);
-
-  return (
-    <Focusable
-      onActivate={handleActivate}
-      onClick={handleActivate}
-      style={{
-        background: COLORS.backgroundDark,
-        padding: "8px 14px",
-        borderRadius: "16px",
-        fontSize: "13px",
-        cursor: "pointer",
-        color: "#dcdedf",
-      }}
-    >
-      {keyword}
-    </Focusable>
-  );
-});
-
-HistoryItem.displayName = "HistoryItem";
-
-interface HotkeyItemProps {
-  keyword: string;
-  index: number;
-  onSelect: (keyword: string) => void;
-}
-
-const HotkeyItem = memo<HotkeyItemProps>(({ keyword, index, onSelect }) => {
-  const handleActivate = useCallback(() => onSelect(keyword), [onSelect, keyword]);
-  const isTop3 = index < 3;
-
-  return (
-    <Focusable
-      onActivate={handleActivate}
-      onClick={handleActivate}
-      style={{
-        background: isTop3
-          ? "linear-gradient(135deg, rgba(255,100,100,0.2), rgba(255,150,100,0.2))"
-          : COLORS.backgroundDark,
-        padding: "8px 14px",
-        borderRadius: "16px",
-        fontSize: "13px",
-        cursor: "pointer",
-        color: isTop3 ? "#ffaa80" : "#dcdedf",
-        border: isTop3 ? "1px solid rgba(255,150,100,0.3)" : "none",
-      }}
-    >
-      {isTop3 && <span style={{ marginRight: "4px" }}>{index + 1}</span>}
-      {keyword}
-    </Focusable>
-  );
-});
-
-HotkeyItem.displayName = "HotkeyItem";
+const MIN_SUGGEST_KEYWORD_LENGTH = 2;
 
 const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, currentPlayingMid, onAddSongToQueue }) => {
   const [keyword, setKeyword] = useState("");
-  const [songs, setSongs] = useState<SongInfo[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hotkeys, setHotkeys] = useState<string[]>([]);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const mountedRef = useMountedRef();
   const { searchHistory, addToHistory, clearHistory } = useSearchHistory();
-
-  const searchRequestId = useRef(0);
-  const suggestionRequestId = useRef(0);
-
   const debouncedKeyword = useDebounce(keyword, 300);
-
-  const fetchSuggestions = useCallback(
-    async (kw: string) => {
-      if (!kw.trim()) {
-        setSuggestions([]);
-        setShowSuggestions(false);
-        return;
-      }
-
-      const requestId = ++suggestionRequestId.current;
-      const result = await getSearchSuggest(kw);
-      if (!mountedRef.current || requestId !== suggestionRequestId.current) return;
-
-      if (result.success && result.suggestions.length > 0) {
-        setSuggestions(result.suggestions);
-        setShowSuggestions(true);
-      } else {
-        setSuggestions([]);
-        setShowSuggestions(false);
-      }
-    },
-    [mountedRef]
-  );
-
-  const loadHotSearch = useCallback(async () => {
-    const result = await getHotSearch();
-    if (!mountedRef.current) return;
-    if (result.success) {
-      setHotkeys(result.hotkeys.map((h) => h.keyword));
-    }
-  }, [mountedRef]);
+  const {
+    songs,
+    loading,
+    hotkeys,
+    suggestions,
+    hasSearched,
+    showSuggestions,
+    setShowSuggestions,
+    clearSuggestions,
+    fetchSuggestions,
+    loadHotSearch,
+    handleSearch,
+  } = useSearchRequests({
+    keyword,
+    mountedRef,
+    addToHistory,
+  });
 
   useEffect(() => {
-    loadHotSearch();
+    void loadHotSearch();
   }, [loadHotSearch]);
 
   useEffect(() => {
-    if (debouncedKeyword.trim()) {
-      fetchSuggestions(debouncedKeyword);
+    if (debouncedKeyword.trim().length >= MIN_SUGGEST_KEYWORD_LENGTH) {
+      void fetchSuggestions(debouncedKeyword);
     } else {
-      setSuggestions([]);
-      setShowSuggestions(false);
+      clearSuggestions();
     }
-  }, [debouncedKeyword, fetchSuggestions]);
+  }, [clearSuggestions, debouncedKeyword, fetchSuggestions]);
 
   const handleInputChange = useCallback((value: string) => {
     setKeyword(value);
   }, []);
-
-  const handleSearch = useCallback(
-    async (searchKeyword?: string) => {
-      const kw = searchKeyword || keyword.trim();
-      if (!kw) return;
-
-      setLoading(true);
-      setHasSearched(true);
-      setShowSuggestions(false);
-
-      addToHistory(kw);
-
-      const requestId = ++searchRequestId.current;
-      const result = await searchSongs(kw, 1, 30);
-      if (!mountedRef.current || requestId !== searchRequestId.current) return;
-      setLoading(false);
-
-      if (result.success) {
-        setSongs(result.songs);
-        if (result.songs.length === 0) {
-          toaster.toast({
-            title: "搜索结果",
-            body: `未找到 "${kw}" 相关歌曲`,
-          });
-        }
-      } else {
-        toaster.toast({
-          title: "搜索失败",
-          body: result.error || "未知错误",
-        });
-      }
-    },
-    [keyword, addToHistory, mountedRef]
-  );
 
   const handleSuggestionSelect = useCallback(
     (suggestion: Suggestion) => {
@@ -226,7 +72,7 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
         ? `${suggestion.keyword} ${suggestion.singer}`
         : suggestion.keyword;
       setKeyword(searchTerm);
-      handleSearch(searchTerm);
+      void handleSearch(searchTerm);
     },
     [handleSearch]
   );
@@ -234,13 +80,13 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
   const handleKeywordSelect = useCallback(
     (key: string) => {
       setKeyword(key);
-      handleSearch(key);
+      void handleSearch(key);
     },
     [handleSearch]
   );
 
   const handleSearchButtonClick = useCallback(() => {
-    handleSearch();
+    void handleSearch();
   }, [handleSearch]);
 
   const handleSearchResultSelect = useCallback(
@@ -251,15 +97,18 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
   );
 
   const handleFocus = useCallback(() => {
-    if (keyword.trim() && suggestions.length > 0) {
+    if (
+      keyword.trim().length >= MIN_SUGGEST_KEYWORD_LENGTH &&
+      suggestions.length > 0
+    ) {
       setShowSuggestions(true);
     }
-  }, [keyword, suggestions.length]);
+  }, [keyword, setShowSuggestions, suggestions.length]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: KeyboardEvent) => {
       if (e.key === "Enter") {
-        handleSearch();
+        void handleSearch();
       }
     },
     [handleSearch]
@@ -306,7 +155,11 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
               }}
             >
               {suggestions.map((s, idx) => (
-                <SuggestionItem key={idx} suggestion={s} onSelect={handleSuggestionSelect} />
+                <SuggestionItem
+                  key={`${s.type}:${s.keyword}:${s.singer ?? ""}:${idx}`}
+                  suggestion={s}
+                  onSelect={handleSuggestionSelect}
+                />
               ))}
             </Focusable>
           </PanelSectionRow>
@@ -334,8 +187,8 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
           </PanelSectionRow>
           <PanelSectionRow>
             <FocusableList gap="8px" column={false} wrap>
-              {searchHistory.map((key, idx) => (
-                <HistoryItem key={idx} keyword={key} onSelect={handleKeywordSelect} />
+              {searchHistory.map((key) => (
+                <HistoryItem key={key} keyword={key} onSelect={handleKeywordSelect} />
               ))}
             </FocusableList>
           </PanelSectionRow>
@@ -347,7 +200,12 @@ const SearchPageComponent: FC<SearchPageProps> = ({ onSelectSong, onBack, curren
           <PanelSectionRow>
             <FocusableList gap="8px" column={false} wrap>
               {hotkeys.map((key, idx) => (
-                <HotkeyItem key={idx} keyword={key} index={idx} onSelect={handleKeywordSelect} />
+                <HotkeyItem
+                  key={`${key}-${idx}`}
+                  keyword={key}
+                  index={idx}
+                  onSelect={handleKeywordSelect}
+                />
               ))}
             </FocusableList>
           </PanelSectionRow>

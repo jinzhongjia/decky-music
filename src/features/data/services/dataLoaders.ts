@@ -151,7 +151,11 @@ export const loadPlaylists = async (): Promise<{
 };
 
 export const preloadData = async (): Promise<void> => {
-  // Placeholder for future preloading logic
+  await Promise.allSettled([
+    loadGuessLike(),
+    loadDailyRecommend(),
+    loadPlaylists(),
+  ]);
 };
 
 export const clearDataCache = (): void => {

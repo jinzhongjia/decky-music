@@ -21,6 +21,12 @@ from pyncm.apis import cloudsearch, login, playlist, track, user, WeapiCryptoReq
 import decky
 from backend.config_manager import ConfigManager
 from backend.providers.base import Capability, MusicProvider
+from backend.providers.netease_batch import (
+    build_batch_error_message,
+    extract_track_urls,
+    map_urls_to_input_mids,
+    normalize_song_mids,
+)
 from backend.types import (
     DailyRecommendResponse,
     FavSongsResponse,
@@ -416,18 +422,48 @@ class NeteaseProvider(MusicProvider):
             return {"success": False, "error": str(e), "url": "", "mid": mid}
 
     async def get_song_urls_batch(self, mids: list[str]) -> SongUrlBatchResponse:
-        urls: dict[str, str] = {}
-        last_error = ""
-        for mid in mids:
-            single = await self.get_song_url(mid)
-            url_value = single.get("url")
-            if single.get("success") and url_value:
-                urls[mid] = str(url_value)
-            else:
-                last_error = single.get("error", "")
-        if urls and len(urls) == len(mids):
+        if not mids:
+            return {"success": True, "urls": {}}
+
+        normalized_by_mid, request_ids, invalid_mids = normalize_song_mids(mids)
+        if not request_ids:
+            return {"success": False, "error": "无有效歌曲 ID", "urls": {}}
+
+        urls_by_normalized: dict[str, str] = {}
+
+        try:
+            primary_raw = track.GetTrackAudioV1(
+                request_ids,
+                level="lossless",
+                encodeType="flac",
+            )
+            primary_result = cast(dict[str, object], primary_raw)
+            urls_by_normalized.update(extract_track_urls(primary_result))
+
+            missing_ids = [
+                song_id for song_id in request_ids
+                if str(song_id) not in urls_by_normalized
+            ]
+            if missing_ids:
+                fallback_raw = track.GetTrackAudioV1(
+                    missing_ids,
+                    level="higher",
+                    encodeType="flac",
+                )
+                fallback_result = cast(dict[str, object], fallback_raw)
+                urls_by_normalized.update(extract_track_urls(fallback_result))
+        except Exception as e:
+            decky.logger.error(f"网易云批量获取播放链接失败: {e}")
+            return {"success": False, "error": str(e), "urls": {}}
+
+        urls = map_urls_to_input_mids(normalized_by_mid, urls_by_normalized)
+        unique_requested = len(set(normalized_by_mid.values()))
+        success = unique_requested > 0 and len(urls_by_normalized) >= unique_requested
+        if success and not invalid_mids:
             return {"success": True, "urls": urls}
-        return {"success": False, "error": last_error or "部分歌曲获取失败", "urls": urls}
+
+        error = build_batch_error_message(len(mids), len(urls), len(invalid_mids))
+        return {"success": False, "error": error, "urls": urls}
 
     async def get_search_suggest(self, keyword: str) -> SearchSuggestResponse:
         try:

@@ -1,4 +1,4 @@
-import { FC, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FC, memo, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
 import { getAudioCurrentTime } from "../../features/player";
@@ -37,10 +37,7 @@ const NO_LYRIC_STYLE: CSSProperties = {
 
 export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
   ({ lyric, isPlaying, hasSong, onSeek }) => {
-    const [currentTime, setCurrentTime] = useState(0);
-    const animationFrameRef = useRef<number | null>(null);
-    const lastUpdateTimeRef = useRef(0);
-    const lastAudioTimeRef = useRef(0);
+    const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
 
     const lyricContainerRef = useRef<HTMLDivElement>(null);
     const currentLyricRef = useRef<HTMLDivElement>(null);
@@ -49,49 +46,10 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
     const lastScrolledIndexRef = useRef(-1);
 
     useEffect(() => {
-      if (!isPlaying || !lyric) {
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-          animationFrameRef.current = null;
-        }
-        return;
-      }
-
-      const isQrc = lyric.isQrc && (lyric.qrcLines || []).length > 0;
-      // QRC: 16ms for word-by-word effect; LRC: 100ms for scroll only
-      const updateInterval = isQrc ? 16 : 100;
-
-      const updateLoop = () => {
-        const now = performance.now();
-        if (now - lastUpdateTimeRef.current >= updateInterval) {
-          lastUpdateTimeRef.current = now;
-          const audioTime = getAudioCurrentTime();
-          if (audioTime !== lastAudioTimeRef.current) {
-            lastAudioTimeRef.current = audioTime;
-            setCurrentTime(audioTime);
-          }
-        }
-        animationFrameRef.current = requestAnimationFrame(updateLoop);
-      };
-
-      const initialTime = getAudioCurrentTime();
-      lastAudioTimeRef.current = initialTime;
-      setCurrentTime(initialTime);
-
-      animationFrameRef.current = requestAnimationFrame(updateLoop);
-
-      return () => {
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-          animationFrameRef.current = null;
-        }
-      };
-    }, [isPlaying, lyric]);
-
-    useEffect(() => {
       lastComputedIndexRef.current = -1;
       lastComputedTimeRef.current = 0;
       lastScrolledIndexRef.current = -1;
+      setCurrentLyricIndex(-1);
     }, [lyric]);
 
     const getCurrentLyricIndex = useCallback(
@@ -129,12 +87,42 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
       [lyric]
     );
 
+    useEffect(() => {
+      if (!lyric) return;
+
+      const isQrc = lyric.isQrc && (lyric.qrcLines || []).length > 0;
+      const updateInterval = isQrc ? 40 : 120;
+
+      let rafId: number | null = null;
+      let lastUpdateAt = 0;
+
+      const syncActiveIndex = () => {
+        const nextIndex = getCurrentLyricIndex(getAudioCurrentTime());
+        setCurrentLyricIndex((prev) => (prev === nextIndex ? prev : nextIndex));
+      };
+
+      syncActiveIndex();
+      if (!isPlaying) return;
+
+      const update = () => {
+        const now = performance.now();
+        if (now - lastUpdateAt >= updateInterval) {
+          lastUpdateAt = now;
+          syncActiveIndex();
+        }
+        rafId = requestAnimationFrame(update);
+      };
+
+      rafId = requestAnimationFrame(update);
+      return () => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+      };
+    }, [getCurrentLyricIndex, isPlaying, lyric]);
+
     const isQrc = lyric?.isQrc && (lyric?.qrcLines || []).length > 0;
-    const effectiveTime = currentTime;
-    const currentLyricIndex = useMemo(
-      () => getCurrentLyricIndex(effectiveTime),
-      [effectiveTime, getCurrentLyricIndex]
-    );
 
     useEffect(() => {
       if (currentLyricIndex !== lastScrolledIndexRef.current) {
@@ -164,7 +152,7 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
                 line={line}
                 index={index}
                 activeIndex={currentLyricIndex}
-                currentTimeSec={index === currentLyricIndex ? effectiveTime : null}
+                isPlaying={isPlaying}
                 activeRef={currentLyricRef}
                 onSeek={onSeek}
               />
