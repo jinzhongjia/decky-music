@@ -71,6 +71,10 @@ export function setPlaylist(playlist: SongInfo[]): void {
   usePlayerStore.getState().setPlaylist(playlist);
 }
 
+export function setUserQueue(queue: SongInfo[]): void {
+  usePlayerStore.getState().setUserQueue(queue);
+}
+
 export function setCurrentIndex(index: number): void {
   usePlayerStore.getState().setCurrentIndex(index);
 }
@@ -84,6 +88,7 @@ export function setProviderId(providerId: string): void {
 export function resetQueueState(): void {
   const store = usePlayerStore.getState();
   store.setPlaylist([]);
+  store.setUserQueue([]);
   store.setCurrentIndex(-1);
   store.setCurrentProviderId("");
 }
@@ -97,28 +102,30 @@ export function resetGlobalPlayerState(): void {
 
 export async function saveQueueState(providerId: string): Promise<void> {
   if (!providerId) return;
-  const { playlist, currentIndex } = getPlayerState();
+  const { playlist, userQueue, currentIndex } = getPlayerState();
   const currentMid = playlist[currentIndex]?.mid;
-  await saveProviderQueueToBackend(providerId, playlist, currentIndex, currentMid);
+  await saveProviderQueueToBackend(providerId, playlist, userQueue, currentIndex, currentMid);
 }
 
 export async function clearQueueState(providerId: string): Promise<void> {
   if (!providerId) return;
-  await saveProviderQueueToBackend(providerId, [], -1);
+  await saveProviderQueueToBackend(providerId, [], [], -1);
 }
 
 export async function restoreQueueForProvider(providerId: string): Promise<void> {
   const stored = await loadProviderQueueFromBackend(providerId);
   const store = usePlayerStore.getState();
 
-  if (stored.playlist.length > 0) {
-    store.setPlaylist(stored.playlist);
+  if (stored.playlist.length > 0 || (stored.userQueue && stored.userQueue.length > 0)) {
+    store.setPlaylist(stored.playlist || []);
+    store.setUserQueue(stored.userQueue || []);
     const restoredIndex = stored.currentIndex >= 0 ? stored.currentIndex : 0;
     store.setCurrentIndex(restoredIndex);
     const restoredSong = stored.playlist[restoredIndex] || null;
     store.setCurrentSong(restoredSong);
   } else {
     store.setPlaylist([]);
+    store.setUserQueue([]);
     store.setCurrentIndex(-1);
     store.setCurrentSong(null);
   }

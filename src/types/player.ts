@@ -79,6 +79,7 @@ export interface PlayerState {
 
 export interface StoredQueueState {
   playlist: SongInfo[];
+  userQueue?: SongInfo[];
   currentIndex: number;
   currentMid?: string;
 }

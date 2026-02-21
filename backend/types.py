@@ -222,6 +222,7 @@ PlayMode = Literal["order", "single", "shuffle"]
 
 class PlaylistState(TypedDict, total=False):
     playlist: list[SongInfo]
+    userQueue: NotRequired[list[SongInfo]]
     currentIndex: int
     currentMid: NotRequired[str]
 

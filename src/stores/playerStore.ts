@@ -11,6 +11,7 @@ interface PlayerState {
   currentTime: number;
   duration: number;
   playlist: SongInfo[];
+  userQueue: SongInfo[];
   currentIndex: number;
   playMode: PlayMode;
   shuffleHistory: number[];
@@ -30,6 +31,7 @@ interface PlayerActions {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setPlaylist: (playlist: SongInfo[]) => void;
+  setUserQueue: (queue: SongInfo[]) => void;
   setCurrentIndex: (index: number) => void;
   setPlayMode: (mode: PlayMode) => void;
   setShuffleHistory: (history: number[]) => void;
@@ -50,6 +52,7 @@ const initialState: PlayerState = {
   currentTime: 0,
   duration: 0,
   playlist: [],
+  userQueue: [],
   currentIndex: -1,
   playMode: "order",
   shuffleHistory: [],
@@ -70,6 +73,7 @@ export const usePlayerStore = create<PlayerState & PlayerActions>((set) => ({
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration: duration }),
   setPlaylist: (playlist) => set({ playlist: playlist }),
+  setUserQueue: (queue) => set({ userQueue: queue }),
   setCurrentIndex: (index) => set({ currentIndex: index }),
   setPlayMode: (mode) => set({ playMode: mode }),
   setShuffleHistory: (history) => set({ shuffleHistory: history }),

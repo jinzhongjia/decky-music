@@ -49,6 +49,7 @@ export interface UsePlayerReturn {
   error: string;
   lyric: ParsedLyric | null;
   playlist: SongInfo[];
+  userQueue: SongInfo[];
   currentIndex: number;
   playMode: PlayMode;
   volume: number;
@@ -88,6 +89,7 @@ export function usePlayer(): UsePlayerReturn {
   const error = usePlayerStore((s) => s.error);
   const lyric = usePlayerStore((s) => s.lyric);
   const playlist = usePlayerStore((s) => s.playlist);
+  const userQueue = usePlayerStore((s) => s.userQueue);
   const currentIndex = usePlayerStore((s) => s.currentIndex);
   const playMode = usePlayerStore((s) => s.playMode);
   const volume = usePlayerStore((s) => s.volume);
@@ -101,6 +103,7 @@ export function usePlayer(): UsePlayerReturn {
     error,
     lyric,
     playlist,
+    userQueue,
     currentIndex,
     playMode,
     volume,

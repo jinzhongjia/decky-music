@@ -11,6 +11,7 @@ import { BackButton, EmptyState } from "../../components/common";
 import { SongItem } from "../../components/song";
 import { useVirtualList } from "../../hooks/useVirtualList";
 import { addToBoundedSet } from "../../utils/boundedSet";
+import React from "react";
 
 const HISTORY_COVER_PRELOAD_RADIUS = 12;
 const preloadedHistoryCovers = new Set<string>();
@@ -23,6 +24,7 @@ let lastHistoryScrollTop = 0;
 
 interface HistoryPageProps {
   playlist: SongInfo[];
+  userQueue?: SongInfo[];
   currentIndex: number;
   onSelectIndex: (index: number) => void;
   onBack: () => void;
@@ -32,6 +34,7 @@ interface HistoryPageProps {
 
 const HistoryPageComponent: FC<HistoryPageProps> = ({
   playlist,
+  userQueue,
   currentIndex,
   onSelectIndex,
   onBack,
@@ -40,6 +43,18 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
   const currentRef = useRef<HTMLDivElement | null>(null);
   const initialScrollDone = useRef(false);
   const prevCurrentIndexRef = useRef(currentIndex);
+
+  const combinedList = React.useMemo(() => {
+    if (!userQueue || userQueue.length === 0) return playlist;
+    const safeCurrentIndex = currentIndex >= 0 ? currentIndex : -1;
+    if (safeCurrentIndex < 0) return [...playlist, ...userQueue];
+
+    return [
+      ...playlist.slice(0, safeCurrentIndex + 1),
+      ...userQueue,
+      ...playlist.slice(safeCurrentIndex + 1)
+    ];
+  }, [playlist, userQueue, currentIndex]);
 
   // 使用虚拟列表
   const {
@@ -52,7 +67,7 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
     scrollToIndex,
     containerRef,
   } = useVirtualList({
-    items: playlist,
+    items: combinedList,
     itemHeight: ITEM_HEIGHT,
     containerHeight: CONTAINER_HEIGHT,
     overscan: 8,
@@ -67,11 +82,11 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
 
   // 初始化时滚动到当前播放项
   useEffect(() => {
-    if (!initialScrollDone.current && playlist.length > 0) {
+    if (!initialScrollDone.current && combinedList.length > 0) {
       scrollToIndex(currentIndex);
       initialScrollDone.current = true;
     }
-  }, [currentIndex, playlist.length, scrollToIndex]);
+  }, [currentIndex, combinedList.length, scrollToIndex]);
 
   // 切歌时滚动到新的当前播放项
   useEffect(() => {
@@ -87,10 +102,10 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
 
   // 图片预加载
   useEffect(() => {
-    if (playlist.length === 0) return;
+    if (combinedList.length === 0) return;
     const start = Math.max(0, currentIndex - HISTORY_COVER_PRELOAD_RADIUS);
-    const end = Math.min(playlist.length, currentIndex + HISTORY_COVER_PRELOAD_RADIUS + 1);
-    const candidates = playlist.slice(start, end);
+    const end = Math.min(combinedList.length, currentIndex + HISTORY_COVER_PRELOAD_RADIUS + 1);
+    const candidates = combinedList.slice(start, end);
 
     candidates.forEach((song) => {
       if (!song.cover || preloadedHistoryCovers.has(song.cover)) return;
@@ -116,14 +131,14 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
         lastHistoryScrollTop = el.scrollTop;
       }
     };
-  }, [containerRef]);
+  }, [containerRef, combinedList.length]);
 
   return (
     <>
       <BackButton onClick={onBack} label="返回首页" />
 
-      <PanelSection title={`播放队列${playlist.length > 0 ? ` (${playlist.length})` : ""}`}>
-        {playlist.length === 0 ? (
+      <PanelSection title={`播放队列${combinedList.length > 0 ? ` (${combinedList.length})` : ""}`}>
+        {combinedList.length === 0 ? (
           <EmptyState message="还没有播放过歌曲" padding="40px 20px" />
         ) : (
           <div
