@@ -180,4 +180,3 @@ export const KaraokeLyrics: FC<KaraokeLyricsProps> = memo(
 );
 
 KaraokeLyrics.displayName = "KaraokeLyrics";
-/* global HTMLDivElement, requestAnimationFrame, cancelAnimationFrame, performance */

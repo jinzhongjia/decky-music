@@ -179,4 +179,3 @@ export const PlayerProgress: FC<PlayerProgressProps> = memo(
 );
 
 PlayerProgress.displayName = "PlayerProgress";
-/* global HTMLDivElement */

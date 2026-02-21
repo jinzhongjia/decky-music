@@ -1,4 +1,3 @@
-/* global HTMLDivElement, HTMLElement, requestAnimationFrame */
 
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 
 interface UseVolumeDragOptions {

@@ -13,7 +13,8 @@ import {
   useProgressDrag,
   useVolumeDrag,
 } from "../../components/sidebar-player";
-import { useAudioTime } from "../../features/player";
+import { useAudioTime, useSyncAudioProgress } from "../../features/player";
+import { useRef } from "react";
 
 interface PlayerPageProps {
   song: SongInfo;
@@ -48,12 +49,22 @@ export const PlayerPage: FC<PlayerPageProps> = ({
   volume,
   onVolumeChange,
 }) => {
-  // 使用 useAudioTime 获取时间状态，仅在此组件内触发重渲染
+  // 使用 useAudioTime 获取时间状态，仅在需要时触发重渲染
   const { currentTime, duration: audioDuration } = useAudioTime();
   const actualDuration = audioDuration > 0 ? audioDuration : song.duration;
 
+  const progressRef = useRef<HTMLDivElement | null>(null);
+  const timeTextRef = useRef<HTMLSpanElement | null>(null);
+
   const progressDrag = useProgressDrag({ duration: actualDuration, currentTime, onSeek });
   const volumeDrag = useVolumeDrag({ onVolumeChange });
+
+  useSyncAudioProgress({
+    progressRef,
+    textRef: timeTextRef,
+    dragTime: progressDrag.dragTime,
+    duration: actualDuration,
+  });
 
   const handlePrev = useCallback(() => {
     if (hasPlaylist && onPrev) {
@@ -86,11 +97,12 @@ export const PlayerPage: FC<PlayerPageProps> = ({
       {!loading && !error && (
         <>
           <PlayerProgress
-            currentTime={currentTime}
             duration={actualDuration}
             dragTime={progressDrag.dragTime}
             isDragging={progressDrag.isDragging}
             barRef={progressDrag.barRef}
+            progressRef={progressRef}
+            timeTextRef={timeTextRef}
             onPointerDown={progressDrag.handlePointerDown}
             onPointerMove={progressDrag.handlePointerMove}
             onPointerUp={progressDrag.handlePointerUp}

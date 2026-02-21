@@ -5,28 +5,27 @@ import { formatDuration } from "../../utils/format";
 import { COLORS } from "../../utils/styles";
 
 interface PlayerProgressProps {
-  currentTime: number;
   duration: number;
   dragTime: number | null;
   isDragging: boolean;
   barRef: React.RefObject<HTMLDivElement | null>;
+  progressRef: React.RefObject<HTMLDivElement | null>;
+  timeTextRef: React.RefObject<HTMLSpanElement | null>;
   onPointerDown: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
 }
 
 const PlayerProgressComponent: FC<PlayerProgressProps> = ({
-  currentTime,
   duration,
-  dragTime,
   isDragging,
   barRef,
+  progressRef,
+  timeTextRef,
   onPointerDown,
   onPointerMove,
   onPointerUp,
 }) => {
-  const displayTime = dragTime ?? currentTime;
-  const progress = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
 
   return (
     <PanelSectionRow>
@@ -40,7 +39,7 @@ const PlayerProgressComponent: FC<PlayerProgressProps> = ({
             marginBottom: "8px",
           }}
         >
-          <span>{formatDuration(Math.floor(displayTime))}</span>
+          <span ref={timeTextRef}>0:00</span>
           <span>{formatDuration(duration)}</span>
         </div>
         <div
@@ -60,9 +59,10 @@ const PlayerProgressComponent: FC<PlayerProgressProps> = ({
           }}
         >
           <div
+            ref={progressRef}
             style={{
               height: "100%",
-              width: `${progress}%`,
+              width: "0%",
               background: `linear-gradient(90deg, ${COLORS.primary}, ${COLORS.primaryLight})`,
               borderRadius: "4px",
               transition: isDragging ? "none" : "width 0.1s linear",
