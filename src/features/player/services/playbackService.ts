@@ -454,7 +454,14 @@ export async function playNext(): Promise<void> {
         const prevLength = playlist.length;
         const newSongs = await onNeedMoreSongsCallback();
         if (newSongs.length > 0) {
-          await addToQueue(newSongs);
+          const newPlaylist = [...playlist, ...newSongs];
+          store.setPlaylist(newPlaylist);
+
+          if (playMode === "shuffle") {
+            syncShuffleAfterPlaylistChange(currentIndex);
+          }
+          void saveQueueState(currentProviderId);
+
           const { playlist: updatedPlaylist } = getPlayerState();
           if (updatedPlaylist.length > prevLength) {
             return playNext();
