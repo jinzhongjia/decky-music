@@ -48,6 +48,7 @@ export function useFullscreenContent(params: UseFullscreenContentParams) {
 
   const {
     playlist,
+    userQueue,
     currentIndex,
     playAtIndex,
     removeFromQueue,
@@ -116,6 +117,7 @@ export function useFullscreenContent(params: UseFullscreenContentParams) {
     <div ref={historyPageRef} tabIndex={-1} style={{ height: '100%', overflow: 'auto' }}>
       <MemoHistoryPage
         playlist={playlist}
+        userQueue={userQueue}
         currentIndex={currentIndex}
         onSelectIndex={playAtIndex}
         onBack={goBackToPlayer}
@@ -123,7 +125,7 @@ export function useFullscreenContent(params: UseFullscreenContentParams) {
         onRemoveFromQueue={removeFromQueue}
       />
     </div>
-  ), [currentIndex, currentPlayingMid, goBackToPlayer, playAtIndex, playlist, removeFromQueue]);
+  ), [currentIndex, currentPlayingMid, goBackToPlayer, playAtIndex, playlist, userQueue, removeFromQueue]);
 
   const pageRefs = useMemo(() => ({
     guessLikePageRef,

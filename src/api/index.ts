@@ -188,7 +188,7 @@ export const getProviderQueue = callable<[providerId: string], ProviderQueueResp
 
 /** 保存指定 Provider 的队列状态 */
 export const saveProviderQueue = callable<
-  [providerId: string, playlist: Array<Record<string, unknown>>, currentIndex: number, currentMid?: string],
+  [providerId: string, playlist: Array<Record<string, unknown>>, currentIndex: number, currentMid?: string, userQueue?: Array<Record<string, unknown>>],
   { success: boolean; error?: string }
 >("save_provider_queue");
 

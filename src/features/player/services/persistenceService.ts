@@ -20,6 +20,7 @@ const QUEUE_SAVE_DEBOUNCE_MS = 400;
 interface QueueSavePayload {
   providerId: string;
   playlist: SongInfo[];
+  userQueue: SongInfo[];
   currentIndex: number;
   currentMid?: string;
 }
@@ -35,7 +36,8 @@ const pendingQueueSaves = new Map<string, PendingQueueSave>();
 
 function buildQueueSnapshot(payload: QueueSavePayload): string {
   const mids = payload.playlist.map((song) => song.mid).join(",");
-  return `${payload.currentIndex}|${payload.currentMid ?? ""}|${mids}`;
+  const queueMids = payload.userQueue.map((song) => song.mid).join(",");
+  return `${payload.currentIndex}|${payload.currentMid ?? ""}|${mids}|${queueMids}`;
 }
 
 async function flushProviderQueueSave(providerId: string): Promise<void> {
@@ -57,7 +59,8 @@ async function flushProviderQueueSave(providerId: string): Promise<void> {
       providerId,
       payload.playlist as unknown as Array<Record<string, unknown>>,
       payload.currentIndex,
-      payload.currentMid
+      payload.currentMid,
+      payload.userQueue.length > 0 ? (payload.userQueue as unknown as Array<Record<string, unknown>>) : undefined
     );
     success = res.success;
     if (success) {
@@ -163,8 +166,9 @@ export async function loadProviderQueueFromBackend(providerId: string): Promise<
   try {
     const res = await getProviderQueueApi(providerId);
     if (res.success && res.queue) {
-      const { playlist, currentIndex, currentMid } = res.queue;
+      const { playlist, userQueue, currentIndex, currentMid } = res.queue as any;
       const typedPlaylist = Array.isArray(playlist) ? (playlist as unknown as SongInfo[]) : [];
+      const typedUserQueue = Array.isArray(userQueue) ? (userQueue as unknown as SongInfo[]) : [];
 
       if (currentMid) {
         const idx = typedPlaylist.findIndex((s) => s.mid === currentMid);
@@ -174,11 +178,12 @@ export async function loadProviderQueueFromBackend(providerId: string): Promise<
             buildQueueSnapshot({
               providerId,
               playlist: typedPlaylist,
+              userQueue: typedUserQueue,
               currentIndex: idx,
               currentMid,
             })
           );
-          return { playlist: typedPlaylist, currentIndex: idx, currentMid };
+          return { playlist: typedPlaylist, userQueue: typedUserQueue, currentIndex: idx, currentMid };
         }
       }
 
@@ -192,6 +197,7 @@ export async function loadProviderQueueFromBackend(providerId: string): Promise<
         buildQueueSnapshot({
           providerId,
           playlist: typedPlaylist,
+          userQueue: typedUserQueue,
           currentIndex: normalizedIndex,
           currentMid: normalizedMid,
         })
@@ -199,13 +205,14 @@ export async function loadProviderQueueFromBackend(providerId: string): Promise<
 
       return {
         playlist: typedPlaylist,
+        userQueue: typedUserQueue,
         currentIndex: normalizedIndex,
       };
     }
   } catch (error) {
     console.error("Failed to load provider queue from backend:", error);
   }
-  return { playlist: [], currentIndex: -1 };
+  return { playlist: [], userQueue: [], currentIndex: -1 };
 }
 
 /**
@@ -214,6 +221,7 @@ export async function loadProviderQueueFromBackend(providerId: string): Promise<
 export async function saveProviderQueueToBackend(
   providerId: string,
   playlist: SongInfo[],
+  userQueue: SongInfo[],
   currentIndex: number,
   currentMid?: string
 ): Promise<boolean> {
@@ -224,6 +232,7 @@ export async function saveProviderQueueToBackend(
   const payload: QueueSavePayload = {
     providerId,
     playlist,
+    userQueue,
     currentIndex,
     currentMid,
   };

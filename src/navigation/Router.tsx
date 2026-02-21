@@ -96,6 +96,7 @@ export const Router: FC<RouterProps> = ({
       return (
         <HistoryPage
           playlist={player.playlist}
+          userQueue={player.userQueue}
           currentIndex={player.currentIndex}
           onSelectIndex={player.playAtIndex}
           onBack={nav.onBackToHome}

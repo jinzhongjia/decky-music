@@ -22,7 +22,6 @@ import { fetchLyricWithCache } from "./lyricService";
 import {
   resetAllShuffleState,
   syncShuffleAfterPlaylistChange,
-  handleShuffleAdd,
   handleShuffleRemove,
   getShuffleNextIndex,
   getShufflePrevIndex,
@@ -83,9 +82,9 @@ function setLoadTimeout(callback: () => void): void {
 
 async function saveQueueState(providerId: string): Promise<void> {
   if (!providerId) return;
-  const { playlist, currentIndex } = getPlayerState();
+  const { playlist, userQueue, currentIndex } = getPlayerState();
   const currentMid = playlist[currentIndex]?.mid;
-  await saveProviderQueueToBackend(providerId, playlist, currentIndex, currentMid);
+  await saveProviderQueueToBackend(providerId, playlist, userQueue, currentIndex, currentMid);
 }
 
 async function playSongInternal(
@@ -119,10 +118,10 @@ async function playSongInternal(
     store.setCurrentIndex(index);
   }
 
-  const { playlist, currentIndex, currentProviderId } = getPlayerState();
+  const { playlist, userQueue, currentIndex, currentProviderId } = getPlayerState();
   if (currentProviderId) {
     const currentMid = playlist[currentIndex]?.mid;
-    void saveProviderQueueToBackend(currentProviderId, playlist, currentIndex, currentMid);
+    void saveProviderQueueToBackend(currentProviderId, playlist, userQueue, currentIndex, currentMid);
   }
 
   setGlobalErrorHandler((errorMsg: string, shouldAutoSkip: boolean) => {
@@ -234,6 +233,7 @@ export async function playSong(song: SongInfo): Promise<void> {
   const { currentProviderId } = getPlayerState();
 
   store.setPlaylist([song]);
+  store.setUserQueue([]);
   store.setCurrentIndex(0);
   syncShuffleAfterPlaylistChange(0);
   void saveQueueState(currentProviderId);
@@ -249,6 +249,7 @@ export async function playPlaylist(songs: SongInfo[], startIndex: number = 0): P
   // 始终替换整个队列（Spotify 行为）
   const clampedIndex = Math.min(Math.max(startIndex, 0), songs.length - 1);
   store.setPlaylist(songs);
+  store.setUserQueue([]);
   store.setCurrentIndex(clampedIndex);
   syncShuffleAfterPlaylistChange(clampedIndex);
   void saveQueueState(currentProviderId);
@@ -259,45 +260,55 @@ export async function addToQueue(songs: SongInfo[]): Promise<void> {
   if (songs.length === 0) return;
 
   const store = usePlayerStore.getState();
-  const { playlist, currentSong, currentIndex, playMode, currentProviderId } = getPlayerState();
+  const { playlist, userQueue, currentSong, currentProviderId } = getPlayerState();
 
-  const existingMids = new Set(playlist.map((s) => s.mid));
+  const existingMids = new Set([
+    ...playlist.map((s) => s.mid),
+    ...userQueue.map((s) => s.mid)
+  ]);
   const songsToAdd = songs.filter((s) => !existingMids.has(s.mid));
   if (songsToAdd.length === 0) return;
 
-  const prevLength = playlist.length;
-  const newPlaylist = [...playlist, ...songsToAdd];
-  store.setPlaylist(newPlaylist);
-
-  if (playMode === "shuffle") {
-    const newIndices = songsToAdd.map((_, idx) => prevLength + idx);
-    handleShuffleAdd(newIndices);
-  }
-  void saveQueueState(currentProviderId);
-
-  if (!currentSong || currentIndex < 0) {
+  if (!currentSong || playlist.length === 0) {
+    store.setPlaylist(songsToAdd);
+    store.setUserQueue([]);
     store.setCurrentIndex(0);
     syncShuffleAfterPlaylistChange(0);
     void saveQueueState(currentProviderId);
-    await playSongInternal(newPlaylist[0], 0, false);
+    await playSongInternal(songsToAdd[0], 0, false);
+    return;
   }
+
+  const newUserQueue = [...userQueue, ...songsToAdd];
+  store.setUserQueue(newUserQueue);
+  void saveQueueState(currentProviderId);
 }
 
 export function removeFromQueue(index: number): void {
   const store = usePlayerStore.getState();
-  const { playlist, currentIndex, playMode, currentProviderId } = getPlayerState();
+  const { playlist, userQueue, currentIndex, playMode, currentProviderId } = getPlayerState();
 
-  if (index <= currentIndex || index < 0 || index >= playlist.length) return;
+  if (index <= currentIndex || index < 0) return;
 
-  const newPlaylist = [...playlist];
-  newPlaylist.splice(index, 1);
+  if (index <= currentIndex + userQueue.length) {
+    const uqIndex = index - currentIndex - 1;
+    const newQueue = [...userQueue];
+    newQueue.splice(uqIndex, 1);
+    store.setUserQueue(newQueue);
+  } else {
+    const plIndex = index - userQueue.length;
+    if (plIndex >= playlist.length) return;
 
-  if (playMode === "shuffle") {
-    handleShuffleRemove(index);
-    syncShuffleAfterPlaylistChange(currentIndex);
+    const newPlaylist = [...playlist];
+    newPlaylist.splice(plIndex, 1);
+
+    if (playMode === "shuffle") {
+      handleShuffleRemove(plIndex);
+      syncShuffleAfterPlaylistChange(currentIndex);
+    }
+    store.setPlaylist(newPlaylist);
   }
 
-  store.setPlaylist(newPlaylist);
   void saveQueueState(currentProviderId);
 }
 
@@ -305,19 +316,41 @@ export async function playAtIndex(index: number): Promise<void> {
   if (isTrackChanging) return;
 
   const store = usePlayerStore.getState();
-  const { playlist, playMode, currentProviderId } = getPlayerState();
-  if (index < 0 || index >= playlist.length) return;
+  const { playlist, userQueue, playMode, currentProviderId, currentIndex } = getPlayerState();
+  if (index < 0) return;
 
   const audio = getGlobalAudio();
   audio.pause();
 
-  if (playMode === "shuffle") {
-    handleShuffleJumpTo(index);
+  if (index <= currentIndex) {
+    if (playMode === "shuffle") handleShuffleJumpTo(index);
+    store.setCurrentIndex(index);
+    await playSongInternal(playlist[index], index, true);
+  } else if (index <= currentIndex + userQueue.length) {
+    const uqIndex = index - currentIndex - 1;
+    const itemsToMove = userQueue.slice(0, uqIndex + 1);
+    const newQueue = userQueue.slice(uqIndex + 1);
+
+    const newPlaylist = [...playlist];
+    newPlaylist.splice(currentIndex + 1, 0, ...itemsToMove);
+
+    store.setPlaylist(newPlaylist);
+    store.setUserQueue(newQueue);
+
+    const targetIndex = currentIndex + itemsToMove.length;
+    store.setCurrentIndex(targetIndex);
+
+    if (playMode === "shuffle") syncShuffleAfterPlaylistChange(targetIndex);
+    await playSongInternal(newPlaylist[targetIndex], targetIndex, true);
+  } else {
+    const plIndex = index - userQueue.length;
+    if (plIndex >= playlist.length) return;
+
+    if (playMode === "shuffle") handleShuffleJumpTo(plIndex);
+    store.setCurrentIndex(plIndex);
+    await playSongInternal(playlist[plIndex], plIndex, true);
   }
 
-  store.setCurrentIndex(index);
-  const song = playlist[index];
-  await playSongInternal(song, index, true);
   void saveQueueState(currentProviderId);
 }
 
@@ -376,11 +409,33 @@ export function stop(): void {
 export async function playNext(): Promise<void> {
   if (isTrackChanging) return;
 
-  const { playlist, currentIndex, playMode, currentProviderId } = getPlayerState();
+  const { playlist, userQueue, currentIndex, playMode, currentProviderId } = getPlayerState();
   if (playlist.length === 0) return;
 
   const audio = getGlobalAudio();
   audio.pause();
+
+  const store = usePlayerStore.getState();
+
+  if (userQueue.length > 0) {
+    const nextSong = userQueue[0];
+    const newQueue = userQueue.slice(1);
+
+    const newPlaylist = [...playlist];
+    newPlaylist.splice(currentIndex + 1, 0, nextSong);
+
+    store.setPlaylist(newPlaylist);
+    store.setUserQueue(newQueue);
+
+    const targetIndex = currentIndex + 1;
+    if (playMode === "shuffle") {
+      syncShuffleAfterPlaylistChange(targetIndex);
+    }
+
+    await playSongInternal(nextSong, targetIndex, true);
+    void saveQueueState(currentProviderId);
+    return;
+  }
 
   let targetIndex: number | null = null;
 
@@ -460,10 +515,11 @@ export function clearQueue(): void {
   const { currentProviderId } = getPlayerState();
 
   store.setPlaylist([]);
+  store.setUserQueue([]);
   store.setCurrentIndex(-1);
 
   if (currentProviderId) {
-    void saveProviderQueueToBackend(currentProviderId, [], -1);
+    void saveProviderQueueToBackend(currentProviderId, [], [], -1);
   }
 }
 

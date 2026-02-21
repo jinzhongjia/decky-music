@@ -305,7 +305,7 @@ class Plugin:
             }
 
     async def save_provider_queue(
-        self, provider_id: str, playlist: list[SongInfo], current_index: int, current_mid: str | None = None
+        self, provider_id: str, playlist: list[SongInfo], current_index: int, current_mid: str | None = None, user_queue: list[SongInfo] | None = None
     ) -> OperationResult:
         """保存指定 Provider 的队列状态"""
         try:
@@ -322,6 +322,8 @@ class Plugin:
             }
             if current_mid is not None:
                 queue_state["currentMid"] = current_mid
+            if user_queue is not None:
+                queue_state["userQueue"] = user_queue
 
             provider_queues[provider_id] = queue_state
 
