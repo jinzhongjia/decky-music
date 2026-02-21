@@ -248,4 +248,3 @@ export const LrcLine = memo<LrcLineProps>(({ line, index, activeIndex, activeRef
 
 LrcLine.displayName = "LrcLine";
 
-/* global HTMLDivElement, requestAnimationFrame, cancelAnimationFrame */

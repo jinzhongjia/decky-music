@@ -2,7 +2,6 @@
  * 播放队列/历史合并视图
  * 使用虚拟列表优化大量歌曲的渲染性能
  */
-/* global HTMLDivElement */
 
 import { FC, useCallback, memo, useEffect, useRef } from "react";
 import { PanelSection, Focusable, NavEntryPositionPreferences } from "@decky/ui";
@@ -86,7 +85,7 @@ const HistoryPageComponent: FC<HistoryPageProps> = ({
       scrollToIndex(currentIndex);
       initialScrollDone.current = true;
     }
-  }, [currentIndex, combinedList.length, scrollToIndex]);
+  }, [currentIndex, combinedList.length, scrollToIndex, combinedList]);
 
   // 切歌时滚动到新的当前播放项
   useEffect(() => {

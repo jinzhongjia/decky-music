@@ -130,4 +130,63 @@ export function getAudioTime(): AudioTimeState {
   };
 }
 
-/* global requestAnimationFrame, cancelAnimationFrame, performance */
+
+interface UseSyncAudioProgressOptions {
+  progressRef: React.RefObject<HTMLDivElement | null>;
+  textRef?: React.RefObject<HTMLSpanElement | null>;
+  dragTime: number | null;
+  duration: number;
+}
+
+/**
+ * 直接操作 DOM 更新进度条（Zero React Overhead 优化）
+ * 对于高频更新的进度条非常有效，完全避免组件重新渲染
+ */
+export function useSyncAudioProgress({
+  progressRef,
+  textRef,
+  dragTime,
+  duration,
+}: UseSyncAudioProgressOptions) {
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!duration || duration <= 0) return;
+
+    const updateDOM = () => {
+      // 优先显示拖拽时间，否则显示当前播放时间
+      let currentTime = dragTime;
+      if (currentTime === null) {
+        currentTime = getGlobalAudio().currentTime;
+      }
+
+      if (progressRef.current) {
+        const progress = Math.min(100, Math.max(0, (currentTime / duration) * 100));
+        progressRef.current.style.width = `${progress}%`;
+      }
+
+      if (textRef?.current) {
+        const m = Math.floor(currentTime / 60);
+        const s = Math.floor(currentTime % 60);
+        textRef.current.textContent = `${m}:${s.toString().padStart(2, "0")}`;
+      }
+
+      if (dragTime === null) {
+        rafRef.current = requestAnimationFrame(updateDOM);
+      }
+    };
+
+    if (dragTime !== null) {
+      // 如果正在拖拽，手动触发一次 DOM 更新即可，不需要 raf
+      updateDOM();
+    } else {
+      rafRef.current = requestAnimationFrame(updateDOM);
+    }
+
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, [dragTime, duration, progressRef, textRef]);
+}

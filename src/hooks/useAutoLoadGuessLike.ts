@@ -41,9 +41,9 @@ export function useAutoLoadGuessLike(
     enabled,
     isLoggedIn,
     canRecommendPersonalized,
+    dataManager,
     dataManager.guessLoading,
     dataManager.guessLikeSongs.length,
     dataManager.loadGuessLike,
   ]);
 }
-

@@ -1,4 +1,3 @@
-/* global HTMLDivElement */
 /**
  * 登录页面组件
  */

@@ -6,7 +6,7 @@
 export { usePlayer, cleanupPlayer, getAudioCurrentTime } from "./hooks/usePlayer";
 export type { UsePlayerReturn } from "./hooks/usePlayer";
 export { usePlayerEffects } from "./hooks/usePlayerEffects";
-export { useAudioTime, useAudioTimeRAF, getAudioTime } from "./hooks/useAudioTime";
+export { useAudioTime, useAudioTimeRAF, getAudioTime, useSyncAudioProgress } from "./hooks/useAudioTime";
 
 // Services (供需要直接访问的模块使用)
 export {

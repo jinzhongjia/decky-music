@@ -5,7 +5,7 @@
  * 使用 useAudioTime hook 获取时间状态，避免高频更新影响父组件
  */
 
-/* global HTMLDivElement */
+
 
 import React, { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaPlay, FaPause, FaStepForward, FaStepBackward, FaRandom, FaRedo, FaListOl } from "react-icons/fa";
@@ -13,7 +13,7 @@ import type { PlayMode, SongInfo } from "../../types";
 import { formatDuration } from "../../utils/format";
 import { SafeImage } from "../common";
 import { TEXT_ELLIPSIS, TEXT_CONTAINER, FLEX_CENTER, COLORS } from "../../utils/styles";
-import { useAudioTime } from "../../features/player";
+import { useSyncAudioProgress, getAudioTime } from "../../features/player";
 
 interface PlayerBarProps {
   song: SongInfo;
@@ -40,20 +40,34 @@ export const PlayerBar: FC<PlayerBarProps> = ({
   playMode,
   onTogglePlayMode,
 }) => {
-  // 使用 useAudioTime 获取时间状态，仅在此组件内触发重渲染
-  const { currentTime, duration: audioDuration } = useAudioTime();
-  const duration = audioDuration || song.duration;
+  // 移除高频重渲染的 useAudioTime，改用 getAudioTime 获取初始值和在事件中获取
+  const [duration, setDuration] = useState(() => getAudioTime().duration || song.duration);
   const barRef = useRef<HTMLDivElement | null>(null);
+  const progressRef = useRef<HTMLDivElement | null>(null);
+  const timeTextRef = useRef<HTMLSpanElement | null>(null);
+
   const [dragTime, setDragTime] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const draggingIdRef = useRef<number | null>(null);
-  // 缓存 rect 避免拖动时频繁调用 getBoundingClientRect 导致重排
   const cachedRectRef = useRef<DOMRect | null>(null);
+
+  useEffect(() => {
+    // 当歌曲切换时，重置时长为初始或0，让后续 update 同步最新
+    setDuration(song.duration);
+  }, [song.mid, song.duration]);
+
+  // Zero React Overhead 进度条动画
+  useSyncAudioProgress({
+    progressRef,
+    textRef: timeTextRef,
+    dragTime,
+    duration,
+  });
 
   const getTimeFromClientX = useCallback(
     (clientX: number, rect?: DOMRect | null) => {
       const useRect = rect || cachedRectRef.current || barRef.current?.getBoundingClientRect();
-      if (!duration || !useRect) return null;
+      if (!duration || !useRect) return 0; // Fixed return type safety to return 0 instead of falling through
       const ratio = (clientX - useRect.left) / useRect.width;
       const clamped = Math.min(1, Math.max(0, ratio));
       return clamped * duration;
@@ -80,11 +94,17 @@ export const PlayerBar: FC<PlayerBarProps> = ({
   // 智能清除：当 audio 追上 seek 目标时自动清除 dragTime
   useEffect(() => {
     if (dragTime !== null && !isDragging) {
-      if (Math.abs(currentTime - dragTime) < 0.5) {
-        setDragTime(null);
-      }
+      const checkInterval = setInterval(() => {
+        const { currentTime } = getAudioTime();
+        if (Math.abs(currentTime - dragTime) < 0.5) {
+          setDragTime(null);
+          clearInterval(checkInterval);
+        }
+      }, 200);
+      return () => clearInterval(checkInterval);
     }
-  }, [currentTime, dragTime, isDragging]);
+    return undefined;
+  }, [dragTime, isDragging]);
 
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -130,37 +150,11 @@ export const PlayerBar: FC<PlayerBarProps> = ({
     [commitSeek]
   );
 
-  const displayTime = dragTime ?? currentTime;
-  const progress = useMemo(
-    () => (duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0),
-    [displayTime, duration]
-  );
-
-  const modeConfig = useMemo(() => {
-    if (!playMode) return null;
-    switch (playMode) {
-      case "shuffle":
-        return { icon: <FaRandom size={14} />, title: "随机播放" };
-      case "single":
-        return { icon: <FaRedo size={14} />, title: "单曲循环" };
-      default:
-        return { icon: <FaListOl size={14} />, title: "顺序播放" };
-    }
-  }, [playMode]);
-
-  // 使用 ref 追踪最新值，避免 callback 依赖变化导致子组件重渲染
-  const currentTimeRef = React.useRef(currentTime);
-  const durationRef = React.useRef(duration);
-
-  React.useEffect(() => {
-    currentTimeRef.current = currentTime;
-    durationRef.current = duration;
-  }, [currentTime, duration]);
-
   const handlePrevClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onPrev ? onPrev() : onSeek(Math.max(0, currentTimeRef.current - 10));
+      const currentNativeTime = getAudioTime().currentTime;
+      onPrev ? onPrev() : onSeek(Math.max(0, currentNativeTime - 10));
     },
     [onPrev, onSeek]
   );
@@ -176,10 +170,23 @@ export const PlayerBar: FC<PlayerBarProps> = ({
   const handleNextClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onNext ? onNext() : onSeek(Math.min(durationRef.current, currentTimeRef.current + 10));
+      const currentNativeTime = getAudioTime().currentTime;
+      // Note: durationRef.current is not defined here. Assuming 'duration' state should be used.
+      onNext ? onNext() : onSeek(Math.min(duration, currentNativeTime + 10));
     },
-    [onNext, onSeek]
+    [onNext, onSeek, duration] // Added duration to dependencies
   );
+
+  const modeConfig = useMemo(() => {
+    switch (playMode) {
+      case "shuffle":
+        return { icon: <FaRandom size={14} />, title: "随机播放" };
+      case "single":
+        return { icon: <FaRedo size={14} />, title: "单曲循环" };
+      default:
+        return { icon: <FaListOl size={14} />, title: "顺序播放" };
+    }
+  }, [playMode]);
 
   return (
     <div
@@ -214,9 +221,10 @@ export const PlayerBar: FC<PlayerBarProps> = ({
         }}
       >
         <div
+          ref={progressRef}
           style={{
             height: "100%",
-            width: `${progress}%`,
+            width: "0%",
             background: COLORS.primary,
             transition: isDragging ? "none" : "width 0.1s linear",
           }}
@@ -275,7 +283,7 @@ export const PlayerBar: FC<PlayerBarProps> = ({
                 ...TEXT_ELLIPSIS,
               }}
             >
-              {song.singer} · {formatDuration(Math.floor(currentTime))} / {formatDuration(duration)}
+              {song.singer} · <span ref={timeTextRef}>0:00</span> / {formatDuration(duration)}
             </div>
           </div>
         </div>
