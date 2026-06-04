@@ -1,249 +1,173 @@
-/**
- * 左侧主菜单注入 Patch
- * 参考 DeckWebBrowser 实现，使用新版 @decky/ui API
- */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Navigation } from "@decky/ui";
 
-import { FC, ReactElement, ReactNode } from "react";
-import { afterPatch, findInReactTree, getReactRoot } from "@decky/ui";
-import { FaMusic } from "react-icons/fa";
-
-// 路由路径
 export const ROUTE_PATH = "/decky-music";
 
-// 菜单项的 Props 接口
-interface MainMenuItemProps {
-  route: string;
-  label: ReactNode;
-  onFocus: () => void;
-  icon?: ReactElement;
-  onActivate?: () => void;
-  children?: ReactNode;
-}
+const MENU_ENTRY_ATTR = "data-decky-music-menu-entry";
+const INSTALL_INTERVAL_MS = 1000;
 
-// 获取 React 树
-// eslint-disable-next-line no-undef
-const getReactTree = () => getReactRoot(document.getElementById('root') as HTMLElement);
-
-// 辅助函数：检查是否为菜单项元素
-const isMenuItemElement = (e: any): boolean =>
-  Boolean(e?.props?.label && e?.props?.onFocus && e?.props?.route && e?.type?.toString);
-
-// 辅助函数：检查菜单项是否已存在
-const isMenuItemAlreadyAdded = (menuItems: any[]): boolean =>
-  menuItems.some((item: any) => item?.props?.route === ROUTE_PATH || item?.key === 'decky-music');
-
-// 菜单项包装组件
-interface MenuItemWrapperProps extends MainMenuItemProps {
-  MenuItemComponent: FC<MainMenuItemProps>;
-  useIconAsProp: boolean;
-}
-
-const MenuItemWrapper: FC<MenuItemWrapperProps> = ({ 
-  MenuItemComponent, 
-  label, 
-  useIconAsProp, 
-  ...props 
-}) => {
-  const iconProps = useIconAsProp 
-    ? { icon: <FaMusic /> } 
-    : { children: <FaMusic /> };
-
-  return (
-    <MenuItemComponent
-      {...props}
-      {...iconProps}
-      label={label}
-    />
-  );
+type DeckyRuntimeGlobal = typeof globalThis & {
+  DFL?: {
+    getGamepadNavigationTrees?: () => Array<{
+      m_ID?: string;
+      Root?: {
+        Element?: HTMLElement;
+      };
+    }>;
+  };
 };
 
-// 全局状态
 let isPatched = false;
-let unpatchFn: (() => void) | null = null;
-let retryTimerId: ReturnType<typeof setTimeout> | null = null;
-const PATCH_RETRY_INTERVAL_MS = 1000;
+let intervalTimerId: ReturnType<typeof setInterval> | null = null;
 
-// Patch 主菜单
-const doPatchMenu = (): (() => void) | null => {
+const findMainMenuElement = (): HTMLElement | null => {
   try {
-    const menuNode = findInReactTree(
-      getReactTree(), 
-      (node: any) => node?.memoizedProps?.navID === 'MainNavMenuContainer'
-    );
+    const menuFromNavTree = (
+      globalThis as DeckyRuntimeGlobal
+    ).DFL?.getGamepadNavigationTrees?.().find((tree) => tree?.m_ID === "MainNavMenuContainer")?.Root
+      ?.Element;
 
-    if (!menuNode || !menuNode.return?.type) {
-      return null;
+    if (menuFromNavTree) {
+      return menuFromNavTree;
     }
-
-    const orig = menuNode.return.type;
-    let patchedInnerMenu: any;
-
-    const menuWrapper = (props: any) => {
-      const ret = orig(props);
-      
-      if (!ret?.props?.children?.props?.children?.[0]?.type) {
-        return ret;
-      }
-
-      if (patchedInnerMenu) {
-        ret.props.children.props.children[0].type = patchedInnerMenu;
-      } else {
-        afterPatch(ret.props.children.props.children[0], 'type', (_: any, innerRet: any) => {
-          const menuItems = findInReactTree(
-            innerRet, 
-            (node: any) => Array.isArray(node) && node.some(isMenuItemElement)
-          ) as any[] | null;
-
-          if (!menuItems) {
-            return innerRet;
-          }
-
-          // 检查是否已经添加过
-          if (isMenuItemAlreadyAdded(menuItems)) {
-            return innerRet;
-          }
-
-          // 找到一个现有菜单项作为参考
-          const menuItem = menuItems.find(isMenuItemElement) as { 
-            props: MainMenuItemProps; 
-            type: FC<MainMenuItemProps>;
-          } | undefined;
-
-          if (!menuItem) {
-            return innerRet;
-          }
-
-          // 创建新菜单项
-          const newItem = (
-            <MenuItemWrapper
-              key="decky-music"
-              route={ROUTE_PATH}
-              label="音乐"
-              onFocus={menuItem.props.onFocus}
-              useIconAsProp={!!menuItem.props.icon}
-              MenuItemComponent={menuItem.type}
-            />
-          );
-
-          // 获取有效菜单项索引
-          const itemIndexes = menuItems
-            .map((item, index) => (item?.$$typeof && item.type !== 'div' ? index : -1))
-            .filter((idx) => idx >= 0);
-
-          if (itemIndexes.length === 0) {
-            return innerRet;
-          }
-
-          // 插入位置：如果菜单项超过4个，插入到第4个位置后，否则插入到最后
-          const insertIndex = itemIndexes.length > 4 
-            ? itemIndexes[3] + 1 
-            : itemIndexes[itemIndexes.length - 1] + 1;
-          
-          menuItems.splice(insertIndex, 0, newItem);
-
-          return innerRet;
-        });
-        patchedInnerMenu = ret.props.children.props.children[0].type;
-      }
-
-      return ret;
-    };
-
-    // 替换原始组件
-    const restoreOriginal = () => {
-      menuNode.return.type = orig;
-      if (menuNode.return.alternate) {
-        menuNode.return.alternate.type = orig;
-      }
-    };
-
-    menuNode.return.type = menuWrapper;
-    if (menuNode.return.alternate) {
-      menuNode.return.alternate.type = menuWrapper;
-    }
-
-    return restoreOriginal;
   } catch {
-    return null;
+    // Fall back to the DOM lookup below.
+  }
+
+  return document.getElementById("MainNavMenuContainer");
+};
+
+const navigateToMusic = (event?: Event) => {
+  event?.preventDefault();
+  event?.stopPropagation();
+
+  try {
+    Navigation.Navigate(ROUTE_PATH);
+  } catch {
+    // Steam may rebuild the menu while the click is being handled.
   }
 };
 
-/**
- * 菜单管理器 - 用于动态控制菜单的显示/隐藏
- */
+const replaceIcon = (menuItem: Element) => {
+  const oldIcon = menuItem.querySelector("svg");
+  if (!oldIcon) {
+    return;
+  }
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 512 512");
+  svg.setAttribute("fill", "none");
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("fill", "currentColor");
+  path.setAttribute(
+    "d",
+    "M470.38 1.51L150.41 96A32 32 0 0 0 128 126.51v261.41A139 139 0 0 0 96 384c-53 0-96 28.66-96 64s43 64 96 64 96-28.66 96-64V214.32l256-75v184.61a138.4 138.4 0 0 0-32-3.93c-53 0-96 28.66-96 64s43 64 96 64 96-28.65 96-64V32a32 32 0 0 0-41.62-30.49z"
+  );
+
+  svg.appendChild(path);
+  oldIcon.replaceWith(svg);
+};
+
+const stripFocusState = (entry: Element) => {
+  entry.querySelectorAll("*").forEach((element) => {
+    element.classList.remove("gpfocus", "gpfocuswithin");
+  });
+};
+
+const setEntryLabel = (menuItem: Element) => {
+  menuItem.setAttribute("aria-label", "\u97f3\u4e50");
+  menuItem.setAttribute("tabindex", "0");
+  menuItem.removeAttribute("data-gp-focus");
+  menuItem.removeAttribute("data-gp-focus-visible");
+
+  const labelElement = Array.from(menuItem.querySelectorAll("div"))
+    .reverse()
+    .find((element) => element.textContent?.trim() === "\u8bbe\u7f6e");
+
+  if (labelElement) {
+    labelElement.textContent = "\u97f3\u4e50";
+  } else {
+    menuItem.textContent = "\u97f3\u4e50";
+  }
+};
+
+const bindNavigation = (menuItem: Element) => {
+  menuItem.addEventListener("click", navigateToMusic, true);
+  menuItem.addEventListener("mouseup", navigateToMusic, true);
+  menuItem.addEventListener(
+    "keydown",
+    (event) => {
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+        navigateToMusic(event);
+      }
+    },
+    true
+  );
+};
+
+const installMenuEntryOnce = () => {
+  const mainMenu = findMainMenuElement();
+  if (!mainMenu || mainMenu.querySelector(`[${MENU_ENTRY_ATTR}]`)) {
+    return;
+  }
+
+  const settingsItem = mainMenu.querySelector('[role="menuitem"][aria-label="\u8bbe\u7f6e"]');
+  const settingsRow = settingsItem?.parentElement;
+  if (!settingsItem || !settingsRow?.parentElement) {
+    return;
+  }
+
+  const mediaItem = mainMenu.querySelector('[role="menuitem"][aria-label="\u5a92\u4f53"]');
+  const insertBeforeRow = mediaItem?.parentElement || settingsRow;
+
+  const entry = settingsRow.cloneNode(true) as Element;
+  entry.setAttribute(MENU_ENTRY_ATTR, "true");
+  stripFocusState(entry);
+
+  const menuItem = entry.querySelector('[role="menuitem"]') || entry;
+  setEntryLabel(menuItem);
+  replaceIcon(menuItem);
+  bindNavigation(menuItem);
+
+  insertBeforeRow.parentElement?.insertBefore(entry, insertBeforeRow);
+};
+
 export const menuManager = {
   tryEnable: () => {
-    if (isPatched) return;
-    const restore = doPatchMenu();
-    if (!restore) return;
-    unpatchFn = restore;
-    isPatched = true;
-  },
-
-  /**
-   * 启用菜单（插件加载时调用，必要时自动重试）
-   */
-  enable: () => {
-    if (isPatched) return;
-    if (retryTimerId) return;
-
-    const scheduleRetry = () => {
-      retryTimerId = setTimeout(() => {
-        retryTimerId = null;
-        menuManager.enable();
-      }, PATCH_RETRY_INTERVAL_MS);
-    };
-
-    menuManager.tryEnable();
-    if (!isPatched) {
-      scheduleRetry();
-    }
-  },
-
-  /**
-   * 禁用菜单（按需手动调用，通常仅用于特殊场景）
-   */
-  disable: () => {
-    if (retryTimerId) {
-      clearTimeout(retryTimerId);
-      retryTimerId = null;
-    }
-
-    if (!isPatched || !unpatchFn) {
-      isPatched = false;
-      unpatchFn = null;
+    if (isPatched) {
       return;
     }
 
-    unpatchFn();
-    unpatchFn = null;
+    installMenuEntryOnce();
+    intervalTimerId = setInterval(installMenuEntryOnce, INSTALL_INTERVAL_MS);
+    isPatched = true;
+  },
+
+  enable: () => {
+    menuManager.tryEnable();
+  },
+
+  disable: () => {
+    if (intervalTimerId) {
+      clearInterval(intervalTimerId);
+      intervalTimerId = null;
+    }
+
+    findMainMenuElement()
+      ?.querySelectorAll(`[${MENU_ENTRY_ATTR}]`)
+      .forEach((entry) => entry.remove());
+
     isPatched = false;
   },
 
-  /**
-   * 清理（插件卸载时调用）
-   */
   cleanup: () => {
-    if (retryTimerId) {
-      clearTimeout(retryTimerId);
-      retryTimerId = null;
-    }
-
-    if (unpatchFn) {
-      unpatchFn();
-      unpatchFn = null;
-    }
-    isPatched = false;
+    menuManager.disable();
   },
 
-  /**
-   * 检查是否已启用
-   */
-  isEnabled: () => isPatched
+  isEnabled: () => isPatched,
 };
 
-// 保持向后兼容 - 直接调用 patchMenu 等同于 enable
 export const patchMenu = () => {
   menuManager.enable();
   return () => menuManager.cleanup();
