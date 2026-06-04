@@ -74,20 +74,41 @@ const stripFocusState = (entry: Element) => {
   });
 };
 
-const setEntryLabel = (menuItem: Element) => {
+const findMenuItemByLabels = (menuItems: Element[], labels: string[]) =>
+  menuItems.find((item) => {
+    const ariaLabel = item.getAttribute("aria-label")?.trim().toLocaleLowerCase();
+    return ariaLabel ? labels.includes(ariaLabel) : false;
+  }) || null;
+
+const findLeafTextElement = (menuItem: Element, originalLabel: string | null) => {
+  const candidates = Array.from(menuItem.querySelectorAll("div")).reverse();
+
+  if (originalLabel) {
+    const exactMatch = candidates.find((element) => element.textContent?.trim() === originalLabel);
+    if (exactMatch) {
+      return exactMatch;
+    }
+  }
+
+  return (
+    candidates.find(
+      (element) =>
+        element.children.length === 0 &&
+        Boolean(element.textContent?.trim()) &&
+        !element.querySelector("svg")
+    ) || null
+  );
+};
+
+const setEntryLabel = (menuItem: Element, originalLabel: string | null) => {
   menuItem.setAttribute("aria-label", "\u97f3\u4e50");
   menuItem.setAttribute("tabindex", "0");
   menuItem.removeAttribute("data-gp-focus");
   menuItem.removeAttribute("data-gp-focus-visible");
 
-  const labelElement = Array.from(menuItem.querySelectorAll("div"))
-    .reverse()
-    .find((element) => element.textContent?.trim() === "\u8bbe\u7f6e");
-
+  const labelElement = findLeafTextElement(menuItem, originalLabel);
   if (labelElement) {
     labelElement.textContent = "\u97f3\u4e50";
-  } else {
-    menuItem.textContent = "\u97f3\u4e50";
   }
 };
 
@@ -112,21 +133,27 @@ const installMenuEntryOnce = () => {
     return;
   }
 
-  const settingsItem = mainMenu.querySelector('[role="menuitem"][aria-label="\u8bbe\u7f6e"]');
+  const menuItems = Array.from(mainMenu.querySelectorAll('[role="menuitem"]'));
+  const settingsItem =
+    findMenuItemByLabels(menuItems, ["settings", "\u8bbe\u7f6e"]) ||
+    menuItems[menuItems.length - 2] ||
+    null;
   const settingsRow = settingsItem?.parentElement;
   if (!settingsItem || !settingsRow?.parentElement) {
     return;
   }
 
-  const mediaItem = mainMenu.querySelector('[role="menuitem"][aria-label="\u5a92\u4f53"]');
+  const mediaItem =
+    findMenuItemByLabels(menuItems, ["media", "\u5a92\u4f53"]) || menuItems[4] || null;
   const insertBeforeRow = mediaItem?.parentElement || settingsRow;
+  const originalLabel = settingsItem.getAttribute("aria-label")?.trim() || null;
 
   const entry = settingsRow.cloneNode(true) as Element;
   entry.setAttribute(MENU_ENTRY_ATTR, "true");
   stripFocusState(entry);
 
   const menuItem = entry.querySelector('[role="menuitem"]') || entry;
-  setEntryLabel(menuItem);
+  setEntryLabel(menuItem, originalLabel);
   replaceIcon(menuItem);
   bindNavigation(menuItem);
 
