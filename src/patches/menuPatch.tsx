@@ -6,9 +6,7 @@ import {
 } from "@decky/ui";
 import type { FC, ReactElement, ReactNode } from "react";
 import { FaMusic } from "react-icons/fa";
-
 export const ROUTE_PATH = "/decky-music";
-
 const MENU_ITEM_KEY = "decky-music";
 const PATCH_RETRY_INTERVAL_MS = 1000;
 const MENU_ITEM_LABEL = "音乐";
@@ -78,7 +76,7 @@ const getReactTree = (): unknown => {
 const isMenuItemElement = (item: ReactMenuItem): boolean =>
   Boolean(
     item?.props?.label &&
-      item.props.route &&
+      item.props?.route &&
       item.type &&
       typeof item.type !== "string"
   );
@@ -87,7 +85,6 @@ const isMenuItemAlreadyAdded = (menuItems: ReactMenuItem[]): boolean =>
   menuItems.some(
     (item) => item?.props?.route === ROUTE_PATH || item?.key === MENU_ITEM_KEY
   );
-
 const getMenuItemIndexes = (items: ReactMenuItem[]): number[] =>
   items.flatMap((item, index) =>
     item?.$$typeof && item.type !== "div" ? [index] : []
@@ -106,7 +103,6 @@ const getInsertIndex = (items: ReactMenuItem[]): number | null => {
 
 const isPatchTarget = (value: unknown): value is PatchTarget =>
   isRecord(value) && typeof value.type === "function";
-
 const collectPatchTargets = (
   node: unknown,
   targets: PatchTarget[] = []
@@ -114,25 +110,20 @@ const collectPatchTargets = (
   if (!node || targets.length >= 12) {
     return targets;
   }
-
   if (Array.isArray(node)) {
     node.forEach((child) => collectPatchTargets(child, targets));
     return targets;
   }
-
   if (!isRecord(node)) {
     return targets;
   }
-
   if (isPatchTarget(node)) {
     targets.push(node);
   }
-
-  collectPatchTargets(node.props, targets);
-  collectPatchTargets(node.children, targets);
+  collectPatchTargets(node["props"], targets);
+  collectPatchTargets(node["children"], targets);
   return targets;
 };
-
 const getPatchTargets = (ret: MainMenuRenderElement): PatchTarget[] => {
   const legacyTarget = ret?.props?.children?.props?.children?.[0];
   const targets = collectPatchTargets(ret);
@@ -207,13 +198,26 @@ const doPatchMenu = (): (() => void) | null => {
 
     const originalType = menuNode.return.type;
     const innerPatches: Patch[] = [];
+    const patchedComponents = new WeakMap<object, unknown>();
 
     const menuWrapper = (props: unknown): ReactElement => {
       const ret = originalType(props) as MainMenuRenderElement;
       getPatchTargets(ret).forEach((target) => {
+        if (typeof target.type !== "function") {
+          return;
+        }
+
+        const originalComponent = target.type as unknown as object;
+        const patchedType = patchedComponents.get(originalComponent);
+        if (patchedType) {
+          target.type = patchedType;
+          return;
+        }
+
         const patch = afterPatch(target, "type", (_args, innerRet) =>
           patchInnerMenu(innerRet)
         );
+        patchedComponents.set(originalComponent, target.type);
         innerPatches.push(patch);
       });
       return ret;
@@ -225,11 +229,7 @@ const doPatchMenu = (): (() => void) | null => {
     }
 
     return () => {
-      innerPatches.forEach((patch) => {
-        if (!patch.hasUnpatched) {
-          patch.unpatch();
-        }
-      });
+      innerPatches.forEach((patch) => patch.unpatch());
       menuNode.return!.type = originalType;
       if (menuNode.return?.alternate) {
         menuNode.return.alternate.type = originalType;
