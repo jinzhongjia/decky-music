@@ -1,163 +1,251 @@
-import { Navigation } from "@decky/ui";
+import {
+  afterPatch,
+  findInReactTree,
+  getReactRoot,
+  type Patch,
+} from "@decky/ui";
+import type { FC, ReactElement, ReactNode } from "react";
+import { FaMusic } from "react-icons/fa";
 
 export const ROUTE_PATH = "/decky-music";
 
-const MENU_ENTRY_ATTR = "data-decky-music-menu-entry";
-const INSTALL_INTERVAL_MS = 1000;
+const MENU_ITEM_KEY = "decky-music";
+const PATCH_RETRY_INTERVAL_MS = 1000;
+const MENU_ITEM_LABEL = "音乐";
 
-type DeckyRuntimeGlobal = typeof globalThis & {
-  DFL?: {
-    getGamepadNavigationTrees?: () => Array<{
-      m_ID?: string;
-      Root?: {
-        Element?: HTMLElement;
+interface MainMenuItemProps {
+  route: string;
+  label: ReactNode;
+  active?: string;
+  onFocus?: () => void;
+  onGamepadFocus?: () => void;
+  icon?: ReactElement;
+  onActivate?: () => void;
+  children?: ReactNode;
+}
+interface MenuItemWrapperProps extends MainMenuItemProps {
+  MenuItemComponent: FC<MainMenuItemProps>;
+  useIconAsProp: boolean;
+}
+interface MainMenuRenderElement extends ReactElement {
+  props: {
+    children?: {
+      props?: {
+        children?: Array<{
+          type?: FC<MainMenuItemProps>;
+        }>;
       };
-    }>;
+    };
   };
-};
+}
+interface PatchTarget {
+  type?: unknown;
+  props?: unknown;
+}
+interface FiberNode {
+  memoizedProps?: {
+    navID?: string;
+  };
+  return?: {
+    type?: (props: unknown) => ReactElement;
+    alternate?: {
+      type?: (props: unknown) => ReactElement;
+    };
+  };
+}
 
+interface ReactMenuItem {
+  key?: string | null;
+  props?: Partial<MainMenuItemProps>;
+  type?: FC<MainMenuItemProps> | string;
+  $$typeof?: symbol;
+}
 let isPatched = false;
-let intervalTimerId: ReturnType<typeof setInterval> | null = null;
-
-const findMainMenuElement = (): HTMLElement | null => {
-  try {
-    const menuFromNavTree = (
-      globalThis as DeckyRuntimeGlobal
-    ).DFL?.getGamepadNavigationTrees?.().find((tree) => tree?.m_ID === "MainNavMenuContainer")?.Root
-      ?.Element;
-
-    if (menuFromNavTree) {
-      return menuFromNavTree;
-    }
-  } catch {
-    // Fall back to the DOM lookup below.
+let unpatchFn: (() => void) | null = null;
+let retryTimerId: ReturnType<typeof setTimeout> | null = null;
+const canUseDocument = (): boolean => typeof document !== "undefined";
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+const getReactTree = (): unknown => {
+  if (!canUseDocument()) {
+    return null;
   }
 
-  return document.getElementById("MainNavMenuContainer");
+  const rootElement = document.getElementById("root");
+  return rootElement ? getReactRoot(rootElement) : null;
 };
 
-const navigateToMusic = (event?: Event) => {
-  event?.preventDefault();
-  event?.stopPropagation();
-
-  try {
-    Navigation.Navigate(ROUTE_PATH);
-  } catch {
-    // Steam may rebuild the menu while the click is being handled.
-  }
-};
-
-const replaceIcon = (menuItem: Element) => {
-  const oldIcon = menuItem.querySelector("svg");
-  if (!oldIcon) {
-    return;
-  }
-
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 512 512");
-  svg.setAttribute("fill", "none");
-
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("fill", "currentColor");
-  path.setAttribute(
-    "d",
-    "M470.38 1.51L150.41 96A32 32 0 0 0 128 126.51v261.41A139 139 0 0 0 96 384c-53 0-96 28.66-96 64s43 64 96 64 96-28.66 96-64V214.32l256-75v184.61a138.4 138.4 0 0 0-32-3.93c-53 0-96 28.66-96 64s43 64 96 64 96-28.65 96-64V32a32 32 0 0 0-41.62-30.49z"
+const isMenuItemElement = (item: ReactMenuItem): boolean =>
+  Boolean(
+    item?.props?.label &&
+      item.props.route &&
+      item.type &&
+      typeof item.type !== "string"
   );
 
-  svg.appendChild(path);
-  oldIcon.replaceWith(svg);
-};
-
-const stripFocusState = (entry: Element) => {
-  entry.querySelectorAll("*").forEach((element) => {
-    element.classList.remove("gpfocus", "gpfocuswithin");
-  });
-};
-
-const findMenuItemByLabels = (menuItems: Element[], labels: string[]) =>
-  menuItems.find((item) => {
-    const ariaLabel = item.getAttribute("aria-label")?.trim().toLocaleLowerCase();
-    return ariaLabel ? labels.includes(ariaLabel) : false;
-  }) || null;
-
-const findLeafTextElement = (menuItem: Element, originalLabel: string | null) => {
-  const candidates = Array.from(menuItem.querySelectorAll("div")).reverse();
-
-  if (originalLabel) {
-    const exactMatch = candidates.find((element) => element.textContent?.trim() === originalLabel);
-    if (exactMatch) {
-      return exactMatch;
-    }
-  }
-
-  return (
-    candidates.find(
-      (element) =>
-        element.children.length === 0 &&
-        Boolean(element.textContent?.trim()) &&
-        !element.querySelector("svg")
-    ) || null
+const isMenuItemAlreadyAdded = (menuItems: ReactMenuItem[]): boolean =>
+  menuItems.some(
+    (item) => item?.props?.route === ROUTE_PATH || item?.key === MENU_ITEM_KEY
   );
-};
 
-const setEntryLabel = (menuItem: Element, originalLabel: string | null) => {
-  menuItem.setAttribute("aria-label", "\u97f3\u4e50");
-  menuItem.setAttribute("tabindex", "0");
-  menuItem.removeAttribute("data-gp-focus");
-  menuItem.removeAttribute("data-gp-focus-visible");
+const getMenuItemIndexes = (items: ReactMenuItem[]): number[] =>
+  items.flatMap((item, index) =>
+    item?.$$typeof && item.type !== "div" ? [index] : []
+  );
 
-  const labelElement = findLeafTextElement(menuItem, originalLabel);
-  if (labelElement) {
-    labelElement.textContent = "\u97f3\u4e50";
+const getInsertIndex = (items: ReactMenuItem[]): number | null => {
+  const itemIndexes = getMenuItemIndexes(items);
+  if (itemIndexes.length === 0) {
+    return null;
   }
+
+  return itemIndexes.length > 4
+    ? itemIndexes[3] + 1
+    : itemIndexes[itemIndexes.length - 1] + 1;
 };
 
-const bindNavigation = (menuItem: Element) => {
-  menuItem.addEventListener("click", navigateToMusic, true);
-  menuItem.addEventListener("mouseup", navigateToMusic, true);
-  menuItem.addEventListener(
-    "keydown",
-    (event) => {
-      const keyboardEvent = event as KeyboardEvent;
-      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-        navigateToMusic(event);
+const isPatchTarget = (value: unknown): value is PatchTarget =>
+  isRecord(value) && typeof value.type === "function";
+
+const collectPatchTargets = (
+  node: unknown,
+  targets: PatchTarget[] = []
+): PatchTarget[] => {
+  if (!node || targets.length >= 12) {
+    return targets;
+  }
+
+  if (Array.isArray(node)) {
+    node.forEach((child) => collectPatchTargets(child, targets));
+    return targets;
+  }
+
+  if (!isRecord(node)) {
+    return targets;
+  }
+
+  if (isPatchTarget(node)) {
+    targets.push(node);
+  }
+
+  collectPatchTargets(node.props, targets);
+  collectPatchTargets(node.children, targets);
+  return targets;
+};
+
+const getPatchTargets = (ret: MainMenuRenderElement): PatchTarget[] => {
+  const legacyTarget = ret?.props?.children?.props?.children?.[0];
+  const targets = collectPatchTargets(ret);
+  if (legacyTarget && !targets.includes(legacyTarget)) {
+    targets.unshift(legacyTarget);
+  }
+
+  return targets.filter(isPatchTarget);
+};
+
+const MenuItemWrapper: FC<MenuItemWrapperProps> = ({
+  MenuItemComponent,
+  label,
+  useIconAsProp,
+  ...props
+}) => {
+  const iconProps = useIconAsProp
+    ? { icon: <FaMusic /> }
+    : { children: <FaMusic /> };
+
+  return <MenuItemComponent {...props} {...iconProps} label={label} />;
+};
+
+const patchInnerMenu = (innerRet: unknown): unknown => {
+  const menuItems = findInReactTree(
+    innerRet,
+    (node: unknown) =>
+      Array.isArray(node) && node.some((item) => isMenuItemElement(item))
+  ) as ReactMenuItem[] | null;
+
+  if (!menuItems || isMenuItemAlreadyAdded(menuItems)) {
+    return innerRet;
+  }
+
+  const templateItem = menuItems.find(isMenuItemElement);
+  if (!templateItem?.props || typeof templateItem.type === "string") {
+    return innerRet;
+  }
+
+  const insertIndex = getInsertIndex(menuItems);
+  if (insertIndex === null) {
+    return innerRet;
+  }
+
+  const newItem = (
+    <MenuItemWrapper
+      key={MENU_ITEM_KEY}
+      route={ROUTE_PATH}
+      active="if-within-route"
+      label={MENU_ITEM_LABEL}
+      onFocus={templateItem.props.onFocus}
+      onGamepadFocus={templateItem.props.onGamepadFocus}
+      useIconAsProp={Boolean(templateItem.props.icon)}
+      MenuItemComponent={templateItem.type as FC<MainMenuItemProps>}
+    />
+  );
+
+  menuItems.splice(insertIndex, 0, newItem);
+  return innerRet;
+};
+
+const doPatchMenu = (): (() => void) | null => {
+  try {
+    const menuNode = findInReactTree(
+      getReactTree(),
+      (node: FiberNode) => node?.memoizedProps?.navID === "MainNavMenuContainer"
+    ) as FiberNode | null;
+
+    if (!menuNode?.return?.type) {
+      return null;
+    }
+
+    const originalType = menuNode.return.type;
+    const innerPatches: Patch[] = [];
+
+    const menuWrapper = (props: unknown): ReactElement => {
+      const ret = originalType(props) as MainMenuRenderElement;
+      getPatchTargets(ret).forEach((target) => {
+        const patch = afterPatch(target, "type", (_args, innerRet) =>
+          patchInnerMenu(innerRet)
+        );
+        innerPatches.push(patch);
+      });
+      return ret;
+    };
+
+    menuNode.return.type = menuWrapper;
+    if (menuNode.return.alternate) {
+      menuNode.return.alternate.type = menuWrapper;
+    }
+
+    return () => {
+      innerPatches.forEach((patch) => {
+        if (!patch.hasUnpatched) {
+          patch.unpatch();
+        }
+      });
+      menuNode.return!.type = originalType;
+      if (menuNode.return?.alternate) {
+        menuNode.return.alternate.type = originalType;
       }
-    },
-    true
-  );
+    };
+  } catch (error) {
+    console.error("[Decky Music] Failed to patch main menu:", error);
+    return null;
+  }
 };
 
-const installMenuEntryOnce = () => {
-  const mainMenu = findMainMenuElement();
-  if (!mainMenu || mainMenu.querySelector(`[${MENU_ENTRY_ATTR}]`)) {
-    return;
-  }
-
-  const menuItems = Array.from(mainMenu.querySelectorAll('[role="menuitem"]'));
-  const settingsItem =
-    findMenuItemByLabels(menuItems, ["settings", "\u8bbe\u7f6e"]) ||
-    menuItems[menuItems.length - 2] ||
-    null;
-  const settingsRow = settingsItem?.parentElement;
-  if (!settingsItem || !settingsRow?.parentElement) {
-    return;
-  }
-
-  const mediaItem =
-    findMenuItemByLabels(menuItems, ["media", "\u5a92\u4f53"]) || menuItems[4] || null;
-  const insertBeforeRow = mediaItem?.parentElement || settingsRow;
-  const originalLabel = settingsItem.getAttribute("aria-label")?.trim() || null;
-
-  const entry = settingsRow.cloneNode(true) as Element;
-  entry.setAttribute(MENU_ENTRY_ATTR, "true");
-  stripFocusState(entry);
-
-  const menuItem = entry.querySelector('[role="menuitem"]') || entry;
-  setEntryLabel(menuItem, originalLabel);
-  replaceIcon(menuItem);
-  bindNavigation(menuItem);
-
-  insertBeforeRow.parentElement?.insertBefore(entry, insertBeforeRow);
+const scheduleRetry = (): void => {
+  retryTimerId = setTimeout(() => {
+    retryTimerId = null;
+    menuManager.enable();
+  }, PATCH_RETRY_INTERVAL_MS);
 };
 
 export const menuManager = {
@@ -166,25 +254,34 @@ export const menuManager = {
       return;
     }
 
-    installMenuEntryOnce();
-    intervalTimerId = setInterval(installMenuEntryOnce, INSTALL_INTERVAL_MS);
+    const restore = doPatchMenu();
+    if (!restore) {
+      return;
+    }
+
+    unpatchFn = restore;
     isPatched = true;
   },
 
   enable: () => {
+    if (isPatched || retryTimerId) {
+      return;
+    }
+
     menuManager.tryEnable();
+    if (!isPatched && canUseDocument()) {
+      scheduleRetry();
+    }
   },
 
   disable: () => {
-    if (intervalTimerId) {
-      clearInterval(intervalTimerId);
-      intervalTimerId = null;
+    if (retryTimerId) {
+      clearTimeout(retryTimerId);
+      retryTimerId = null;
     }
 
-    findMainMenuElement()
-      ?.querySelectorAll(`[${MENU_ENTRY_ATTR}]`)
-      .forEach((entry) => entry.remove());
-
+    unpatchFn?.();
+    unpatchFn = null;
     isPatched = false;
   },
 
