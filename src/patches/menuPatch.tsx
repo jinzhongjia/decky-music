@@ -1,9 +1,4 @@
-import {
-  afterPatch,
-  findInReactTree,
-  getReactRoot,
-  type Patch,
-} from "@decky/ui";
+import { findInReactTree, getReactRoot } from "@decky/ui";
 import type { FC, ReactElement, ReactNode } from "react";
 import { FaMusic } from "react-icons/fa";
 export const ROUTE_PATH = "/decky-music";
@@ -76,8 +71,8 @@ const getReactTree = (): unknown => {
 const isMenuItemElement = (item: ReactMenuItem): boolean =>
   Boolean(
     item?.props?.label &&
-      item.props?.route &&
-      item.type &&
+      item?.props?.route &&
+      item?.type &&
       typeof item.type !== "string"
   );
 
@@ -87,7 +82,7 @@ const isMenuItemAlreadyAdded = (menuItems: ReactMenuItem[]): boolean =>
   );
 const getMenuItemIndexes = (items: ReactMenuItem[]): number[] =>
   items.flatMap((item, index) =>
-    item?.$$typeof && item.type !== "div" ? [index] : []
+    item?.$$typeof && item?.type !== "div" ? [index] : []
   );
 
 const getInsertIndex = (items: ReactMenuItem[]): number | null => {
@@ -105,13 +100,15 @@ const isPatchTarget = (value: unknown): value is PatchTarget =>
   isRecord(value) && typeof value.type === "function";
 const collectPatchTargets = (
   node: unknown,
-  targets: PatchTarget[] = []
+  targets: PatchTarget[] = [],
+  visited = new Set<unknown>()
 ): PatchTarget[] => {
-  if (!node || targets.length >= 12) {
+  if (!node || targets.length >= 12 || visited.has(node)) {
     return targets;
   }
+  visited.add(node);
   if (Array.isArray(node)) {
-    node.forEach((child) => collectPatchTargets(child, targets));
+    node.forEach((child) => collectPatchTargets(child, targets, visited));
     return targets;
   }
   if (!isRecord(node)) {
@@ -120,14 +117,14 @@ const collectPatchTargets = (
   if (isPatchTarget(node)) {
     targets.push(node);
   }
-  collectPatchTargets(node["props"], targets);
-  collectPatchTargets(node["children"], targets);
+  collectPatchTargets(node["props"], targets, visited);
+  collectPatchTargets(node["children"], targets, visited);
   return targets;
 };
 const getPatchTargets = (ret: MainMenuRenderElement): PatchTarget[] => {
   const legacyTarget = ret?.props?.children?.props?.children?.[0];
   const targets = collectPatchTargets(ret);
-  if (legacyTarget && !targets.includes(legacyTarget)) {
+  if (isPatchTarget(legacyTarget) && !targets.includes(legacyTarget)) {
     targets.unshift(legacyTarget);
   }
 
@@ -197,7 +194,6 @@ const doPatchMenu = (): (() => void) | null => {
     }
 
     const originalType = menuNode.return.type;
-    const innerPatches: Patch[] = [];
     const patchedComponents = new WeakMap<object, unknown>();
 
     const menuWrapper = (props: unknown): ReactElement => {
@@ -207,18 +203,23 @@ const doPatchMenu = (): (() => void) | null => {
           return;
         }
 
-        const originalComponent = target.type as unknown as object;
-        const patchedType = patchedComponents.get(originalComponent);
-        if (patchedType) {
-          target.type = patchedType;
-          return;
+        const originalFn = target.type;
+        const originalComponent = originalFn as unknown as object;
+        let patchedType = patchedComponents.get(originalComponent);
+        if (!patchedType) {
+          patchedType = function (
+            this: unknown,
+            ...args: unknown[]
+          ): unknown {
+            const innerRet = originalFn.apply(this, args);
+            return patchInnerMenu(innerRet);
+          };
+          patchedComponents.set(originalComponent, patchedType);
         }
 
-        const patch = afterPatch(target, "type", (_args, innerRet) =>
-          patchInnerMenu(innerRet)
-        );
-        patchedComponents.set(originalComponent, target.type);
-        innerPatches.push(patch);
+        if (typeof patchedType === "function") {
+          target.type = patchedType;
+        }
       });
       return ret;
     };
@@ -229,7 +230,6 @@ const doPatchMenu = (): (() => void) | null => {
     }
 
     return () => {
-      innerPatches.forEach((patch) => patch.unpatch());
       menuNode.return!.type = originalType;
       if (menuNode.return?.alternate) {
         menuNode.return.alternate.type = originalType;
