@@ -1,58 +1,25 @@
 import { findInReactTree, getReactRoot } from "@decky/ui";
-import type { FC, ReactElement, ReactNode } from "react";
+import type { FC, ReactElement } from "react";
 import { FaMusic } from "react-icons/fa";
+import {
+  invokeOriginalComponent,
+  patchRenderedMenu,
+  renderComponent,
+} from "./menuPatchRuntime";
+import type {
+  FiberNode,
+  MainMenuItemProps,
+  MainMenuRenderElement,
+  MenuItemWrapperProps,
+  PatchTarget,
+  ReactMenuItem,
+} from "./menuPatchTypes";
+
 export const ROUTE_PATH = "/decky-music";
 const MENU_ITEM_KEY = "decky-music";
 const PATCH_RETRY_INTERVAL_MS = 1000;
 const MENU_ITEM_LABEL = "音乐";
 
-interface MainMenuItemProps {
-  route: string;
-  label: ReactNode;
-  active?: string;
-  onFocus?: () => void;
-  onGamepadFocus?: () => void;
-  icon?: ReactElement;
-  onActivate?: () => void;
-  children?: ReactNode;
-}
-interface MenuItemWrapperProps extends MainMenuItemProps {
-  MenuItemComponent: FC<MainMenuItemProps>;
-  useIconAsProp: boolean;
-}
-interface MainMenuRenderElement extends ReactElement {
-  props: {
-    children?: {
-      props?: {
-        children?: Array<{
-          type?: FC<MainMenuItemProps>;
-        }>;
-      };
-    };
-  };
-}
-interface PatchTarget {
-  type?: unknown;
-  props?: unknown;
-}
-interface FiberNode {
-  memoizedProps?: {
-    navID?: string;
-  };
-  return?: {
-    type?: (props: unknown) => ReactElement;
-    alternate?: {
-      type?: (props: unknown) => ReactElement;
-    };
-  };
-}
-
-interface ReactMenuItem {
-  key?: string | null;
-  props?: Partial<MainMenuItemProps>;
-  type?: FC<MainMenuItemProps> | string;
-  $$typeof?: symbol;
-}
 let isPatched = false;
 let unpatchFn: (() => void) | null = null;
 let retryTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -197,13 +164,20 @@ const doPatchMenu = (): (() => void) | null => {
     const patchedComponents = new WeakMap<object, unknown>();
 
     const menuWrapper = (props: unknown): ReactElement => {
-      const ret = originalType(props) as MainMenuRenderElement;
+      const ret = renderComponent(
+        originalType,
+        props
+      ) as MainMenuRenderElement | null;
+      if (!ret) {
+        return null as unknown as ReactElement;
+      }
+
       getPatchTargets(ret).forEach((target) => {
         if (typeof target.type !== "function") {
           return;
         }
 
-        const originalFn = target.type;
+        const originalFn = target.type as (...args: unknown[]) => unknown;
         const originalComponent = originalFn as unknown as object;
         let patchedType = patchedComponents.get(originalComponent);
         if (!patchedType) {
@@ -211,8 +185,8 @@ const doPatchMenu = (): (() => void) | null => {
             this: unknown,
             ...args: unknown[]
           ): unknown {
-            const innerRet = originalFn.apply(this, args);
-            return patchInnerMenu(innerRet);
+            const innerRet = invokeOriginalComponent(originalFn, this, args);
+            return patchRenderedMenu(innerRet, patchInnerMenu);
           };
           patchedComponents.set(originalComponent, patchedType);
         }
@@ -230,9 +204,11 @@ const doPatchMenu = (): (() => void) | null => {
     }
 
     return () => {
-      menuNode.return!.type = originalType;
-      if (menuNode.return?.alternate) {
-        menuNode.return.alternate.type = originalType;
+      if (menuNode?.return) {
+        menuNode.return.type = originalType;
+        if (menuNode.return.alternate) {
+          menuNode.return.alternate.type = originalType;
+        }
       }
     };
   } catch (error) {
