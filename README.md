@@ -196,5 +196,5 @@ BSD-3-Clause License
 
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) - Steam Deck 插件加载器
 - [QQMusicApi](https://github.com/L-1124/QQMusicApi) - QQ 音乐 API 库
-- [pyncm](https://github.com/greatdk/pyncm) - 网易云音乐 API 库
+- [NeteaseCloudMusic_PythonSDK](https://github.com/2061360308/NeteaseCloudMusic_PythonSDK) - 网易云音乐 API 库
 - [decky-plugin-template](https://github.com/SteamDeckHomebrew/decky-plugin-template) - 插件模板
