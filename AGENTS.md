@@ -46,7 +46,7 @@ LLM 约定：
 | 库 | 用途 |
 |---|---|
 | `qqmusic-api-python` | QQ 音乐 API 封装（来自 GitHub `L-1124/QQMusicApi` v0.4.1） |
-| `pyncm` | 网易云音乐 API 封装 |
+| `pymusiclibrary` | 网易云音乐 API 封装（来自 GitHub `2061360308/NeteaseCloudMusic_PythonSDK`） |
 | `qrcode[pil]` | 二维码生成（用于扫码登录） |
 | `requests` | HTTP 请求库（用于更新检查、文件下载等） |
 | `decky`（运行时注入） | Decky Loader 提供的插件运行时 SDK（日志、路径等） |

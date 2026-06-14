@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "Decky Loader plugin for QQ Music"
 requires-python = ">=3.11"
 dependencies = [
-    "pyncm>=1.8.1",
+    "pymusiclibrary",
     "qrcode[pil]>=8.0",
     "qqmusic-api-python",
     "requests>=2.32.3",
@@ -12,6 +12,7 @@ dependencies = [
 
 [tool.uv.sources]
 qqmusic-api-python = { git = "https://github.com/L-1124/QQMusicApi.git", tag = "v0.4.1" }
+pymusiclibrary = { git = "https://github.com/2061360308/NeteaseCloudMusic_PythonSDK.git", subdirectory = "src/python" }
 
 [project.optional-dependencies]
 dev = [

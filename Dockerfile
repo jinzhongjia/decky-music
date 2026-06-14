@@ -2,12 +2,13 @@
 # Decky Music 插件构建 Dockerfile
 # 使用 Python 3.11 以匹配 Decky Loader 内嵌的 Python 版本
 
-FROM python:3.11-slim AS python-deps
+FROM python:3.11-slim-bookworm AS python-deps
 
 WORKDIR /build
 
-# 安装 git (从 GitHub 拉取依赖需要)
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+# 安装 git, wget, unzip, patchelf, libcurl4 (原生库构建和兼容性修复需要)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git wget unzip patchelf libcurl4 \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖到 py_modules (使用 BuildKit 缓存加速)
@@ -17,6 +18,34 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && find py_modules -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
     && find py_modules -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true \
     && find py_modules -name "*.pyc" -delete 2>/dev/null || true
+
+# pymusiclibrary 的原生库需要从 MusicLibrary releases 单独下载
+RUN wget -q https://github.com/2061360308/MusicLibrary/releases/download/v0.0.8/linux-x64-v0.0.8.zip -O /tmp/musiclib.zip \
+    && unzip -q /tmp/musiclib.zip -d /tmp/musiclib \
+    && mkdir -p py_modules/MusicLibrary/lib \
+    && find /tmp/musiclib -name '*.so' -exec cp {} py_modules/MusicLibrary/lib/ \; \
+    && rm -rf /tmp/musiclib /tmp/musiclib.zip
+
+# PyInstaller 兼容性修复：
+# PyInstaller 打包了旧版 libssl.so.3 (OPENSSL_3.0.x) 并通过 LD_LIBRARY_PATH 优先加载。
+# SteamOS 的系统 libcurl 需要 OPENSSL_3.2.0，与 PyInstaller 的旧 libssl 冲突。
+# 解决方案：打包 bookworm 的 libcurl（仅需 OpenSSL 3.0.x）及其全部非标准依赖，
+# 用 patchelf 设置 RPATH=$ORIGIN 让它们优先从同目录加载。
+# 排除 libc/libssl/libcrypto/libz（由系统或 PyInstaller 提供）。
+RUN set -e && \
+    TARGET=py_modules/MusicLibrary/lib && \
+    CURL=$(readlink -f /usr/lib/x86_64-linux-gnu/libcurl.so.4) && \
+    cp "$CURL" "$TARGET/libcurl.so.4" && \
+    ldd "$CURL" | grep -oP '/\S+' | while read dep; do \
+        name=$(basename "$dep"); \
+        case "$name" in \
+            libc.so.*|libm.so.*|libpthread.so.*|libdl.so.*|librt.so.*|ld-linux*|libssl.so.*|libcrypto.so.*|libz.so.*|libgcc_s.so.*) ;; \
+            *) cp "$(readlink -f "$dep")" "$TARGET/$name" ;; \
+        esac; \
+    done && \
+    for f in "$TARGET"/*.so*; do \
+        patchelf --set-rpath '$ORIGIN' "$f" 2>/dev/null || true; \
+    done
 
 # 前端构建阶段：使用 Node.js 构建
 FROM node:22-slim AS frontend

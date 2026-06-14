@@ -1,6 +1,6 @@
 [env]
 # Steam Deck SSH 配置
-DECK_HOST = "deck@192.168.0.2"
+DECK_HOST = "deck@192.168.0.18"
 DECK_PLUGIN_PATH = "/home/deck/homebrew/plugins"
 
 [tasks.clean]
