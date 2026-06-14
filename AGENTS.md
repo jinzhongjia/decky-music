@@ -14,41 +14,41 @@ LLM 约定：
 - 调研的结果或计划的具体步骤
 - 预期的结果或目标
 
-## python 前端遵守的项目架构
+## 项目目的
 
-```
-main.py
-backend/           # 后端逻辑
-├── config_manager.py        # 配置管理
-├── types.py            # 类型定义
-├── update_checker.py   # 更新检查器
-├── util.py   # 工具函数 
-├── providers/
-│   ├── base.py     # 提供者基类
-│   ├── manager.py  # 提供者管理器
-│   ├── qqmusic.py  # QQ 音乐提供者实现
-│   ├── netease.py  # 网易云音乐提供者实现
-│   └── ...         # 其他提供者 
-```
+本项目是一个基于 Decky UI 的音乐下载插件，旨在为用户提供一个方便的界面来搜索和下载音乐。通过集成多个音乐提供者（如 QQ 音乐、网易云音乐等），用户可以轻松找到并下载他们喜欢的歌曲。
 
-## 前端遵守的项目架构
+## 项目使用的库
 
-项目使用 pnpm 进行包管理，使用 Rollup 进行构建，使用 Decky UI 进行 UI 开发。
+<AGNET-TODO>
 
-```
-src/
-├── api/          # 可复用的后端 api 调用封装
-├── components/          # 可复用的 UI 组件
-├── hooks/              # 自定义 Hooks
-│   ├── useApi.ts
-│   └── useForm.ts
-├── pages/              # 页面组件（full page 类型）
-├── patches/            # Decky UI 路由覆盖 
-├── state/              # 全局状态管理
-├── types/              # TypeScript 类型定义
-├── utils/              # 工具函数
-└── index.tsx             # 主应用组件
-```
+## 开发可用命令
+
+<AGNET-TODO>
+
+## 项目目录架构
+
+<AGNET-TODO>
+
+## commit 消息生成规范
+
+**使用 `git diff` 生成符合 Conventional Commit 格式的提交消息，格式为 `type(scope): 简短描述` + 空行 + 多个带 `-` 的描述点。必须直接输出提交消息内容，不要包含任何 markdown 格式或额外解释。如果提供了提交历史，参考其风格保持一致。**
+
+默认使用中文!
+强制要求：commit message 不要带有任何和 LLM 相关的 Co-Authored-By
+
+## Readme 维护
+
+每个 src 下的目录都需要一个 README.md 文件，内容包括：
+
+- 目录介绍
+- 结构说明
+- 业务逻辑
+- 对外暴露的接口或者方法
+- 接口定义说明
+- 与其他目录之间依赖的关系
+
+每次更新 src 下目录的代码时，检查 README.md 是否需要更新，保持文档与代码一致。
 
 ## 代码要求
 
