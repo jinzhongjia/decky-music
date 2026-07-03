@@ -67,3 +67,9 @@ cli/*
 cli/decky
 
 .vscode/setting.json
+
+# Rust build output (player/, ncm-provider/ ...)
+target/
+
+# Nuitka build output (qq-provider/)
+build/
