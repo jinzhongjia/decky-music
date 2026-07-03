@@ -1,0 +1,19 @@
+[package]
+name = "ncm-provider"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ncm-provider"
+path = "src/main.rs"
+
+[dependencies]
+# 网易云:作为库使用,我们在其上包一层 UDS server(§7.1)。不用它自带的 axum HTTP server。
+ncm-api = { git = "https://github.com/SPlayer-Dev/ncm-api-rs" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+strip = true
+lto = true

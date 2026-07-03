@@ -1,0 +1,40 @@
+{
+  "name": "decky-music",
+  "version": "0.1.0",
+  "description": "Steam Deck 音乐插件(QQ音乐 + 网易云)",
+  "type": "module",
+  "packageManager": "pnpm@11.3.0",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w"
+  },
+  "remote_binary": [
+    {
+      "name": "player",
+      "url": "https://github.com/jinzhongjia/decky-music/releases/latest/download/player-linux-x64",
+      "sha256hash": "TODO"
+    },
+    {
+      "name": "ncm-provider",
+      "url": "https://github.com/jinzhongjia/decky-music/releases/latest/download/ncm-provider-linux-x64",
+      "sha256hash": "TODO"
+    },
+    {
+      "name": "qq-provider",
+      "url": "https://github.com/jinzhongjia/decky-music/releases/latest/download/qq-provider-linux-x64.tar.gz",
+      "sha256hash": "TODO"
+    }
+  ],
+  "dependencies": {
+    "@decky/api": "^1.1.2",
+    "@decky/ui": "^4.9.0",
+    "react-icons": "^5.4.0"
+  },
+  "devDependencies": {
+    "@decky/rollup": "^1.0.1",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "rollup": "^4.28.1",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "decky-music",
+  "author": "jinzhongjia",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["music", "qqmusic", "netease"],
+    "description": "在 Steam Deck 上播放 QQ 音乐 / 网易云音乐。业务逻辑与音频播放跑在插件沙盒外的独立进程。",
+    "image": ""
+  }
+}

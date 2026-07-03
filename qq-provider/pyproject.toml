@@ -1,0 +1,11 @@
+[project]
+name = "qq-provider"
+version = "0.1.0"
+description = "QQ 音乐 provider:QQMusicApi 作为库,包一层 UDS server(issue #26 §7.2)"
+requires-python = ">=3.11"
+dependencies = [
+    "qqmusic-api-python",
+]
+
+[dependency-groups]
+dev = ["nuitka"]
