@@ -17,6 +17,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc as tmpsc;
 
+mod logging;
+use logging::log_json;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(url) = arg("--play") {
         return play_spike(&url);
@@ -66,11 +69,6 @@ enum AudioEv {
     Log { level: &'static str, place: &'static str, msg: String },
 }
 
-/// 结构化日志事件(bridge 收后落 decky.logger,标 origin=socket)。
-fn log_json(level: &str, place: &str, msg: &str) -> String {
-    format!(r#"{{"ev":"log","level":"{level}","where":"{place}","msg":{}}}"#, jstr(msg))
-}
-
 fn epoch_ms() -> u128 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()
 }
@@ -101,7 +99,7 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
             return;
         }
     };
-    let _ = ev.send(AudioEv::Log { level: "info", place: "audio", msg: "默认音频设备已打开".into() });
+    let _ = ev.send(AudioEv::Log { level: "info", place: "audio", msg: "default audio device opened".into() });
     let mut sink: Option<rodio::Sink> = None;
     let mut active = false; // 是否有在播的曲子(用于判定 ended)
 
@@ -228,12 +226,12 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
                 // ponytail: 整首拉进内存再播;流式边下边播留后续。不记 URL(含限时 vkey,避免泄漏)
                 Some(url) => match fetch(&http, url).await {
                     Ok(bytes) => {
-                        let _ = out_tx.send(log_json("info", "load", &format!("已拉流 {} 字节", bytes.len())));
+                        let _ = out_tx.send(log_json("info", "load", &format!("fetched {} bytes", bytes.len())));
                         let _ = cmd_tx.send(AudioCmd::Load(bytes));
                         r#"{"ok":true}"#.to_string()
                     }
                     Err(e) => {
-                        let _ = out_tx.send(log_json("error", "load", &format!("拉流失败: {e}")));
+                        let _ = out_tx.send(log_json("error", "load", &format!("fetch failed: {e}")));
                         format!(r#"{{"ok":false,"msg":{}}}"#, jstr(&e.to_string()))
                     }
                 },
