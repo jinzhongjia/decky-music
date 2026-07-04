@@ -71,6 +71,35 @@ bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
 - player 出声是命门:真实 gamescope 会话里听到声音、`ldd` 只动态依赖 `libasound`。
 - 每个含 UI 阶段:注入错误/杀后端/畸形数据/断网,**Steam UI 不崩不冻**。
 
+## Logging rules
+
+统一日志系统,复用 Decky 自带的 `decky.logger`(写到 `DECKY_PLUGIN_LOG_DIR`)。bridge 是唯一落盘点。
+
+必须遵守：插件日志使用英文记录。日志信息中不得包含任何敏感信息，如密钥、密码、cookie 等。
+
+**两个维度的标签**(格式 `[{source}·{origin}] where: msg`):
+- `source`:`bridge` | `player` | `provider` —— 哪个进程。
+- `origin`:`own`(bridge 自身)| `socket`(子进程**预期**日志,结构化)| `stderr`(子进程**非预期**,如 panic/traceback)。
+
+**四个级别**:
+- `debug`:仅调试时看的细节(**只在 dev 模式输出**)。
+- `info`:流程上少量必要的关键信息(spawn、登录成功、拉流成功等)。
+- `warn`:非致命错误(song_url 无版权、stderr 捕获行等)。
+- `error`:致命错误(设备打不开、启动超时、登录异常等)。
+
+**dev / release**:靠插件目录有无 `dev_mode` 标记判定(`deploy.sh` 侧载时 `touch`,release 的 zip 不含)。
+dev → `logger.setLevel(DEBUG)`(debug 输出);release → `INFO`(debug 过滤,其余照常)。bridge 经 `_child_env`
+注入 `DECKY_MUSIC_DEBUG=1`,子进程据此 release 下不发 debug 事件省 IPC。
+
+**各组件怎么打**:
+- bridge:`log(source, origin, level, msg)`(main.py);子进程的 `{"ev":"log"}` 与 `{"ev":"error"}` 事件由
+  bridge 自动落日志,stderr 由 bridge 逐行捕获落 `warn`。
+- player(Rust):`log_json(level, place, msg)` 发 `{"ev":"log",...}`;音频线程用 `AudioEv::Log`。
+- provider(Python):`log(level, where, msg)` 发 `{"ev":"log",...}`。
+- **子进程的所有诊断走 socket 结构化日志事件**;stderr 只留真正意外(panic/traceback)。
+
+**红线**:绝不记密钥类数据 —— 播放 URL(含限时 vkey)、cookie/credential 一律不进日志。
+
 ## Documentation rules
 
 - 代码里用 `ponytail:` 注释标记刻意的简化 / 延后项及其升级路径。
@@ -86,3 +115,5 @@ bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
 * ./docs/DESIGN.md 里有详细的设计文档,请在开发前仔细阅读。
 * 如果有任何不清楚的地方,请在开发前提出问题,不要在开发中途才提出。
 * 根据需要更新我们的设计文档,并在 PR 中附上更新的内容。
+* 在重新部署前需要经过用户同意，严禁在未经用户同意的情况下重新部署。
+* 禁止将密钥或者密码等信息写入代码中，必须使用环境变量或者配置文件的方式进行管理。

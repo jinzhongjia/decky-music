@@ -10,8 +10,11 @@ bridge 作 server,provider 启动后连入 `--socket <path>`。无状态:credent
 import argparse
 import asyncio
 import json
+import os
 
 from qq import QQ
+
+DEBUG = bool(os.environ.get("DECKY_MUSIC_DEBUG"))  # bridge 在 dev 模式下注入
 
 
 async def main():
@@ -32,6 +35,12 @@ async def main():
     def emit(status: str, **extra):
         out.put_nowait({"ev": "login", "status": status, **extra})
 
+    def log(level: str, where: str, msg: str):
+        # 结构化日志事件;bridge 落 decky.logger。release 下不发 debug(省 IPC)
+        if level == "debug" and not DEBUG:
+            return
+        out.put_nowait({"ev": "log", "level": level, "where": where, "msg": msg})
+
     asyncio.create_task(pump())
 
     # NDJSON:每条一行 {json}\n,UTF-8
@@ -40,25 +49,30 @@ async def main():
             cmd = json.loads(line)
         except json.JSONDecodeError:
             continue
-        await out.put(await handle(qq, cmd, emit))
+        await out.put(await handle(qq, cmd, emit, log))
 
 
-async def handle(qq: QQ, cmd: dict, emit) -> dict:
+async def handle(qq: QQ, cmd: dict, emit, log) -> dict:
     match cmd.get("cmd"):
         case "set_credential":
             qq.set_credential(cmd.get("cred"))
+            log("info", "credential", "已注入" if cmd.get("cred") else "已清空")
             return {"ok": True}
         case "login":
             # 长流程:后台跑,QR 与状态经 login 事件上报;命令本身即刻返 ok
-            asyncio.create_task(qq.login(emit))
+            asyncio.create_task(qq.login(emit, log))
             return {"ok": True}
         case "song_url":
+            log("debug", "song_url", f"id={cmd['id']}")
             url = await qq.song_url(cmd["id"], cmd.get("media_mid", ""))
             if url:
                 return {"ok": True, "url": url}
+            log("warn", "song_url", f"无可播 URL id={cmd['id']}(无版权/需登录/VIP)")
             return {"ok": False, "msg": "无可播 URL(无版权/需登录/VIP)"}
         case "search":
-            return {"ok": True, "songs": await qq.search(cmd["keyword"])}
+            songs = await qq.search(cmd["keyword"])
+            log("debug", "search", f"kw={cmd['keyword']} → {len(songs)} 首")
+            return {"ok": True, "songs": songs}
         case _:
             return {"ok": False, "msg": "unknown cmd"}
 

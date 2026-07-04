@@ -73,3 +73,5 @@ target/
 
 # Nuitka build output (qq-provider/)
 build/
+# dev 模式标记(仅 deploy.sh 在 Deck 上创建,不入库、不进 release zip)
+dev_mode

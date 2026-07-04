@@ -12,6 +12,8 @@ import os
 
 import decky
 
+from log import DEV, log, log_child_event, pump_stderr  # 日志实现见 py_modules/log.py
+
 RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
 SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 
@@ -29,7 +31,21 @@ def _child_env() -> dict:
     # 才能连上 PipeWire 会话(游戏模式尤其)。Decky 若已设则保留,否则按 uid 兜底。
     env = dict(os.environ)
     env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    if DEV:
+        env["DECKY_MUSIC_DEBUG"] = "1"  # 子进程据此决定是否发 debug 日志(release 省 IPC)
     return env
+
+
+async def spawn(source: str, *args: str) -> asyncio.subprocess.Process:
+    log("bridge", "own", "info", f"spawn {source}: {' '.join(args)}")
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        env=_child_env(),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    asyncio.create_task(pump_stderr(source, proc.stderr))
+    return proc
 
 
 class Conn:
@@ -103,10 +119,9 @@ class Plugin:
         await self.player.listen()
         self.player.on_event = self._forward_player_event
         self.provider.on_event = self._on_provider_event
+        log("bridge", "own", "info", f"_main started (dev={DEV})")
         # player 常驻:_main 时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
-        await asyncio.create_subprocess_exec(
-            BIN("player"), "--socket", self.player.path, env=_child_env()
-        )
+        await spawn("player", BIN("player"), "--socket", self.player.path)
 
     # ---- UI 只调下面这些(callable) ----
 
@@ -122,13 +137,12 @@ class Plugin:
         # qq-provider 是 Nuitka standalone 目录,可执行文件在 bin/qq-provider/qq-provider
         binname = "qq-provider/qq-provider" if which == "qq" else "ncm-provider"
         self.provider.connected.clear()
-        self.provider_proc = await asyncio.create_subprocess_exec(
-            BIN(binname), "--socket", self.provider.path, env=_child_env()
-        )
+        self.provider_proc = await spawn("provider", BIN(binname), "--socket", self.provider.path)
         # 等 provider 连入后注入已存 credential(provider 无状态,不自存;bridge 是唯一真相源)
         try:
             await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
         except asyncio.TimeoutError:
+            log("bridge", "own", "error", f"provider {which} startup timeout")
             await decky.emit("provider", {"ev": "error", "msg": "provider 启动超时"})
             return
         cred = (self.settings.get("accounts") or {}).get(which)
@@ -146,6 +160,7 @@ class Plugin:
     async def play(self, song_id: str, media_mid: str = ""):
         r = await self.provider.request({"cmd": "song_url", "id": song_id, "media_mid": media_mid})
         if not r.get("ok"):
+            log("bridge", "own", "warn", f"song_url failed id={song_id}: {r.get('msg')}")
             await decky.emit("player", {"ev": "error", "msg": r.get("msg", "取播放地址失败")})
             return
         await self.player.request({"cmd": "load", "url": r["url"]})
@@ -168,19 +183,25 @@ class Plugin:
         return await self.provider.request({"cmd": "search", "keyword": keyword})
 
     async def _forward_player_event(self, msg: dict):
+        if log_child_event("player", msg):
+            return
         await decky.emit("player", msg)  # 推给 UI
 
     async def _on_provider_event(self, msg: dict):
+        if log_child_event("provider", msg):
+            return
         # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI
         if msg.get("ev") == "login" and msg.get("status") == "done":
             which = self.settings.get("provider")
             self.settings.setdefault("accounts", {})[which] = msg.get("cred")
             _save_settings(self.settings)
+            log("bridge", "own", "info", f"{which} login success, credential persisted")
             await decky.emit("login", {"ev": "login", "status": "done"})
         else:
             await decky.emit("login", msg)
 
     async def _unload(self):
+        log("bridge", "own", "info", "unload: closing subprocesses and sockets")
         if self.provider_proc:
             self.provider_proc.terminate()
         await self.provider.close()

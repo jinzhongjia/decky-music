@@ -42,5 +42,8 @@ if [ -f qq-provider/build/qq-provider.tar.gz ]; then
   deck_sudo "rm -rf '${DEST}/bin/qq-provider' && mkdir -p '${DEST}/bin' && tar -xzpf /tmp/qqp.tar.gz -C '${DEST}/bin' && chmod +x '${DEST}/bin/qq-provider/qq-provider' && rm -f /tmp/qqp.tar.gz"
 fi
 
+# dev 标记:侧载部署即 dev 模式(bridge 据此开 debug 日志);release 的 zip 不含此文件
+deck_sudo "touch '${DEST}/dev_mode'"
+
 deck_sudo "systemctl restart plugin_loader"
 echo "→ deployed ${NAME}"

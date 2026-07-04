@@ -63,6 +63,12 @@ enum AudioEv {
     Paused { pos: f64 },
     Ended,
     Error(String),
+    Log { level: &'static str, place: &'static str, msg: String },
+}
+
+/// 结构化日志事件(bridge 收后落 decky.logger,标 origin=socket)。
+fn log_json(level: &str, place: &str, msg: &str) -> String {
+    format!(r#"{{"ev":"log","level":"{level}","where":"{place}","msg":{}}}"#, jstr(msg))
 }
 
 fn epoch_ms() -> u128 {
@@ -81,6 +87,7 @@ impl AudioEv {
             AudioEv::Error(m) => {
                 format!(r#"{{"ev":"error","msg":{}}}"#, serde_json::to_string(m).unwrap())
             }
+            AudioEv::Log { level, place, msg } => log_json(level, place, msg),
         }
     }
 }
@@ -94,6 +101,7 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
             return;
         }
     };
+    let _ = ev.send(AudioEv::Log { level: "info", place: "audio", msg: "默认音频设备已打开".into() });
     let mut sink: Option<rodio::Sink> = None;
     let mut active = false; // 是否有在播的曲子(用于判定 ended)
 
@@ -204,6 +212,7 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let http = reqwest::Client::builder().build()?;
+    let debug = std::env::var("DECKY_MUSIC_DEBUG").is_ok(); // release 下不发 debug 日志
 
     // NDJSON:每条一行 {json}\n,UTF-8,单条 ≤ 1 MiB
     while let Some(line) = lines.next_line().await? {
@@ -211,15 +220,22 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
             Ok(c) => c,
             Err(_) => continue,
         };
+        if debug {
+            let _ = out_tx.send(log_json("debug", "cmd", &cmd.cmd));
+        }
         let resp = match cmd.cmd.as_str() {
             "load" => match &cmd.url {
+                // ponytail: 整首拉进内存再播;流式边下边播留后续。不记 URL(含限时 vkey,避免泄漏)
                 Some(url) => match fetch(&http, url).await {
-                    // ponytail: 整首拉进内存再播;流式边下边播留后续。
                     Ok(bytes) => {
+                        let _ = out_tx.send(log_json("info", "load", &format!("已拉流 {} 字节", bytes.len())));
                         let _ = cmd_tx.send(AudioCmd::Load(bytes));
                         r#"{"ok":true}"#.to_string()
                     }
-                    Err(e) => format!(r#"{{"ok":false,"msg":{}}}"#, jstr(&e.to_string())),
+                    Err(e) => {
+                        let _ = out_tx.send(log_json("error", "load", &format!("拉流失败: {e}")));
+                        format!(r#"{{"ok":false,"msg":{}}}"#, jstr(&e.to_string()))
+                    }
                 },
                 None => r#"{"ok":false,"msg":"load requires url"}"#.to_string(),
             },

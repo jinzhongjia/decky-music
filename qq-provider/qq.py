@@ -30,8 +30,9 @@ class QQ:
     def set_credential(self, cred: dict | None):
         self.client.credential = Credential(**cred) if cred else Credential()
 
-    async def login(self, emit):
-        """扫码登录。emit(status, **extra) 推事件;成功时 emit("done", cred=<dict>)。"""
+    async def login(self, emit, log):
+        """扫码登录。emit(status, **extra) 推事件;成功时 emit("done", cred=<dict>)。
+        log(level, where, msg) 记结构化日志。"""
         try:
             qr = await self.client.login.get_qrcode(QRLoginType.QQ)
             emit("qrcode", qr=base64.b64encode(qr.data).decode(), mimetype=qr.mimetype)
@@ -48,8 +49,9 @@ class QQ:
                     return emit("refuse")
                 emit("scanned" if event == QRCodeLoginEvents.CONF else "waiting")
                 await asyncio.sleep(0.8 if event == QRCodeLoginEvents.CONF else 1.5)
-        except Exception:
-            # ponytail: 登录异常(设备超限/网络等)统一报"重试";细分错误消息留后续。
+        except Exception as e:
+            # ponytail: 登录异常(设备超限/网络等)对 UI 统一报"重试";真实原因进日志。
+            log("error", "login", f"{type(e).__name__}: {e}")
             emit("timeout")
 
     async def song_url(self, mid: str, media_mid: str = "") -> str | None:
