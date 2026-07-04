@@ -83,3 +83,6 @@ bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
 ## Agent behavior
 
 * 仅在明确要求时,才能 `git commit` 或 `git push`。
+* ./docs/DESIGN.md 里有详细的设计文档,请在开发前仔细阅读。
+* 如果有任何不清楚的地方,请在开发前提出问题,不要在开发中途才提出。
+* 根据需要更新我们的设计文档,并在 PR 中附上更新的内容。
