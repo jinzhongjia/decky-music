@@ -57,6 +57,7 @@ bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
 * 使用 Conventional Commits:`<type>(<scope>): <subject>`。
 * 提交信息使用中文。
 * 不带有任何 LLM 信息。
+- 如果修改多的话，代码提交根据代码的不同作用分为不同的 commit。
 
 ## Testing rules
 
