@@ -462,6 +462,17 @@ await play("<qq-song-id>");   // URL、音频流全在 bridge↔子进程之间,
 
 **排序原则:先 gate 出声命门,再按 provider 逐个做"基本播放",最后才做差异化接口与 UI 微调。** "基本播放" = 选歌 → 出声 → 基本传输控制(play/pause,能则含 seek/volume)。每阶段有可观测验收,未过不进下一阶段;与 §5.5/§10/§13 的 YAGNI 一致。
 
+> **进度(2026-07-04):P0、P1 已完成并真机验证。**
+> - **P0**:player 在游戏模式出声(见 §10.1)。
+> - **P1**:QQ 端"扫码登录 → 搜索 → 选歌 → 出声 → 暂停/继续"整链在真机游戏模式跑通。
+>   - qq-provider(QQMusicApi 库 + curl_cffi vkey bypass)以 Nuitka `--standalone` 在
+>     manylinux_2_28(glibc 前向兼容 SteamOS)打包,冻结二进制真机运行正常。
+>   - **登录必需**:QQ 即使免费歌 vkey 也需登录态(匿名返 104003),扫码登录已实现;
+>     credential 由 bridge 存 SETTINGS_DIR、spawn 时注入。登录用 `QRLoginType.QQ`(手机 QQ 扫)。
+>   - **发现 2 已排除**:player 用 reqwest(rustls)**可直连 QQ CDN 取流**,无需 JA3 伪装
+>     (quaverq 因 FFmpeg 才需代理;rodio/reqwest 直取即可)。
+>   - 遗留:登录错误细分消息(设备超限等目前统一提示重试)、进度条插值、seek/音量 UI。
+
 ```mermaid
 graph LR
   P0[P0 出声 spike] --> P1[P1 QQ 基本播放]
