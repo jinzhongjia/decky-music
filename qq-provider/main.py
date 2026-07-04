@@ -10,11 +10,9 @@ bridge 作 server,provider 启动后连入 `--socket <path>`。无状态:credent
 import argparse
 import asyncio
 import json
-import os
 
+from log import make_log  # 日志实现见 log.py
 from qq import QQ
-
-DEBUG = bool(os.environ.get("DECKY_MUSIC_DEBUG"))  # bridge 在 dev 模式下注入
 
 
 async def main():
@@ -35,11 +33,7 @@ async def main():
     def emit(status: str, **extra):
         out.put_nowait({"ev": "login", "status": status, **extra})
 
-    def log(level: str, where: str, msg: str):
-        # 结构化日志事件;bridge 落 decky.logger。release 下不发 debug(省 IPC)
-        if level == "debug" and not DEBUG:
-            return
-        out.put_nowait({"ev": "log", "level": level, "where": where, "msg": msg})
+    log = make_log(out)
 
     asyncio.create_task(pump())
 
@@ -56,7 +50,7 @@ async def handle(qq: QQ, cmd: dict, emit, log) -> dict:
     match cmd.get("cmd"):
         case "set_credential":
             qq.set_credential(cmd.get("cred"))
-            log("info", "credential", "已注入" if cmd.get("cred") else "已清空")
+            log("info", "credential", "injected" if cmd.get("cred") else "cleared")
             return {"ok": True}
         case "login":
             # 长流程:后台跑,QR 与状态经 login 事件上报;命令本身即刻返 ok
@@ -67,11 +61,11 @@ async def handle(qq: QQ, cmd: dict, emit, log) -> dict:
             url = await qq.song_url(cmd["id"], cmd.get("media_mid", ""))
             if url:
                 return {"ok": True, "url": url}
-            log("warn", "song_url", f"无可播 URL id={cmd['id']}(无版权/需登录/VIP)")
+            log("warn", "song_url", f"no playable url id={cmd['id']} (no rights / login / VIP)")
             return {"ok": False, "msg": "无可播 URL(无版权/需登录/VIP)"}
         case "search":
             songs = await qq.search(cmd["keyword"])
-            log("debug", "search", f"kw={cmd['keyword']} → {len(songs)} 首")
+            log("debug", "search", f"kw={cmd['keyword']} -> {len(songs)} songs")
             return {"ok": True, "songs": songs}
         case _:
             return {"ok": False, "msg": "unknown cmd"}
