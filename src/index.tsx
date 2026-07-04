@@ -18,6 +18,12 @@ const ROUTE = "/music";
 type Provider = "qq" | "ncm" | null;
 const setProviderCall = callable<[which: Provider], void>("set_provider");
 
+// ponytail: P1.3 临时 —— 用固定 URL 验证游戏模式整链出声。qq-provider 就绪后删。
+const playUrl = callable<[url: string], void>("play_url");
+const pauseCall = callable<[], void>("pause");
+const resumeCall = callable<[], void>("resume");
+const TEST_MP3 = "https://download.samplelib.com/mp3/sample-15s.mp3";
+
 // 右侧 QAM 面板(provider 无关):只做全局控制,不含音乐业务
 function QuickAccess() {
   const [provider, setProvider] = useState<Provider>(null);
@@ -71,8 +77,34 @@ function QuickAccess() {
           项目地址
         </ButtonItem>
       </PanelSectionRow>
+
+      {/* ponytail: P1.3 临时出声验证。qq-provider 就绪后整段删。 */}
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => guard(() => playUrl(TEST_MP3))}>
+          测试播放
+        </ButtonItem>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => guard(pauseCall)}>
+          暂停
+        </ButtonItem>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={() => guard(resumeCall)}>
+          继续
+        </ButtonItem>
+      </PanelSectionRow>
     </PanelSection>
   );
+}
+
+// 所有 callable 一律包 try/catch,失败不外抛(防御式,不拖垮宿主 UI)
+async function guard(fn: () => Promise<unknown>) {
+  try {
+    await fn();
+  } catch (e) {
+    console.error("[decky-music] callable failed", e);
+  }
 }
 
 // 大屏路由页外层再套一层 ErrorBoundary(纵深防御)
