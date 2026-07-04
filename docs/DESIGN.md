@@ -448,7 +448,7 @@ await play("<qq-song-id>");   // URL、音频流全在 bridge↔子进程之间,
    - **探测记录(2026-07-04,桌面模式零代码探测):** `libasound.so.2` 位于 `/usr/lib/`、动态可用;`speaker-test`(ALSA 路,等同 rodio 的 cpal→libasound→pipewire-alsa 链)以 **48000Hz / S16_LE / 2ch** 正常出声;`pw-play` 亦正常。→ **libasound 路 + 默认格式协商已验证通过**,命门的架构风险基本消除。
    - **构建记录(2026-07-04):** player P0 二进制在官方 `holo-toolchain-rust`(+`pkgconf`/`alsa-lib`)镜像内构建,glibc 随 SteamOS。`readelf -d` 确认 NEEDED 仅 `libasound.so.2` + 系统基线(`libgcc_s`/`libm`/`libc`),**无 `libssl`/`libcrypto`**(rustls 生效)—— 满足"ldd 只动态依赖 libasound"验收。
    - **播放记录(2026-07-04,桌面模式实测):** 二进制 scp 到 Deck,`ldd` 全部解析、无 GLIBC 缺失;`player --play <mp3>` 拉流成功 → `OutputStream::try_default()` 开默认设备无错 → symphonia 解码 → **实际听到声音**、播完 `exit 0`。→ **待验证项② rodio/cpal 格式协商已通过(桌面模式)**。
-   - **仍待验证**:① gamescope(游戏模式)会话、降权 deck 用户下同样出声(需部署插件后测)。
+   - **游戏模式验证(2026-07-04,整链实测):** 插件部署上 Deck,bridge 以 uid 1000(deck)+ 注入 `XDG_RUNTIME_DIR=/run/user/1000` spawn player,UDS 连接建立。游戏模式(gamescope 会话)下经 UI「测试播放」→ bridge `play_url` → player `load` **出声正常,暂停/继续可用**。→ **命门彻底关闭:整条 UI→bridge→player 在真机游戏模式跑通。**
 2. **子进程崩溃恢复。** bridge 需 watchdog:轮询/监听子进程退出,自动重启并 `emit` 通知 UI。§9 骨架未含。
 3. **NDJSON 并发。** §9 `request()` 是串行(发一条读一条)。若需边播边发命令,给命令加 `request-id` 关联响应,或命令/事件分双向独立处理。
 4. **二进制执行位。** `remote_binary` 下载后确认 `bin/` 下文件有 `+x`;缺失则 bridge 里 `os.chmod`。
