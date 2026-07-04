@@ -115,7 +115,8 @@ class Plugin:
         _save_settings(self.settings)
         if which is None:
             return
-        binname = "qq-provider" if which == "qq" else "ncm-provider"
+        # qq-provider 是 Nuitka standalone 目录,可执行文件在 bin/qq-provider/qq-provider
+        binname = "qq-provider/qq-provider" if which == "qq" else "ncm-provider"
         self.provider.connected.clear()
         self.provider_proc = await asyncio.create_subprocess_exec(
             BIN(binname), "--socket", self.provider.path, env=_child_env()
@@ -130,6 +131,10 @@ class Plugin:
         if cred:
             await self.provider.request({"cmd": "set_credential", "cred": cred})
 
+    async def get_provider(self) -> str | None:
+        # UI 挂载时读回当前 provider(bridge 是真相源;UI 重挂载/重载都能恢复)
+        return self.settings.get("provider")
+
     async def login(self):
         """扫码登录当前 provider。QR 与状态经 emit("login") 推 UI;成功后 bridge 持久化 credential。"""
         await self.provider.request({"cmd": "login"})
@@ -140,11 +145,6 @@ class Plugin:
             await decky.emit("player", {"ev": "error", "msg": r.get("msg", "取播放地址失败")})
             return
         await self.player.request({"cmd": "load", "url": r["url"]})
-
-    async def play_url(self, url: str):
-        # ponytail: P1.3 临时 —— 跳过 provider,直接喂 player 验证游戏模式出声。
-        # qq-provider 的 song_url 就绪后删掉,统一走 play()。
-        await self.player.request({"cmd": "load", "url": url})
 
     async def pause(self):
         await self.player.request({"cmd": "pause"})
