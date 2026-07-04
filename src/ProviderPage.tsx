@@ -1,17 +1,10 @@
-import { addEventListener, callable, removeEventListener } from "@decky/api";
 import { DialogButton, Focusable, TextField } from "@decky/ui";
 import { useEffect, useState } from "react";
 
+import { Song, api, onPlayer } from "./api";
 import { ErrorBanner } from "./ErrorBanner";
 import { guard, reportError } from "./errors";
 import { t } from "./i18n";
-
-type Song = { mid: string; name: string; singer: string; media_mid: string };
-
-const searchCall = callable<[keyword: string], { ok: boolean; songs?: Song[] }>("search");
-const playCall = callable<[id: string, mediaMid: string], void>("play");
-const pauseCall = callable<[], void>("pause");
-const resumeCall = callable<[], void>("resume");
 
 // 大屏路由页(provider 相关)。P1 最小:搜索 → 选歌播放 + 暂停/继续 + 正在播放。
 // 进度条/歌词/歌单等留 P3。
@@ -23,7 +16,7 @@ export function ProviderPage() {
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
-    const listener = addEventListener("player", (msg: any) => {
+    return onPlayer((msg) => {
       if (msg.ev === "playing") setPlaying(true);
       else if (msg.ev === "paused" || msg.ev === "ended") setPlaying(false);
       else if (msg.ev === "error") {
@@ -31,14 +24,13 @@ export function ProviderPage() {
         reportError(msg.msg || t("playError")); // 后端播放错误也走同一条 UI 错误渲染
       }
     });
-    return () => removeEventListener("player", listener);
   }, []);
 
   const doSearch = async () => {
     if (!kw.trim()) return;
     setBusy(true);
     try {
-      const r = await searchCall(kw);
+      const r = await api.search(kw);
       setSongs(r.ok ? r.songs ?? [] : []);
     } catch (e) {
       reportError(e instanceof Error ? e.message : String(e));
@@ -49,7 +41,7 @@ export function ProviderPage() {
 
   const doPlay = async (s: Song) => {
     setNow(`${s.name} — ${s.singer}`);
-    await guard(() => playCall(s.mid, s.media_mid));
+    await guard(() => api.play(s.mid, s.media_mid));
   };
 
   return (
@@ -74,7 +66,7 @@ export function ProviderPage() {
             {t("nowPlaying")}: {now}
           </div>
           <DialogButton
-            onClick={() => guard(playing ? pauseCall : resumeCall)}
+            onClick={() => guard(playing ? api.pause : api.resume)}
             style={{ width: 140 }}
           >
             {playing ? t("pause") : t("resume")}

@@ -1,10 +1,4 @@
-import {
-  addEventListener,
-  callable,
-  definePlugin,
-  removeEventListener,
-  routerHook,
-} from "@decky/api";
+import { definePlugin, routerHook } from "@decky/api";
 import {
   ButtonItem,
   Dropdown,
@@ -16,6 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import { FaMusic } from "react-icons/fa";
 
+import { Provider, api, onLogin } from "./api";
 import { Boundary } from "./Boundary";
 import { ErrorBanner } from "./ErrorBanner";
 import { ProviderPage } from "./ProviderPage";
@@ -23,11 +18,6 @@ import { guard } from "./errors";
 import { t } from "./i18n";
 
 const ROUTE = "/music";
-
-type Provider = "" | "qq" | "ncm"; // "" = 无(不用 null 作 Dropdown data,受控值会失效)
-const setProviderCall = callable<[which: Provider | null], void>("set_provider");
-const getProviderCall = callable<[], string | null>("get_provider");
-const loginCall = callable<[], void>("login");
 
 // 稳定引用:rgOptions 放模块级,避免每次渲染新建对象导致 Dropdown 选中态丢失
 const PROVIDER_OPTIONS = [
@@ -48,16 +38,16 @@ function QuickAccess() {
 
   useEffect(() => {
     // 从 bridge 读回当前 provider(真相源),重挂载/重载都能恢复选中态
-    getProviderCall()
+    api
+      .getProvider()
       .then((p) => setProvider((p as Provider) ?? ""))
       .catch(() => {});
-    const listener = addEventListener("login", (msg: any) => {
+    return onLogin((msg) => {
       setLoginStatus(msg.status);
       if (msg.status === "qrcode") setQr(`data:${msg.mimetype};base64,${msg.qr}`);
       // 仅终态清二维码;waiting/scanned 期间要一直显示(否则轮询事件一来就闪没)
       else if (["done", "timeout", "refuse"].includes(msg.status)) setQr(null);
     });
-    return () => removeEventListener("login", listener);
   }, []);
 
   const choose = async (which: Provider) => {
@@ -65,7 +55,7 @@ function QuickAccess() {
     setQr(null);
     setLoginStatus("");
     // 注意:不在这里 addRoute —— 路由已在插件加载时注册一次;在事件里改路由会重挂载 QAM、复位状态
-    await guard(() => setProviderCall(which || null));
+    await guard(() => api.setProvider(which || null));
   };
 
   return (
@@ -82,7 +72,7 @@ function QuickAccess() {
       {provider && (
         <>
           <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => guard(loginCall)}>
+            <ButtonItem layout="below" onClick={() => guard(api.login)}>
               {t("login")}
             </ButtonItem>
           </PanelSectionRow>
