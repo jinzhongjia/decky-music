@@ -115,6 +115,8 @@ class Plugin:
         self.provider = Conn("provider")
         self.player = Conn("player")
         self.provider_proc: asyncio.subprocess.Process | None = None
+        self.provider_which: str | None = None  # 当前已 spawn 的 provider
+        self.provider_lock = asyncio.Lock()  # 串行化 _ensure_provider,保证幂等不重复 spawn
         await self.provider.listen()
         await self.player.listen()
         self.player.on_event = self._forward_player_event
@@ -125,33 +127,49 @@ class Plugin:
 
     # ---- UI 只调下面这些(callable) ----
 
+    async def _ensure_provider(self, which: str | None):
+        """幂等:确保 which("qq"/"ncm"/None)对应的 provider 进程在运行。
+        同一时刻只有一个 provider;重复调用不重复 spawn(靠 provider_lock 串行化 + 存活检查)。"""
+        async with self.provider_lock:
+            if which is None:
+                if self.provider_proc:
+                    self.provider_proc.terminate()
+                    self.provider_proc = self.provider_which = None
+                return
+            alive = self.provider_proc is not None and self.provider_proc.returncode is None
+            if self.provider_which == which and alive and self.provider.connected.is_set():
+                return  # 已在运行同一 provider → 幂等返回,不重复 spawn
+            if self.provider_proc:  # 切换 provider:先停旧
+                self.provider_proc.terminate()
+                self.provider_proc = None
+            # qq-provider 是 Nuitka standalone 目录,可执行文件在 bin/qq-provider/qq-provider
+            binname = "qq-provider/qq-provider" if which == "qq" else "ncm-provider"
+            self.provider_which = which
+            self.provider.connected.clear()
+            self.provider_proc = await spawn("provider", BIN(binname), "--socket", self.provider.path)
+            # 等 provider 连入后注入已存 credential(provider 无状态,不自存;bridge 是唯一真相源)
+            try:
+                await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
+            except asyncio.TimeoutError:
+                log("bridge", "own", "error", f"provider {which} startup timeout")
+                await decky.emit("provider", {"ev": "error", "msg": "provider 启动超时"})
+                return
+            cred = (self.settings.get("accounts") or {}).get(which)
+            if cred:
+                await self.provider.request({"cmd": "set_credential", "cred": cred})
+
     async def set_provider(self, which: str | None):
-        """"qq" | "ncm" | None。切换时先停旧进程再起新进程,同一时刻只有一个 provider。"""
-        if self.provider_proc:
-            self.provider_proc.terminate()
-            self.provider_proc = None
+        """"qq" | "ncm" | None。持久化选择并(幂等地)拉起对应 provider。"""
         self.settings["provider"] = which
         _save_settings(self.settings)
-        if which is None:
-            return
-        # qq-provider 是 Nuitka standalone 目录,可执行文件在 bin/qq-provider/qq-provider
-        binname = "qq-provider/qq-provider" if which == "qq" else "ncm-provider"
-        self.provider.connected.clear()
-        self.provider_proc = await spawn("provider", BIN(binname), "--socket", self.provider.path)
-        # 等 provider 连入后注入已存 credential(provider 无状态,不自存;bridge 是唯一真相源)
-        try:
-            await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
-        except asyncio.TimeoutError:
-            log("bridge", "own", "error", f"provider {which} startup timeout")
-            await decky.emit("provider", {"ev": "error", "msg": "provider 启动超时"})
-            return
-        cred = (self.settings.get("accounts") or {}).get(which)
-        if cred:
-            await self.provider.request({"cmd": "set_credential", "cred": cred})
+        await self._ensure_provider(which)
 
     async def get_provider(self) -> str | None:
-        # UI 挂载时读回当前 provider(bridge 是真相源;UI 重挂载/重载都能恢复)
-        return self.settings.get("provider")
+        # 读回当前 provider(bridge 是真相源),并幂等拉起其进程:
+        # 解决"settings 预设了 provider、首次加载 UI 拿到了但进程没起"的问题。
+        which = self.settings.get("provider")
+        await self._ensure_provider(which)
+        return which
 
     async def login(self):
         """扫码登录当前 provider。QR 与状态经 emit("login") 推 UI;成功后 bridge 持久化 credential。"""
