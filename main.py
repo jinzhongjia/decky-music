@@ -17,6 +17,10 @@ SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 
 
 def BIN(name: str) -> str:
+    # 拼出插件 bin/ 下二进制的绝对路径,供 spawn 子进程用。
+    # 安装目录运行时才由 DECKY_PLUGIN_DIR 决定,不能写死。
+    # 二进制经 remote_binary(正式)或开发期侧载放入 bin/。
+    # 例:BIN("player") → .../decky-music/bin/player
     return os.path.join(decky.DECKY_PLUGIN_DIR, "bin", name)
 
 
