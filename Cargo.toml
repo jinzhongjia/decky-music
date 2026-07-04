@@ -1,3 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["player", "ncm-provider"]
+
+[profile.release]
+strip = true
+lto = true
