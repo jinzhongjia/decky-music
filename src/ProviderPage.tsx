@@ -2,6 +2,8 @@ import { addEventListener, callable, removeEventListener } from "@decky/api";
 import { DialogButton, Focusable, TextField } from "@decky/ui";
 import { useEffect, useState } from "react";
 
+import { ErrorBanner } from "./ErrorBanner";
+import { guard, reportError } from "./errors";
 import { t } from "./i18n";
 
 type Song = { mid: string; name: string; singer: string; media_mid: string };
@@ -10,14 +12,6 @@ const searchCall = callable<[keyword: string], { ok: boolean; songs?: Song[] }>(
 const playCall = callable<[id: string, mediaMid: string], void>("play");
 const pauseCall = callable<[], void>("pause");
 const resumeCall = callable<[], void>("resume");
-
-async function guard(fn: () => Promise<unknown>) {
-  try {
-    await fn();
-  } catch (e) {
-    console.error("[decky-music] callable failed", e);
-  }
-}
 
 // 大屏路由页(provider 相关)。P1 最小:搜索 → 选歌播放 + 暂停/继续 + 正在播放。
 // 进度条/歌词/歌单等留 P3。
@@ -34,7 +28,7 @@ export function ProviderPage() {
       else if (msg.ev === "paused" || msg.ev === "ended") setPlaying(false);
       else if (msg.ev === "error") {
         setPlaying(false);
-        setNow(t("playError"));
+        reportError(msg.msg || t("playError")); // 后端播放错误也走同一条 UI 错误渲染
       }
     });
     return () => removeEventListener("player", listener);
@@ -47,7 +41,7 @@ export function ProviderPage() {
       const r = await searchCall(kw);
       setSongs(r.ok ? r.songs ?? [] : []);
     } catch (e) {
-      console.error("[decky-music] search failed", e);
+      reportError(e instanceof Error ? e.message : String(e));
       setSongs([]);
     }
     setBusy(false);
@@ -60,6 +54,7 @@ export function ProviderPage() {
 
   return (
     <div style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <ErrorBanner />
       <Focusable style={{ display: "flex", gap: "1rem" }}>
         <div style={{ flexGrow: 1 }}>
           <TextField

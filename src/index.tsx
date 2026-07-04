@@ -17,7 +17,9 @@ import { useEffect, useState } from "react";
 import { FaMusic } from "react-icons/fa";
 
 import { Boundary } from "./Boundary";
+import { ErrorBanner } from "./ErrorBanner";
 import { ProviderPage } from "./ProviderPage";
+import { guard } from "./errors";
 import { t } from "./i18n";
 
 const ROUTE = "/music";
@@ -33,15 +35,6 @@ const PROVIDER_OPTIONS = [
   { data: "qq" as Provider, label: t("qq") },
   { data: "ncm" as Provider, label: t("ncm") },
 ];
-
-// 所有 callable 一律包 try/catch,失败不外抛(防御式,不拖垮宿主 UI)
-async function guard(fn: () => Promise<unknown>) {
-  try {
-    await fn();
-  } catch (e) {
-    console.error("[decky-music] callable failed", e);
-  }
-}
 
 function loginStatusText(status: string): string {
   return t(("login" + status.charAt(0).toUpperCase() + status.slice(1)) as any) || status;
@@ -77,6 +70,7 @@ function QuickAccess() {
 
   return (
     <PanelSection title={t("music")}>
+      <ErrorBanner />
       <PanelSectionRow>
         <Dropdown
           rgOptions={PROVIDER_OPTIONS}

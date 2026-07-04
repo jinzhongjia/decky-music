@@ -27,6 +27,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     nowPlaying: "正在播放",
     playError: "无法播放(无版权 / 需登录 / VIP)",
     selectProvider: "请先在快捷菜单选择音乐源",
+    unavailable: "暂时不可用",
   },
   en: {
     music: "Music",
@@ -53,6 +54,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     nowPlaying: "Now playing",
     playError: "Can't play (no rights / login / VIP)",
     selectProvider: "Pick a source in the quick menu first",
+    unavailable: "Temporarily unavailable",
   },
 };
 
