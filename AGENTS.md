@@ -31,6 +31,12 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 - `ncm-provider/` —— Rust,依赖 ncm-api-rs
 - `qq-provider/` —— Python,依赖 qqmusic_api,Nuitka `--standalone` 打包
 
+## Coding rules
+
+- 不要写过长的代码，例如单文件超过 500 行，函数超过 50 行。
+- 插件支持 i18n，支持语言为 中文 和 英文。
+- 开发完一部分后就提示用户提交代码，避免一次性提交过多代码。
+
 ## Dev environment
 
 - 部署目标:Steam Deck(SteamOS,gamescope 会话)。SSH/路径见 `scripts/deploy.sh`。
