@@ -32,21 +32,25 @@ class QQ:
 
     async def login(self, emit):
         """扫码登录。emit(status, **extra) 推事件;成功时 emit("done", cred=<dict>)。"""
-        qr = await self.client.login.get_qrcode(QRLoginType.QQ)
-        emit("qrcode", qr=base64.b64encode(qr.data).decode(), mimetype=qr.mimetype)
-        while True:
-            result = await self.client.login.check_qrcode(qr)
-            event = result.event
-            if event == QRCodeLoginEvents.DONE:
-                self.client.credential = result.credential
-                emit("done", cred=result.credential.model_dump(mode="json"))
-                return
-            if event == QRCodeLoginEvents.TIMEOUT:
-                return emit("timeout")
-            if event == QRCodeLoginEvents.REFUSE:
-                return emit("refuse")
-            emit("scanned" if event == QRCodeLoginEvents.CONF else "waiting")
-            await asyncio.sleep(0.8 if event == QRCodeLoginEvents.CONF else 1.5)
+        try:
+            qr = await self.client.login.get_qrcode(QRLoginType.QQ)
+            emit("qrcode", qr=base64.b64encode(qr.data).decode(), mimetype=qr.mimetype)
+            while True:
+                result = await self.client.login.check_qrcode(qr)
+                event = result.event
+                if event == QRCodeLoginEvents.DONE:
+                    self.client.credential = result.credential
+                    emit("done", cred=result.credential.model_dump(mode="json"))
+                    return
+                if event == QRCodeLoginEvents.TIMEOUT:
+                    return emit("timeout")
+                if event == QRCodeLoginEvents.REFUSE:
+                    return emit("refuse")
+                emit("scanned" if event == QRCodeLoginEvents.CONF else "waiting")
+                await asyncio.sleep(0.8 if event == QRCodeLoginEvents.CONF else 1.5)
+        except Exception:
+            # ponytail: 登录异常(设备超限/网络等)统一报"重试";细分错误消息留后续。
+            emit("timeout")
 
     async def song_url(self, mid: str, media_mid: str = "") -> str | None:
         """按音质降级取可播完整 URL;全档不可下发(无版权/需 VIP)返 None。"""
