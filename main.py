@@ -20,15 +20,23 @@ def BIN(name: str) -> str:
     return os.path.join(decky.DECKY_PLUGIN_DIR, "bin", name)
 
 
+def _child_env() -> dict:
+    # 子进程音频命门:player 走 libasound→pipewire-alsa,需 XDG_RUNTIME_DIR 指向用户 runtime
+    # 才能连上 PipeWire 会话(游戏模式尤其)。Decky 若已设则保留,否则按 uid 兜底。
+    env = dict(os.environ)
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    return env
+
+
 class Conn:
     """一个子进程的 UDS 连接:bridge 作 server,子进程连入。"""
 
     def __init__(self, name: str):
         self.path = os.path.join(RUNTIME, f"{name}.sock")
-        self.reader: asyncio.StreamReader | None = None
         self.writer: asyncio.StreamWriter | None = None
         self.server: asyncio.AbstractServer | None = None
-        self.on_event = None  # 子进程主动上报(position/ended/error)时回调
+        self.on_event = None  # 子进程主动上报(playing/ended/error)时回调
+        self.responses: asyncio.Queue = asyncio.Queue()  # 命令响应(非事件)
 
     async def listen(self):
         try:
@@ -38,17 +46,22 @@ class Conn:
         self.server = await asyncio.start_unix_server(self._accept, self.path)
 
     async def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        self.reader, self.writer = reader, writer
+        self.writer = writer
+        # 单读循环 + 分流:带 "ev" 的是子进程主动事件 → on_event;其余是命令响应 → 队列。
+        # 子进程在同一条连接上既回响应又推事件,必须在这里 demux,否则响应会被吞掉。
         while line := await reader.readline():  # \n 分帧,同 Decky localsocket.py
             msg = json.loads(line)
-            if "ev" in msg and self.on_event:
-                await self.on_event(msg)
+            if "ev" in msg:
+                if self.on_event:
+                    await self.on_event(msg)
+            else:
+                await self.responses.put(msg)
 
     async def request(self, obj: dict) -> dict:
-        # ponytail: 串行请求/响应(发一条读一条)。边播边发命令需要 request-id 关联,留后续。
+        # ponytail: 串行请求/响应(发一条取一条)。边播边发多命令需 request-id 关联,留后续。
         self.writer.write((json.dumps(obj) + "\n").encode())
         await self.writer.drain()
-        return json.loads(await self.reader.readline())
+        return await self.responses.get()
 
     async def close(self):
         if self.writer:
@@ -83,8 +96,10 @@ class Plugin:
         await self.provider.listen()
         await self.player.listen()
         self.player.on_event = self._forward_player_event
-        # player 常驻:_main 时即 spawn
-        await asyncio.create_subprocess_exec(BIN("player"), "--socket", self.player.path)
+        # player 常驻:_main 时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
+        await asyncio.create_subprocess_exec(
+            BIN("player"), "--socket", self.player.path, env=_child_env()
+        )
 
     # ---- UI 只调下面这些(callable) ----
 
@@ -100,12 +115,17 @@ class Plugin:
         binname = "qq-provider" if which == "qq" else "ncm-provider"
         # ponytail: cookie 注入(spawn 时传 --cookie)留到登录做。
         self.provider_proc = await asyncio.create_subprocess_exec(
-            BIN(binname), "--socket", self.provider.path
+            BIN(binname), "--socket", self.provider.path, env=_child_env()
         )
 
     async def play(self, song_id: str):
         r = await self.provider.request({"cmd": "song_url", "id": song_id})
         await self.player.request({"cmd": "load", "url": r["url"]})
+
+    async def play_url(self, url: str):
+        # ponytail: P1.3 临时 —— 跳过 provider,直接喂 player 验证游戏模式出声。
+        # qq-provider 的 song_url 就绪后删掉,统一走 play()。
+        await self.player.request({"cmd": "load", "url": url})
 
     async def pause(self):
         await self.player.request({"cmd": "pause"})
