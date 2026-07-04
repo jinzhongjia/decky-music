@@ -91,11 +91,13 @@ bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
 dev → `logger.setLevel(DEBUG)`(debug 输出);release → `INFO`(debug 过滤,其余照常)。bridge 经 `_child_env`
 注入 `DECKY_MUSIC_DEBUG=1`,子进程据此 release 下不发 debug 事件省 IPC。
 
-**各组件怎么打**:
-- bridge:`log(source, origin, level, msg)`(main.py);子进程的 `{"ev":"log"}` 与 `{"ev":"error"}` 事件由
-  bridge 自动落日志,stderr 由 bridge 逐行捕获落 `warn`。
-- player(Rust):`log_json(level, place, msg)` 发 `{"ev":"log",...}`;音频线程用 `AudioEv::Log`。
-- provider(Python):`log(level, where, msg)` 发 `{"ev":"log",...}`。
+**各组件的日志实现各自独立成文件**:
+- bridge:`py_modules/log.py` —— `log(source, origin, level, msg)` + `log_child_event` + `pump_stderr`。
+  (放 `py_modules/` 才能被 Decky 加进 sys.path 且被 CLI 打包。)子进程的 `{"ev":"log"}` 与
+  `{"ev":"error"}` 事件由 bridge 自动落日志,stderr 由 bridge 逐行捕获落 `warn`。
+- player(Rust):`player/src/logging.rs` —— `log_json(level, place, msg)` 发 `{"ev":"log",...}`;
+  音频线程用 `AudioEv::Log`。
+- provider(Python):`qq-provider/log.py` —— `make_log(out)` 返回 `log(level, where, msg)` 发 `{"ev":"log",...}`。
 - **子进程的所有诊断走 socket 结构化日志事件**;stderr 只留真正意外(panic/traceback)。
 
 **红线**:绝不记密钥类数据 —— 播放 URL(含限时 vkey)、cookie/credential 一律不进日志。
