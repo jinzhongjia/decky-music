@@ -37,6 +37,10 @@ if [ -f target/release/player ]; then
   rsync -azp target/release/player "${DECK_HOST}:/tmp/decky-music-player"
   deck_sudo "mkdir -p '${DEST}/bin' && mv /tmp/decky-music-player '${DEST}/bin/player' && chmod +x '${DEST}/bin/player'"
 fi
+if [ -f qq-provider/build/qq-provider.tar.gz ]; then
+  rsync -azp qq-provider/build/qq-provider.tar.gz "${DECK_HOST}:/tmp/qqp.tar.gz"
+  deck_sudo "rm -rf '${DEST}/bin/qq-provider' && mkdir -p '${DEST}/bin' && tar -xzpf /tmp/qqp.tar.gz -C '${DEST}/bin' && chmod +x '${DEST}/bin/qq-provider/qq-provider' && rm -f /tmp/qqp.tar.gz"
+fi
 
 deck_sudo "systemctl restart plugin_loader"
 echo "→ deployed ${NAME}"
