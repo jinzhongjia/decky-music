@@ -1,0 +1,63 @@
+// 极简 i18n:中/英两套文案,按 Steam/浏览器语言选。zh 兜底。
+type Lang = "zh" | "en";
+
+const STRINGS: Record<Lang, Record<string, string>> = {
+  zh: {
+    music: "音乐",
+    provider: "音乐源",
+    none: "无",
+    qq: "QQ音乐",
+    ncm: "网易云音乐",
+    openPlayer: "打开播放器",
+    projectUrl: "项目地址",
+    login: "扫码登录",
+    loginQrcode: "请用手机 App 扫码",
+    loginWaiting: "等待扫码…",
+    loginScanned: "已扫码,请在手机确认",
+    loginDone: "登录成功",
+    loginTimeout: "二维码已过期,请重试",
+    loginRefuse: "已取消授权",
+    notLoggedIn: "未登录",
+    searchPlaceholder: "搜索歌曲",
+    search: "搜索",
+    searching: "搜索中…",
+    noResults: "无结果",
+    pause: "暂停",
+    resume: "继续",
+    nowPlaying: "正在播放",
+    playError: "无法播放(无版权 / 需登录 / VIP)",
+    selectProvider: "请先在快捷菜单选择音乐源",
+  },
+  en: {
+    music: "Music",
+    provider: "Source",
+    none: "None",
+    qq: "QQ Music",
+    ncm: "NetEase Music",
+    openPlayer: "Open player",
+    projectUrl: "Project page",
+    login: "Scan to log in",
+    loginQrcode: "Scan with the mobile app",
+    loginWaiting: "Waiting for scan…",
+    loginScanned: "Scanned, confirm on your phone",
+    loginDone: "Logged in",
+    loginTimeout: "QR code expired, try again",
+    loginRefuse: "Authorization cancelled",
+    notLoggedIn: "Not logged in",
+    searchPlaceholder: "Search songs",
+    search: "Search",
+    searching: "Searching…",
+    noResults: "No results",
+    pause: "Pause",
+    resume: "Resume",
+    nowPlaying: "Now playing",
+    playError: "Can't play (no rights / login / VIP)",
+    selectProvider: "Pick a source in the quick menu first",
+  },
+};
+
+const lang: Lang = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+
+export function t(key: keyof (typeof STRINGS)["zh"]): string {
+  return STRINGS[lang][key] ?? STRINGS.zh[key] ?? key;
+}
