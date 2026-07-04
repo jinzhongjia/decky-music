@@ -131,14 +131,16 @@ export default definePlugin(() => {
   // 大屏入口按钮仍按 provider 选择显隐,故"未选 provider 不进大屏"的体验不变。
   routerHook.addRoute(ROUTE, ProviderPageRoute);
   return {
-    name: "decky-music",
-    titleView: <div className={staticClasses.Title}>{t("music")}</div>,
+    name: "Decky Music",
+    // display our plugin name in QAM
+    titleView: <div className={staticClasses.Title}>{"Decky Music"}</div>,
     icon: <FaMusic />,
     content: (
       <Boundary>
         <QuickAccess />
       </Boundary>
     ),
+    // 卸载插件时移除路由,避免残留
     onDismount() {
       routerHook.removeRoute(ROUTE);
     },
