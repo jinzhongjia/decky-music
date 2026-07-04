@@ -37,6 +37,7 @@ class Conn:
         self.server: asyncio.AbstractServer | None = None
         self.on_event = None  # 子进程主动上报(playing/ended/error)时回调
         self.responses: asyncio.Queue = asyncio.Queue()  # 命令响应(非事件)
+        self.connected: asyncio.Event = asyncio.Event()  # 子进程连入后置位
 
     async def listen(self):
         try:
@@ -47,6 +48,7 @@ class Conn:
 
     async def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.writer = writer
+        self.connected.set()
         # 单读循环 + 分流:带 "ev" 的是子进程主动事件 → on_event;其余是命令响应 → 队列。
         # 子进程在同一条连接上既回响应又推事件,必须在这里 demux,否则响应会被吞掉。
         while line := await reader.readline():  # \n 分帧,同 Decky localsocket.py
@@ -96,6 +98,7 @@ class Plugin:
         await self.provider.listen()
         await self.player.listen()
         self.player.on_event = self._forward_player_event
+        self.provider.on_event = self._on_provider_event
         # player 常驻:_main 时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
         await asyncio.create_subprocess_exec(
             BIN("player"), "--socket", self.player.path, env=_child_env()
@@ -113,13 +116,29 @@ class Plugin:
         if which is None:
             return
         binname = "qq-provider" if which == "qq" else "ncm-provider"
-        # ponytail: cookie 注入(spawn 时传 --cookie)留到登录做。
+        self.provider.connected.clear()
         self.provider_proc = await asyncio.create_subprocess_exec(
             BIN(binname), "--socket", self.provider.path, env=_child_env()
         )
+        # 等 provider 连入后注入已存 credential(provider 无状态,不自存;bridge 是唯一真相源)
+        try:
+            await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
+        except asyncio.TimeoutError:
+            await decky.emit("provider", {"ev": "error", "msg": "provider 启动超时"})
+            return
+        cred = (self.settings.get("accounts") or {}).get(which)
+        if cred:
+            await self.provider.request({"cmd": "set_credential", "cred": cred})
 
-    async def play(self, song_id: str):
-        r = await self.provider.request({"cmd": "song_url", "id": song_id})
+    async def login(self):
+        """扫码登录当前 provider。QR 与状态经 emit("login") 推 UI;成功后 bridge 持久化 credential。"""
+        await self.provider.request({"cmd": "login"})
+
+    async def play(self, song_id: str, media_mid: str = ""):
+        r = await self.provider.request({"cmd": "song_url", "id": song_id, "media_mid": media_mid})
+        if not r.get("ok"):
+            await decky.emit("player", {"ev": "error", "msg": r.get("msg", "取播放地址失败")})
+            return
         await self.player.request({"cmd": "load", "url": r["url"]})
 
     async def play_url(self, url: str):
@@ -146,6 +165,16 @@ class Plugin:
 
     async def _forward_player_event(self, msg: dict):
         await decky.emit("player", msg)  # 推给 UI
+
+    async def _on_provider_event(self, msg: dict):
+        # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI
+        if msg.get("ev") == "login" and msg.get("status") == "done":
+            which = self.settings.get("provider")
+            self.settings.setdefault("accounts", {})[which] = msg.get("cred")
+            _save_settings(self.settings)
+            await decky.emit("login", {"ev": "login", "status": "done"})
+        else:
+            await decky.emit("login", msg)
 
     async def _unload(self):
         if self.provider_proc:
