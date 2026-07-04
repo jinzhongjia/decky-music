@@ -22,13 +22,26 @@ export const api = {
 
 // ---- emit 事件(bridge → 前端)。返回退订函数,直接用于 useEffect cleanup。 ----
 
-export type PlayerEvent = {
-  ev: "playing" | "paused" | "ended" | "error";
-  pos?: number;
-  wall_ms?: number;
-  msg?: string;
-};
-export type LoginStatus = "qrcode" | "waiting" | "scanned" | "done" | "timeout" | "refuse";
+// 状态常量:匹配时用这些常量而非裸字符串(避免拼错)。值即 bridge/子进程 发来的字符串。
+export const PlayerEv = {
+  Playing: "playing",
+  Paused: "paused",
+  Ended: "ended",
+  Error: "error",
+} as const;
+export type PlayerEv = (typeof PlayerEv)[keyof typeof PlayerEv];
+
+export const LoginStatus = {
+  Qrcode: "qrcode",
+  Waiting: "waiting",
+  Scanned: "scanned",
+  Done: "done",
+  Timeout: "timeout",
+  Refuse: "refuse",
+} as const;
+export type LoginStatus = (typeof LoginStatus)[keyof typeof LoginStatus];
+
+export type PlayerEvent = { ev: PlayerEv; pos?: number; wall_ms?: number; msg?: string };
 export type LoginEvent = { ev: "login"; status: LoginStatus; qr?: string; mimetype?: string };
 
 export function onPlayer(cb: (e: PlayerEvent) => void): () => void {

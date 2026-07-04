@@ -1,14 +1,17 @@
 import { DialogButton, Focusable, TextField } from "@decky/ui";
 import { useEffect, useState } from "react";
 
-import { Song, api, onPlayer } from "./api";
+import { PlayerEv, Song, api, onPlayer } from "./api";
 import { ErrorBanner } from "./ErrorBanner";
 import { guard, reportError } from "./errors";
 import { t } from "./i18n";
 
+// 注入的大屏路由;QAM 与 index 都从这里引,避免与入口文件循环依赖
+export const ROUTE = "/music";
+
 // 大屏路由页(provider 相关)。P1 最小:搜索 → 选歌播放 + 暂停/继续 + 正在播放。
 // 进度条/歌词/歌单等留 P3。
-export function ProviderPage() {
+export function Page() {
   const [kw, setKw] = useState("");
   const [songs, setSongs] = useState<Song[]>([]);
   const [busy, setBusy] = useState(false);
@@ -17,9 +20,9 @@ export function ProviderPage() {
 
   useEffect(() => {
     return onPlayer((msg) => {
-      if (msg.ev === "playing") setPlaying(true);
-      else if (msg.ev === "paused" || msg.ev === "ended") setPlaying(false);
-      else if (msg.ev === "error") {
+      if (msg.ev === PlayerEv.Playing) setPlaying(true);
+      else if (msg.ev === PlayerEv.Paused || msg.ev === PlayerEv.Ended) setPlaying(false);
+      else if (msg.ev === PlayerEv.Error) {
         setPlaying(false);
         reportError(msg.msg || t("playError")); // 后端播放错误也走同一条 UI 错误渲染
       }
