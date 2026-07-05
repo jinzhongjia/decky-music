@@ -17,13 +17,10 @@ export type Song = {
   vip: boolean; // 是否需 VIP/付费:QQ=pay.pay_play>0;网易云=fee∈{1,4}
   // ---- QQ 特有(可选:非该 provider 时可能缺省)----
   media_mid?: string; // 取播放链接(vkey filename)用;网易云不需要
-  // ---- 网易云特有(可选)----
-  // (基本播放/展示无独有必需字段;需要时再加,如 fee 原值 / mv id)
 };
 export type SearchResult = { ok: boolean; songs?: Song[] };
 export type ProviderState = { provider: Provider; loggedIn: boolean };
 export type Account = {
-  ok: boolean;
   nickname: string;
   avatar: string;
   vip: string; // VIP 档位标签(provider 品牌词,如"超级会员"/"黑胶VIP","" 非会员);UI 渲染成 pill
