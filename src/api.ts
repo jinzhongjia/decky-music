@@ -3,11 +3,11 @@ import { addEventListener, callable, removeEventListener } from "@decky/api";
 // 前端对 bridge(main.py)的唯一接口层:RPC 与事件在此集中声明、统一类型,便于复用。
 // 改动务必与 bridge 的 callable / emit 对应。
 
-export type Provider = "" | "qq" | "ncm"; // "" = 无
+export type Provider = null | "qq" | "ncm"; // null = 无
 export type LoginType = "qq" | "wx"; // 仅 QQ 用(手机QQ / 微信);ncm 忽略
 export type Song = { mid: string; name: string; singer: string; media_mid: string };
 export type SearchResult = { ok: boolean; songs?: Song[] };
-export type ProviderState = { provider: Provider | null; loggedIn: boolean };
+export type ProviderState = { provider: Provider; loggedIn: boolean };
 export type Account = {
   ok: boolean;
   nickname: string;
@@ -17,7 +17,7 @@ export type Account = {
 
 /** callable RPC(前端 → bridge)。 */
 export const api = {
-  setProvider: callable<[which: Provider | null], void>("set_provider"),
+  setProvider: callable<[which: Provider], void>("set_provider"),
   getProvider: callable<[], ProviderState>("get_provider"),
   login: callable<[loginType: LoginType | null], void>("login"),
   logout: callable<[], void>("logout"),

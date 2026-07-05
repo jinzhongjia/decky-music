@@ -17,7 +17,7 @@ const TERMINAL: LoginStatus[] = [LoginStatus.Done, LoginStatus.Timeout, LoginSta
 // 以及 account 每 2s 反复打 provider 真实 API(触发限频/风控)。
 const S = {
   view: "pick" as View,
-  provider: "" as Provider,
+  provider: null as Provider,
   account: null as Account | null,
   qr: null as string | null,
   status: "",
