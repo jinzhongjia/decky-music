@@ -1,7 +1,8 @@
-import { ButtonItem, PanelSection, PanelSectionRow } from "@decky/ui";
+import { ButtonItem, Navigation, PanelSection, PanelSectionRow } from "@decky/ui";
 import { useEffect, useState } from "react";
 
 import { Account, LoginStatus, LoginType, Provider, api, onLogin, onProvider } from "./api";
+import { ROUTE } from "./Page";
 import { ErrorBanner } from "./ErrorBanner";
 import { Footer } from "./Footer";
 import { guard, reportError } from "./errors";
@@ -241,6 +242,17 @@ export function QAM() {
                 )}
               </div>
             </div>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              onClick={() => {
+                Navigation.Navigate(ROUTE); // 进大屏播放页
+                Navigation.CloseSideMenus(); // 收起 QAM,露出大屏
+              }}
+            >
+              {t("openPlayer")}
+            </ButtonItem>
           </PanelSectionRow>
           <PanelSectionRow>
             <ButtonItem layout="below" onClick={doLogout}>
