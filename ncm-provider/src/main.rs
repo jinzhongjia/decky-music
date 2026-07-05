@@ -99,6 +99,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ =
                     out_tx.send(song_url(&state, cmd.id.as_deref().unwrap_or(""), &out_tx).await);
             }
+            "logout" => {
+                let _ = out_tx.send(logout(&state).await);
+            }
+            "account" => {
+                let _ = out_tx.send(account(&state).await);
+            }
             _ => {
                 let _ = out_tx.send(r#"{"ok":false,"msg":"unknown cmd"}"#.to_string());
             }
@@ -167,6 +173,52 @@ async fn song_url(state: &State, id: &str, tx: &Out) -> String {
         }
         Err(e) => json!({ "ok": false, "msg": e.to_string() }).to_string(),
     }
+}
+
+async fn logout(state: &State) -> String {
+    if let Some(c) = state.cookie().await {
+        let _ = state.client.logout(&Query::new().cookie(&c)).await; // 尽力而为
+    }
+    *state.cookie.lock().await = None;
+    r#"{"ok":true}"#.to_string()
+}
+
+async fn account(state: &State) -> String {
+    let ck = state.cookie().await;
+    let mut q = Query::new();
+    if let Some(c) = &ck {
+        q = q.cookie(c);
+    }
+    let status = match state.client.login_status(&q).await {
+        Ok(r) => r,
+        Err(e) => return json!({ "ok": false, "msg": e.to_string() }).to_string(),
+    };
+    let p = &status.body["profile"];
+    // VIP 档位文字(UI 渲染成 pill,不用服务端图标,与 QQ 一致)。vip_info 失败只是不显示,不影响账号。
+    let mut vip = String::new();
+    let mut vq = Query::new();
+    if let Some(c) = &ck {
+        vq = vq.cookie(c);
+    }
+    if let Ok(v) = state.client.vip_info(&vq).await {
+        let d = &v.body["data"];
+        if d["redVipLevel"].as_i64().unwrap_or(0) > 0 {
+            let annual = d["redVipAnnualCount"].as_i64().unwrap_or(0) > 0;
+            vip = if annual {
+                "黑胶VIP(年费)"
+            } else {
+                "黑胶VIP"
+            }
+            .to_string();
+        }
+    }
+    json!({
+        "ok": true,
+        "nickname": p["nickname"].as_str().unwrap_or(""),
+        "avatar": p["avatarUrl"].as_str().unwrap_or(""),
+        "vip": vip,
+    })
+    .to_string()
 }
 
 // ---- 扫码登录 ----
