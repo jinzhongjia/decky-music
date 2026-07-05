@@ -164,16 +164,31 @@ class Plugin:
         _save_settings(self.settings)
         await self._ensure_provider(which)
 
-    async def get_provider(self) -> str | None:
-        # 读回当前 provider(bridge 是真相源),并幂等拉起其进程:
+    async def get_provider(self) -> dict:
+        # 读回当前 provider + 是否已登录(bridge 是真相源),并幂等拉起其进程:
         # 解决"settings 预设了 provider、首次加载 UI 拿到了但进程没起"的问题。
         which = self.settings.get("provider")
         await self._ensure_provider(which)
-        return which
+        logged_in = bool((self.settings.get("accounts") or {}).get(which))
+        return {"provider": which, "loggedIn": logged_in}
 
-    async def login(self):
-        """扫码登录当前 provider。QR 与状态经 emit("login") 推 UI;成功后 bridge 持久化 credential。"""
-        await self.provider.request({"cmd": "login"})
+    async def login(self, login_type: str | None = None):
+        """扫码登录当前 provider(login_type:qq 端用 "qq"/"wx",ncm 忽略)。
+        QR 与状态经 emit("login") 推 UI;成功后 bridge 持久化 credential。"""
+        await self.provider.request({"cmd": "login", "type": login_type})
+
+    async def logout(self):
+        """退出当前 provider:通知 provider 登出 + 清 bridge 存的 credential + 让 provider 忘记内存 cookie。"""
+        which = self.settings.get("provider")
+        await self.provider.request({"cmd": "logout"})
+        (self.settings.get("accounts") or {}).pop(which, None)
+        _save_settings(self.settings)
+        await self.provider.request({"cmd": "set_credential", "cred": None})
+        log("bridge", "own", "info", f"{which} logged out")
+
+    async def get_account(self) -> dict:
+        # 当前登录账号信息(昵称/头像),D 态展示
+        return await self.provider.request({"cmd": "account"})
 
     async def play(self, song_id: str, media_mid: str = ""):
         r = await self.provider.request({"cmd": "song_url", "id": song_id, "media_mid": media_mid})
