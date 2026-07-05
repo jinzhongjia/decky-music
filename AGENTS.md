@@ -25,8 +25,9 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 
 目录:
 
-- `main.py` —— bridge(总线 + 进程管理,零业务逻辑)
-- `src/` —— React UI(`index.tsx` QAM 面板 / `ProviderPage.tsx` 大屏页)
+- `main.py` —— 只剩对外接口 facade(`Plugin` 类,逐个转发给 bridge)
+- `py_modules/` —— bridge 实现(`bridge.py` 总线 + 进程管理 / `log.py` 日志);放这里才被 Decky 加进 sys.path 且被 CLI 打包
+- `src/` —— React UI:`index.tsx`(`definePlugin` 入口)/ `QAM.tsx`(QAM 面板)/ `Page.tsx`(大屏页,导出 `ROUTE`)/ `api.ts`(前端↔bridge 唯一接口层)/ `errors.ts`+`ErrorBanner.tsx`+`Boundary.tsx`(错误纵深)/ `Footer.tsx` / `i18n.ts`
 - `player/` —— Rust,`reqwest` + `rodio`
 - `ncm-provider/` —— Rust,依赖 ncm-api-rs
 - `qq-provider/` —— Python,依赖 qqmusic_api,Nuitka `--standalone` 打包
@@ -42,6 +43,10 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 - 部署目标:Steam Deck(SteamOS,gamescope 会话)。SSH/路径见 `scripts/deploy.sh`。
 - bridge 跑在 Decky 冻结的 CPython 里,**只能用 stdlib**,严禁第三方依赖(编译扩展会随 Decky 升级崩)。
 - 三个二进制通过 Decky `remote_binary`(`package.json`)在安装时下载,不进插件包。
+- **改了 player / provider 代码必须先重建二进制再部署**:`deploy.sh` 只搬运 `target/release/*`
+  和 `qq-provider/build/*.tar.gz` 里**已有**的产物,不自动重建。改了 Rust/Python 后先
+  `bash scripts/build-rust.sh -p <player|ncm-provider>` / `bash scripts/build-qq-provider.sh`
+  再 deploy,否则装的是旧二进制。只改前端则 deploy 会自己 `pnpm build`。
 
 ### Setup commands
 
@@ -61,6 +66,19 @@ bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
 
 (cd qq-provider && uv run ruff check .)   # qq-provider lint(ruff);--fix 自动修,ruff format 格式化
 ```
+
+### 调试运行中的 Steam 前端(查 React 树 / webpack 模块)
+
+Deck 上 Steam 开着 CEF 远程调试(8080)。查活动 UI 的 React 结构、定位 Valve 混淆过的组件/模块时可用:
+
+```bash
+ssh -N -L 8080:localhost:8080 deck@<ip> &          # 隧道(后台)
+curl -s localhost:8080/json | jq '.[].title'       # 列 target:SharedJSContext / MainMenu / QuickAccess …
+```
+
+用 Node(≥21 有全局 `WebSocket`)连 target 的 `webSocketDebuggerUrl`,`Runtime.enable` 后
+`Runtime.evaluate` 注入 JS。取 webpack 模块:`window[webpackChunk*].push([[Symbol()],{},r=>req=r])`
+拿到 require,遍历 `req.m`(factory 源码,可 grep 常量)或 `req(id)` 取实例。**只读排查用,别写进插件。**
 
 ## Commit messages
 
