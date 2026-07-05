@@ -64,6 +64,7 @@ export type LoginStatus = (typeof LoginStatus)[keyof typeof LoginStatus];
 
 export type PlayerEvent = { ev: PlayerEv; pos?: number; wall_ms?: number; msg?: string };
 export type LoginEvent = { ev: "login"; status: LoginStatus; qr?: string; mimetype?: string };
+export type ProviderEvent = { ev: "error"; msg: string }; // provider 进程级错误(如启动超时)
 
 export function onPlayer(cb: (e: PlayerEvent) => void): () => void {
   const listener = addEventListener("player", cb as any);
@@ -73,4 +74,9 @@ export function onPlayer(cb: (e: PlayerEvent) => void): () => void {
 export function onLogin(cb: (e: LoginEvent) => void): () => void {
   const listener = addEventListener("login", cb as any);
   return () => removeEventListener("login", listener);
+}
+
+export function onProvider(cb: (e: ProviderEvent) => void): () => void {
+  const listener = addEventListener("provider", cb as any);
+  return () => removeEventListener("provider", listener);
 }

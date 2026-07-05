@@ -1,7 +1,7 @@
 import { ButtonItem, PanelSection, PanelSectionRow } from "@decky/ui";
 import { useEffect, useState } from "react";
 
-import { Account, LoginStatus, LoginType, Provider, api, onLogin } from "./api";
+import { Account, LoginStatus, LoginType, Provider, api, onLogin, onProvider } from "./api";
 import { ErrorBanner } from "./ErrorBanner";
 import { Footer } from "./Footer";
 import { guard, reportError } from "./errors";
@@ -67,6 +67,14 @@ export function QAM() {
       }
     });
   }, [provider]);
+
+  // provider 进程级错误(如启动超时):报错并从加载态兜回选源,不然会永远卡"加载中"
+  useEffect(() => {
+    return onProvider((e) => {
+      reportError(e.msg);
+      if (S.view === "loading" || S.view === "qr") setView("pick");
+    });
+  }, []);
 
   // 挂载:自动探测只做一次(primed);重挂时从模块态恢复,不再重复拉 API、不闪回选源
   useEffect(() => {
