@@ -1,30 +1,37 @@
 import { Focusable, Navigation } from "@decky/ui";
+import { FaGithub, FaTag } from "react-icons/fa";
 
 // ponytail: 版本硬编码,发版时与 package.json 同步(跨 src/ 外导入 package.json 会打乱 tsc 插件)
 const VERSION = "0.1.0";
 const REPO = "https://github.com/jinzhongjia/decky-music";
+const REPO_SHORT = "jinzhongjia/decky-music";
 
-// 所有 QAM 状态底部常驻:版本 + 项目地址,竖排居中
+const rowStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: "0.4rem" };
+
+// 底部次级信息:左对齐、暗色、每行带图标。版本 + GitHub(可点开)。
 export function Footer() {
   return (
     <div
       style={{
         marginTop: "1rem",
-        textAlign: "center",
-        opacity: 0.6,
-        fontSize: "0.8em",
         display: "flex",
         flexDirection: "column",
-        alignItems: "center",
-        gap: "0.25rem",
+        alignItems: "flex-start",
+        gap: "0.3rem",
+        fontSize: "0.75em",
+        opacity: 0.5,
       }}
     >
-      <div>v{VERSION}</div>
+      <div style={rowStyle}>
+        <FaTag />
+        <span>Version: {VERSION}</span>
+      </div>
       <Focusable
+        style={{ ...rowStyle, cursor: "pointer" }}
         onActivate={() => Navigation.NavigateToExternalWeb(REPO)}
-        style={{ cursor: "pointer", wordBreak: "break-all" }}
       >
-        {REPO}
+        <FaGithub />
+        <span>Github: {REPO_SHORT}</span>
       </Focusable>
     </div>
   );
