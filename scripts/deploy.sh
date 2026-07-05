@@ -28,6 +28,7 @@ ZIP=$(ls -t out/*.zip | head -1)
 # 传输:用无空格临时名,避开 rsync 远端空格路径的坑
 rsync -azp "$ZIP" "${DECK_HOST}:/tmp/dm-plugin.zip"
 [ -f target/release/player ] && rsync -azp target/release/player "${DECK_HOST}:/tmp/dm-player"
+[ -f target/release/ncm-provider ] && rsync -azp target/release/ncm-provider "${DECK_HOST}:/tmp/dm-ncm"
 [ -f qq-provider/build/qq-provider.tar.gz ] &&
   rsync -azp qq-provider/build/qq-provider.tar.gz "${DECK_HOST}:/tmp/dm-qq.tar.gz"
 
@@ -40,6 +41,7 @@ rm -rf "${DEST}"
 bsdtar -xzpf /tmp/dm-plugin.zip -C "${DECK_PLUGIN_PATH}" --fflags && rm -f /tmp/dm-plugin.zip
 mkdir -p "${DEST}/bin"
 if [ -f /tmp/dm-player ]; then mv /tmp/dm-player "${DEST}/bin/player" && chmod +x "${DEST}/bin/player"; fi
+if [ -f /tmp/dm-ncm ]; then mv /tmp/dm-ncm "${DEST}/bin/ncm-provider" && chmod +x "${DEST}/bin/ncm-provider"; fi
 if [ -f /tmp/dm-qq.tar.gz ]; then
   rm -rf "${DEST}/bin/qq-provider"
   tar -xzpf /tmp/dm-qq.tar.gz -C "${DEST}/bin" && chmod +x "${DEST}/bin/qq-provider/qq-provider" && rm -f /tmp/dm-qq.tar.gz
