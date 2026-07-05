@@ -334,7 +334,7 @@ graph LR
 
 - **登录:统一扫码(QR)。** 两 provider 都走二维码登录,不做手机号/密码。bridge 向 provider 要登录二维码 → `emit` 给 UI 在大屏显示 → 用户手机扫 → provider 轮询到 cookie → 回传 bridge → bridge 存 `DECKY_PLUGIN_SETTINGS_DIR`(§4 持久化)。后续 spawn provider 时由 bridge 注入 cookie,provider 无状态。
   - 手柄友好:扫码无需任何文本输入,天然适配无鼠标/键盘环境。cookie 过期 → 报错并提示重新扫码。
-  - **修订(2026-07-04):登录是 QQ 基本播放的前置,非 VIP/高音质专属。** 实测 QQ 即使免费歌,song_url(vkey)匿名请求也返 `104003`(无版权/需登录),必须先扫码登录。故登录已提前到 P1 实现(原计划放 P4)。QQ 用 `QRLoginType.QQ`(手机 QQ 扫)。ncm 免费歌是否同样需登录待 P2 验证。
+  - **修订(2026-07-04):登录是 QQ 基本播放的前置,非 VIP/高音质专属。** 实测 QQ 即使免费歌,song_url(vkey)匿名请求也返 `104003`(无版权/需登录),必须先扫码登录。故登录已提前到 P1 实现(原计划放 P4)。QQ 用 `QRLoginType.QQ`(手机 QQ 扫)。**ncm 相反(2026-07-05 P2 实测):免费歌 `song_url_v1` 匿名即返 `code=200` + 可播 URL,基本播放无需登录**;登录仅为 VIP/高音质。
 - **不可用歌曲:直接报告用户,不绕。** 版权下架、VIP-only、区域限制(如 ncm `460 cheating` / `301` 未登录)等——provider 把错误原样上报,UI 显示"这首暂时无法播放(原因)",**不支持配置代理 / real_ip**。海外/受限网络下的可用性不是本项目目标。呼应 §6.5 防御式渲染:错误态是正常分支,不崩不冻。
 
 ---
@@ -463,7 +463,7 @@ await play("<qq-song-id>");   // URL、音频流全在 bridge↔子进程之间,
 
 **排序原则:先 gate 出声命门,再按 provider 逐个做"基本播放",最后才做差异化接口与 UI 微调。** "基本播放" = 选歌 → 出声 → 基本传输控制(play/pause,能则含 seek/volume)。每阶段有可观测验收,未过不进下一阶段;与 §5.5/§10/§13 的 YAGNI 一致。
 
-> **进度(2026-07-04):P0、P1 已完成并真机验证。**
+> **进度:P0、P1、P2 已完成并真机验证(P0/P1 2026-07-04,P2 2026-07-05)。**
 > - **P0**:player 在游戏模式出声(见 §10.1)。
 > - **P1**:QQ 端"扫码登录 → 搜索 → 选歌 → 出声 → 暂停/继续"整链在真机游戏模式跑通。
 >   - qq-provider(QQMusicApi 库 + curl_cffi vkey bypass)以 Nuitka `--standalone` 在
@@ -473,6 +473,11 @@ await play("<qq-song-id>");   // URL、音频流全在 bridge↔子进程之间,
 >   - **发现 2 已排除**:player 用 reqwest(rustls)**可直连 QQ CDN 取流**,无需 JA3 伪装
 >     (quaverq 因 FFmpeg 才需代理;rodio/reqwest 直取即可)。
 >   - 遗留:登录错误细分消息(设备超限等目前统一提示重试)、进度条插值、seek/音量 UI。
+> - **P2**:网易云端同样打通"搜索 → 选歌 → 播放 + 扫码登录",真机验证通过。
+>   - ncm-provider(ncm-api-rs 库,纯 Rust,holo-toolchain 构建;NEEDED 仅 libc/libgcc/libm,
+>     无 openssl/libasound)。协议与 qq-provider 对齐,bridge/player/UI 零改动复用。
+>   - **与 QQ 相反:免费歌 `song_url_v1` 匿名即可播,基本播放无需登录**;扫码登录仅为 VIP/高音质。
+>   - `login_qr_create` 只给 qrurl,ncm-provider 用 `qrcode` crate 本地渲染二维码 → base64 SVG。
 
 ```mermaid
 graph LR
@@ -497,7 +502,7 @@ graph LR
 - **P1→P2→P3 串行**:P1 建全部基础设施(player/bridge/UI/打包),P2 只是换 provider 复用,P3 才铺差异化。
 - **QQ 先做 = 打包风险前置**:P1 就要跑通 Nuitka standalone,这是 QQ 端最大不确定性,早暴露早解决。
 - **P4 大部分可与 P1+ 并行/后置**:watchdog、request-id 是稳健性增量,不阻塞基本播放验证;分发打包留到功能成型再做。
-- ~~登录放 P4:MVP 用免费歌验证,`song_url` 对免费歌不需要 cookie~~ **修订(2026-07-04):登录提前到 P1。** 实测 QQ 免费歌 song_url 也需登录(匿名 `104003`),扫码登录是 QQ 基本播放的前置,已在 P1 完成(§7.4)。ncm 免费歌是否需登录待 P2 验证。
+- ~~登录放 P4:MVP 用免费歌验证,`song_url` 对免费歌不需要 cookie~~ **修订(2026-07-04):登录提前到 P1。** 实测 QQ 免费歌 song_url 也需登录(匿名 `104003`),扫码登录是 QQ 基本播放的前置,已在 P1 完成(§7.4)。**ncm(P2 实测)相反:免费歌匿名即可播,登录仅为 VIP/高音质**;P2 仍实现扫码登录以对齐 QQ。
 - UI 手柄导航(§6.4)是每个含 UI 阶段的验收硬条件。
 - **UI 崩溃隔离(§6.5)是从 P1 起每个含 UI 阶段的最高优先验收门槛**:注入错误/杀后端/畸形数据/断网下 Steam UI 不崩不冻,凌驾于功能之上。
 
