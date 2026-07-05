@@ -143,10 +143,15 @@ fn song_brief(s: &Value) -> Value {
                 .join(" / ")
         })
         .unwrap_or_default();
+    let fee = s["fee"].as_i64().unwrap_or(0);
     json!({
         "mid": s["id"].as_i64().map(|i| i.to_string()).unwrap_or_default(),
         "name": s["name"].as_str().unwrap_or(""),
         "singer": singer,
+        "album": s["al"]["name"].as_str().unwrap_or(""),
+        "duration": s["dt"].as_i64().unwrap_or(0) / 1000, // dt 为毫秒 → 秒
+        "cover": s["al"]["picUrl"].as_str().unwrap_or(""),
+        "vip": fee == 1 || fee == 4, // 1=VIP 4=购买(8=低音质免费,视为非 VIP)
         "media_mid": "",
     })
 }

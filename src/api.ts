@@ -5,7 +5,21 @@ import { addEventListener, callable, removeEventListener } from "@decky/api";
 
 export type Provider = null | "qq" | "ncm"; // null = 无
 export type LoginType = "qq" | "wx"; // 仅 QQ 用(手机QQ / 微信);ncm 忽略
-export type Song = { mid: string; name: string; singer: string; media_mid: string };
+// 归一化歌曲(bridge/UI 统一用);各 provider 把自己的原始字段映射到这里。
+export type Song = {
+  // ---- 共有(QQ / 网易云都有)----
+  mid: string; // 播放用歌曲 id:QQ=songmid;网易云=数字 id 转字符串
+  name: string; // 歌名
+  singer: string; // 歌手,多位用 " / " 连接
+  album: string; // 专辑名:QQ=album.name;网易云=al.name
+  duration: number; // 时长(秒):QQ=interval;网易云=dt/1000
+  cover: string; // 封面 URL:网易云=al.picUrl;QQ 由 album.mid 拼 CDN 模板
+  vip: boolean; // 是否需 VIP/付费:QQ=pay.pay_play>0;网易云=fee∈{1,4}
+  // ---- QQ 特有(可选:非该 provider 时可能缺省)----
+  media_mid?: string; // 取播放链接(vkey filename)用;网易云不需要
+  // ---- 网易云特有(可选)----
+  // (基本播放/展示无独有必需字段;需要时再加,如 fee 原值 / mv id)
+};
 export type SearchResult = { ok: boolean; songs?: Song[] };
 export type ProviderState = { provider: Provider; loggedIn: boolean };
 export type Account = {

@@ -44,7 +44,7 @@ export function Page() {
 
   const doPlay = async (s: Song) => {
     setNow(`${s.name} — ${s.singer}`);
-    await guard(() => api.play(s.mid, s.media_mid));
+    await guard(() => api.play(s.mid, s.media_mid ?? ""));
   };
 
   return (
