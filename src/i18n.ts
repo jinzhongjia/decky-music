@@ -33,6 +33,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     logout: "退出登录",
     switchProvider: "切换音乐源",
     loading: "加载中…",
+    back: "返回",
   },
   en: {
     music: "Music",
@@ -65,6 +66,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     logout: "Log out",
     switchProvider: "Switch source",
     loading: "Loading…",
+    back: "Back",
   },
 };
 

@@ -54,6 +54,7 @@ export function QAM() {
   // 登录事件:qrcode 显示二维码;scanned 后二维码消失只留状态;done 转账号;终态失败回登录入口
   useEffect(() => {
     return onLogin((msg) => {
+      if (S.view !== "qr") return; // 不在登录页 → 忽略残留循环的事件(取消后旧循环仍会 emit)
       setStatus(msg.status);
       if (msg.status === LoginStatus.Qrcode) setQr(`data:${msg.mimetype};base64,${msg.qr}`);
       else if (msg.status === LoginStatus.Done) {
@@ -164,24 +165,45 @@ export function QAM() {
               {t("wxLogin")}
             </ButtonItem>
           </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={() => setView("pick")}>
+              {t("back")}
+            </ButtonItem>
+          </PanelSectionRow>
         </>
       )}
 
       {view === "qr" && (
-        <PanelSectionRow>
-          <div style={{ textAlign: "center" }}>
-            {qr && (
-              <img
-                src={qr}
-                style={{ width: 200, height: 200, background: "#fff", padding: 8, borderRadius: 8 }}
-                alt="QR"
-              />
-            )}
-            <div style={{ marginTop: "0.5rem" }}>
-              {status ? loginStatusText(status) : t("loginQrcode")}
+        <>
+          <PanelSectionRow>
+            <div style={{ textAlign: "center" }}>
+              {qr && (
+                <img
+                  src={qr}
+                  style={{
+                    width: 200,
+                    height: 200,
+                    background: "#fff",
+                    padding: 8,
+                    borderRadius: 8,
+                  }}
+                  alt="QR"
+                />
+              )}
+              <div style={{ marginTop: "0.5rem" }}>
+                {status ? loginStatusText(status) : t("loginQrcode")}
+              </div>
             </div>
-          </div>
-        </PanelSectionRow>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem
+              layout="below"
+              onClick={() => setView(provider === "qq" ? "qqmethod" : "pick")}
+            >
+              {t("back")}
+            </ButtonItem>
+          </PanelSectionRow>
+        </>
       )}
 
       {view === "account" && (
