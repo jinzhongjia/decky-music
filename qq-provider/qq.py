@@ -30,11 +30,43 @@ class QQ:
     def set_credential(self, cred: dict | None):
         self.client.credential = Credential(**cred) if cred else Credential()
 
-    async def login(self, emit, log):
-        """扫码登录。emit(status, **extra) 推事件;成功时 emit("done", cred=<dict>)。
-        log(level, where, msg) 记结构化日志。"""
+    async def logout(self):
         try:
-            qr = await self.client.login.get_qrcode(QRLoginType.QQ)
+            await self.client.login.logout(self.client.credential)
+        except Exception:
+            pass  # 尽力而为:服务端登出失败不阻塞清本地态
+        self.client.credential = Credential()
+
+    async def account(self) -> dict:
+        """当前登录账号:昵称 + 头像 + VIP 档位标签(UI 渲染成 pill,不用服务端图标)。"""
+        cred = self.client.credential
+        home = await self.client.user.get_homepage(cred.encrypt_uin, credential=cred)
+        base = home.base_info
+        return {"nickname": base.name, "avatar": base.avatar, "vip": await self._vip(cred)}
+
+    async def _vip(self, cred) -> str:
+        # 只出档位文字标签;identity.icon 是等级图标(lv_N)非档位徽章,会误导,不用(参照 quaverq)。
+        info = await self.client.user.get_vip_info(credential=cred)
+        idt = info.identity
+        svip = int(getattr(info, "svip", 0) or 0)
+        huge = int(getattr(idt, "huge_vip", 0) or 0)
+        vip = int(getattr(idt, "vip", 0) or 0)
+        yf = int(getattr(idt, "year_flag", 0) or 0)
+        hyf = int(getattr(idt, "huge_year_flag", 0) or 0)
+        if svip:
+            return "超级会员" + ("(年费)" if hyf or yf else "")
+        if huge:
+            return "豪华绿钻" + ("(年费)" if hyf else "")
+        if vip:
+            return "绿钻" + ("(年费)" if yf else "")
+        return ""
+
+    async def login(self, emit, log, login_type="qq"):
+        """扫码登录。login_type: "qq"(手机QQ)/ "wx"(微信)。
+        emit(status, **extra) 推事件;成功时 emit("done", cred=<dict>)。log 记结构化日志。"""
+        qr_type = QRLoginType.WX if login_type == "wx" else QRLoginType.QQ
+        try:
+            qr = await self.client.login.get_qrcode(qr_type)
             emit("qrcode", qr=base64.b64encode(qr.data).decode(), mimetype=qr.mimetype)
             while True:
                 result = await self.client.login.check_qrcode(qr)

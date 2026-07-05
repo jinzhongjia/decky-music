@@ -54,8 +54,14 @@ async def handle(qq: QQ, cmd: dict, emit, log) -> dict:
             return {"ok": True}
         case "login":
             # 长流程:后台跑,QR 与状态经 login 事件上报;命令本身即刻返 ok
-            asyncio.create_task(qq.login(emit, log))
+            asyncio.create_task(qq.login(emit, log, cmd.get("type") or "qq"))
             return {"ok": True}
+        case "logout":
+            await qq.logout()
+            log("info", "logout", "done")
+            return {"ok": True}
+        case "account":
+            return {"ok": True, **await qq.account()}
         case "song_url":
             log("debug", "song_url", f"id={cmd['id']}")
             url = await qq.song_url(cmd["id"], cmd.get("media_mid", ""))
