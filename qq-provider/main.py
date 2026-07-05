@@ -54,7 +54,9 @@ async def handle(qq: QQ, cmd: dict, emit, log) -> dict:
             return {"ok": True}
         case "login":
             # 长流程:后台跑,QR 与状态经 login 事件上报;命令本身即刻返 ok
-            asyncio.create_task(qq.login(emit, log, cmd.get("type") or "qq"))
+            if qq.login_task and not qq.login_task.done():
+                qq.login_task.cancel()  # 顶掉上一个未结束的登录轮询,避免双循环并发 emit
+            qq.login_task = asyncio.create_task(qq.login(emit, log, cmd.get("type") or "qq"))
             return {"ok": True}
         case "logout":
             await qq.logout()

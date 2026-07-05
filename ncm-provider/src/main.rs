@@ -65,6 +65,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // 在跑的登录轮询;新登录来时 abort 掉,避免双循环并发 emit(只在此单线程命令循环里碰)
+    let mut login_handle: Option<tokio::task::JoinHandle<()>> = None;
+
     // NDJSON:每条一行 {json}\n
     while let Some(line) = lines.next_line().await? {
         let cmd: Cmd = match serde_json::from_str(&line) {
@@ -88,8 +91,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "login" => {
                 // 长流程:后台跑,QR 与状态经 login 事件上报;命令本身即刻返 ok
+                if let Some(h) = login_handle.take() {
+                    h.abort(); // 顶掉上一个未结束的登录轮询
+                }
                 let (st, tx) = (state.clone(), out_tx.clone());
-                tokio::spawn(async move { login_flow(st, tx).await });
+                login_handle = Some(tokio::spawn(async move { login_flow(st, tx).await }));
                 let _ = out_tx.send(r#"{"ok":true}"#.to_string());
             }
             "search" => {

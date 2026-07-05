@@ -26,6 +26,7 @@ class QQ:
     def __init__(self):
         self.client = Client()
         self.guid = uuid.uuid4().hex
+        self.login_task: asyncio.Task | None = None  # 在跑的登录轮询;新登录来时顶掉
 
     def set_credential(self, cred: dict | None):
         self.client.credential = Credential(**cred) if cred else Credential()
