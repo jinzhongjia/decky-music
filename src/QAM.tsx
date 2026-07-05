@@ -94,12 +94,14 @@ export function QAM() {
       setProvider(p);
       setQr(null);
       setStatus("");
+      setView("loading"); // 切源要 spawn 新进程,拉完前先显示加载中
       await api.setProvider(p);
       const st = await api.getProvider(); // 当前已切到 p,读它的登录态
       if (st.loggedIn) return showAccount();
       if (p === "qq") setView("qqmethod");
       else startLogin(null); // ncm 无登录方式选择,直接扫码
     } catch (e) {
+      setView("pick"); // 切源失败回选源,别卡在加载态
       reportError(e instanceof Error ? e.message : String(e));
     }
   };
