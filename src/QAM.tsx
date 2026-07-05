@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Account, LoginStatus, LoginType, Provider, api, onLogin } from "./api";
 import { ErrorBanner } from "./ErrorBanner";
 import { Footer } from "./Footer";
-import { guard } from "./errors";
+import { guard, reportError } from "./errors";
 import { t } from "./i18n";
 
 // QAM 单面板状态机:pick 选源 → (qq)qqmethod 选登录方式 → qr 扫码 → account 已登录。
@@ -12,16 +12,34 @@ type View = "pick" | "qqmethod" | "qr" | "account";
 
 const TERMINAL: LoginStatus[] = [LoginStatus.Done, LoginStatus.Timeout, LoginStatus.Refuse];
 
+// 模块级会话态:Decky 会周期性重挂 QAM 面板,组件内 useState 每次重挂就复位。
+// 把状态放这里跨重挂留存,并让"自动拉取"只做一次(primed),避免重挂时闪回选源、
+// 以及 account 每 2s 反复打 provider 真实 API(触发限频/风控)。
+const S = {
+  view: "pick" as View,
+  provider: "" as Provider,
+  account: null as Account | null,
+  qr: null as string | null,
+  status: "",
+  primed: false,
+};
+
 function loginStatusText(status: string): string {
   return t(("login" + status.charAt(0).toUpperCase() + status.slice(1)) as any) || status;
 }
 
 export function QAM() {
-  const [view, setView] = useState<View>("pick");
-  const [provider, setProvider] = useState<Provider>("");
-  const [qr, setQr] = useState<string | null>(null);
-  const [status, setStatus] = useState("");
-  const [account, setAccount] = useState<Account | null>(null);
+  const [view, sv] = useState<View>(S.view);
+  const [provider, sp] = useState<Provider>(S.provider);
+  const [qr, sq] = useState<string | null>(S.qr);
+  const [status, ss] = useState(S.status);
+  const [account, sa] = useState<Account | null>(S.account);
+  // 写穿 setter:写模块态 + 触发重渲染,重挂后 useState 从模块态 seed
+  const setView = (v: View) => ((S.view = v), sv(v));
+  const setProvider = (p: Provider) => ((S.provider = p), sp(p));
+  const setQr = (q: string | null) => ((S.qr = q), sq(q));
+  const setStatus = (s: string) => ((S.status = s), ss(s));
+  const setAccount = (a: Account | null) => ((S.account = a), sa(a));
 
   const showAccount = async () => {
     try {
@@ -50,8 +68,10 @@ export function QAM() {
     });
   }, [provider]);
 
-  // 挂载:已登录 → 直接账号态;否则选源态
+  // 挂载:自动探测只做一次(primed);重挂时从模块态恢复,不再重复拉 API、不闪回选源
   useEffect(() => {
+    if (S.primed) return;
+    S.primed = true;
     api
       .getProvider()
       .then((st) => {
@@ -60,18 +80,22 @@ export function QAM() {
           showAccount();
         }
       })
-      .catch(() => {});
+      .catch((e) => reportError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   const pick = async (p: Provider) => {
-    setProvider(p);
-    setQr(null);
-    setStatus("");
-    await guard(() => api.setProvider(p));
-    const st = await api.getProvider(); // 当前已切到 p,读它的登录态
-    if (st.loggedIn) return showAccount();
-    if (p === "qq") setView("qqmethod");
-    else startLogin(null); // ncm 无登录方式选择,直接扫码
+    try {
+      setProvider(p);
+      setQr(null);
+      setStatus("");
+      await api.setProvider(p);
+      const st = await api.getProvider(); // 当前已切到 p,读它的登录态
+      if (st.loggedIn) return showAccount();
+      if (p === "qq") setView("qqmethod");
+      else startLogin(null); // ncm 无登录方式选择,直接扫码
+    } catch (e) {
+      reportError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const startLogin = async (type: LoginType | null) => {

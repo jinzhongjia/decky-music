@@ -170,6 +170,7 @@ class Plugin:
         which = self.settings.get("provider")
         await self._ensure_provider(which)
         logged_in = bool((self.settings.get("accounts") or {}).get(which))
+        log("bridge", "own", "debug", f"get_provider -> {which} loggedIn={logged_in}")
         return {"provider": which, "loggedIn": logged_in}
 
     async def login(self, login_type: str | None = None):
