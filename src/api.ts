@@ -4,14 +4,24 @@ import { addEventListener, callable, removeEventListener } from "@decky/api";
 // 改动务必与 bridge 的 callable / emit 对应。
 
 export type Provider = "" | "qq" | "ncm"; // "" = 无
+export type LoginType = "qq" | "wx"; // 仅 QQ 用(手机QQ / 微信);ncm 忽略
 export type Song = { mid: string; name: string; singer: string; media_mid: string };
 export type SearchResult = { ok: boolean; songs?: Song[] };
+export type ProviderState = { provider: Provider | null; loggedIn: boolean };
+export type Account = {
+  ok: boolean;
+  nickname: string;
+  avatar: string;
+  vip: string; // VIP 档位标签(provider 品牌词,如"超级会员"/"黑胶VIP","" 非会员);UI 渲染成 pill
+};
 
 /** callable RPC(前端 → bridge)。 */
 export const api = {
   setProvider: callable<[which: Provider | null], void>("set_provider"),
-  getProvider: callable<[], string | null>("get_provider"),
-  login: callable<[], void>("login"),
+  getProvider: callable<[], ProviderState>("get_provider"),
+  login: callable<[loginType: LoginType | null], void>("login"),
+  logout: callable<[], void>("logout"),
+  getAccount: callable<[], Account>("get_account"),
   search: callable<[keyword: string], SearchResult>("search"),
   play: callable<[id: string, mediaMid: string], void>("play"),
   pause: callable<[], void>("pause"),

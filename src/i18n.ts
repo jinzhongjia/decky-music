@@ -28,6 +28,10 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     playError: "无法播放(无版权 / 需登录 / VIP)",
     selectProvider: "请先在快捷菜单选择音乐源",
     unavailable: "暂时不可用",
+    qqLogin: "QQ 登录",
+    wxLogin: "微信登录",
+    logout: "退出登录",
+    switchProvider: "切换音乐源",
   },
   en: {
     music: "Music",
@@ -55,6 +59,10 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     playError: "Can't play (no rights / login / VIP)",
     selectProvider: "Pick a source in the quick menu first",
     unavailable: "Temporarily unavailable",
+    qqLogin: "Log in with QQ",
+    wxLogin: "Log in with WeChat",
+    logout: "Log out",
+    switchProvider: "Switch source",
   },
 };
 
