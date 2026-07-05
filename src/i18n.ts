@@ -32,6 +32,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     wxLogin: "微信登录",
     logout: "退出登录",
     switchProvider: "切换音乐源",
+    loading: "加载中…",
   },
   en: {
     music: "Music",
@@ -63,6 +64,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     wxLogin: "Log in with WeChat",
     logout: "Log out",
     switchProvider: "Switch source",
+    loading: "Loading…",
   },
 };
 

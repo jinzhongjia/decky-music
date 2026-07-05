@@ -7,16 +7,15 @@ import { Footer } from "./Footer";
 import { guard, reportError } from "./errors";
 import { t } from "./i18n";
 
-// QAM 单面板状态机:pick 选源 → (qq)qqmethod 选登录方式 → qr 扫码 → account 已登录。
-type View = "pick" | "qqmethod" | "qr" | "account";
+// QAM 单面板状态机:loading 初始拉取 → pick 选源 → (qq)qqmethod 选登录方式 → qr 扫码 → account 已登录。
+type View = "loading" | "pick" | "qqmethod" | "qr" | "account";
 
 const TERMINAL: LoginStatus[] = [LoginStatus.Done, LoginStatus.Timeout, LoginStatus.Refuse];
 
 // 模块级会话态:Decky 会周期性重挂 QAM 面板,组件内 useState 每次重挂就复位。
-// 把状态放这里跨重挂留存,并让"自动拉取"只做一次(primed),避免重挂时闪回选源、
-// 以及 account 每 2s 反复打 provider 真实 API(触发限频/风控)。
 const S = {
-  view: "pick" as View,
+  view: "loading" as View, // 首次拉完 provider(+账号)前显示加载中,不闪"选源"
+
   provider: null as Provider,
   account: null as Account | null,
   qr: null as string | null,
@@ -34,6 +33,7 @@ export function QAM() {
   const [qr, sq] = useState<string | null>(S.qr);
   const [status, ss] = useState(S.status);
   const [account, sa] = useState<Account | null>(S.account);
+
   // 写穿 setter:写模块态 + 触发重渲染,重挂后 useState 从模块态 seed
   const setView = (v: View) => ((S.view = v), sv(v));
   const setProvider = (p: Provider) => ((S.provider = p), sp(p));
@@ -62,7 +62,7 @@ export function QAM() {
       } else if (TERMINAL.includes(msg.status)) {
         setQr(null);
         setView(provider === "qq" ? "qqmethod" : "pick");
-      } else {
+      } else if (msg.status === LoginStatus.Scanned) {
         setQr(null); // scanned:已扫码,二维码消失
       }
     });
@@ -75,12 +75,18 @@ export function QAM() {
     api
       .getProvider()
       .then((st) => {
+        // 有 provider 且已登录 → 拉账号(showAccount 拉完再切 account);否则 → 选源
         if (st.provider && st.loggedIn) {
           setProvider(st.provider as Provider);
           showAccount();
+        } else {
+          setView("pick");
         }
       })
-      .catch((e) => reportError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => {
+        setView("pick");
+        reportError(e instanceof Error ? e.message : String(e));
+      });
   }, []);
 
   const pick = async (p: Provider) => {
@@ -114,6 +120,12 @@ export function QAM() {
   return (
     <PanelSection title={t("music")}>
       <ErrorBanner />
+
+      {view === "loading" && (
+        <PanelSectionRow>
+          <div style={{ opacity: 0.6, textAlign: "center" }}>{t("loading")}</div>
+        </PanelSectionRow>
+      )}
 
       {view === "pick" && (
         <>
