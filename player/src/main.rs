@@ -39,7 +39,10 @@ fn play_spike(url: &str) -> Result<(), Box<dyn std::error::Error>> {
         .send()?
         .error_for_status()?
         .bytes()?;
-    eprintln!("[player] fetched {} bytes, opening default audio device", bytes.len());
+    eprintln!(
+        "[player] fetched {} bytes, opening default audio device",
+        bytes.len()
+    );
     let (_stream, handle) = rodio::OutputStream::try_default()?;
     let sink = rodio::Sink::try_new(&handle)?;
     sink.append(rodio::Decoder::new(Cursor::new(bytes))?);
@@ -62,15 +65,26 @@ enum AudioCmd {
 
 /// 上报给 bridge 的事件,序列化成 NDJSON。
 enum AudioEv {
-    Playing { pos: f64 },
-    Paused { pos: f64 },
+    Playing {
+        pos: f64,
+    },
+    Paused {
+        pos: f64,
+    },
     Ended,
     Error(String),
-    Log { level: &'static str, place: &'static str, msg: String },
+    Log {
+        level: &'static str,
+        place: &'static str,
+        msg: String,
+    },
 }
 
 fn epoch_ms() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
 }
 
 impl AudioEv {
@@ -83,7 +97,10 @@ impl AudioEv {
             AudioEv::Paused { pos } => format!(r#"{{"ev":"paused","pos":{pos}}}"#),
             AudioEv::Ended => r#"{"ev":"ended"}"#.to_string(),
             AudioEv::Error(m) => {
-                format!(r#"{{"ev":"error","msg":{}}}"#, serde_json::to_string(m).unwrap())
+                format!(
+                    r#"{{"ev":"error","msg":{}}}"#,
+                    serde_json::to_string(m).unwrap()
+                )
             }
             AudioEv::Log { level, place, msg } => log_json(level, place, msg),
         }
@@ -99,7 +116,11 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
             return;
         }
     };
-    let _ = ev.send(AudioEv::Log { level: "info", place: "audio", msg: "default audio device opened".into() });
+    let _ = ev.send(AudioEv::Log {
+        level: "info",
+        place: "audio",
+        msg: "default audio device opened".into(),
+    });
     let mut sink: Option<rodio::Sink> = None;
     let mut active = false; // 是否有在播的曲子(用于判定 ended)
 
@@ -129,13 +150,17 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
             Ok(AudioCmd::Pause) => {
                 if let Some(s) = &sink {
                     s.pause();
-                    let _ = ev.send(AudioEv::Paused { pos: s.get_pos().as_secs_f64() });
+                    let _ = ev.send(AudioEv::Paused {
+                        pos: s.get_pos().as_secs_f64(),
+                    });
                 }
             }
             Ok(AudioCmd::Resume) => {
                 if let Some(s) = &sink {
                     s.play();
-                    let _ = ev.send(AudioEv::Playing { pos: s.get_pos().as_secs_f64() });
+                    let _ = ev.send(AudioEv::Playing {
+                        pos: s.get_pos().as_secs_f64(),
+                    });
                 }
             }
             Ok(AudioCmd::Volume(v)) => {
@@ -226,12 +251,17 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
                 // ponytail: 整首拉进内存再播;流式边下边播留后续。不记 URL(含限时 vkey,避免泄漏)
                 Some(url) => match fetch(&http, url).await {
                     Ok(bytes) => {
-                        let _ = out_tx.send(log_json("info", "load", &format!("fetched {} bytes", bytes.len())));
+                        let _ = out_tx.send(log_json(
+                            "info",
+                            "load",
+                            &format!("fetched {} bytes", bytes.len()),
+                        ));
                         let _ = cmd_tx.send(AudioCmd::Load(bytes));
                         r#"{"ok":true}"#.to_string()
                     }
                     Err(e) => {
-                        let _ = out_tx.send(log_json("error", "load", &format!("fetch failed: {e}")));
+                        let _ =
+                            out_tx.send(log_json("error", "load", &format!("fetch failed: {e}")));
                         format!(r#"{{"ok":false,"msg":{}}}"#, jstr(&e.to_string()))
                     }
                 },
@@ -250,7 +280,14 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn fetch(http: &reqwest::Client, url: &str) -> reqwest::Result<Vec<u8>> {
-    Ok(http.get(url).send().await?.error_for_status()?.bytes().await?.to_vec())
+    Ok(http
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?
+        .to_vec())
 }
 
 fn send(tx: &mpsc::Sender<AudioCmd>, c: AudioCmd) -> String {

@@ -34,7 +34,7 @@ export function Page() {
     setBusy(true);
     try {
       const r = await api.search(kw);
-      setSongs(r.ok ? r.songs ?? [] : []);
+      setSongs(r.ok ? (r.songs ?? []) : []);
     } catch (e) {
       reportError(e instanceof Error ? e.message : String(e));
       setSongs([]);

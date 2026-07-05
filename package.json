@@ -6,7 +6,10 @@
   "packageManager": "pnpm@11.3.0",
   "scripts": {
     "build": "rollup -c",
-    "watch": "rollup -c -w"
+    "watch": "rollup -c -w",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "lint": "tsc --noEmit && prettier --check ."
   },
   "remote_binary": [
     {
@@ -34,6 +37,7 @@
     "@decky/rollup": "^1.0.1",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "prettier": "^3.4.2",
     "rollup": "^4.28.1",
     "typescript": "^5.7.2"
   }
