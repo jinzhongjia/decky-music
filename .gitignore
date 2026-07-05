@@ -46,7 +46,7 @@ venv/
 
 # Python modules - Docker 构建时自动生成
 py_modules/*
-!py_modules/log.py
+!py_modules/*.py
 
 /.yalc
 yalc.lock

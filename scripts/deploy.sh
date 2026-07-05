@@ -20,8 +20,9 @@ if [ ! -x cli/decky ]; then
 fi
 
 # 官方打包 → out/<显示名>.zip(zip 顶层目录 = plugin 名)
-# 用 sudo 清:上一次 CLI 以 root 跑,out/ 产物是 root 属主
-sudo rm -rf out dist
+# 用 sudo 清:上一次 CLI 以 root 跑,out/ 产物是 root 属主。
+# /tmp/decky 是 CLI 的临时构建目录,不自清会累积撑爆 /tmp(tmpfs),每次构建前清掉。
+sudo rm -rf out dist /tmp/decky
 sudo ./cli/decky plugin build .
 ZIP=$(ls -t out/*.zip | head -1)
 

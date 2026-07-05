@@ -1,8 +1,8 @@
 import { Focusable, Navigation } from "@decky/ui";
 import { FaGithub, FaTag } from "react-icons/fa";
 
-// ponytail: 版本硬编码,发版时与 package.json 同步(跨 src/ 外导入 package.json 会打乱 tsc 插件)
-const VERSION = "0.1.0";
+// TODO: 这里后续处理一下，能够根据真正的 tag 变动
+const VERSION = "1.0.0";
 const REPO = "https://github.com/jinzhongjia/decky-music";
 const REPO_SHORT = "jinzhongjia/decky-music";
 
