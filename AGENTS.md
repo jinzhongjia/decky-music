@@ -56,6 +56,8 @@ bash scripts/deploy.sh          # 打包 + rsync 到 Steam Deck + 重启 plugin_
 cargo build --release -p player          # 各二进制单独构建(走 remote_binary,不进插件包)
 cargo build --release -p ncm-provider
 bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
+
+(cd qq-provider && uv run ruff check .)   # qq-provider lint(ruff);--fix 自动修,ruff format 格式化
 ```
 
 ## Commit messages

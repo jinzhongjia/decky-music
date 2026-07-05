@@ -9,4 +9,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["nuitka"]
+dev = ["nuitka", "ruff"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/W 代码风格, F pyflakes, I import 排序, UP 语法升级, B bugbear
+select = ["E", "W", "F", "I", "UP", "B"]
