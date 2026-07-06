@@ -23,7 +23,7 @@ if (!t) {
     "no target matching",
     titleSub,
     "\navailable:",
-    targets.map((x) => x.title),
+    targets.map((x) => x.title)
   );
   process.exit(1);
 }
