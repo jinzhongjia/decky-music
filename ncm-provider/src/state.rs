@@ -1,12 +1,25 @@
 //! 共享类型:入站命令 Cmd、进程状态 State、写出通道 Out。
 
+use std::future::Future;
+use std::time::Duration;
+
 use ncm_api_rs::{create_client, ApiClient};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::{mpsc, Mutex};
+use tokio::time::{error::Elapsed, timeout};
 
 /// 单一写出通道:命令响应 + 事件都经它串行写回 socket,避免并发写乱帧。
 pub type Out = mpsc::UnboundedSender<String>;
+
+/// 上游网易云接口的统一超时:命令串行处理 + bridge 无 request 超时,
+/// 上游卡住会拖垮整个 provider,故每个网络调用都套一层。
+pub const NET_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// 给上游 Future 套 NET_TIMEOUT。超时返回 Err(Elapsed)。
+pub async fn with_timeout<F: Future>(fut: F) -> Result<F::Output, Elapsed> {
+    timeout(NET_TIMEOUT, fut).await
+}
 
 /// bridge 下发的一条命令(NDJSON 一行)。
 #[derive(Deserialize)]

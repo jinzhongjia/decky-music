@@ -9,7 +9,7 @@ use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
 use crate::logging::log_json;
-use crate::state::{Out, State};
+use crate::state::{with_timeout, Out, State};
 
 pub fn emit(tx: &Out, status: &str, extra: Value) {
     let mut obj = json!({ "ev": "login", "status": status });
@@ -23,21 +23,25 @@ pub fn emit(tx: &Out, status: &str, extra: Value) {
 
 pub async fn login_flow(state: Arc<State>, tx: Out) {
     // 1. 取 unikey
-    let key = match state.client.login_qr_key(&Query::new()).await {
-        Ok(r) => r.body["unikey"].as_str().unwrap_or("").to_string(),
-        Err(e) => return login_fail(&tx, &e.to_string()),
+    let key = match with_timeout(state.client.login_qr_key(&Query::new())).await {
+        Ok(Ok(r)) => r.body["unikey"].as_str().unwrap_or("").to_string(),
+        Ok(Err(e)) => return login_fail(&tx, &e.to_string()),
+        Err(_) => return login_fail(&tx, "qr_key timeout"),
     };
     if key.is_empty() {
         return login_fail(&tx, "empty unikey");
     }
     // 2. 生成二维码 URL(库只给 qrurl,不出图)
-    let qrurl = match state
-        .client
-        .login_qr_create(&Query::new().param("key", &key))
-        .await
+    let qrurl = match with_timeout(
+        state
+            .client
+            .login_qr_create(&Query::new().param("key", &key)),
+    )
+    .await
     {
-        Ok(r) => r.body["data"]["qrurl"].as_str().unwrap_or("").to_string(),
-        Err(e) => return login_fail(&tx, &e.to_string()),
+        Ok(Ok(r)) => r.body["data"]["qrurl"].as_str().unwrap_or("").to_string(),
+        Ok(Err(e)) => return login_fail(&tx, &e.to_string()),
+        Err(_) => return login_fail(&tx, "qr_create timeout"),
     };
     // 3. 本地渲染二维码 → base64 SVG → 发给 UI
     match make_qr(&qrurl) {
@@ -51,13 +55,16 @@ pub async fn login_flow(state: Arc<State>, tx: Out) {
     // 4. 轮询扫码状态:800 过期 / 801 待扫 / 802 已扫 / 803 成功
     loop {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        let r = match state
-            .client
-            .login_qr_check(&Query::new().param("key", &key))
-            .await
+        let r = match with_timeout(
+            state
+                .client
+                .login_qr_check(&Query::new().param("key", &key)),
+        )
+        .await
         {
-            Ok(r) => r,
-            Err(e) => return login_fail(&tx, &e.to_string()),
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => return login_fail(&tx, &e.to_string()),
+            Err(_) => return login_fail(&tx, "qr_check timeout"),
         };
         match r.body["code"].as_i64().unwrap_or(0) {
             803 => {
