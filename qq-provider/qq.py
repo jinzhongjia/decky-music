@@ -46,7 +46,8 @@ class QQ:
         return {"nickname": base.name, "avatar": base.avatar, "vip": await self._vip(cred)}
 
     async def _vip(self, cred) -> str:
-        # 只出档位文字标签;identity.icon 是等级图标(lv_N)非档位徽章,会误导,不用(参照 quaverq)。
+        # 出档位 code(<tier> / <tier>_annual),前端 vipText() 本地化;不用服务端图标。
+        # identity.icon 是等级图标(lv_N)非档位徽章,会误导,不用(参照 quaverq)。
         info = await self.client.user.get_vip_info(credential=cred)
         idt = info.identity
         svip = int(getattr(info, "svip", 0) or 0)
@@ -55,11 +56,11 @@ class QQ:
         yf = int(getattr(idt, "year_flag", 0) or 0)
         hyf = int(getattr(idt, "huge_year_flag", 0) or 0)
         if svip:
-            return "超级会员" + ("(年费)" if hyf or yf else "")
+            return "svip_annual" if (hyf or yf) else "svip"
         if huge:
-            return "豪华绿钻" + ("(年费)" if hyf else "")
+            return "luxury_annual" if hyf else "luxury"
         if vip:
-            return "绿钻" + ("(年费)" if yf else "")
+            return "green_annual" if yf else "green"
         return ""
 
     async def login(self, emit, log, login_type="qq"):

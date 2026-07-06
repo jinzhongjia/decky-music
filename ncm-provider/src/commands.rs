@@ -105,7 +105,7 @@ pub async fn account(state: &State) -> String {
         Err(_) => return json!({ "ok": false, "msg": TIMEOUT_CODE }).to_string(),
     };
     let p = &status.body["profile"];
-    // VIP 档位文字(UI 渲染成 pill,不用服务端图标,与 QQ 一致)。vip_info 失败/超时只是不显示,不影响账号。
+    // VIP 档位 code(前端 vipText() 本地化,不用服务端图标,与 QQ 一致)。vip_info 失败/超时只是不显示,不影响账号。
     let mut vip = String::new();
     let mut vq = Query::new();
     if let Some(c) = &ck {
@@ -115,12 +115,7 @@ pub async fn account(state: &State) -> String {
         let d = &v.body["data"];
         if d["redVipLevel"].as_i64().unwrap_or(0) > 0 {
             let annual = d["redVipAnnualCount"].as_i64().unwrap_or(0) > 0;
-            vip = if annual {
-                "黑胶VIP(年费)"
-            } else {
-                "黑胶VIP"
-            }
-            .to_string();
+            vip = if annual { "ncm_annual" } else { "ncm" }.to_string();
         }
     }
     json!({
