@@ -113,7 +113,7 @@ const isItemEl = (x: any) =>
 function injectItem(ieRet: any): void {
   const arr = deepFind(ieRet, (nd) => Array.isArray(nd) && nd.some(isItemEl));
   if (!arr) return;
-  if (arr.some((x: any) => x?.props?.route === ROUTE || x?.key === ITEM_KEY)) return; // 去重
+  if (arr.some((x: any) => x?.props?.route === ROUTE)) return; // 去重(route 即唯一标识)
   const tmpl = arr.find(isItemEl);
   if (!tmpl) return;
   // React.cloneElement:保留原生菜单项组件与焦点/手柄行为,只改 route/label(i18n)/icon/key
@@ -132,7 +132,6 @@ function injectItem(ieRet: any): void {
 // 缓存的 Ie 包裹(按原始 Ie 引用缓存,保证同一 type 引用,不触发 remount)
 const ieWrapperCache = new WeakMap<any, any>();
 function ieWrapperFor(OrigIe: any): any {
-  if ((OrigIe as any).__deckyMusic) return OrigIe; // 已是我们的包裹
   const cached = ieWrapperCache.get(OrigIe);
   if (cached) return cached;
   const wrapped = function (this: any, ...args: any[]) {
