@@ -1,7 +1,16 @@
 import { ButtonItem, Navigation, PanelSection, PanelSectionRow } from "@decky/ui";
 import { useEffect, useState } from "react";
 
-import { Account, LoginStatus, LoginType, Provider, api, onLogin, onProvider } from "./api";
+import {
+  Account,
+  LoginStatus,
+  LoginType,
+  Provider,
+  api,
+  errorText,
+  onLogin,
+  onProvider,
+} from "./api";
 import { ROUTE } from "./Page";
 import { ErrorBanner } from "./ErrorBanner";
 import { Footer } from "./Footer";
@@ -73,7 +82,7 @@ export function QAM() {
   // provider 进程级错误(如启动超时):报错并从加载态兜回选源,不然会永远卡"加载中"
   useEffect(() => {
     return onProvider((e) => {
-      reportError(e.msg);
+      reportError(errorText(e.msg));
       if (S.view === "loading" || S.view === "qr") setView("pick");
     });
   }, []);

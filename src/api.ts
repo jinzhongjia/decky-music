@@ -1,7 +1,22 @@
 import { addEventListener, callable, removeEventListener } from "@decky/api";
 
+import { t } from "./i18n";
+
 // 前端对 bridge(main.py)的唯一接口层:RPC 与事件在此集中声明、统一类型,便于复用。
 // 改动务必与 bridge 的 callable / emit 对应。
+
+// provider/bridge 自造失败以英文 code 上报,这里映射到本地化文案;
+// 非已知 code(= 库抛出的原始错误)原样显示,便于把真实错误暴露给用户。
+const ERR_CODES: Record<string, string> = {
+  timeout: "errTimeout",
+  no_playable: "playError",
+  play_failed: "playError",
+  provider_start_timeout: "errProviderStart",
+};
+export function errorText(msg: string): string {
+  const key = ERR_CODES[msg];
+  return key ? t(key as any) : msg;
+}
 
 export type Provider = null | "qq" | "ncm"; // null = 无
 export type LoginType = "qq" | "wx"; // 仅 QQ 用(手机QQ / 微信);ncm 忽略

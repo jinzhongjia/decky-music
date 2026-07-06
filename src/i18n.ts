@@ -34,6 +34,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     switchProvider: "切换音乐源",
     loading: "加载中…",
     back: "返回",
+    errTimeout: "请求超时,请重试",
+    errProviderStart: "音乐源启动超时",
   },
   en: {
     music: "Music",
@@ -67,6 +69,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     switchProvider: "Switch source",
     loading: "Loading…",
     back: "Back",
+    errTimeout: "Request timed out, try again",
+    errProviderStart: "Music source failed to start",
   },
 };
 

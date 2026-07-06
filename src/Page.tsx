@@ -1,7 +1,7 @@
 import { DialogButton, Focusable, TextField } from "@decky/ui";
 import { useEffect, useState } from "react";
 
-import { PlayerEv, Song, api, onPlayer } from "./api";
+import { PlayerEv, Song, api, errorText, onPlayer } from "./api";
 import { ErrorBanner } from "./ErrorBanner";
 import { guard, reportError } from "./errors";
 import { t } from "./i18n";
@@ -24,7 +24,7 @@ export function Page() {
       else if (msg.ev === PlayerEv.Paused || msg.ev === PlayerEv.Ended) setPlaying(false);
       else if (msg.ev === PlayerEv.Error) {
         setPlaying(false);
-        reportError(msg.msg || t("playError")); // 后端播放错误也走同一条 UI 错误渲染
+        reportError(msg.msg ? errorText(msg.msg) : t("playError")); // 后端错误码本地化后渲染
       }
     });
   }, []);
