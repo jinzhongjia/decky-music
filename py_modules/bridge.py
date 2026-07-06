@@ -154,7 +154,7 @@ class Bridge:
                 await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
             except asyncio.TimeoutError:
                 log("bridge", "own", "error", f"provider {which} startup timeout")
-                await decky.emit("provider", {"ev": "error", "msg": "provider 启动超时"})
+                await decky.emit("provider", {"ev": "error", "msg": "provider_start_timeout"})
                 return
             cred = (self.settings.get("accounts") or {}).get(which)
             if cred:
@@ -192,7 +192,7 @@ class Bridge:
         r = await self.provider.request({"cmd": "song_url", "id": song_id, "media_mid": media_mid})
         if not r.get("ok"):
             log("bridge", "own", "warn", f"song_url failed id={song_id}: {r.get('msg')}")
-            await decky.emit("player", {"ev": "error", "msg": r.get("msg", "取播放地址失败")})
+            await decky.emit("player", {"ev": "error", "msg": r.get("msg", "play_failed")})
             return
         await self.player.request({"cmd": "load", "url": r["url"]})
 

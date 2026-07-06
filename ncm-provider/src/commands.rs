@@ -4,7 +4,11 @@ use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
 use crate::logging::log_json;
-use crate::state::{Out, State};
+use crate::state::{with_timeout, Out, State};
+
+// 自造失败返回英文 code,前端 errorText() 负责本地化;库原始错误(e.to_string())原样透传。
+const TIMEOUT_CODE: &str = "timeout";
+const NO_PLAYABLE_CODE: &str = "no_playable";
 
 pub async fn search(state: &State, keyword: &str) -> String {
     let mut q = Query::new()
@@ -14,15 +18,16 @@ pub async fn search(state: &State, keyword: &str) -> String {
     if let Some(c) = state.cookie().await {
         q = q.cookie(&c);
     }
-    match state.client.cloudsearch(&q).await {
-        Ok(r) => {
+    match with_timeout(state.client.cloudsearch(&q)).await {
+        Ok(Ok(r)) => {
             let songs: Vec<Value> = r.body["result"]["songs"]
                 .as_array()
                 .map(|arr| arr.iter().map(song_brief).collect())
                 .unwrap_or_default();
             json!({ "ok": true, "songs": songs }).to_string()
         }
-        Err(e) => json!({ "ok": false, "msg": e.to_string() }).to_string(),
+        Ok(Err(e)) => json!({ "ok": false, "msg": e.to_string() }).to_string(),
+        Err(_) => json!({ "ok": false, "msg": TIMEOUT_CODE }).to_string(),
     }
 }
 
@@ -49,33 +54,40 @@ fn song_brief(s: &Value) -> Value {
     })
 }
 
+// 音质降级顺序:先试高码率,拿不到(需 VIP/无该档)再降到 standard(128k,免费歌普遍可播)。
+const LEVELS: [&str; 2] = ["exhigh", "standard"];
+
 pub async fn song_url(state: &State, id: &str, tx: &Out) -> String {
-    let mut q = Query::new().param("id", id).param("level", "standard");
-    if let Some(c) = state.cookie().await {
-        q = q.cookie(&c);
-    }
-    match state.client.song_url_v1(&q).await {
-        Ok(r) => {
-            // 不记 URL(含限时 vkey)
-            match r.body["data"][0]["url"].as_str() {
-                Some(url) if !url.is_empty() => json!({ "ok": true, "url": url }).to_string(),
-                _ => {
-                    let _ = tx.send(log_json(
-                        "warn",
-                        "song_url",
-                        &format!("no url id={id} (VIP/无版权)"),
-                    ));
-                    json!({ "ok": false, "msg": "无可播 URL(无版权/需 VIP)" }).to_string()
-                }
-            }
+    let cookie = state.cookie().await;
+    for level in LEVELS {
+        let mut q = Query::new().param("id", id).param("level", level);
+        if let Some(c) = &cookie {
+            q = q.cookie(c);
         }
-        Err(e) => json!({ "ok": false, "msg": e.to_string() }).to_string(),
+        match with_timeout(state.client.song_url_v1(&q)).await {
+            // 不记 URL(含限时 token)
+            Ok(Ok(r)) => match r.body["data"][0]["url"].as_str() {
+                Some(url) if !url.is_empty() => {
+                    return json!({ "ok": true, "url": url }).to_string()
+                }
+                _ => continue, // 该档无 URL → 降到下一档
+            },
+            Ok(Err(e)) => return json!({ "ok": false, "msg": e.to_string() }).to_string(),
+            Err(_) => return json!({ "ok": false, "msg": TIMEOUT_CODE }).to_string(),
+        }
     }
+    let _ = tx.send(log_json(
+        "warn",
+        "song_url",
+        &format!("no url id={id} (VIP/无版权)"),
+    ));
+    json!({ "ok": false, "msg": NO_PLAYABLE_CODE }).to_string()
 }
 
 pub async fn logout(state: &State) -> String {
     if let Some(c) = state.cookie().await {
-        let _ = state.client.logout(&Query::new().cookie(&c)).await; // 尽力而为
+        let _ = with_timeout(state.client.logout(&Query::new().cookie(&c))).await;
+        // 尽力而为
     }
     *state.cookie.lock().await = None;
     r#"{"ok":true}"#.to_string()
@@ -87,18 +99,19 @@ pub async fn account(state: &State) -> String {
     if let Some(c) = &ck {
         q = q.cookie(c);
     }
-    let status = match state.client.login_status(&q).await {
-        Ok(r) => r,
-        Err(e) => return json!({ "ok": false, "msg": e.to_string() }).to_string(),
+    let status = match with_timeout(state.client.login_status(&q)).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return json!({ "ok": false, "msg": e.to_string() }).to_string(),
+        Err(_) => return json!({ "ok": false, "msg": TIMEOUT_CODE }).to_string(),
     };
     let p = &status.body["profile"];
-    // VIP 档位文字(UI 渲染成 pill,不用服务端图标,与 QQ 一致)。vip_info 失败只是不显示,不影响账号。
+    // VIP 档位文字(UI 渲染成 pill,不用服务端图标,与 QQ 一致)。vip_info 失败/超时只是不显示,不影响账号。
     let mut vip = String::new();
     let mut vq = Query::new();
     if let Some(c) = &ck {
         vq = vq.cookie(c);
     }
-    if let Ok(v) = state.client.vip_info(&vq).await {
+    if let Ok(Ok(v)) = with_timeout(state.client.vip_info(&vq)).await {
         let d = &v.body["data"];
         if d["redVipLevel"].as_i64().unwrap_or(0) > 0 {
             let annual = d["redVipAnnualCount"].as_i64().unwrap_or(0) > 0;

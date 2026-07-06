@@ -70,7 +70,8 @@ async def handle(qq: QQ, cmd: dict, emit, log) -> dict:
             if url:
                 return {"ok": True, "url": url}
             log("warn", "song_url", f"no playable url id={cmd['id']} (no rights / login / VIP)")
-            return {"ok": False, "msg": "无可播 URL(无版权/需登录/VIP)"}
+            # 自造失败返回英文 code,前端 errorText() 本地化(库原始错误则原样透传)
+            return {"ok": False, "msg": "no_playable"}
         case "search":
             songs = await qq.search(cmd["keyword"])
             log("debug", "search", f"kw={cmd['keyword']} -> {len(songs)} songs")
