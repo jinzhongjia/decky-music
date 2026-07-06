@@ -39,8 +39,10 @@
    `Ie` 包裹(按原始 `Ie` 引用缓存 → 同一 type 引用,React 不会 remount)。
 3. **包 `Ie`**:包裹调用原始 `Ie` 拿到输出,`deepFind` 到菜单项数组,`cloneElement` 一个原生
    `Ae` 项、改成 `{route:"/music", label:t("music")(i18n), icon:<FaMusic/>}`,**按 route 定位**插入
-   ——插到「媒体」`/media/grid` 之前(即第 4 个);锚点 route 找不到就退化到末尾。按 route 而非固定
-   index 定位,Steam 增删菜单项也不错位。按 route/key 去重。
+   ——插到「商店」`/steamweb` **之后**(即第 4 个);锚点 route 找不到就退化到末尾。按 route 而非固定
+   index 定位,Steam 增删菜单项也不错位。按 route 去重。
+   注意:菜单里「好友与聊天」「电源」是**无 route** 的项(`me` 组件,非 `Ae`),所以若锚「媒体」前会
+   落到好友与聊天之后(第 5)—— 锚「商店」后才是第 4。
 4. **定时重打**:`setInterval(1s)`。菜单 remount 后父级会用原始 `fe` 重建 element → `fe.type` 被
    还原,需要重打。`disableMenuInjection()`(`onDismount`)清定时器 + 还原 `fe.type`。
 

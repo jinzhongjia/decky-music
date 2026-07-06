@@ -19,9 +19,10 @@ import { t } from "./i18n";
 
 const ITEM_KEY = "decky-music-menu-item";
 const RETRY_MS = 1000;
-// 定位锚点:插到「媒体」项之前(=第 4 个)。按 route 定位而非固定 index,Steam 增删项也不错位;
-// 锚点 route 找不到时退化到末尾(仍显示)。见 issue #28「优先按已知 route 定位」。
-const ANCHOR_ROUTE = "/media/grid";
+// 定位锚点:插到「商店」项之后(=第 4 个,商店后、好友与聊天前)。按 route 定位而非固定 index,
+// Steam 增删项也不错位;锚点 route 找不到时退化到末尾(仍显示)。见 issue #28「优先按已知 route 定位」。
+// 注意:菜单里「好友与聊天」「电源」是无 route 的项,故按「媒体」前定位会落到它们之后;锚「商店」后才是第 4。
+const AFTER_ROUTE = "/steamweb";
 
 // ---- fiber / element 工具(自带遍历,不依赖 @decky 内部 walkable 行为) ----
 
@@ -123,9 +124,9 @@ function injectItem(ieRet: any): void {
     key: ITEM_KEY,
     icon: createElement(FaMusic, {}),
   });
-  // 按已知 route 定位:插到「媒体」之前(第 4 个);锚点缺失则退化到末尾
-  const at = arr.findIndex((x: any) => x?.props?.route === ANCHOR_ROUTE);
-  if (at >= 0) arr.splice(at, 0, item);
+  // 按已知 route 定位:插到「商店」之后(第 4 个);锚点缺失则退化到末尾
+  const at = arr.findIndex((x: any) => x?.props?.route === AFTER_ROUTE);
+  if (at >= 0) arr.splice(at + 1, 0, item);
   else arr.push(item);
 }
 
