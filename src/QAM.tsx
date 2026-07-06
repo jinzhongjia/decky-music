@@ -10,6 +10,7 @@ import {
   errorText,
   onLogin,
   onProvider,
+  vipText,
 } from "./api";
 import { ROUTE } from "./Page";
 import { ErrorBanner } from "./ErrorBanner";
@@ -246,7 +247,7 @@ export function QAM() {
                       background: "linear-gradient(90deg, #f6d365, #f0a020)",
                     }}
                   >
-                    {account.vip}
+                    {vipText(account.vip)}
                   </span>
                 )}
               </div>

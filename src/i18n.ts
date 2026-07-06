@@ -36,6 +36,11 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     back: "返回",
     errTimeout: "请求超时,请重试",
     errProviderStart: "音乐源启动超时",
+    vipQqSvip: "超级会员",
+    vipQqLuxury: "豪华绿钻",
+    vipQqGreen: "绿钻",
+    vipNcm: "黑胶VIP",
+    vipAnnual: "(年费)",
   },
   en: {
     music: "Music",
@@ -71,6 +76,11 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     back: "Back",
     errTimeout: "Request timed out, try again",
     errProviderStart: "Music source failed to start",
+    vipQqSvip: "Super VIP",
+    vipQqLuxury: "Luxury VIP",
+    vipQqGreen: "Green VIP",
+    vipNcm: "Vinyl VIP",
+    vipAnnual: " (Annual)",
   },
 };
 

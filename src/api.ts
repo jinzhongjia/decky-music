@@ -18,6 +18,21 @@ export function errorText(msg: string): string {
   return key ? t(key as any) : msg;
 }
 
+// VIP 档位 code(provider 出)→ 本地化标签。code = <tier> 或 <tier>_annual;空 = 非会员。
+const VIP_TIERS: Record<string, string> = {
+  svip: "vipQqSvip", // QQ 超级会员
+  luxury: "vipQqLuxury", // QQ 豪华绿钻
+  green: "vipQqGreen", // QQ 绿钻
+  ncm: "vipNcm", // 网易云黑胶VIP
+};
+export function vipText(code: string): string {
+  if (!code) return "";
+  const annual = code.endsWith("_annual");
+  const key = VIP_TIERS[annual ? code.slice(0, -7) : code];
+  if (!key) return code; // 未知 code 原样(容错)
+  return annual ? t(key as any) + t("vipAnnual") : t(key as any);
+}
+
 export type Provider = null | "qq" | "ncm"; // null = 无
 export type LoginType = "qq" | "wx"; // 仅 QQ 用(手机QQ / 微信);ncm 忽略
 // 归一化歌曲(bridge/UI 统一用);各 provider 把自己的原始字段映射到这里。
@@ -38,7 +53,7 @@ export type ProviderState = { provider: Provider; loggedIn: boolean };
 export type Account = {
   nickname: string;
   avatar: string;
-  vip: string; // VIP 档位标签(provider 品牌词,如"超级会员"/"黑胶VIP","" 非会员);UI 渲染成 pill
+  vip: string; // VIP 档位 code(svip/luxury/green/ncm[_annual],"" 非会员);经 vipText() 本地化成 pill
 };
 
 /** callable RPC(前端 → bridge)。 */
