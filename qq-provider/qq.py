@@ -69,7 +69,7 @@ class QQ:
         qr_type = QRLoginType.WX if login_type == "wx" else QRLoginType.QQ
         try:
             qr = await self.client.login.get_qrcode(qr_type)
-            emit("qrcode", qr=base64.b64encode(qr.data).decode(), mimetype=qr.mimetype)
+            emit("qr", qr=base64.b64encode(qr.data).decode(), mimetype=qr.mimetype)
             while True:
                 result = await self.client.login.check_qrcode(qr)
                 event = result.event
@@ -84,9 +84,9 @@ class QQ:
                 emit("scanned" if event == QRCodeLoginEvents.CONF else "waiting")
                 await asyncio.sleep(0.8 if event == QRCodeLoginEvents.CONF else 1.5)
         except Exception as e:
-            # ponytail: 登录异常(设备超限/网络等)对 UI 统一报"重试";真实原因进日志。
+            # ponytail: 登录异常(设备超限/网络等)对 UI 统一报 login error(可重试);真实原因进日志。
             log("error", "login", f"{type(e).__name__}: {e}")
-            emit("timeout")
+            emit("error", code="login_failed", message="login_failed")
 
     async def song_url(self, mid: str, media_mid: str = "") -> str | None:
         """按音质降级取可播完整 URL;全档不可下发(无版权/需 VIP)返 None。"""
