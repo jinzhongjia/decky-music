@@ -152,6 +152,29 @@ bridge 的对外接口 = `Plugin` 类的 `async` 方法(前端 `callable` 调用
 改 bridge 的 callable 方法(增删 / 改名 / 改参数或返回)或 emit 事件(改名 / 改字段)时,**同一次改动**里必须
 同步更新 `src/api.ts` 的声明与类型;反之亦然。不允许只改一端。
 
+## 协议 v1(bridge ↔ 子进程,UDS + NDJSON)
+
+bridge ↔ provider/player 走**协议 v1**(见 issue #31)。传输仍是 UDS + NDJSON、bridge 作 server、
+每条一行 JSON。四种消息:
+
+- Request(bridge→child):`{"id":N,"cmd":C,"args":{...}}`
+- Response(child→bridge):`{"id":N,"ok":true,"data":{...}}` 或 `{"id":N,"ok":false,"error":{"code","message"}}`
+- Event(child→bridge):`{"ev":D,"type":T,"data":{...}}`,D ∈ `player`/`login`/`provider`
+- Log(child→bridge):`{"ev":"log","level","where","msg"}`(独立顶层格式)
+
+**构造 / 解码集中在各自的 protocol 模块,业务代码不碰裸 JSON**:
+`py_modules/protocol.py`(bridge,typed decode + demux)、`qq-provider/protocol.py`、
+`ncm-provider/src/protocol.rs`、`player/src/protocol.rs`。改协议时四端 + `src/api.ts` 的
+`PlayerEvent`/`LoginEvent`/`ProviderEvent` 必须同步。协议模块配套单测(`tests/`、`qq-provider/tests/`、
+Rust `#[cfg(test)]`)。
+
+要点:
+- **request id**:bridge 递增生成,当前仍 FIFO 收发,id 只用于校验错配;并发/乱序 demux 留后续。
+- **错误码**:失败必带稳定 `error.code`(供前端 i18n),`message` 只作安全 fallback。第三方库原始错误
+  **默认不透 UI**;前端 `errorText(code)` 命中已知码 → 本地化,否则原样显示。
+- **红线延续**:`message` / 日志都不得含 URL(限时 token)/ cookie / credential。
+- 前端订阅事件先过 `isDomainEvent` 运行时 guard,畸形事件忽略不崩 UI。
+
 ## Documentation rules
 
 - 代码里用 `ponytail:` 注释标记刻意的简化 / 延后项及其升级路径。
