@@ -23,18 +23,6 @@ def log(source: str, origin: str, level: str, msg: str):
     decky.logger.log(_LEVELS.get(level, logging.INFO), "[%s·%s] %s", source, origin, msg)
 
 
-def log_child_event(source: str, msg: dict) -> bool:
-    """把子进程的 log/error 事件落日志。返回 True 表示已消费(不再转 UI)。"""
-    ev = msg.get("ev")
-    if ev == "log":
-        where, m = msg.get("where", ""), msg.get("msg", "")
-        log(source, "socket", msg.get("level", "info"), f"{where}: {m}" if where else m)
-        return True
-    if ev == "error":
-        log(source, "socket", "error", msg.get("msg", ""))  # error 仍转 UI(播放错误提示)
-    return False
-
-
 async def pump_stderr(source: str, stream):
     """子进程 stderr = 非预期输出(panic / traceback / native 报错),逐行落日志兜底。"""
     while stream and (line := await stream.readline()):

@@ -9,8 +9,9 @@ import json
 import os
 
 import decky
+import protocol
 
-from log import DEV, log, log_child_event, pump_stderr
+from log import DEV, log, pump_stderr
 
 RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
 SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
@@ -50,12 +51,14 @@ class Conn:
     """一个子进程的 UDS 连接:bridge 作 server,子进程连入。"""
 
     def __init__(self, name: str):
+        self.name = name  # "provider" | "player":日志 source + id 错配提示
         self.path = os.path.join(RUNTIME, f"{name}.sock")
         self.writer: asyncio.StreamWriter | None = None
         self.server: asyncio.AbstractServer | None = None
-        self.on_event = None  # 子进程主动上报(playing/ended/error)时回调
-        self.responses: asyncio.Queue = asyncio.Queue()  # 命令响应(非事件)
+        self.on_event = None  # ChildEvent(player/login/provider)时回调
+        self.responses: asyncio.Queue = asyncio.Queue()  # ChildResponse 队列
         self.connected: asyncio.Event = asyncio.Event()  # 子进程连入后置位
+        self._next_id = 0
 
     async def listen(self):
         try:
@@ -67,21 +70,34 @@ class Conn:
     async def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.writer = writer
         self.connected.set()
-        # 单读循环 + 分流:带 "ev" 的是子进程主动事件 → on_event;其余是命令响应 → 队列。
+        # 单读循环 + 分流(协议 v1):log 事件直接落盘;domain 事件 → on_event;response → 队列。
         # 子进程在同一条连接上既回响应又推事件,必须在这里 demux,否则响应会被吞掉。
         while line := await reader.readline():  # \n 分帧,同 Decky localsocket.py
-            msg = json.loads(line)
-            if "ev" in msg:
+            try:
+                msg = protocol.decode_child_message(json.loads(line))
+            except (json.JSONDecodeError, protocol.ProtocolError) as e:
+                log("bridge", "own", "warn", f"bad {self.name} message: {e}")
+                continue
+            if isinstance(msg, protocol.LogEvent):
+                where = msg.where
+                log(self.name, "socket", msg.level, f"{where}: {msg.msg}" if where else msg.msg)
+            elif isinstance(msg, protocol.ChildEvent):
                 if self.on_event:
                     await self.on_event(msg)
-            else:
+            else:  # ChildResponse
                 await self.responses.put(msg)
 
-    async def request(self, obj: dict) -> dict:
-        # ponytail: 串行请求/响应(发一条取一条)。边播边发多命令需 request-id 关联,留后续。
-        self.writer.write((json.dumps(obj) + "\n").encode())
+    async def request(self, cmd: str, args: dict | None = None) -> protocol.ChildResponse:
+        # ponytail: 串行请求/响应(FIFO,发一条取一条)。id 仅用于校验错配,不做乱序 demux;
+        # 需要并发/乱序时再改成按 id 匹配的 map,留后续。
+        self._next_id += 1
+        rid = self._next_id
+        self.writer.write((json.dumps(protocol.request(rid, cmd, args)) + "\n").encode())
         await self.writer.drain()
-        return await self.responses.get()
+        resp = await self.responses.get()
+        if resp.id != rid:
+            log("bridge", "own", "warn", f"{self.name} response id mismatch: got {resp.id} want {rid}")
+        return resp
 
     async def close(self):
         if self.writer:
@@ -154,11 +170,21 @@ class Bridge:
                 await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
             except asyncio.TimeoutError:
                 log("bridge", "own", "error", f"provider {which} startup timeout")
-                await decky.emit("provider", {"ev": "error", "msg": "provider_start_timeout"})
+                await decky.emit(
+                    "provider",
+                    {
+                        "ev": "provider",
+                        "type": "error",
+                        "data": {
+                            "code": "provider_start_timeout",
+                            "message": "provider_start_timeout",
+                        },
+                    },
+                )
                 return
             cred = (self.settings.get("accounts") or {}).get(which)
             if cred:
-                await self.provider.request({"cmd": "set_credential", "cred": cred})
+                await self.provider.request("set_credential", {"cred": cred})
 
     async def set_provider(self, which: str | None):
         self.settings["provider"] = which
@@ -175,61 +201,70 @@ class Bridge:
         return {"provider": which, "loggedIn": logged_in}
 
     async def login(self, login_type: str | None = None):
-        await self.provider.request({"cmd": "login", "type": login_type})
+        await self.provider.request("login", {"type": login_type})
 
     async def logout(self):
         which = self.settings.get("provider")
-        await self.provider.request({"cmd": "logout"})
+        await self.provider.request("logout")
         (self.settings.get("accounts") or {}).pop(which, None)
         save_settings(self.settings)
-        await self.provider.request({"cmd": "set_credential", "cred": None})
+        await self.provider.request("set_credential", {"cred": None})
         log("bridge", "own", "info", f"{which} logged out")
 
     async def get_account(self) -> dict:
-        return await self.provider.request({"cmd": "account"})
+        # UI callable 返回沿用旧形状(账号字段平铺);失败回空对象,前端按空账号渲染。
+        r = await self.provider.request("account")
+        return r.data if r.ok else {}
 
     async def play(self, song_id: str, media_mid: str = ""):
-        r = await self.provider.request({"cmd": "song_url", "id": song_id, "media_mid": media_mid})
-        if not r.get("ok"):
-            log("bridge", "own", "warn", f"song_url failed id={song_id}: {r.get('msg')}")
-            await decky.emit("player", {"ev": "error", "msg": r.get("msg", "play_failed")})
+        r = await self.provider.request("song_url", {"id": song_id, "media_mid": media_mid})
+        if not r.ok:
+            code = r.error.code if r.error else "play_failed"
+            message = r.error.message if r.error else "play_failed"
+            log("bridge", "own", "warn", f"song_url failed id={song_id}: {code}")
+            await decky.emit(
+                "player",
+                {"ev": "player", "type": "error", "data": {"code": code, "message": message}},
+            )
             return
-        await self.player.request({"cmd": "load", "url": r["url"]})
+        await self.player.request("load", {"url": r.data["url"]})
 
     async def pause(self):
-        await self.player.request({"cmd": "pause"})
+        await self.player.request("pause")
 
     async def resume(self):
-        await self.player.request({"cmd": "resume"})
+        await self.player.request("resume")
 
     async def seek(self, sec: float):
-        await self.player.request({"cmd": "seek", "sec": sec})
+        await self.player.request("seek", {"sec": sec})
 
     async def volume(self, val: float):
         self.settings["volume"] = val
         save_settings(self.settings)
-        await self.player.request({"cmd": "volume", "val": val})
+        await self.player.request("volume", {"val": val})
 
     async def search(self, keyword: str) -> dict:
-        return await self.provider.request({"cmd": "search", "keyword": keyword})
+        # UI callable 返回沿用旧形状 {ok, songs}。
+        r = await self.provider.request("search", {"keyword": keyword})
+        return {"ok": r.ok, "songs": r.data.get("songs", []) if r.ok else []}
 
-    async def _forward_player_event(self, msg: dict):
-        if log_child_event("player", msg):
-            return
-        await decky.emit("player", msg)  # 推给 UI
+    async def _forward_player_event(self, ev: protocol.ChildEvent):
+        if ev.type == "error":
+            log("bridge", "own", "warn", f"player error: {ev.data.get('code', '')}")
+        await decky.emit("player", {"ev": ev.ev, "type": ev.type, "data": ev.data})
 
-    async def _on_provider_event(self, msg: dict):
-        if log_child_event("provider", msg):
-            return
+    async def _on_provider_event(self, ev: protocol.ChildEvent):
         # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI
-        if msg.get("ev") == "login" and msg.get("status") == "done":
+        if ev.ev == "login" and ev.type == "done":
             which = self.settings.get("provider")
-            self.settings.setdefault("accounts", {})[which] = msg.get("cred")
+            self.settings.setdefault("accounts", {})[which] = ev.data.get("cred")
             save_settings(self.settings)
             log("bridge", "own", "info", f"{which} login success, credential persisted")
-            await decky.emit("login", {"ev": "login", "status": "done"})
-        else:
-            await decky.emit("login", msg)
+            await decky.emit("login", {"ev": "login", "type": "done", "data": {}})
+            return
+        if ev.type == "error":
+            log("bridge", "own", "warn", f"{ev.ev} error: {ev.data.get('code', '')}")
+        await decky.emit(ev.ev, {"ev": ev.ev, "type": ev.type, "data": ev.data})
 
     async def unload(self):
         log("bridge", "own", "info", "unload: closing subprocesses and sockets")
