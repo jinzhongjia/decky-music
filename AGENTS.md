@@ -80,6 +80,8 @@ curl -s localhost:8080/json | jq '.[].title'       # 列 target:SharedJSContext 
 `Runtime.evaluate` 注入 JS。取 webpack 模块:`window[webpackChunk*].push([[Symbol()],{},r=>req=r])`
 拿到 require,遍历 `req.m`(factory 源码,可 grep 常量)或 `req(id)` 取实例。**只读排查用,别写进插件。**
 
+现成工具在 `scripts/cdp/`:`cdp.mjs`(CDP 客户端)+ `probe-mainmenu.js`(主菜单结构探针)+ README。
+
 ## Commit messages
 
 * 使用 Conventional Commits:`<type>(<scope>): <subject>`。
