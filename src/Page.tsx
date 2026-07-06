@@ -20,11 +20,11 @@ export function Page() {
 
   useEffect(() => {
     return onPlayer((msg) => {
-      if (msg.ev === PlayerEv.Playing) setPlaying(true);
-      else if (msg.ev === PlayerEv.Paused || msg.ev === PlayerEv.Ended) setPlaying(false);
-      else if (msg.ev === PlayerEv.Error) {
+      if (msg.type === PlayerEv.Playing) setPlaying(true);
+      else if (msg.type === PlayerEv.Paused || msg.type === PlayerEv.Ended) setPlaying(false);
+      else if (msg.type === PlayerEv.Error) {
         setPlaying(false);
-        reportError(msg.msg ? errorText(msg.msg) : t("playError")); // 后端错误码本地化后渲染
+        reportError(errorText(msg.data.code) || t("playError")); // 后端错误码本地化后渲染
       }
     });
   }, []);

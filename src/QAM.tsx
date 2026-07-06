@@ -21,7 +21,8 @@ import { t } from "./i18n";
 // QAM 单面板状态机:loading 初始拉取 → pick 选源 → (qq)qqmethod 选登录方式 → qr 扫码 → account 已登录。
 type View = "loading" | "pick" | "qqmethod" | "qr" | "account";
 
-const TERMINAL: LoginStatus[] = [LoginStatus.Done, LoginStatus.Timeout, LoginStatus.Refuse];
+// 终态(回登录入口):超时 / 拒绝 / 失败。done 单独处理(转账号页)。
+const TERMINAL: LoginStatus[] = [LoginStatus.Timeout, LoginStatus.Refuse, LoginStatus.Error];
 
 // 模块级会话态:Decky 会周期性重挂 QAM 面板,组件内 useState 每次重挂就复位。
 const S = {
@@ -66,15 +67,15 @@ export function QAM() {
   useEffect(() => {
     return onLogin((msg) => {
       if (S.view !== "qr") return; // 不在登录页 → 忽略残留循环的事件(取消后旧循环仍会 emit)
-      setStatus(msg.status);
-      if (msg.status === LoginStatus.Qrcode) setQr(`data:${msg.mimetype};base64,${msg.qr}`);
-      else if (msg.status === LoginStatus.Done) {
+      setStatus(msg.type);
+      if (msg.type === LoginStatus.Qr) setQr(`data:${msg.data.mimetype};base64,${msg.data.qr}`);
+      else if (msg.type === LoginStatus.Done) {
         setQr(null);
         showAccount();
-      } else if (TERMINAL.includes(msg.status)) {
+      } else if (TERMINAL.includes(msg.type)) {
         setQr(null);
         setView(provider === "qq" ? "qqmethod" : "pick");
-      } else if (msg.status === LoginStatus.Scanned) {
+      } else if (msg.type === LoginStatus.Scanned) {
         setQr(null); // scanned:已扫码,二维码消失
       }
     });
@@ -83,7 +84,7 @@ export function QAM() {
   // provider 进程级错误(如启动超时):报错并从加载态兜回选源,不然会永远卡"加载中"
   useEffect(() => {
     return onProvider((e) => {
-      reportError(errorText(e.msg));
+      reportError(errorText(e.data.code));
       if (S.view === "loading" || S.view === "qr") setView("pick");
     });
   }, []);
@@ -202,7 +203,7 @@ export function QAM() {
                 />
               )}
               <div style={{ marginTop: "0.5rem" }}>
-                {status ? loginStatusText(status) : t("loginQrcode")}
+                {status ? loginStatusText(status) : t("loginQr")}
               </div>
             </div>
           </PanelSectionRow>

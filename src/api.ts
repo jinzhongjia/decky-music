@@ -12,6 +12,12 @@ const ERR_CODES: Record<string, string> = {
   no_playable: "playError",
   play_failed: "playError",
   provider_start_timeout: "errProviderStart",
+  fetch_failed: "errPlayback",
+  decode_failed: "errPlayback",
+  audio_device_failed: "errAudio",
+  audio_thread_gone: "errAudio",
+  login_failed: "errLogin",
+  provider_error: "errProvider",
 };
 export function errorText(msg: string): string {
   const key = ERR_CODES[msg];
@@ -71,9 +77,9 @@ export const api = {
   volume: callable<[val: number], void>("volume"),
 };
 
-// ---- emit 事件(bridge → 前端)。返回退订函数,直接用于 useEffect cleanup。 ----
+// ---- emit 事件(bridge → 前端)。协议 v1:{ev, type, data}。返回退订函数,用于 useEffect cleanup。 ----
 
-// 状态常量:匹配时用这些常量而非裸字符串(避免拼错)。值即 bridge/子进程 发来的字符串。
+// 类型常量:匹配时用常量而非裸字符串(避免拼错)。值即 wire 上的 type。
 export const PlayerEv = {
   Playing: "playing",
   Paused: "paused",
@@ -83,30 +89,65 @@ export const PlayerEv = {
 export type PlayerEv = (typeof PlayerEv)[keyof typeof PlayerEv];
 
 export const LoginStatus = {
-  Qrcode: "qrcode",
+  Qr: "qr",
   Waiting: "waiting",
   Scanned: "scanned",
   Done: "done",
   Timeout: "timeout",
   Refuse: "refuse",
+  Error: "error",
 } as const;
 export type LoginStatus = (typeof LoginStatus)[keyof typeof LoginStatus];
 
-export type PlayerEvent = { ev: PlayerEv; pos?: number; wall_ms?: number; msg?: string };
-export type LoginEvent = { ev: "login"; status: LoginStatus; qr?: string; mimetype?: string };
-export type ProviderEvent = { ev: "error"; msg: string }; // provider 进程级错误(如启动超时)
+// discriminated union(按 type 判别),配合运行时 guard 抵御畸形 child 事件。
+export type PlayerEvent =
+  | { ev: "player"; type: "playing"; data: { pos: number; wall_ms: number } }
+  | { ev: "player"; type: "paused"; data: { pos: number } }
+  | { ev: "player"; type: "ended"; data: Record<string, never> }
+  | { ev: "player"; type: "error"; data: { code: string; message: string } };
+
+export type LoginEvent =
+  | { ev: "login"; type: "qr"; data: { qr: string; mimetype?: string } }
+  | { ev: "login"; type: "waiting"; data: Record<string, never> }
+  | { ev: "login"; type: "scanned"; data: Record<string, never> }
+  | { ev: "login"; type: "done"; data: Record<string, never> }
+  | { ev: "login"; type: "timeout"; data: Record<string, never> }
+  | { ev: "login"; type: "refuse"; data: Record<string, never> }
+  | { ev: "login"; type: "error"; data: { code: string; message: string } };
+
+export type ProviderEvent = {
+  ev: "provider";
+  type: "error";
+  data: { code: string; message: string };
+};
+
+// 来自 Decky event bus 的是 unknown,先 guard 形状再交给组件,畸形事件直接忽略,不崩 UI。
+function isDomainEvent(v: unknown, ev: string): v is { ev: string; type: string; data: any } {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return o.ev === ev && typeof o.type === "string" && typeof o.data === "object" && o.data !== null;
+}
 
 export function onPlayer(cb: (e: PlayerEvent) => void): () => void {
-  const listener = addEventListener("player", cb as any);
-  return () => removeEventListener("player", listener);
+  const listener = (e: unknown) => {
+    if (isDomainEvent(e, "player")) cb(e as PlayerEvent);
+  };
+  addEventListener("player", listener as any);
+  return () => removeEventListener("player", listener as any);
 }
 
 export function onLogin(cb: (e: LoginEvent) => void): () => void {
-  const listener = addEventListener("login", cb as any);
-  return () => removeEventListener("login", listener);
+  const listener = (e: unknown) => {
+    if (isDomainEvent(e, "login")) cb(e as LoginEvent);
+  };
+  addEventListener("login", listener as any);
+  return () => removeEventListener("login", listener as any);
 }
 
 export function onProvider(cb: (e: ProviderEvent) => void): () => void {
-  const listener = addEventListener("provider", cb as any);
-  return () => removeEventListener("provider", listener);
+  const listener = (e: unknown) => {
+    if (isDomainEvent(e, "provider")) cb(e as ProviderEvent);
+  };
+  addEventListener("provider", listener as any);
+  return () => removeEventListener("provider", listener as any);
 }
