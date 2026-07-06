@@ -1,11 +1,9 @@
-//! 共享类型:入站命令 Cmd、进程状态 State、写出通道 Out。
+//! 共享类型:进程状态 State、写出通道 Out、上游超时。命令类型见 protocol.rs。
 
 use std::future::Future;
 use std::time::Duration;
 
 use ncm_api_rs::{create_client, ApiClient};
-use serde::Deserialize;
-use serde_json::Value;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{error::Elapsed, timeout};
 
@@ -19,15 +17,6 @@ pub const NET_TIMEOUT: Duration = Duration::from_secs(15);
 /// 给上游 Future 套 NET_TIMEOUT。超时返回 Err(Elapsed)。
 pub async fn with_timeout<F: Future>(fut: F) -> Result<F::Output, Elapsed> {
     timeout(NET_TIMEOUT, fut).await
-}
-
-/// bridge 下发的一条命令(NDJSON 一行)。
-#[derive(Deserialize)]
-pub struct Cmd {
-    pub cmd: String,
-    pub id: Option<String>,
-    pub keyword: Option<String>,
-    pub cred: Option<Value>,
 }
 
 /// provider 进程状态。无持久态:cookie 由 bridge 经 set_credential 注入,逐次覆盖到 Query。

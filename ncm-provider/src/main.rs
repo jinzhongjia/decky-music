@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc;
@@ -15,10 +16,12 @@ use tokio::sync::mpsc;
 mod commands;
 mod logging;
 mod login;
+mod protocol;
 mod state;
 
 use logging::log_json;
-use state::{Cmd, State};
+use protocol::ErrorCode;
+use state::State;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -46,26 +49,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 在跑的登录轮询;新登录来时 abort 掉,避免双循环并发 emit(只在此单线程命令循环里碰)
     let mut login_handle: Option<tokio::task::JoinHandle<()>> = None;
 
-    // NDJSON:每条一行 {json}\n
+    // NDJSON:每条一行 {json}\n(协议 v1)
     while let Some(line) = lines.next_line().await? {
-        let cmd: Cmd = match serde_json::from_str(&line) {
-            Ok(c) => c,
-            Err(_) => continue,
+        let req = match protocol::parse_request(&line) {
+            Ok(r) => r,
+            // 解析失败拿不到 id → 记录并丢弃
+            Err(e) => {
+                let _ = out_tx.send(log_json(
+                    "warn",
+                    "protocol",
+                    &format!("bad request: {}", e.0),
+                ));
+                continue;
+            }
         };
         if debug {
-            let _ = out_tx.send(log_json("debug", "cmd", &cmd.cmd));
+            let _ = out_tx.send(log_json("debug", "cmd", &req.cmd));
         }
-        match cmd.cmd.as_str() {
+        match req.cmd.as_str() {
             "set_credential" => {
-                let ck = cmd
-                    .cred
-                    .as_ref()
-                    .and_then(|c| c["cookie"].as_str())
-                    .map(String::from);
+                let cred = protocol::parse_args::<protocol::SetCredentialArgs>(&req)
+                    .map(|a| a.cred)
+                    .unwrap_or(Value::Null);
+                let ck = cred["cookie"].as_str().map(String::from);
                 let msg = if ck.is_some() { "injected" } else { "cleared" };
                 *state.cookie.lock().await = ck;
                 let _ = out_tx.send(log_json("info", "credential", msg));
-                let _ = out_tx.send(r#"{"ok":true}"#.to_string());
+                let _ = out_tx.send(protocol::ok_empty(req.id));
             }
             "login" => {
                 // 长流程:后台跑,QR 与状态经 login 事件上报;命令本身即刻返 ok
@@ -74,25 +84,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let (st, tx) = (state.clone(), out_tx.clone());
                 login_handle = Some(tokio::spawn(async move { login::login_flow(st, tx).await }));
-                let _ = out_tx.send(r#"{"ok":true}"#.to_string());
+                let _ = out_tx.send(protocol::ok_empty(req.id));
             }
             "search" => {
-                let _ = out_tx
-                    .send(commands::search(&state, cmd.keyword.as_deref().unwrap_or("")).await);
+                let kw = protocol::parse_args::<protocol::SearchArgs>(&req)
+                    .map(|a| a.keyword)
+                    .unwrap_or_default();
+                let _ = out_tx.send(commands::search(&state, req.id, &kw).await);
             }
             "song_url" => {
-                let _ = out_tx.send(
-                    commands::song_url(&state, cmd.id.as_deref().unwrap_or(""), &out_tx).await,
-                );
+                let song_id = protocol::parse_args::<protocol::SongUrlArgs>(&req)
+                    .map(|a| a.id)
+                    .unwrap_or_default();
+                let _ = out_tx.send(commands::song_url(&state, req.id, &song_id, &out_tx).await);
             }
             "logout" => {
-                let _ = out_tx.send(commands::logout(&state).await);
+                let _ = out_tx.send(commands::logout(&state, req.id).await);
             }
             "account" => {
-                let _ = out_tx.send(commands::account(&state).await);
+                let _ = out_tx.send(commands::account(&state, req.id).await);
             }
             _ => {
-                let _ = out_tx.send(r#"{"ok":false,"msg":"unknown cmd"}"#.to_string());
+                let _ = out_tx.send(protocol::err(req.id, ErrorCode::UnknownCmd, "unknown cmd"));
             }
         }
     }

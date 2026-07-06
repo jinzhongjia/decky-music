@@ -9,16 +9,12 @@ use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
 use crate::logging::log_json;
+use crate::protocol;
 use crate::state::{with_timeout, Out, State};
 
-pub fn emit(tx: &Out, status: &str, extra: Value) {
-    let mut obj = json!({ "ev": "login", "status": status });
-    if let Value::Object(m) = extra {
-        for (k, v) in m {
-            obj[k] = v;
-        }
-    }
-    let _ = tx.send(obj.to_string());
+/// 发一条 login 域事件(协议 v1:{ev:"login",type,data})。
+pub fn emit(tx: &Out, typ: &str, data: Value) {
+    let _ = tx.send(protocol::event("login", typ, data));
 }
 
 pub async fn login_flow(state: Arc<State>, tx: Out) {
@@ -45,11 +41,7 @@ pub async fn login_flow(state: Arc<State>, tx: Out) {
     };
     // 3. 本地渲染二维码 → base64 SVG → 发给 UI
     match make_qr(&qrurl) {
-        Ok(b64) => emit(
-            &tx,
-            "qrcode",
-            json!({ "qr": b64, "mimetype": "image/svg+xml" }),
-        ),
+        Ok(b64) => emit(&tx, "qr", json!({ "qr": b64, "mimetype": "image/svg+xml" })),
         Err(e) => return login_fail(&tx, &format!("qr render: {e}")),
     }
     // 4. 轮询扫码状态:800 过期 / 801 待扫 / 802 已扫 / 803 成功
@@ -87,8 +79,13 @@ pub async fn login_flow(state: Arc<State>, tx: Out) {
 }
 
 fn login_fail(tx: &Out, err: &str) {
-    let _ = tx.send(log_json("error", "login", err));
-    emit(tx, "timeout", json!({})); // 对 UI 统一报可重试
+    let _ = tx.send(log_json("error", "login", err)); // 真实原因进日志
+                                                      // 对 UI 报 login error 事件(code=login_failed),前端提示可重试
+    emit(
+        tx,
+        "error",
+        json!({ "code": "login_failed", "message": "login_failed" }),
+    );
 }
 
 fn make_qr(url: &str) -> Result<String, Box<dyn std::error::Error>> {
