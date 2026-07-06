@@ -12,13 +12,15 @@ use std::io::Cursor;
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde_json::json;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc as tmpsc;
 
 mod logging;
+mod protocol;
 use logging::log_json;
+use protocol::ErrorCode;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(url) = arg("--play") {
@@ -63,7 +65,7 @@ enum AudioCmd {
     Stop,
 }
 
-/// 上报给 bridge 的事件,序列化成 NDJSON。
+/// 上报给 bridge 的事件,序列化成 NDJSON(协议 v1 event / log 格式)。
 enum AudioEv {
     Playing {
         pos: f64,
@@ -72,7 +74,10 @@ enum AudioEv {
         pos: f64,
     },
     Ended,
-    Error(String),
+    Error {
+        code: ErrorCode,
+        message: String,
+    },
     Log {
         level: &'static str,
         place: &'static str,
@@ -80,28 +85,29 @@ enum AudioEv {
     },
 }
 
-fn epoch_ms() -> u128 {
+fn epoch_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_millis()
+        .as_millis() as u64
 }
 
 impl AudioEv {
     fn to_ndjson(&self) -> String {
         match self {
             // wall_ms + pos:UI 本地插值进度(pos + (now - wall_ms))
-            AudioEv::Playing { pos } => {
-                format!(r#"{{"ev":"playing","pos":{pos},"wall_ms":{}}}"#, epoch_ms())
-            }
-            AudioEv::Paused { pos } => format!(r#"{{"ev":"paused","pos":{pos}}}"#),
-            AudioEv::Ended => r#"{"ev":"ended"}"#.to_string(),
-            AudioEv::Error(m) => {
-                format!(
-                    r#"{{"ev":"error","msg":{}}}"#,
-                    serde_json::to_string(m).unwrap()
-                )
-            }
+            AudioEv::Playing { pos } => protocol::event(
+                "player",
+                "playing",
+                json!({"pos": pos, "wall_ms": epoch_ms()}),
+            ),
+            AudioEv::Paused { pos } => protocol::event("player", "paused", json!({"pos": pos})),
+            AudioEv::Ended => protocol::event("player", "ended", json!({})),
+            AudioEv::Error { code, message } => protocol::event(
+                "player",
+                "error",
+                json!({"code": code.as_str(), "message": message}),
+            ),
             AudioEv::Log { level, place, msg } => log_json(level, place, msg),
         }
     }
@@ -112,7 +118,10 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
     let (_stream, handle) = match rodio::OutputStream::try_default() {
         Ok(v) => v,
         Err(e) => {
-            let _ = ev.send(AudioEv::Error(format!("open audio device: {e}")));
+            let _ = ev.send(AudioEv::Error {
+                code: ErrorCode::AudioDeviceFailed,
+                message: format!("open audio device: {e}"),
+            });
             return;
         }
     };
@@ -143,7 +152,10 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
                         let _ = ev.send(AudioEv::Playing { pos: 0.0 });
                     }
                     Err(e) => {
-                        let _ = ev.send(AudioEv::Error(format!("decode/play: {e}")));
+                        let _ = ev.send(AudioEv::Error {
+                            code: ErrorCode::DecodeFailed,
+                            message: format!("decode/play: {e}"),
+                        });
                     }
                 }
             }
@@ -196,14 +208,6 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
 
 // ---- socket 侧 ----
 
-#[derive(Deserialize)]
-struct Cmd {
-    cmd: String,
-    url: Option<String>,
-    sec: Option<f64>,
-    val: Option<f64>,
-}
-
 async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
     let stream = UnixStream::connect(socket).await?;
     let (rd, mut wr) = stream.into_split();
@@ -239,17 +243,25 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // NDJSON:每条一行 {json}\n,UTF-8,单条 ≤ 1 MiB
     while let Some(line) = lines.next_line().await? {
-        let cmd: Cmd = match serde_json::from_str(&line) {
-            Ok(c) => c,
-            Err(_) => continue,
+        let req = match protocol::parse_request(&line) {
+            Ok(r) => r,
+            // 解析失败拿不到 id → 记录并丢弃(协议 v1 规则)
+            Err(e) => {
+                let _ = out_tx.send(log_json(
+                    "warn",
+                    "protocol",
+                    &format!("bad request: {}", e.0),
+                ));
+                continue;
+            }
         };
         if debug {
-            let _ = out_tx.send(log_json("debug", "cmd", &cmd.cmd));
+            let _ = out_tx.send(log_json("debug", "cmd", &req.cmd));
         }
-        let resp = match cmd.cmd.as_str() {
-            "load" => match &cmd.url {
+        let resp = match req.cmd.as_str() {
+            "load" => match protocol::parse_args::<protocol::LoadArgs>(&req) {
                 // ponytail: 整首拉进内存再播;流式边下边播留后续。不记 URL(含限时 vkey,避免泄漏)
-                Some(url) => match fetch(&http, url).await {
+                Ok(a) => match fetch(&http, &a.url).await {
                     Ok(bytes) => {
                         let _ = out_tx.send(log_json(
                             "info",
@@ -257,22 +269,28 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
                             &format!("fetched {} bytes", bytes.len()),
                         ));
                         let _ = cmd_tx.send(AudioCmd::Load(bytes));
-                        r#"{"ok":true}"#.to_string()
+                        protocol::ok_empty(req.id)
                     }
                     Err(e) => {
                         let _ =
                             out_tx.send(log_json("error", "load", &format!("fetch failed: {e}")));
-                        format!(r#"{{"ok":false,"msg":{}}}"#, jstr(&e.to_string()))
+                        protocol::err(req.id, ErrorCode::FetchFailed, &e.to_string())
                     }
                 },
-                None => r#"{"ok":false,"msg":"load requires url"}"#.to_string(),
+                Err(_) => protocol::err(req.id, ErrorCode::MissingField, "url required"),
             },
-            "pause" => send(&cmd_tx, AudioCmd::Pause),
-            "resume" => send(&cmd_tx, AudioCmd::Resume),
-            "stop" => send(&cmd_tx, AudioCmd::Stop),
-            "volume" => send(&cmd_tx, AudioCmd::Volume(cmd.val.unwrap_or(1.0) as f32)),
-            "seek" => send(&cmd_tx, AudioCmd::Seek(cmd.sec.unwrap_or(0.0))),
-            _ => r#"{"ok":false,"msg":"unknown cmd"}"#.to_string(),
+            "pause" => send(&cmd_tx, AudioCmd::Pause, req.id),
+            "resume" => send(&cmd_tx, AudioCmd::Resume, req.id),
+            "stop" => send(&cmd_tx, AudioCmd::Stop, req.id),
+            "volume" => match protocol::parse_args::<protocol::VolumeArgs>(&req) {
+                Ok(a) => send(&cmd_tx, AudioCmd::Volume(a.val as f32), req.id),
+                Err(_) => protocol::err(req.id, ErrorCode::InvalidRequest, "bad volume args"),
+            },
+            "seek" => match protocol::parse_args::<protocol::SeekArgs>(&req) {
+                Ok(a) => send(&cmd_tx, AudioCmd::Seek(a.sec), req.id),
+                Err(_) => protocol::err(req.id, ErrorCode::InvalidRequest, "bad seek args"),
+            },
+            _ => protocol::err(req.id, ErrorCode::UnknownCmd, "unknown cmd"),
         };
         let _ = out_tx.send(resp);
     }
@@ -290,15 +308,11 @@ async fn fetch(http: &reqwest::Client, url: &str) -> reqwest::Result<Vec<u8>> {
         .to_vec())
 }
 
-fn send(tx: &mpsc::Sender<AudioCmd>, c: AudioCmd) -> String {
+fn send(tx: &mpsc::Sender<AudioCmd>, c: AudioCmd, id: u64) -> String {
     match tx.send(c) {
-        Ok(_) => r#"{"ok":true}"#.to_string(),
-        Err(_) => r#"{"ok":false,"msg":"audio thread gone"}"#.to_string(),
+        Ok(_) => protocol::ok_empty(id),
+        Err(_) => protocol::err(id, ErrorCode::AudioThreadGone, "audio thread gone"),
     }
-}
-
-fn jstr(s: &str) -> String {
-    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
 }
 
 fn arg(flag: &str) -> Option<String> {
