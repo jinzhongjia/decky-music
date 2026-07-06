@@ -5,6 +5,7 @@ import { FaMusic } from "react-icons/fa";
 import { Boundary } from "./Boundary";
 import { Page, ROUTE } from "./Page";
 import { QAM } from "./QAM";
+import { disableMenuInjection, enableMenuInjection } from "./steamMenu";
 
 export default definePlugin(() => {
   routerHook.addRoute(ROUTE, () => (
@@ -12,6 +13,7 @@ export default definePlugin(() => {
       <Page />
     </Boundary>
   ));
+  enableMenuInjection(); // 左侧 Steam 菜单注入「音乐」入口(可选增强,失败不影响 QAM/账号页入口)
   return {
     name: "Decky Music",
     titleView: <div className={staticClasses.Title}>{"Decky Music"}</div>,
@@ -22,6 +24,7 @@ export default definePlugin(() => {
       </Boundary>
     ),
     onDismount() {
+      disableMenuInjection();
       routerHook.removeRoute(ROUTE);
     },
   };
