@@ -164,6 +164,14 @@ export function QAM() {
               {t("ncm")}
             </ButtonItem>
           </PanelSectionRow>
+          {/* 从账号页「切换音乐源」进来才给返回;初次进入/登出后 account 为空,无处可回 */}
+          {account && (
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={() => setView("account")}>
+                {t("back")}
+              </ButtonItem>
+            </PanelSectionRow>
+          )}
         </>
       )}
 
