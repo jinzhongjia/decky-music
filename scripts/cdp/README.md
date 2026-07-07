@@ -31,6 +31,19 @@ pkill -f "8080:localhost:8080"
 
 - `cdp.mjs` —— 极简 CDP 客户端:连 target → `Runtime.evaluate` 一段 JS 文件 → 打印返回值。
 - `cdp-shot.mjs` —— 截图某 target 到 PNG(UI 对比用):`node scripts/cdp/cdp-shot.mjs 大屏 /tmp/x.png`。可见画面在 **"Steam 大屏幕模式"**(`大屏`)target,不是 `SharedJSContext`。
+- `cdp-nav.mjs` —— 让游戏模式主窗口导航到某路由:`node scripts/cdp/cdp-nav.mjs /music`。用**原始 Router**(非 @decky/ui 的聚焦窗口 Navigation,后者 CDP 下落错窗口),导航后等 ~900ms 落定。
+
+## 全自动 UI 调试闭环
+
+隧道开一次即可(跨 `plugin_loader` 重启仍有效,CEF 8080 不重启)。改前端后:
+
+```bash
+DECK_PASS=… bash scripts/deploy.sh                 # 部署(会重启 plugin_loader,回到主屏)
+node scripts/cdp/cdp-nav.mjs /music                # 自己导航到大屏路由(免手动重开)
+node scripts/cdp/cdp-shot.mjs 大屏 /tmp/music.png  # 截图,Read 查看
+```
+
+要有正在播放的内容,先在 QAM 选源/登录一次(登录态持久);之后 `play_queue` 可由页面触发。
 - `probe-mainmenu.js` —— 左侧主菜单结构探针(navID 锚点 / patch 点 / 菜单项组件 / 嵌套深度)。
 - `probe-menu-items.js` —— 列出菜单**所有**项(含无 route 的「好友与聊天」「电源」),核对注入位置用。
 
