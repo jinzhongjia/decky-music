@@ -30,6 +30,7 @@ pkill -f "8080:localhost:8080"
 ## 文件
 
 - `cdp.mjs` —— 极简 CDP 客户端:连 target → `Runtime.evaluate` 一段 JS 文件 → 打印返回值。
+- `cdp-shot.mjs` —— 截图某 target 到 PNG(UI 对比用):`node scripts/cdp/cdp-shot.mjs 大屏 /tmp/x.png`。可见画面在 **"Steam 大屏幕模式"**(`大屏`)target,不是 `SharedJSContext`。
 - `probe-mainmenu.js` —— 左侧主菜单结构探针(navID 锚点 / patch 点 / 菜单项组件 / 嵌套深度)。
 - `probe-menu-items.js` —— 列出菜单**所有**项(含无 route 的「好友与聊天」「电源」),核对注入位置用。
 
