@@ -30,7 +30,9 @@ const expr = `(() => {
 })()`;
 
 const targets = await (await fetch("http://localhost:8080/json")).json();
-const t = targets.find((x) => (x.title || "").includes("SharedJSContext") && x.webSocketDebuggerUrl);
+const t = targets.find(
+  (x) => (x.title || "").includes("SharedJSContext") && x.webSocketDebuggerUrl
+);
 if (!t) {
   console.error("no SharedJSContext target");
   process.exit(1);
