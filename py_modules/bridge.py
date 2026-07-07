@@ -12,6 +12,7 @@ import decky
 import protocol
 
 from log import DEV, log, pump_stderr
+from playback import Playback
 
 RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
 SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
@@ -133,9 +134,10 @@ class Bridge:
         self.provider_proc: asyncio.subprocess.Process | None = None
         self.provider_which: str | None = None  # 当前已 spawn 的 provider
         self.provider_lock = asyncio.Lock()  # 串行化 _ensure_provider,保证幂等不重复 spawn
+        self.playback = Playback(self.player, self.provider)  # 播放/[P3]队列编排
         await self.provider.listen()
         await self.player.listen()
-        self.player.on_event = self._forward_player_event
+        self.player.on_event = self.playback.on_player_event
         self.provider.on_event = self._on_provider_event
         log("bridge", "own", "info", f"started (dev={DEV})")
         # player 常驻:启动时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
@@ -217,41 +219,26 @@ class Bridge:
         return r.data if r.ok else {}
 
     async def play(self, song_id: str, media_mid: str = ""):
-        r = await self.provider.request("song_url", {"id": song_id, "media_mid": media_mid})
-        if not r.ok:
-            code = r.error.code if r.error else "play_failed"
-            message = r.error.message if r.error else "play_failed"
-            log("bridge", "own", "warn", f"song_url failed id={song_id}: {code}")
-            await decky.emit(
-                "player",
-                {"ev": "player", "type": "error", "data": {"code": code, "message": message}},
-            )
-            return
-        await self.player.request("load", {"url": r.data["url"]})
+        await self.playback.play(song_id, media_mid)
 
     async def pause(self):
-        await self.player.request("pause")
+        await self.playback.pause()
 
     async def resume(self):
-        await self.player.request("resume")
+        await self.playback.resume()
 
     async def seek(self, sec: float):
-        await self.player.request("seek", {"sec": sec})
+        await self.playback.seek(sec)
 
     async def volume(self, val: float):
-        self.settings["volume"] = val
+        self.settings["volume"] = val  # 音量归 bridge 持久化,player 调用交给 playback
         save_settings(self.settings)
-        await self.player.request("volume", {"val": val})
+        await self.playback.volume(val)
 
     async def search(self, keyword: str) -> dict:
         # UI callable 返回沿用旧形状 {ok, songs}。
         r = await self.provider.request("search", {"keyword": keyword})
         return {"ok": r.ok, "songs": r.data.get("songs", []) if r.ok else []}
-
-    async def _forward_player_event(self, ev: protocol.ChildEvent):
-        if ev.type == "error":
-            log("bridge", "own", "warn", f"player error: {ev.data.get('code', '')}")
-        await decky.emit("player", {"ev": ev.ev, "type": ev.type, "data": ev.data})
 
     async def _on_provider_event(self, ev: protocol.ChildEvent):
         # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI
