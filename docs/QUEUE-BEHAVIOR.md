@@ -55,7 +55,7 @@
 
 ### 3.1 自动切歌（Auto-Advance）逻辑
 
-当 bridge 收到 `{"ev": "ended"}`：
+当 bridge 收到 player 的 `ended` 事件（协议 v1：`{"ev":"player","type":"ended","data":{}}`，即 `protocol.ChildEvent(ev="player", type="ended")`，见 AGENTS.md「协议 v1」）：
 
 1. **单曲循环**：`seek(0)` 重新播放当前索引。
 2. **普通列表**：索引 `+1`。若到达末尾：

@@ -114,6 +114,10 @@ Decky 只提供两种原语,足够:
 - **请求/响应**(bridge 主动):`{"cmd":"...","...":...}` → `{"ok":true,"...":...}`
 - **事件上报**(子进程主动,主要来自 player):`{"ev":"position","sec":42}` / `{"ev":"ended"}` / `{"ev":"error","msg":...}`
 
+> ⚠️ 本节及下文时序图里的扁平事件/响应格式是**协议 v0 的示意,已过时**。当前实现走**协议 v1**
+> (`request{id,cmd,args}` / `response{id,ok,data|error}` / `event{ev,type,data}`,log 独立顶层),
+> **权威定义见 `AGENTS.md`「协议 v1」+ 各 `protocol.*` 模块**。此处保留仅作架构叙述,勿照抄字段。
+
 > 关于 provider 包裹:ncm-api-rs 与 QQMusicApi **都作为库使用**,由我们各写一层 wrapper 暴露上述 NDJSON-over-UDS 协议(不用它们自带的 axum / FastAPI HTTP server)。两个 provider 因此协议一致,bridge 统一对待。
 
 ### 5.3 一次"播放"的完整流转(全程不跨 bridge)
