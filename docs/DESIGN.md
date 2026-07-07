@@ -180,6 +180,8 @@ UI 全程拿不到 URL、碰不到音频流,一切经 bridge。
 
 UI 分两个面,**职责严格分离**:右侧 QAM 面板做全局控制(与 provider 无关),大屏路由页做 provider 内容浏览(随选中的 provider 变化)。全部基于 Decky/Steam 的 `@decky/ui` 原语构建。两条硬约束,优先级明确:**① 绝不拖垮宿主 Steam UI(首要,§6.5);② 手柄可导航(Steam Deck 无鼠标,§6.4)。**
 
+> P3 大屏 UI 规格已整理到 `docs/ui-design/`:共享 Steam Deck 视觉/手柄规则、QQ/NCM 页面规格、API 缺口与本地渲染图索引。设计图 PNG 位于 `docs/ui-design/assets/`;如需提交必须走 Git LFS 或 Release artifact,避免把大二进制作为普通 Git blob 写进仓库历史。
+
 ### 6.1 两个 UI 面概览
 
 ```mermaid
