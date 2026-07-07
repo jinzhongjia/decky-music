@@ -32,8 +32,17 @@ class Plugin:
     async def get_account(self) -> dict:
         return await self.bridge.get_account()
 
-    async def play(self, song_id: str, media_mid: str = ""):
-        return await self.bridge.play(song_id, media_mid)
+    async def play_queue(self, items: list, start_index: int = 0):
+        return await self.bridge.play_queue(items, start_index)
+
+    async def next_track(self):
+        return await self.bridge.next_track()
+
+    async def prev_track(self):
+        return await self.bridge.prev_track()
+
+    async def set_play_mode(self, mode: str):
+        return await self.bridge.set_play_mode(mode)
 
     async def pause(self):
         return await self.bridge.pause()

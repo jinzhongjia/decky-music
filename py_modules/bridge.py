@@ -16,6 +16,7 @@ from playback import Playback
 
 RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
 SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
+REQUEST_TIMEOUT = 30  # 子进程响应上限(秒):song_url 最坏 ~20s;超时兜底防永久挂
 
 
 def BIN(name: str) -> str:
@@ -60,6 +61,7 @@ class Conn:
         self.responses: asyncio.Queue = asyncio.Queue()  # ChildResponse 队列
         self.connected: asyncio.Event = asyncio.Event()  # 子进程连入后置位
         self._next_id = 0
+        self._lock = asyncio.Lock()  # 串行化 request/response,防并发下 FIFO 错配(见 request)
 
     async def listen(self):
         try:
@@ -89,16 +91,24 @@ class Conn:
                 await self.responses.put(msg)
 
     async def request(self, cmd: str, args: dict | None = None) -> protocol.ChildResponse:
-        # ponytail: 串行请求/响应(FIFO,发一条取一条)。id 仅用于校验错配,不做乱序 demux;
-        # 需要并发/乱序时再改成按 id 匹配的 map,留后续。
-        self._next_id += 1
-        rid = self._next_id
-        self.writer.write((json.dumps(protocol.request(rid, cmd, args)) + "\n").encode())
-        await self.writer.drain()
-        resp = await self.responses.get()
-        if resp.id != rid:
-            log("bridge", "own", "warn", f"{self.name} response id mismatch: got {resp.id} want {rid}")
-        return resp
+        # 串行化:Decky callable 并发调用 + 自动切歌会并发发起请求,不串行则 FIFO 响应错配 → 挂起。
+        # 锁内保证同一 Conn 一次只有一个请求在途,故仍可按 FIFO 收发;id 用于丢弃超时请求迟到的响应。
+        async with self._lock:
+            self._next_id += 1
+            rid = self._next_id
+            self.writer.write((json.dumps(protocol.request(rid, cmd, args)) + "\n").encode())
+            await self.writer.drain()
+            while True:
+                try:
+                    resp = await asyncio.wait_for(self.responses.get(), REQUEST_TIMEOUT)
+                except asyncio.TimeoutError:
+                    # provider/player 卡死或崩溃兜底:返回错误响应,不永久挂 UI(迟到响应下次丢弃)
+                    log("bridge", "own", "error", f"{self.name} request timeout: {cmd}")
+                    return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
+                if resp.id == rid:
+                    return resp
+                # 陈旧响应(某个已超时请求的迟到回包)→ 丢弃,继续等本次的
+                log("bridge", "own", "warn", f"{self.name} drop stale response id={resp.id} (want {rid})")
 
     async def close(self):
         if self.writer:
@@ -134,7 +144,9 @@ class Bridge:
         self.provider_proc: asyncio.subprocess.Process | None = None
         self.provider_which: str | None = None  # 当前已 spawn 的 provider
         self.provider_lock = asyncio.Lock()  # 串行化 _ensure_provider,保证幂等不重复 spawn
-        self.playback = Playback(self.player, self.provider)  # 播放/[P3]队列编排
+        self.playback = Playback(  # 播放 + 队列编排
+            self.player, self.provider, self.settings.get("play_mode", "list_loop")
+        )
         await self.provider.listen()
         await self.player.listen()
         self.player.on_event = self.playback.on_player_event
@@ -218,8 +230,19 @@ class Bridge:
         r = await self.provider.request("account")
         return r.data if r.ok else {}
 
-    async def play(self, song_id: str, media_mid: str = ""):
-        await self.playback.play(song_id, media_mid)
+    async def play_queue(self, items: list, start_index: int = 0):
+        await self.playback.play_queue(items, start_index)
+
+    async def next_track(self):
+        await self.playback.next_track()
+
+    async def prev_track(self):
+        await self.playback.prev_track()
+
+    async def set_play_mode(self, mode: str):
+        self.settings["play_mode"] = mode  # 播放模式归 bridge 持久化
+        save_settings(self.settings)
+        self.playback.set_play_mode(mode)
 
     async def pause(self):
         await self.playback.pause()

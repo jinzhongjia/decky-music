@@ -70,12 +70,19 @@ export const api = {
   logout: callable<[], void>("logout"),
   getAccount: callable<[], Account>("get_account"),
   search: callable<[keyword: string], SearchResult>("search"),
-  play: callable<[id: string, mediaMid: string], void>("play"),
+  playQueue: callable<[items: QueueItem[], startIndex: number], void>("play_queue"),
+  nextTrack: callable<[], void>("next_track"),
+  prevTrack: callable<[], void>("prev_track"),
+  setPlayMode: callable<[mode: PlayMode], void>("set_play_mode"),
   pause: callable<[], void>("pause"),
   resume: callable<[], void>("resume"),
   seek: callable<[sec: number], void>("seek"),
   volume: callable<[val: number], void>("volume"),
 };
+
+// 队列项:只需 id(+QQ 的 media_mid)即可解析播放地址;展示字段前端自己留(见 Song)。
+export type QueueItem = { id: string; media_mid?: string };
+export type PlayMode = "list_loop" | "single_loop" | "shuffle";
 
 // ---- emit 事件(bridge → 前端)。协议 v1:{ev, type, data}。返回退订函数,用于 useEffect cleanup。 ----
 
@@ -85,6 +92,7 @@ export const PlayerEv = {
   Paused: "paused",
   Ended: "ended",
   Error: "error",
+  Track: "track", // bridge 合成:当前播放曲变更(自动切歌/next/prev),data.index 指向队列位置
 } as const;
 export type PlayerEv = (typeof PlayerEv)[keyof typeof PlayerEv];
 
@@ -104,7 +112,8 @@ export type PlayerEvent =
   | { ev: "player"; type: "playing"; data: { pos: number; wall_ms: number } }
   | { ev: "player"; type: "paused"; data: { pos: number } }
   | { ev: "player"; type: "ended"; data: Record<string, never> }
-  | { ev: "player"; type: "error"; data: { code: string; message: string } };
+  | { ev: "player"; type: "error"; data: { code: string; message: string } }
+  | { ev: "player"; type: "track"; data: { index: number } };
 
 export type LoginEvent =
   | { ev: "login"; type: "qr"; data: { qr: string; mimetype?: string } }
