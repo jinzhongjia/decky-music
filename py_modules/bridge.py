@@ -245,18 +245,18 @@ class Bridge:
         self.playback.set_play_mode(mode)
 
     async def pause(self):
-        await self.playback.pause()
+        await self.player.request("pause")
 
     async def resume(self):
-        await self.playback.resume()
+        await self.player.request("resume")
 
     async def seek(self, sec: float):
-        await self.playback.seek(sec)
+        await self.player.request("seek", {"sec": sec})
 
     async def volume(self, val: float):
-        self.settings["volume"] = val  # 音量归 bridge 持久化,player 调用交给 playback
+        self.settings["volume"] = val  # 音量 bridge 持久化 + 直接下发 player
         save_settings(self.settings)
-        await self.playback.volume(val)
+        await self.player.request("volume", {"val": val})
 
     async def search(self, keyword: str) -> dict:
         # UI callable 返回沿用旧形状 {ok, songs}。

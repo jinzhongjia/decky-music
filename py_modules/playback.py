@@ -46,17 +46,7 @@ class Playback:
         if mode in PLAY_MODES:
             self.play_mode = mode
 
-    async def pause(self):
-        await self.player.request("pause")
-
-    async def resume(self):
-        await self.player.request("resume")
-
-    async def seek(self, sec: float):
-        await self.player.request("seek", {"sec": sec})
-
-    async def volume(self, val: float):
-        await self.player.request("volume", {"val": val})
+    # 传输命令(pause/resume/seek/volume)纯转发,bridge 直接调 player,不经此层。
 
     # ---- 内部 ----
 
