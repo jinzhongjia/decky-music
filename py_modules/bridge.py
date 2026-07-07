@@ -233,6 +233,10 @@ class Bridge:
     async def play_queue(self, items: list, start_index: int = 0):
         await self.playback.play_queue(items, start_index)
 
+    async def get_playback(self) -> dict:
+        # 前端挂载回灌:bridge 是播放/队列真相源(见 playback.snapshot)
+        return self.playback.snapshot()
+
     async def next_track(self):
         await self.playback.next_track()
 

@@ -35,6 +35,9 @@ class Plugin:
     async def play_queue(self, items: list, start_index: int = 0):
         return await self.bridge.play_queue(items, start_index)
 
+    async def get_playback(self) -> dict:
+        return await self.bridge.get_playback()
+
     async def next_track(self):
         return await self.bridge.next_track()
 

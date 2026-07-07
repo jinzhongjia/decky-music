@@ -71,6 +71,7 @@ export const api = {
   getAccount: callable<[], Account>("get_account"),
   search: callable<[keyword: string], SearchResult>("search"),
   playQueue: callable<[items: QueueItem[], startIndex: number], void>("play_queue"),
+  getPlayback: callable<[], PlaybackState>("get_playback"),
   nextTrack: callable<[], void>("next_track"),
   prevTrack: callable<[], void>("prev_track"),
   setPlayMode: callable<[mode: PlayMode], void>("set_play_mode"),
@@ -80,9 +81,33 @@ export const api = {
   volume: callable<[val: number], void>("volume"),
 };
 
-// 队列项:只需 id(+QQ 的 media_mid)即可解析播放地址;展示字段前端自己留(见 Song)。
-export type QueueItem = { id: string; media_mid?: string };
+// 队列项:id(+QQ media_mid)供 bridge 解析地址;名/歌手/封面/时长供 bridge 存为真相源、回灌 UI。
+export type QueueItem = {
+  id: string;
+  media_mid?: string;
+  name: string;
+  singer: string;
+  cover: string;
+  duration: number;
+};
+// bridge 下发/回灌的当前曲展示信息(不含内部字段)
+export type TrackInfo = {
+  id: string;
+  name: string;
+  singer: string;
+  cover: string;
+  duration: number;
+};
 export type PlayMode = "list_loop" | "single_loop" | "shuffle";
+// get_playback 快照:bridge 是播放真相源,前端挂载回灌
+export type PlaybackState = {
+  current: TrackInfo | null;
+  index: number;
+  playing: boolean;
+  pos: number;
+  wall: number;
+  mode: PlayMode;
+};
 
 // ---- emit 事件(bridge → 前端)。协议 v1:{ev, type, data}。返回退订函数,用于 useEffect cleanup。 ----
 
@@ -113,7 +138,7 @@ export type PlayerEvent =
   | { ev: "player"; type: "paused"; data: { pos: number } }
   | { ev: "player"; type: "ended"; data: Record<string, never> }
   | { ev: "player"; type: "error"; data: { code: string; message: string } }
-  | { ev: "player"; type: "track"; data: { index: number } };
+  | { ev: "player"; type: "track"; data: { index: number; song: TrackInfo } };
 
 export type LoginEvent =
   | { ev: "login"; type: "qr"; data: { qr: string; mimetype?: string } }
