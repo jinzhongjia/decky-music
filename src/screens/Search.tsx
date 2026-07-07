@@ -8,6 +8,7 @@ import { Song, api } from "../api";
 import { reportError } from "../errors";
 import { t } from "../i18n";
 import { playQueue } from "../player/usePlayer";
+import { SongRow } from "../ui/SongRow";
 import { theme } from "../ui/theme";
 
 export function Search() {
@@ -58,15 +59,9 @@ export function Search() {
         {songs.length === 0 && !busy && (
           <div style={{ color: theme.textDim }}>{t("noResults")}</div>
         )}
-        {songs.map((s) => (
+        {songs.map((s, i) => (
           // 播放某首 = 把当前结果整列灌入队列从该首开播(见 QUEUE-BEHAVIOR §2)
-          <DialogButton
-            key={s.mid}
-            onClick={() => playQueue(songs, songs.indexOf(s))}
-            style={{ textAlign: "left" }}
-          >
-            {s.name} — {s.singer}
-          </DialogButton>
+          <SongRow key={s.mid} song={s} onClick={() => playQueue(songs, i)} />
         ))}
       </Focusable>
     </div>
