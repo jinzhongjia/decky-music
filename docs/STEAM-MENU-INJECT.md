@@ -62,6 +62,13 @@
 4. **定时重打**:`setInterval(1s)`。菜单 remount 后父级会用原始 `fe` 重建 element → `fe.type` 被
    还原,需要重打。`disableMenuInjection()`(`onDismount`)清定时器 + 还原 `fe.type`。
 
+### 何时显示:仅「已选音乐源」时
+
+未选音乐源时大屏页无法用,故 `injectItem` 由模块级同步标志 `providerSelected` 门控 —— 为 false 就不
+注入(下次 `Ie` 渲染也不再加,菜单里自然没有「音乐」)。标志来源:`enableMenuInjection` 加载时查一次
+`api.getProvider()`;之后 QAM `pick()` 选源成功即 `setProviderSelected(true)` 通知。选了源后下次开菜单
+即出现。(注:登出不清除已选源,故登出后入口仍在 —— 只在"从未选过源"时隐藏。)
+
 ### 已知局限
 
 - **闪烁窗口**:`fe` 的 element 被父级重建后、下次 retry 命中前(≤1s),「音乐」项会短暂消失。

@@ -14,11 +14,19 @@
 import { createElement } from "react";
 import { FaMusic } from "react-icons/fa";
 
+import { api } from "./api";
 import { ROUTE } from "./Page";
 import { t } from "./i18n";
 
 const ITEM_KEY = "decky-music-menu-item";
 const RETRY_MS = 1000;
+
+// 是否已选择音乐源:未选源时大屏页无法用,菜单入口就不显示。
+// 同步标志(injectItem 在 Ie 渲染里同步跑,不能 await);来源:加载时查一次 + QAM 选源时通知。
+let providerSelected = false;
+export function setProviderSelected(selected: boolean): void {
+  providerSelected = selected;
+}
 // 定位锚点:插到「商店」项之后(=第 4 个,商店后、好友与聊天前)。按 route 定位而非固定 index,
 // Steam 增删项也不错位;锚点 route 找不到时退化到末尾(仍显示)。见 issue #28「优先按已知 route 定位」。
 // 注意:菜单里「好友与聊天」「电源」是无 route 的项,故按「媒体」前定位会落到它们之后;锚「商店」后才是第 4。
@@ -112,6 +120,7 @@ const isItemEl = (x: any) =>
 
 // 把「音乐」项插进 Ie 输出里的菜单项数组(clone 原生项,复用其组件/焦点行为)
 function injectItem(ieRet: any): void {
+  if (!providerSelected) return; // 未选音乐源 → 不显示菜单入口(下次渲染也不再加)
   const arr = deepFind(ieRet, (nd) => Array.isArray(nd) && nd.some(isItemEl));
   if (!arr) return;
   if (arr.some((x: any) => x?.props?.route === ROUTE)) return; // 去重(route 即唯一标识)
@@ -183,6 +192,11 @@ function tryPatch(): void {
 
 export function enableMenuInjection(): void {
   if (timer) return;
+  // 初始:查当前是否已选源(决定入口是否显示);后续变化由 QAM pick() 经 setProviderSelected 通知
+  api
+    .getProvider()
+    .then((st) => (providerSelected = !!st.provider))
+    .catch(() => {});
   timer = setInterval(tryPatch, RETRY_MS); // 菜单 remount 后需重打,故周期重试
   tryPatch();
 }
