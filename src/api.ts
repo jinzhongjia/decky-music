@@ -17,6 +17,9 @@ const ERR_CODES: Record<string, string> = {
   audio_device_failed: "errAudio",
   audio_thread_gone: "errAudio",
   login_failed: "errLogin",
+  login_device_limit: "errLoginDeviceLimit",
+  login_account_restricted: "errLoginRestricted",
+  login_rate_limit: "errLoginRateLimit",
   provider_error: "errProvider",
 };
 export function errorText(msg: string): string {

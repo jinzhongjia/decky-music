@@ -75,6 +75,8 @@ export function QAM() {
         showAccount();
       } else if (TERMINAL.includes(msg.type)) {
         setQr(null);
+        // error 带具体 code(设备超限/封禁/频率)→ 弹 ErrorBanner 说明真实原因,不然回选择页很懵
+        if (msg.type === LoginStatus.Error) reportError(errorText(msg.data.code));
         setView(provider === "qq" ? "qqmethod" : "pick");
       } else if (msg.type === LoginStatus.Scanned) {
         setQr(null); // scanned:已扫码,二维码消失

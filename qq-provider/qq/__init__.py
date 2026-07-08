@@ -40,6 +40,9 @@ class QQ:
     async def login(self, emit, log, login_type: str = "qq"):
         return await _login.run(self, emit, log, login_type)
 
+    async def refresh_if_expired(self, log) -> dict | None:
+        return await _login.refresh_if_expired(self, log)
+
     async def account(self) -> dict:
         return await _account.get(self)
 

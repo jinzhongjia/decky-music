@@ -65,7 +65,11 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
             cred = args.get("cred")
             qq.set_credential(cred)
             log("info", "credential", "injected" if cred else "cleared")
-            return protocol.ok(req.id)
+            # 过期则刷新;新凭证随响应回传 bridge 持久化(provider 无状态,bridge 是真相源)
+            refreshed = await qq.refresh_if_expired(log) if cred else None
+            if refreshed:
+                log("info", "credential", "refreshed expired credential")
+            return protocol.ok(req.id, {"refreshed": refreshed})
         case "login":
             # 长流程:后台跑,QR 与状态经 login 事件上报;命令本身即刻返 ok
             if qq.login_task and not qq.login_task.done():

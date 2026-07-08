@@ -198,7 +198,13 @@ class Bridge:
                 return
             cred = (self.settings.get("accounts") or {}).get(which)
             if cred:
-                await self.provider.request("set_credential", {"cred": cred})
+                r = await self.provider.request("set_credential", {"cred": cred})
+                # provider 刷新了过期凭证 → 回传新凭证,持久化(下次注入用新的)。ncm 无此字段 → None
+                new_cred = r.data.get("refreshed") if r.ok else None
+                if new_cred:
+                    self.settings.setdefault("accounts", {})[which] = new_cred
+                    save_settings(self.settings)
+                    log("bridge", "own", "info", f"{which} credential auto-refreshed, persisted")
 
     async def set_provider(self, which: str | None):
         self.settings["provider"] = which
