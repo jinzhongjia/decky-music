@@ -58,6 +58,12 @@ pub struct SongUrlArgs {
     pub id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct LyricArgs {
+    #[serde(default)]
+    pub id: String,
+}
+
 pub fn parse_request(line: &str) -> Result<Request, ProtocolError> {
     let req: Request = serde_json::from_str(line).map_err(|e| ProtocolError(e.to_string()))?;
     if req.cmd.is_empty() {

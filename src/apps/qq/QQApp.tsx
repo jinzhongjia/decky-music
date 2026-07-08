@@ -1,8 +1,19 @@
-// QQ 音乐 app(内容区)。目前只有可填的「搜索」;推荐/我的音乐/智能电台/正在播放 待内容接口,
-// 见 docs/ui-design/specs/qq-ui.md。届时在此加页面 + 导航,与 NCMApp 各自演进。
+// QQ 音乐 app(内容区)。当前可填:搜索 / 正在播放。
+// 推荐 / 我的音乐 / 智能电台 待内容接口(P5),届时在 tabs 里加页,见 docs/ROADMAP.md、specs/qq-ui.md。
 
+import { t } from "../../i18n";
+import { NowPlaying } from "../../screens/NowPlaying";
 import { Search } from "../../screens/Search";
+import { TabShell } from "../../ui/TabShell";
 
 export function QQApp() {
-  return <Search />;
+  return (
+    <TabShell
+      initial="search"
+      tabs={[
+        { id: "search", title: t("search"), content: <Search /> },
+        { id: "nowplaying", title: t("nowPlaying"), content: <NowPlaying /> },
+      ]}
+    />
+  );
 }

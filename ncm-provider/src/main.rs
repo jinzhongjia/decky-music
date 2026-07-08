@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 mod commands;
 mod logging;
 mod login;
+mod lyric;
 mod protocol;
 mod state;
 
@@ -97,6 +98,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map(|a| a.id)
                     .unwrap_or_default();
                 let _ = out_tx.send(commands::song_url(&state, req.id, &song_id, &out_tx).await);
+            }
+            "lyric" => {
+                let song_id = protocol::parse_args::<protocol::LyricArgs>(&req)
+                    .map(|a| a.id)
+                    .unwrap_or_default();
+                let _ = out_tx.send(lyric::lyric(&state, req.id, &song_id).await);
             }
             "logout" => {
                 let _ = out_tx.send(commands::logout(&state, req.id).await);

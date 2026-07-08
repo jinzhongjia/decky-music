@@ -12,8 +12,8 @@ import { theme } from "./ui/theme";
 export const ROUTE = "/music";
 
 // 大屏 shell(F2):全屏框架 + 读当前 provider 挂对应 app + 底部常驻 MiniPlayer。
-// QQ/NCM 是两套产品,各自的页面/导航在 apps/qq、apps/ncm;共享框架/播放条在此。
-// 导航交互(L1/R1 切页、View 跃迁、按键图例)待各 app 有 ≥2 页时补(F3)。见 docs/ui-design/BUILD-PLAN.md。
+// QQ/NCM 是两套产品,各自的页面/导航(顶部页签 + L1/R1,见 TabShell)在 apps/qq、apps/ncm;
+// 共享框架/播放条在此。L1/R1 切页与页脚图例由 @decky/ui 原生 Tabs 提供。见 docs/ROADMAP.md。
 export function Page() {
   const [provider, setProvider] = useState<Provider | undefined>(undefined); // undefined = 加载中
 

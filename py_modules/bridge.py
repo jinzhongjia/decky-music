@@ -267,6 +267,11 @@ class Bridge:
         r = await self.provider.request("search", {"keyword": keyword})
         return {"ok": r.ok, "songs": r.data.get("songs", []) if r.ok else []}
 
+    async def get_lyric(self, mid: str) -> dict:
+        # 透传 provider 归一化歌词;失败回空歌词(前端显示占位,不报错)
+        r = await self.provider.request("lyric", {"id": mid})
+        return r.data if r.ok else {"word_by_word": False, "lines": []}
+
     async def _on_provider_event(self, ev: protocol.ChildEvent):
         # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI
         if ev.ev == "login" and ev.type == "done":

@@ -14,6 +14,7 @@ from qqmusic_api import Client, Credential
 
 from qq import account as _account
 from qq import login as _login
+from qq import lyric as _lyric
 from qq import playback as _playback
 from qq import search as _search
 
@@ -47,3 +48,6 @@ class QQ:
 
     async def search(self, keyword: str, limit: int = 20) -> list[dict]:
         return await _search.search(self, keyword, limit)
+
+    async def lyric(self, mid: str) -> dict:
+        return await _lyric.get_lyric(self, mid)

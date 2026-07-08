@@ -61,3 +61,6 @@ class Plugin:
 
     async def search(self, keyword: str) -> dict:
         return await self.bridge.search(keyword)
+
+    async def get_lyric(self, mid: str) -> dict:
+        return await self.bridge.get_lyric(mid)
