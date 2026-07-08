@@ -102,25 +102,33 @@ Decky 只提供两种原语,足够:
 - **`callable(route)`** — 前端 → bridge 的 RPC(底层 websocket,`frontend/src/wsrouter.ts:193`)。前端 `@decky/api` 的 `callable("method")` 直接调用 bridge `Plugin` 类的同名 async 方法。
 - **`emit` / `addEventListener`** — bridge → 前端主动推送(`backend/decky_loader/plugin/imports/decky.py` 的 `emit`)。
 
-### 5.2 bridge ↔ 子进程:UDS + NDJSON
+### 5.2 bridge ↔ 子进程:UDS + NDJSON + 协议 v1
 
-帧格式**照抄 Decky 自己的内部传输**(`backend/decky_loader/localplatform/localsocket.py`):
+传输帧仍然**照抄 Decky 自己的内部传输**(`backend/decky_loader/localplatform/localsocket.py`):
 
 - **换行分隔 JSON(NDJSON)**:每条消息一行 `{json}\n`,UTF-8。
 - 单条上限 **1 MiB**(与 Decky `BUFFER_LIMIT = 2**20` 对齐)。
 
-两个方向的消息:
+协议当前只保留 **v1**。四种消息:
 
-- **请求/响应**(bridge 主动):`{"cmd":"...","...":...}` → `{"ok":true,"...":...}`
-- **事件上报**(子进程主动,主要来自 player):`{"ev":"position","sec":42}` / `{"ev":"ended"}` / `{"ev":"error","msg":...}`
+| 方向 | 类型 | 形状 |
+|---|---|---|
+| bridge → child | Request | `{"id":N,"cmd":C,"args":{...}}` |
+| child → bridge | Response ok | `{"id":N,"ok":true,"data":{...}}` |
+| child → bridge | Response error | `{"id":N,"ok":false,"error":{"code":"...","message":"..."}}` |
+| child → bridge | Domain Event | `{"ev":"player"|"login"|"provider","type":T,"data":{...}}` |
+| child → bridge | Log Event | `{"ev":"log","level":"debug|info|warn|error","where":"...","msg":"..."}` |
 
-> ⚠️ 本节及下文时序图里的扁平事件/响应格式是**协议 v0 的示意,已过时**。当前实现走**协议 v1**
-> (`request{id,cmd,args}` / `response{id,ok,data|error}` / `event{ev,type,data}`,log 独立顶层),
-> **权威定义见 `AGENTS.md`「协议 v1」+ 各 `protocol.*` 模块**。此处保留仅作架构叙述,勿照抄字段。
+实现约束:
+
+- 构造 / 解码集中在协议模块:bridge `py_modules/protocol.py`,QQ `qq-provider/protocol.py`,NCM `ncm-provider/src/protocol.rs`,player `player/src/protocol.rs`。
+- request id 由 bridge 递增生成。当前每条 `Conn` 用锁串行 request/response,FIFO 足够;id 用于校验错配与丢弃超时后的迟到响应。若后续需要真正乱序并发,再把 response queue 换成 `id -> Future` demux。
+- 失败响应必须带稳定 `error.code`,前端 `src/api.ts` 本地化;`message` 只作安全 fallback。
+- 子进程诊断走 `Log Event`;stderr 只留 panic/traceback 等非预期输出。
 
 > 关于 provider 包裹:ncm-api-rs 与 QQMusicApi **都作为库使用**,由我们各写一层 wrapper 暴露上述 NDJSON-over-UDS 协议(不用它们自带的 axum / FastAPI HTTP server)。两个 provider 因此协议一致,bridge 统一对待。
 
-### 5.3 一次"播放"的完整流转(全程不跨 bridge)
+### 5.3 一次"播放"的完整流转(协议 v1)
 
 ```mermaid
 sequenceDiagram
@@ -128,15 +136,18 @@ sequenceDiagram
   participant BR as bridge
   participant P as provider
   participant PL as player
-  UI->>BR: callable("play", songId)
-  BR->>P: {"cmd":"song_url","id":songId}\n
-  P-->>BR: {"ok":true,"url":"https://..."}\n
-  BR->>PL: {"cmd":"load","url":"https://..."}\n
-  PL-->>BR: {"ev":"playing"}\n
-  BR-->>UI: emit("player", {playing})
+  UI->>BR: callable("play_queue", items, startIndex)
+  BR->>P: {"id":1,"cmd":"song_url","args":{"id":"...","media_mid":"..."}}
+  P-->>BR: {"id":1,"ok":true,"data":{"url":"https://..."}}
+  BR->>PL: {"id":2,"cmd":"load","args":{"url":"https://..."}}
+  PL-->>BR: {"id":2,"ok":true,"data":{}}
+  BR-->>UI: emit("player", {"ev":"player","type":"track","data":{"index":0,"song":{...}}})
+  PL-->>BR: {"ev":"player","type":"playing","data":{"pos":0.0,"wall_ms":...}}
+  BR-->>UI: emit("player", {"ev":"player","type":"playing","data":{"pos":0.0,"wall_ms":...}})
   Note over PL,UI: 稳态播放期间不逐帧上报<br/>UI 按 wall_ms 本地插值进度(见 §5.5)
-  PL-->>BR: {"ev":"ended"}\n
-  BR-->>UI: emit("player", {ended})
+  PL-->>BR: {"ev":"player","type":"ended","data":{}}
+  BR-->>UI: emit("player", {"ev":"player","type":"ended","data":{}})
+  BR->>BR: bridge 根据队列/play_mode 决定是否自动切下一首
 ```
 
 UI 全程拿不到 URL、碰不到音频流,一切经 bridge。
@@ -159,7 +170,7 @@ UI 全程拿不到 URL、碰不到音频流,一切经 bridge。
 | bridge→provider | song_url/搜索/歌词 | 人手触发 | 请求 ~30B,搜索结果 5-50KB |
 | player→bridge | playing/ended/error 事件 | 状态变化时 | ~30B |
 
-`{"ev":"position","sec":42}` ≈ 30 字节,stdlib `json.loads` 解它约 **1-3 微秒**;50KB 搜索结果约 0.5-1ms 且每次人手搜索才发生一次。**这点量 JSON 绰绰有余,序列化不是瓶颈。**
+`{"ev":"player","type":"playing","data":{"pos":42,"wall_ms":...}}` 也只是百字节级,stdlib `json.loads` 解它约 **1-3 微秒**;50KB 搜索结果约 0.5-1ms 且每次人手搜索才发生一次。**这点量 JSON 绰绰有余,序列化不是瓶颈。**
 
 **编码决策(逐跳):**
 
@@ -365,85 +376,26 @@ graph LR
 
 ---
 
-## 9. bridge 参考骨架
+## 9. 当前实现索引
 
-`backend/main.py`(总线,零业务逻辑;仅示意,重启/并发见 §10):
+当前以源码模块作为协议与行为的真相源:
 
-```python
-import os, asyncio, json
-import decky
+| 文件 | 职责 |
+|---|---|
+| `main.py` | Decky `Plugin` 门面,只把 callable 转发给 bridge |
+| `py_modules/bridge.py` | UDS server、子进程生命周期、provider 切换、credential 注入、UI 事件转发 |
+| `py_modules/protocol.py` | bridge 侧协议 v1 request 构造、response/event/log 严格解码 |
+| `py_modules/playback.py` | 播放/普通队列真相源、自动切歌、`track`/`player` 事件转发 |
+| `src/api.ts` | 前端唯一接口层:callable 声明、事件类型、运行时 guard |
+| `qq-provider/protocol.py` | QQ provider 协议 v1 构造/解码 |
+| `ncm-provider/src/protocol.rs` | NCM provider 协议 v1 构造/解码 |
+| `player/src/protocol.rs` | player 协议 v1 构造/解码 |
 
-RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
-def BIN(n): return os.path.join(decky.DECKY_PLUGIN_DIR, "bin", n)
+跨层改动规则:
 
-class Conn:
-    """一个子进程的 UDS 连接:bridge 作 server,子进程连入。"""
-    def __init__(self, name):
-        self.path = os.path.join(RUNTIME, f"{name}.sock")
-        self.reader = self.writer = self.server = None
-        self.on_event = None  # 子进程主动上报(position/ended/error)时回调
-
-    async def listen(self):
-        try: os.unlink(self.path)
-        except FileNotFoundError: pass
-        self.server = await asyncio.start_unix_server(self._accept, self.path)
-
-    async def _accept(self, reader, writer):
-        self.reader, self.writer = reader, writer
-        while (line := await reader.readline()):        # \n 分帧,同 Decky
-            msg = json.loads(line)
-            if "ev" in msg and self.on_event:
-                await self.on_event(msg)
-
-    async def request(self, obj) -> dict:               # 简化:请求/响应串行
-        self.writer.write((json.dumps(obj) + "\n").encode())
-        await self.writer.drain()
-        return json.loads(await self.reader.readline())
-
-class Plugin:
-    async def _main(self):
-        self.provider = Conn("provider")
-        self.player = Conn("player")
-        await self.provider.listen()
-        await self.player.listen()
-        self.player.on_event = self._forward_player_event
-        await asyncio.create_subprocess_exec(BIN("player"), "--socket", self.player.path)
-
-    # ---- UI 只调下面这些 ----
-    async def set_provider(self, which: str):           # "qq" | "ncm"
-        binname = "qq-provider" if which == "qq" else "ncm-provider"
-        await asyncio.create_subprocess_exec(BIN(binname), "--socket", self.provider.path)
-
-    async def play(self, song_id: str):
-        r = await self.provider.request({"cmd": "song_url", "id": song_id})
-        await self.player.request({"cmd": "load", "url": r["url"]})
-
-    async def pause(self):    await self.player.request({"cmd": "pause"})
-    async def resume(self):   await self.player.request({"cmd": "resume"})
-    async def seek(self, s):  await self.player.request({"cmd": "seek", "sec": s})
-    async def volume(self, v):await self.player.request({"cmd": "volume", "val": v})
-
-    async def _forward_player_event(self, msg):
-        await decky.emit("player", msg)                 # 推给 UI
-
-    async def _unload(self):
-        for c in (self.provider, self.player):
-            if c and c.server: c.server.close()
-```
-
-前端对接:
-
-```ts
-import { callable, addEventListener } from "@decky/api";
-
-const setProvider = callable<[which: string], void>("set_provider");
-const play = callable<[songId: string], void>("play");
-
-addEventListener("player", (msg) => { /* 更新播放态/进度条 */ });
-
-await setProvider("qq");
-await play("<qq-song-id>");   // URL、音频流全在 bridge↔子进程之间,UI 看不到
-```
+1. 改 bridge callable 或 emit 事件 → 同步改 `src/api.ts`。
+2. 改 bridge ↔ child 协议字段 → 同步改四端 protocol 模块与测试。
+3. 子进程错误必须返回稳定 `error.code`;日志和错误消息不得包含 URL/cookie/credential。
 
 ---
 
@@ -457,8 +409,8 @@ await play("<qq-song-id>");   // URL、音频流全在 bridge↔子进程之间,
    - **构建记录(2026-07-04):** player P0 二进制在官方 `holo-toolchain-rust`(+`pkgconf`/`alsa-lib`)镜像内构建,glibc 随 SteamOS。`readelf -d` 确认 NEEDED 仅 `libasound.so.2` + 系统基线(`libgcc_s`/`libm`/`libc`),**无 `libssl`/`libcrypto`**(rustls 生效)—— 满足"ldd 只动态依赖 libasound"验收。
    - **播放记录(2026-07-04,桌面模式实测):** 二进制 scp 到 Deck,`ldd` 全部解析、无 GLIBC 缺失;`player --play <mp3>` 拉流成功 → `OutputStream::try_default()` 开默认设备无错 → symphonia 解码 → **实际听到声音**、播完 `exit 0`。→ **待验证项② rodio/cpal 格式协商已通过(桌面模式)**。
    - **游戏模式验证(2026-07-04,整链实测):** 插件部署上 Deck,bridge 以 uid 1000(deck)+ 注入 `XDG_RUNTIME_DIR=/run/user/1000` spawn player,UDS 连接建立。游戏模式(gamescope 会话)下经 UI「测试播放」→ bridge `play_url` → player `load` **出声正常,暂停/继续可用**。→ **命门彻底关闭:整条 UI→bridge→player 在真机游戏模式跑通。**
-2. **子进程崩溃恢复。** bridge 需 watchdog:轮询/监听子进程退出,自动重启并 `emit` 通知 UI。§9 骨架未含。
-3. **NDJSON 并发。** §9 `request()` 是串行(发一条读一条)。若需边播边发命令,给命令加 `request-id` 关联响应,或命令/事件分双向独立处理。
+2. **子进程崩溃恢复。** bridge 仍需 watchdog:监听子进程退出,自动重启并 `emit` 通知 UI;当前进程管理已集中在 `py_modules/bridge.py`,后续在该处补齐。
+3. **NDJSON 乱序并发。** 协议 v1 已有 request id;当前 bridge 每条 `Conn` 用锁串行请求并丢弃迟到响应,足够支撑现有控制面。若后续需要同一子进程多请求乱序并发,再把 FIFO response queue 升级为 `id -> Future` demux。
 4. **二进制执行位。** `remote_binary` 下载后确认 `bin/` 下文件有 `+x`;缺失则 bridge 里 `os.chmod`。
 5. **provider 端口/环境差异消除。** 因统一走 UDS + 自写 wrapper,原库的 HTTP server / 端口配置不再使用。
 6. **音频格式覆盖。** 确认 symphonia 覆盖网易云/QQ 实际下发的编码(mp3/flac/aac/ogg);缺项时补 `rubato` 重采样或换解码路径。
