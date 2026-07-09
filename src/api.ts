@@ -18,6 +18,7 @@ const ERR_CODES: Record<string, string> = {
   audio_device_failed: "errAudio",
   audio_thread_gone: "errAudio",
   login_failed: "errLogin",
+  not_logged_in: "errNotLoggedIn",
   login_device_limit: "errLoginDeviceLimit",
   login_account_restricted: "errLoginRestricted",
   login_rate_limit: "errLoginRateLimit",
@@ -68,6 +69,9 @@ export type Playlist = {
   play_count: number;
 };
 export type RecommendData = { playlists: Playlist[]; newsongs: Song[] };
+export type DiscoverData = { playlists: Playlist[] };
+// 每日推荐(NCM,需登录):失败带稳定 error code(not_logged_in 等)供本地化
+export type DailySongsResult = { ok: boolean; songs: Song[]; error?: string };
 // 归一化歌词(provider 出,见 qq/lyric.py、ncm-provider/src/lyric.rs)。
 // word_by_word=true 时 line 带 words[](逐字高亮,NCM);否则整行高亮(QQ)。tr=该行译文(可空)。
 export type LyricWord = { t_ms: number; dur_ms: number; text: string };
@@ -91,6 +95,8 @@ export const api = {
   getLyric: callable<[mid: string], Lyric>("get_lyric"),
   getRecommend: callable<[], RecommendData>("get_recommend"),
   getPlaylistSongs: callable<[playlistId: string], SearchResult>("get_playlist_songs"),
+  getDiscover: callable<[], DiscoverData>("get_discover"),
+  getDailySongs: callable<[], DailySongsResult>("get_daily_songs"),
   playQueue: callable<[items: QueueItem[], startIndex: number], void>("play_queue"),
   getPlayback: callable<[], PlaybackState>("get_playback"),
   getQueue: callable<[], QueueState>("get_queue"),

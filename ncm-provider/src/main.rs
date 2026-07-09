@@ -14,6 +14,7 @@ use tokio::net::UnixStream;
 use tokio::sync::mpsc;
 
 mod commands;
+mod content;
 mod logging;
 mod login;
 mod lyric;
@@ -100,10 +101,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = out_tx.send(commands::song_url(&state, req.id, &song_id, &out_tx).await);
             }
             "lyric" => {
-                let song_id = protocol::parse_args::<protocol::LyricArgs>(&req)
+                let song_id = protocol::parse_args::<protocol::IdArgs>(&req)
                     .map(|a| a.id)
                     .unwrap_or_default();
                 let _ = out_tx.send(lyric::lyric(&state, req.id, &song_id).await);
+            }
+            "discover" => {
+                let _ = out_tx.send(content::discover(&state, req.id).await);
+            }
+            "daily_songs" => {
+                let _ = out_tx.send(content::daily_songs(&state, req.id).await);
+            }
+            "playlist_songs" => {
+                let pid = protocol::parse_args::<protocol::IdArgs>(&req)
+                    .map(|a| a.id)
+                    .unwrap_or_default();
+                let _ = out_tx.send(content::playlist_songs(&state, req.id, &pid).await);
             }
             "logout" => {
                 let _ = out_tx.send(commands::logout(&state, req.id).await);

@@ -317,9 +317,21 @@ class Bridge:
         return r.data if r.ok else {"playlists": [], "newsongs": []}
 
     async def get_playlist_songs(self, playlist_id: str) -> dict:
-        # 歌单曲目;返回沿用 search 的 {ok, songs} 形状
+        # 歌单曲目;返回沿用 search 的 {ok, songs} 形状(QQ/NCM 同名命令,透传共用)
         r = await self.provider.request("playlist_songs", {"id": playlist_id})
         return {"ok": r.ok, "songs": r.data.get("songs", []) if r.ok else []}
+
+    async def get_discover(self) -> dict:
+        # NCM 发现页;失败回空列表
+        r = await self.provider.request("discover")
+        return r.data if r.ok else {"playlists": []}
+
+    async def get_daily_songs(self) -> dict:
+        # NCM 每日推荐(需登录);失败带 error code 供前端 i18n(not_logged_in 等)
+        r = await self.provider.request("daily_songs")
+        if r.ok:
+            return {"ok": True, "songs": r.data.get("songs", [])}
+        return {"ok": False, "songs": [], "error": r.error.code if r.error else "provider_error"}
 
     async def _on_provider_event(self, ev: protocol.ChildEvent):
         # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI

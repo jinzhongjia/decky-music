@@ -15,6 +15,7 @@ pub enum ErrorCode {
     Timeout,
     NoPlayable,
     ProviderError,
+    NotLoggedIn,
 }
 
 impl ErrorCode {
@@ -24,6 +25,7 @@ impl ErrorCode {
             ErrorCode::Timeout => "timeout",
             ErrorCode::NoPlayable => "no_playable",
             ErrorCode::ProviderError => "provider_error",
+            ErrorCode::NotLoggedIn => "not_logged_in",
         }
     }
 }
@@ -58,8 +60,9 @@ pub struct SongUrlArgs {
     pub id: String,
 }
 
+// 通用 {id} 参数(lyric / playlist_songs 等按 id 取数的命令共用)
 #[derive(Debug, Deserialize)]
-pub struct LyricArgs {
+pub struct IdArgs {
     #[serde(default)]
     pub id: String,
 }

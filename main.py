@@ -88,3 +88,9 @@ class Plugin:
 
     async def get_playlist_songs(self, playlist_id: str) -> dict:
         return await self.bridge.get_playlist_songs(playlist_id)
+
+    async def get_discover(self) -> dict:
+        return await self.bridge.get_discover()
+
+    async def get_daily_songs(self) -> dict:
+        return await self.bridge.get_daily_songs()

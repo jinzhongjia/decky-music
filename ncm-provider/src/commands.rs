@@ -30,7 +30,7 @@ pub async fn search(state: &State, id: u64, keyword: &str) -> String {
     }
 }
 
-fn song_brief(s: &Value) -> Value {
+pub(crate) fn song_brief(s: &Value) -> Value {
     let singer = s["ar"]
         .as_array()
         .map(|a| {
