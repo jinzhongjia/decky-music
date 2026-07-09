@@ -33,7 +33,8 @@ export function Search() {
     <div
       style={{ display: "flex", flexDirection: "column", gap: "1rem", flexGrow: 1, minHeight: 0 }}
     >
-      <Focusable style={{ display: "flex", gap: "1rem", flexShrink: 0 }}>
+      {/* flex-end:按钮与输入框底对齐(TextField 上方还有 label),不被拉成整行高的大块 */}
+      <Focusable style={{ display: "flex", gap: "1rem", flexShrink: 0, alignItems: "flex-end" }}>
         <div style={{ flexGrow: 1 }}>
           <TextField
             value={kw}
