@@ -10,6 +10,7 @@ import { ReactNode, useState } from "react";
 import { FaMusic } from "react-icons/fa";
 
 import { t } from "../i18n";
+import { openQueueOverlay } from "../overlays/QueueOverlay";
 import { togglePlay, usePlayer } from "../player/usePlayer";
 import { theme } from "./theme";
 
@@ -54,6 +55,10 @@ export function AppShell({
         if (current) togglePlay();
       }}
       onMenuActionDescription={current ? t("playPause") : undefined}
+      onOptionsButton={() => {
+        if (current) openQueueOverlay(); // Y:队列浮层;队列空(无当前曲)不开也不提示
+      }}
+      onOptionsActionDescription={current ? t("queueTitle") : undefined}
     >
       {/* 首行:系统 chrome 在其上方,不绘制不聚焦 */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
@@ -140,7 +145,7 @@ function Chip({ children }: { children: ReactNode }) {
 // 顶层页签行右侧状态徽章:小封面 + 歌名跑马灯 + EQ 播放态。纯展示,不参与焦点。
 function NowPlayingBadge({ accent }: { accent: string }) {
   const { current, playing } = usePlayer();
-  if (!current) return null;
+  if (!current || !current.name) return null; // 无名(旧存档恢复占位)不显示,避免孤零零一个 "-"
   return (
     <div
       style={{

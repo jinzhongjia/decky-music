@@ -82,6 +82,12 @@ export const api = {
   getLyric: callable<[mid: string], Lyric>("get_lyric"),
   playQueue: callable<[items: QueueItem[], startIndex: number], void>("play_queue"),
   getPlayback: callable<[], PlaybackState>("get_playback"),
+  getQueue: callable<[], QueueState>("get_queue"),
+  queuePlay: callable<[index: number], void>("queue_play"),
+  queueInsertNext: callable<[item: QueueItem], void>("queue_insert_next"),
+  queueAppend: callable<[item: QueueItem], void>("queue_append"),
+  queueRemove: callable<[index: number], void>("queue_remove"),
+  queueClear: callable<[], void>("queue_clear"),
   nextTrack: callable<[], void>("next_track"),
   prevTrack: callable<[], void>("prev_track"),
   setPlayMode: callable<[mode: PlayMode], void>("set_play_mode"),
@@ -118,6 +124,9 @@ export type PlaybackState = {
   wall: number;
   mode: PlayMode;
 };
+// 队列快照(Y 浮层用);radio 模式 items 只含当前曲(电台未知感,见 QUEUE-BEHAVIOR §4)
+export type QueueMode = "normal" | "radio";
+export type QueueState = { mode: QueueMode; index: number; items: TrackInfo[] };
 
 // ---- emit 事件(bridge → 前端)。协议 v1:{ev, type, data}。返回退订函数,用于 useEffect cleanup。 ----
 
@@ -128,6 +137,7 @@ export const PlayerEv = {
   Ended: "ended",
   Error: "error",
   Track: "track", // bridge 合成:当前播放曲变更(自动切歌/next/prev),data.index 指向队列位置
+  Queue: "queue", // bridge 合成:队列结构变化(编辑/清空/切模式),浮层收到即重拉 getQueue
 } as const;
 export type PlayerEv = (typeof PlayerEv)[keyof typeof PlayerEv];
 
@@ -148,7 +158,9 @@ export type PlayerEvent =
   | { ev: "player"; type: "paused"; data: { pos: number } }
   | { ev: "player"; type: "ended"; data: Record<string, never> }
   | { ev: "player"; type: "error"; data: { code: string; message: string } }
-  | { ev: "player"; type: "track"; data: { index: number; song: TrackInfo } };
+  // song=null:队列清空进入空态
+  | { ev: "player"; type: "track"; data: { index: number; song: TrackInfo | null } }
+  | { ev: "player"; type: "queue"; data: { length: number; index: number; mode: QueueMode } };
 
 export type LoginEvent =
   | { ev: "login"; type: "qr"; data: { qr: string; mimetype?: string } }

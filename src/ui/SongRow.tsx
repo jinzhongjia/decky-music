@@ -1,15 +1,26 @@
 // 歌曲行(共享原语):封面 + 歌名 + VIP 徽标 + 歌手·专辑 + 时长。Focusable(手柄 A 触发)。
-// 搜索结果 / 歌单 / 队列面板等列表复用。对齐 docs/ui-design 效果图的富行,而非纯文字胶囊。
+// 搜索结果 / 歌单等列表复用。onMenu:X 键上下文菜单(P4,入队操作),图例随焦点同步。
 
 import { Focusable } from "@decky/ui";
 
 import { Song } from "../api";
+import { t } from "../i18n";
 import { fmtTime, theme } from "./theme";
 
-export function SongRow({ song, onClick }: { song: Song; onClick: () => void }) {
+export function SongRow({
+  song,
+  onClick,
+  onMenu,
+}: {
+  song: Song;
+  onClick: () => void;
+  onMenu?: () => void;
+}) {
   return (
     <Focusable
       onActivate={onClick}
+      onSecondaryButton={onMenu}
+      onSecondaryActionDescription={onMenu ? t("moreActions") : undefined}
       style={{
         display: "flex",
         alignItems: "center",

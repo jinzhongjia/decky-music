@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 
-import { PlayMode, PlayerEv, Song, TrackInfo, api, errorText, onPlayer } from "../api";
+import { PlayMode, PlayerEv, QueueItem, Song, TrackInfo, api, errorText, onPlayer } from "../api";
 import { guard, reportError } from "../errors";
 import { t } from "../i18n";
 
@@ -36,6 +36,7 @@ onPlayer((e) => {
     state.playing = false;
   } else if (e.type === PlayerEv.Track) {
     state.current = e.data.song;
+    if (!e.data.song) state.playing = false; // song=null:队列清空进入空态
   } else if (e.type === PlayerEv.Error) {
     state.playing = false;
     reportError(errorText(e.data.code) || t("playError"));
@@ -59,22 +60,20 @@ api
 
 // ---- 动作 ----
 
+// Song → 队列项(bridge 存富信息作真相源);X 菜单入队也用
+export const toQueueItem = (s: Song): QueueItem => ({
+  id: s.mid,
+  media_mid: s.media_mid,
+  name: s.name,
+  singer: s.singer,
+  cover: s.cover,
+  duration: s.duration,
+});
+
 export function playQueue(songs: Song[], startIndex: number) {
   state.current = toTrack(songs[startIndex]); // 乐观更新,UI 即时反映
   notify();
-  guard(() =>
-    api.playQueue(
-      songs.map((s) => ({
-        id: s.mid,
-        media_mid: s.media_mid,
-        name: s.name,
-        singer: s.singer,
-        cover: s.cover,
-        duration: s.duration,
-      })),
-      startIndex
-    )
-  );
+  guard(() => api.playQueue(songs.map(toQueueItem), startIndex));
 }
 
 const toTrack = (s: Song): TrackInfo => ({
