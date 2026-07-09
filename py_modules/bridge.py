@@ -58,10 +58,10 @@ class Conn:
         self.writer: asyncio.StreamWriter | None = None
         self.server: asyncio.AbstractServer | None = None
         self.on_event = None  # ChildEvent(player/login/provider)时回调
-        self.responses: asyncio.Queue = asyncio.Queue()  # ChildResponse 队列
+        self.pending: dict[int, asyncio.Future] = {}  # 在途请求:id → Future(响应按 id demux)
         self.connected: asyncio.Event = asyncio.Event()  # 子进程连入后置位
         self._next_id = 0
-        self._lock = asyncio.Lock()  # 串行化 request/response,防并发下 FIFO 错配(见 request)
+        self._wlock = asyncio.Lock()  # 只保护写帧原子性;请求周期不再互相排队(修按键排队无响应)
 
     async def listen(self):
         try:
@@ -87,28 +87,31 @@ class Conn:
             elif isinstance(msg, protocol.ChildEvent):
                 if self.on_event:
                     await self.on_event(msg)
-            else:  # ChildResponse
-                await self.responses.put(msg)
+            else:  # ChildResponse:按 id 匹配在途请求;无主(已超时放弃)的迟到响应丢弃
+                fut = self.pending.pop(msg.id, None)
+                if fut and not fut.done():
+                    fut.set_result(msg)
+                else:
+                    log("bridge", "own", "warn", f"{self.name} drop stale response id={msg.id}")
 
     async def request(self, cmd: str, args: dict | None = None) -> protocol.ChildResponse:
-        # 串行化:Decky callable 并发调用 + 自动切歌会并发发起请求,不串行则 FIFO 响应错配 → 挂起。
-        # 锁内保证同一 Conn 一次只有一个请求在途,故仍可按 FIFO 收发;id 用于丢弃超时请求迟到的响应。
-        async with self._lock:
-            self._next_id += 1
-            rid = self._next_id
-            self.writer.write((json.dumps(protocol.request(rid, cmd, args)) + "\n").encode())
-            await self.writer.drain()
-            while True:
-                try:
-                    resp = await asyncio.wait_for(self.responses.get(), REQUEST_TIMEOUT)
-                except asyncio.TimeoutError:
-                    # provider/player 卡死或崩溃兜底:返回错误响应,不永久挂 UI(迟到响应下次丢弃)
-                    log("bridge", "own", "error", f"{self.name} request timeout: {cmd}")
-                    return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
-                if resp.id == rid:
-                    return resp
-                # 陈旧响应(某个已超时请求的迟到回包)→ 丢弃,继续等本次的
-                log("bridge", "own", "warn", f"{self.name} drop stale response id={resp.id} (want {rid})")
+        # 并发 demux(协议 v1 预留的升级):多请求可同时在途,响应按 id 匹配,
+        # 一个挂着的慢请求(如慢 CDN 的 load)不再队头阻塞 pause/next 等其它命令。
+        self._next_id += 1
+        rid = self._next_id
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        self.pending[rid] = fut
+        try:
+            async with self._wlock:  # 写帧原子,防并发写乱行
+                self.writer.write((json.dumps(protocol.request(rid, cmd, args)) + "\n").encode())
+                await self.writer.drain()
+            return await asyncio.wait_for(fut, REQUEST_TIMEOUT)
+        except asyncio.TimeoutError:
+            # provider/player 卡死或崩溃兜底:返回错误响应,不永久挂 UI(迟到响应经 pending 丢弃)
+            log("bridge", "own", "error", f"{self.name} request timeout: {cmd}")
+            return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
+        finally:
+            self.pending.pop(rid, None)
 
     async def close(self):
         if self.writer:

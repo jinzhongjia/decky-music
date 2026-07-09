@@ -45,6 +45,7 @@ class Playback:
         self.wall = 0  # 该位置对应墙钟(ms),UI 插值用
         self.last_error = ""  # 最近一次 _play_index 失败的错误码(自动切歌熔断判据)
         self._persist = persist  # bridge 注入的落盘回调 (items, index) -> None;None = 不持久化
+        self._play_gen = 0  # 播放意图代次:新意图作废在途旧意图(最后一次操作赢,不排队)
 
     def restore(self, saved: dict | None):
         """启动时从 settings 恢复普通队列(含展示字段;旧存档缺失则空串占位),不自动开播。"""
@@ -172,12 +173,17 @@ class Playback:
             return j
         return (self.index + 1) % n
 
-    async def _play_index(self, i: int) -> bool:
+    async def _play_index(self, i: int) -> bool | None:
+        """播放队列第 i 首。True 成功 / False 失败 / None 被更新的播放意图取代(静默让位)。"""
+        self._play_gen += 1
+        gen = self._play_gen
         self.index = i
         item = self.queue[i]
         r = await self.provider.request(
             "song_url", {"id": item["id"], "media_mid": item.get("media_mid", "")}
         )
+        if gen != self._play_gen:
+            return None  # 等待期间用户又切了歌:让位,不发事件不碰状态
         if not r.ok:
             self.last_error = r.error.code if r.error else "play_failed"
             message = r.error.message if r.error else "play_failed"
@@ -185,11 +191,17 @@ class Playback:
             await self._emit("error", {"code": self.last_error, "message": message})
             return False
         pr = await self.player.request("load", {"url": r.data["url"]})
+        if gen != self._play_gen:
+            return None
         if not pr.ok:
             # load 失败(拉流打不开/player 超时)也算失败:不发 track、不装作在播
             self.last_error = pr.error.code if pr.error else "play_failed"
             log("bridge", "own", "warn", f"player load failed id={item['id']}: {self.last_error}")
             await self._emit("error", {"code": self.last_error, "message": self.last_error})
+            if self.last_error == "timeout":
+                # 迟到的 load 可能稍后在 player 侧打开:补发 stop 作废(player 按代次丢弃),
+                # 否则会"UI 报错却出声/歌不对"
+                await self.player.request("stop")
             return False
         self.last_error = ""
         self.playing, self.pos, self.wall = True, 0.0, _now_ms()  # playing 事件会再校准
@@ -209,8 +221,11 @@ class Playback:
         # 列表/随机:自动往后;跳过不可播的(no_playable 秒回),最多试一圈。
         # timeout = 网络/后端垮了:立即熔断停止推进,不然逐首撞 30s 超时会把命令通道堵死几分钟。
         for _ in range(len(self.queue)):
-            if await self._play_index(self._advance_index()):
+            res = await self._play_index(self._advance_index())
+            if res:
                 return
+            if res is None:
+                return  # 被用户新的播放意图取代:自动切歌让位
             if self.last_error == "timeout":
                 log("bridge", "own", "warn", "auto-advance stopped: timeout (network/backend down)")
                 return
