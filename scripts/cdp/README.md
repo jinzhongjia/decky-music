@@ -8,7 +8,7 @@
 
 ## 前置
 
-- Node ≥ 21(全局 `WebSocket`,`cdp.mjs` 依赖它)。
+- Node ≥ 21(全局 `fetch` / `WebSocket`,`scripts/cdp/*.mjs` 依赖它)。
 - Deck 上 Steam 开着 CEF 远程调试(端口 8080,Decky 环境默认开)。
 
 ## 用法
@@ -18,10 +18,10 @@
 ssh -N -L 8080:localhost:8080 deck@192.168.0.18 &
 
 # 2. 列出 target(SharedJSContext / MainMenu / QuickAccess / …)
-curl -s localhost:8080/json | jq '.[].title'
+node scripts/cdp/cdp.mjs targets
 
-# 3. 对某个 target 跑一段探针 JS(按标题子串匹配 target)
-node scripts/cdp/cdp.mjs MainMenu scripts/cdp/probe-mainmenu.js
+# 3. 对某个 target 跑一段探针 JS(支持别名:bp/qam/shared/sjc/mainmenu)
+node scripts/cdp/cdp.mjs mainmenu scripts/cdp/probe-mainmenu.js
 
 # 4. 收尾:关隧道
 pkill -f "8080:localhost:8080"
@@ -29,9 +29,12 @@ pkill -f "8080:localhost:8080"
 
 ## 文件
 
-- `cdp.mjs` —— 极简 CDP 客户端:连 target → `Runtime.evaluate` 一段 JS 文件 → 打印返回值。
-- `cdp-shot.mjs` —— 截图某 target 到 PNG(UI 对比用):`node scripts/cdp/cdp-shot.mjs 大屏 /tmp/x.png`。可见画面在 **"Steam 大屏幕模式"**(`大屏`)target,不是 `SharedJSContext`。
+- `cdp-lib.mjs` —— DeckProbe 风格的共享 CDP helper:target alias、`Runtime.evaluate`、截图、console event、`Input.dispatchKeyEvent`;仍用 Node 原生 `WebSocket`,不引入 `ws` 依赖。
+- `cdp.mjs` —— 列 target / 连 target → `Runtime.evaluate` 一段 JS 文件 → 打印返回值。
+- `cdp-shot.mjs` —— 截图某 target 到 PNG(UI 对比用):`node scripts/cdp/cdp-shot.mjs bp /tmp/x.png`。可见画面在 **"Steam 大屏幕模式"**(`bp`)target,不是 `SharedJSContext`。
 - `cdp-nav.mjs` —— 让游戏模式主窗口导航到某路由:`node scripts/cdp/cdp-nav.mjs /music`。用**原始 Router**(非 @decky/ui 的聚焦窗口 Navigation,后者 CDP 下落错窗口),导航后等 ~900ms 落定。
+- `cdp-console.mjs` —— 抓 target 的 console warning/error、uncaught exception 和 CDP Log:`node scripts/cdp/cdp-console.mjs shared 30`。
+- `cdp-key.mjs` —— 通过 `Input.dispatchKeyEvent` 发按键:`node scripts/cdp/cdp-key.mjs bp ArrowDown Enter`。
 
 ## 全自动 UI 调试闭环
 
@@ -40,7 +43,7 @@ pkill -f "8080:localhost:8080"
 ```bash
 DECK_PASS=… bash scripts/deploy.sh                 # 部署(会重启 plugin_loader,回到主屏)
 node scripts/cdp/cdp-nav.mjs /music                # 自己导航到大屏路由(免手动重开)
-node scripts/cdp/cdp-shot.mjs 大屏 /tmp/music.png  # 截图,Read 查看
+node scripts/cdp/cdp-shot.mjs bp /tmp/music.png    # 截图,Read 查看
 ```
 
 要有正在播放的内容,先在 QAM 选源/登录一次(登录态持久);之后 `play_queue` 可由页面触发。
