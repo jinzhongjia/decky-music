@@ -17,7 +17,7 @@ use tokio::sync::mpsc as tmpsc;
 
 mod logging;
 mod protocol;
-use logging::log_json;
+use logging::{log_json, LogLevel};
 use protocol::ErrorCode;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,7 +50,7 @@ enum AudioEv {
         message: String,
     },
     Log {
-        level: &'static str,
+        level: LogLevel,
         place: &'static str,
         msg: String,
     },
@@ -79,7 +79,7 @@ impl AudioEv {
                 "error",
                 json!({"code": code.as_str(), "message": message}),
             ),
-            AudioEv::Log { level, place, msg } => log_json(level, place, msg),
+            AudioEv::Log { level, place, msg } => log_json(*level, place, msg),
         }
     }
 }
@@ -97,7 +97,7 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
         }
     };
     let _ = ev.send(AudioEv::Log {
-        level: "info",
+        level: LogLevel::Info,
         place: "audio",
         msg: "default audio device opened".into(),
     });
@@ -219,7 +219,7 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
             // 解析失败拿不到 id → 记录并丢弃(协议 v1 规则)
             Err(e) => {
                 let _ = out_tx.send(log_json(
-                    "warn",
+                    LogLevel::Warn,
                     "protocol",
                     &format!("bad request: {}", e.0),
                 ));
@@ -227,7 +227,7 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
             }
         };
         if debug {
-            let _ = out_tx.send(log_json("debug", "cmd", &req.cmd));
+            let _ = out_tx.send(log_json(LogLevel::Debug, "cmd", &req.cmd));
         }
         let resp = match req.cmd.as_str() {
             "load" => match protocol::parse_args::<protocol::LoadArgs>(&req) {
@@ -235,7 +235,7 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
                 Ok(a) => match fetch(&http, &a.url).await {
                     Ok(bytes) => {
                         let _ = out_tx.send(log_json(
-                            "info",
+                            LogLevel::Info,
                             "load",
                             &format!("fetched {} bytes", bytes.len()),
                         ));
@@ -243,8 +243,11 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
                         protocol::ok_empty(req.id)
                     }
                     Err(e) => {
-                        let _ =
-                            out_tx.send(log_json("error", "load", &format!("fetch failed: {e}")));
+                        let _ = out_tx.send(log_json(
+                            LogLevel::Error,
+                            "load",
+                            &format!("fetch failed: {e}"),
+                        ));
                         protocol::err(req.id, ErrorCode::FetchFailed, &e.to_string())
                     }
                 },
