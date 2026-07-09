@@ -42,6 +42,7 @@ class Playback:
         self.playing = False
         self.pos = 0.0  # 最近上报的播放位置(秒)
         self.wall = 0  # 该位置对应墙钟(ms),UI 插值用
+        self.last_error = ""  # 最近一次 _play_index 失败的错误码(自动切歌熔断判据)
 
     # ---- 对外命令 ----
 
@@ -94,12 +95,19 @@ class Playback:
             "song_url", {"id": item["id"], "media_mid": item.get("media_mid", "")}
         )
         if not r.ok:
-            code = r.error.code if r.error else "play_failed"
+            self.last_error = r.error.code if r.error else "play_failed"
             message = r.error.message if r.error else "play_failed"
-            log("bridge", "own", "warn", f"song_url failed id={item['id']}: {code}")
-            await self._emit("error", {"code": code, "message": message})
+            log("bridge", "own", "warn", f"song_url failed id={item['id']}: {self.last_error}")
+            await self._emit("error", {"code": self.last_error, "message": message})
             return False
-        await self.player.request("load", {"url": r.data["url"]})
+        pr = await self.player.request("load", {"url": r.data["url"]})
+        if not pr.ok:
+            # load 失败(拉流打不开/player 超时)也算失败:不发 track、不装作在播
+            self.last_error = pr.error.code if pr.error else "play_failed"
+            log("bridge", "own", "warn", f"player load failed id={item['id']}: {self.last_error}")
+            await self._emit("error", {"code": self.last_error, "message": self.last_error})
+            return False
+        self.last_error = ""
         self.playing, self.pos, self.wall = True, 0.0, _now_ms()  # playing 事件会再校准
         log("bridge", "own", "info", f"queue -> {i + 1}/{len(self.queue)} (mode={self.play_mode})")
         # 告知 UI 当前曲(含展示信息,不依赖前端队列)
@@ -112,9 +120,13 @@ class Playback:
         if self.play_mode == "single_loop":
             await self._play_index(self.index)  # ended 后 sink 已空,重放需重新 load
             return
-        # 列表/随机:自动往后;跳过不可播的,最多试一圈,避免全不可播时死循环
+        # 列表/随机:自动往后;跳过不可播的(no_playable 秒回),最多试一圈。
+        # timeout = 网络/后端垮了:立即熔断停止推进,不然逐首撞 30s 超时会把命令通道堵死几分钟。
         for _ in range(len(self.queue)):
             if await self._play_index(self._advance_index()):
+                return
+            if self.last_error == "timeout":
+                log("bridge", "own", "warn", "auto-advance stopped: timeout (network/backend down)")
                 return
         log("bridge", "own", "warn", "auto-advance: no playable track in queue")
 
