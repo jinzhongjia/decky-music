@@ -2,6 +2,9 @@
 
 `/music` 大屏 UI 的实现计划。原则：**只做现有后端能填的**；每子阶段可独立部署验收；视觉、焦点和去常驻条规则见 `specs/steam-deck-ui-rules.md`。
 
+> 状态：F1-F3 已完成（shell 自绘页签头 + 状态徽章 + Start 盲操落地为 `src/ui/AppShell.tsx`）。
+> F4 起的**完整接口 + UI 契约**（wire 形状、callable、事件、组件清单、验收）统一收口在 `../ROADMAP.md`，本文件保留架构拆分背景。
+
 ## 架构：一层共享 + 两个 provider app
 
 QQ 与 NCM 是两套不同产品（见 `specs/qq-ui.md` / `specs/ncm-ui.md`），不做统一页面树。
@@ -27,12 +30,12 @@ src/
 
 ## 子阶段
 
-| 阶段 | 内容 | 说明 |
+| 阶段 | 内容 | 状态 |
 | :--- | :--- | :--- |
-| F1 共享播放状态 | `usePlayer` 模块级 store、当前曲、播放态、进度插值、错误态。 | 已有基础可复用；不要新增后端接口。 |
-| F2 shell + provider app | 顶层 Tabs、`L1/R1` 切页、provider app 挂载、Tab 状态徽章、根级按键图例、移除底部固定 MiniPlayer 的依赖。 | provider 分叉从这里开始；两 app 可先只挂共享 Search + NowPlaying。 |
-| F3 NowPlaying 骨架 | 左 1/3 大封面 + 曲名歌手，右 2/3 歌词区，播放控制组。 | 两 app 复用；NCM 热评与逐字歌词后续扩展。 |
-| F4 队列浮层 | `Y` 键右侧模态浮层：队列列表、当前高亮、点歌跳播。 | 移除 / 清空待 bridge 队列编辑接口。 |
+| F1 共享播放状态 | `usePlayer` 模块级 store、当前曲、播放态、进度插值、错误态。 | ✅ 完成 |
+| F2 shell + provider app | 顶层 Tabs、`L1/R1` 切页、provider app 挂载、Tab 状态徽章、根级按键图例、移除底部固定 MiniPlayer。 | ✅ 完成（`ui/AppShell.tsx` 自绘页签头，原生 Tabs 会把内容区约束进中列故弃用） |
+| F3 NowPlaying 骨架 | 左 1/3 大封面 + 曲名歌手 + 控制组，右 2/3 歌词同步高亮。 | ✅ 完成 |
+| F4 队列浮层 | `Y` 键右侧模态浮层：队列列表、当前高亮、点歌跳播、移除/清空。 | 见 `../ROADMAP.md` P4（含 bridge 接口契约与验收） |
 
 内容接口到位后，再加差异页：QQ 推荐 / 智能电台 / 我的音乐，NCM 发现 / 私人 FM / 我的 / 热评。
 
