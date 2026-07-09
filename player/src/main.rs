@@ -6,9 +6,13 @@
 //! rodio 的 OutputStream/Sink 是 !Send,不能跨 tokio await,所以音频跑在专用 OS 线程上,
 //! 与 tokio 侧用 channel 通信。
 
-use std::io::Cursor;
+use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use reqwest::blocking::{Client, Response};
+use reqwest::header::{CONTENT_LENGTH, CONTENT_RANGE, RANGE};
+use reqwest::StatusCode;
 
 use serde_json::json;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -20,6 +24,8 @@ mod protocol;
 use logging::{log_json, LogLevel};
 use protocol::ErrorCode;
 
+type HttpStream = HttpRangeReader;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = arg("--socket").expect("--socket <path> required");
     tokio::runtime::Runtime::new()?.block_on(socket_loop(&socket))
@@ -28,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 // ---- 音频线程 ----
 
 enum AudioCmd {
-    Load(Vec<u8>),
+    Load(Box<HttpStream>),
     Pause,
     Resume,
     Volume(f32),
@@ -106,11 +112,11 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
 
     loop {
         match rx.recv_timeout(Duration::from_millis(250)) {
-            Ok(AudioCmd::Load(bytes)) => {
+            Ok(AudioCmd::Load(stream)) => {
                 match rodio::Sink::try_new(&handle)
                     .map_err(|e| e.to_string())
                     .and_then(|s| {
-                        rodio::Decoder::new(Cursor::new(bytes))
+                        rodio::Decoder::new(stream)
                             .map(|d| {
                                 s.append(d);
                                 s
@@ -153,8 +159,12 @@ fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv
             }
             Ok(AudioCmd::Seek(sec)) => {
                 if let Some(s) = &sink {
-                    // ponytail: best-effort;流式解码器可能不支持 seek,失败就忽略。
-                    let _ = s.try_seek(Duration::from_secs_f64(sec.max(0.0)));
+                    if s.try_seek(Duration::from_secs_f64(sec.max(0.0))).is_err() {
+                        let _ = ev.send(AudioEv::Error {
+                            code: ErrorCode::SeekFailed,
+                            message: "seek failed".into(),
+                        });
+                    }
                 }
             }
             Ok(AudioCmd::Stop) => {
@@ -209,7 +219,6 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let http = reqwest::Client::builder().build()?;
     let debug = std::env::var("DECKY_MUSIC_DEBUG").is_ok(); // release 下不发 debug 日志
 
     // NDJSON:每条一行 {json}\n,UTF-8,单条 ≤ 1 MiB
@@ -231,24 +240,21 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
         }
         let resp = match req.cmd.as_str() {
             "load" => match protocol::parse_args::<protocol::LoadArgs>(&req) {
-                // ponytail: 整首拉进内存再播;流式边下边播留后续。不记 URL(含限时 vkey,避免泄漏)
-                Ok(a) => match fetch(&http, &a.url).await {
-                    Ok(bytes) => {
-                        let _ = out_tx.send(log_json(
-                            LogLevel::Info,
-                            "load",
-                            &format!("fetched {} bytes", bytes.len()),
-                        ));
-                        let _ = cmd_tx.send(AudioCmd::Load(bytes));
-                        protocol::ok_empty(req.id)
+                // 不记 URL(含限时 vkey,避免泄漏);只打开响应头,音频数据由 rodio 按需读取。
+                Ok(a) => match open_http_stream(a.url).await {
+                    Ok(stream) => {
+                        let msg = if stream.range_supported() {
+                            "stream opened with range"
+                        } else {
+                            "stream opened without range"
+                        };
+                        let _ = out_tx.send(log_json(LogLevel::Info, "load", msg));
+                        send(&cmd_tx, AudioCmd::Load(Box::new(stream)), req.id)
                     }
-                    Err(e) => {
-                        let _ = out_tx.send(log_json(
-                            LogLevel::Error,
-                            "load",
-                            &format!("fetch failed: {e}"),
-                        ));
-                        protocol::err(req.id, ErrorCode::FetchFailed, &e.to_string())
+                    Err(()) => {
+                        let _ =
+                            out_tx.send(log_json(LogLevel::Error, "load", "stream open failed"));
+                        protocol::err(req.id, ErrorCode::FetchFailed, "stream open failed")
                     }
                 },
                 Err(_) => protocol::err(req.id, ErrorCode::MissingField, "url required"),
@@ -271,15 +277,152 @@ async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn fetch(http: &reqwest::Client, url: &str) -> reqwest::Result<Vec<u8>> {
-    Ok(http
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?
-        .to_vec())
+async fn open_http_stream(url: String) -> Result<HttpStream, ()> {
+    tokio::task::spawn_blocking(move || HttpRangeReader::open_url(&url))
+        .await
+        .map_err(|_| ())?
+        .map_err(|_| ())
+}
+
+struct HttpRangeReader {
+    url: String,
+    client: Client,
+    position: u64,
+    content_length: Option<u64>,
+    range_supported: bool,
+    current_stream: Option<Response>,
+}
+
+impl HttpRangeReader {
+    fn open_url(url: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let mut reader = Self {
+            url: url.to_string(),
+            client: Client::builder().build()?,
+            position: 0,
+            content_length: None,
+            range_supported: false,
+            current_stream: None,
+        };
+        reader.current_stream = Some(reader.open_range(0)?);
+        Ok(reader)
+    }
+
+    fn open_range(
+        &mut self,
+        start: u64,
+    ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
+        let resp = self
+            .client
+            .get(&self.url)
+            .header(RANGE, format!("bytes={start}-"))
+            .send()?;
+        let status = resp.status();
+        let supports_range = status == StatusCode::PARTIAL_CONTENT;
+        if start > 0 && !supports_range {
+            return Err("range request unsupported".into());
+        }
+        if start == 0 {
+            self.range_supported = supports_range;
+        }
+        let resp = resp.error_for_status()?;
+        self.remember_content_length(&resp);
+        Ok(resp)
+    }
+
+    fn open_range_io(&mut self, start: u64) -> io::Result<Response> {
+        self.open_range(start)
+            .map_err(|_| io::Error::other("stream open failed"))
+    }
+
+    fn remember_content_length(&mut self, resp: &Response) {
+        if let Some(total) = content_range_total(resp) {
+            self.content_length = Some(total);
+            return;
+        }
+        if resp.status() == StatusCode::OK {
+            self.content_length = resp
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse().ok());
+        }
+    }
+
+    fn content_length(&mut self) -> io::Result<u64> {
+        if let Some(len) = self.content_length {
+            return Ok(len);
+        }
+        let resp = self
+            .client
+            .head(&self.url)
+            .send()
+            .map_err(|_| io::Error::other("content length unavailable"))?
+            .error_for_status()
+            .map_err(|_| io::Error::other("content length unavailable"))?;
+        self.remember_content_length(&resp);
+        self.content_length
+            .ok_or_else(|| io::Error::other("content length unavailable"))
+    }
+
+    fn range_supported(&self) -> bool {
+        self.range_supported
+    }
+}
+
+impl Read for HttpRangeReader {
+    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+        if out.is_empty() {
+            return Ok(0);
+        }
+        if self.content_length.is_some_and(|len| self.position >= len) {
+            return Ok(0);
+        }
+        if self.current_stream.is_none() {
+            self.current_stream = Some(self.open_range_io(self.position)?);
+        }
+        let n = match self.current_stream.as_mut() {
+            Some(stream) => stream.read(out)?,
+            None => 0,
+        };
+        if n == 0 {
+            self.current_stream = None;
+            return Ok(0);
+        }
+        self.position += n as u64;
+        Ok(n)
+    }
+}
+
+impl Seek for HttpRangeReader {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let next = match pos {
+            SeekFrom::Start(n) => n,
+            SeekFrom::Current(offset) => checked_seek(self.position, offset)?,
+            SeekFrom::End(offset) => checked_seek(self.content_length()?, offset)?,
+        };
+        if next != self.position {
+            if next != 0 && !self.range_supported {
+                return Err(io::Error::other("range unsupported"));
+            }
+            self.position = next;
+            self.current_stream = None;
+        }
+        Ok(self.position)
+    }
+}
+
+fn content_range_total(resp: &Response) -> Option<u64> {
+    let value = resp.headers().get(CONTENT_RANGE)?.to_str().ok()?;
+    let (_, total) = value.rsplit_once('/')?;
+    total.parse().ok()
+}
+
+fn checked_seek(base: u64, offset: i64) -> io::Result<u64> {
+    let next = base as i128 + offset as i128;
+    if next < 0 || next > u64::MAX as i128 {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid seek"));
+    }
+    Ok(next as u64)
 }
 
 fn send(tx: &mpsc::Sender<AudioCmd>, c: AudioCmd, id: u64) -> String {
@@ -297,4 +440,162 @@ fn arg(flag: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, BufReader as StdBufReader, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::mpsc::{self, Receiver, Sender};
+    use std::time::Duration as StdDuration;
+
+    #[test]
+    fn http_range_reader_reopens_stream_after_seek() {
+        let data: Vec<u8> = (0..=255).cycle().take(512).collect();
+        let (url, starts) = range_server(data.clone());
+        let mut reader = HttpRangeReader::open_url(&url).unwrap();
+        assert_eq!(starts.recv_timeout(StdDuration::from_secs(2)).unwrap(), 0);
+
+        let mut first = [0_u8; 4];
+        reader.read_exact(&mut first).unwrap();
+        assert_eq!(&first, &data[0..4]);
+
+        reader.seek(SeekFrom::Start(100)).unwrap();
+        let mut next = [0_u8; 4];
+        reader.read_exact(&mut next).unwrap();
+        assert_eq!(&next, &data[100..104]);
+        assert_eq!(starts.recv_timeout(StdDuration::from_secs(2)).unwrap(), 100);
+    }
+
+    #[test]
+    fn http_reader_falls_back_when_range_is_unsupported() {
+        let data: Vec<u8> = (0..=255).cycle().take(512).collect();
+        let (url, _starts) = http_server(data.clone(), false);
+        let mut reader = HttpRangeReader::open_url(&url).unwrap();
+
+        assert!(!reader.range_supported());
+        let mut first = [0_u8; 4];
+        reader.read_exact(&mut first).unwrap();
+        assert_eq!(&first, &data[0..4]);
+        assert!(reader.seek(SeekFrom::Start(100)).is_err());
+    }
+
+    #[test]
+    fn rodio_decoder_accepts_http_range_reader() {
+        let (url, _starts) = range_server(wav_bytes(80_000));
+        let reader = HttpRangeReader::open_url(&url).unwrap();
+        let mut decoder = rodio::Decoder::new(reader).unwrap();
+
+        assert!(decoder.next().is_some());
+    }
+
+    fn range_server(data: Vec<u8>) -> (String, Receiver<u64>) {
+        http_server(data, true)
+    }
+
+    fn http_server(data: Vec<u8>, supports_range: bool) -> (String, Receiver<u64>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/song", listener.local_addr().unwrap());
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(32).flatten() {
+                handle_request(stream, &data, supports_range, &tx);
+            }
+        });
+        (url, rx)
+    }
+
+    fn handle_request(
+        mut stream: TcpStream,
+        data: &[u8],
+        supports_range: bool,
+        starts: &Sender<u64>,
+    ) {
+        let mut request = String::new();
+        let mut reader = StdBufReader::new(stream.try_clone().unwrap());
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line).unwrap() == 0 || line == "\r\n" {
+                break;
+            }
+            request.push_str(&line);
+        }
+
+        if request.starts_with("HEAD ") {
+            write_response(&mut stream, "HTTP/1.1 200 OK", "", &[]);
+            return;
+        }
+
+        let range_start = range_start(&request);
+        let requested_start = range_start.unwrap_or(0) as usize;
+        let start = if supports_range { requested_start } else { 0 };
+        let _ = starts.send(start as u64);
+
+        if start >= data.len() {
+            write_response(
+                &mut stream,
+                "HTTP/1.1 416 Range Not Satisfiable",
+                &format!("Content-Range: bytes */{}\r\n", data.len()),
+                &[],
+            );
+            return;
+        }
+
+        let body = &data[start..];
+        let (status, extra) = if supports_range && range_start.is_some() {
+            (
+                "HTTP/1.1 206 Partial Content",
+                format!(
+                    "Content-Range: bytes {}-{}/{}\r\n",
+                    start,
+                    data.len() - 1,
+                    data.len()
+                ),
+            )
+        } else {
+            ("HTTP/1.1 200 OK", String::new())
+        };
+        write_response(&mut stream, status, &extra, body);
+    }
+
+    fn range_start(request: &str) -> Option<u64> {
+        request.lines().find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if !name.eq_ignore_ascii_case("range") {
+                return None;
+            }
+            let value = value.trim().strip_prefix("bytes=")?;
+            let (start, _) = value.split_once('-')?;
+            start.parse().ok()
+        })
+    }
+
+    fn write_response(stream: &mut TcpStream, status: &str, extra: &str, body: &[u8]) {
+        let headers = format!(
+            "{status}\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\n{extra}\r\n",
+            body.len()
+        );
+        stream.write_all(headers.as_bytes()).unwrap();
+        stream.write_all(body).unwrap();
+    }
+
+    fn wav_bytes(samples: u32) -> Vec<u8> {
+        let data_len = samples * 2;
+        let mut out = Vec::with_capacity(44 + data_len as usize);
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&(36 + data_len).to_le_bytes());
+        out.extend_from_slice(b"WAVEfmt ");
+        out.extend_from_slice(&16_u32.to_le_bytes());
+        out.extend_from_slice(&1_u16.to_le_bytes());
+        out.extend_from_slice(&1_u16.to_le_bytes());
+        out.extend_from_slice(&8_000_u32.to_le_bytes());
+        out.extend_from_slice(&16_000_u32.to_le_bytes());
+        out.extend_from_slice(&2_u16.to_le_bytes());
+        out.extend_from_slice(&16_u16.to_le_bytes());
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&data_len.to_le_bytes());
+        out.resize(44 + data_len as usize, 0);
+        out
+    }
 }

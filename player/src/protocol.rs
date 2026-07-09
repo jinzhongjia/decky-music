@@ -17,6 +17,7 @@ pub enum ErrorCode {
     MissingField,
     FetchFailed,
     DecodeFailed,
+    SeekFailed,
     AudioDeviceFailed,
     AudioThreadGone,
 }
@@ -29,6 +30,7 @@ impl ErrorCode {
             ErrorCode::MissingField => "missing_field",
             ErrorCode::FetchFailed => "fetch_failed",
             ErrorCode::DecodeFailed => "decode_failed",
+            ErrorCode::SeekFailed => "seek_failed",
             ErrorCode::AudioDeviceFailed => "audio_device_failed",
             ErrorCode::AudioThreadGone => "audio_thread_gone",
         }

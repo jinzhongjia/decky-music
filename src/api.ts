@@ -14,6 +14,7 @@ const ERR_CODES: Record<string, string> = {
   provider_start_timeout: "errProviderStart",
   fetch_failed: "errPlayback",
   decode_failed: "errPlayback",
+  seek_failed: "errPlayback",
   audio_device_failed: "errAudio",
   audio_thread_gone: "errAudio",
   login_failed: "errLogin",

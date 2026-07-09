@@ -499,7 +499,7 @@ music-plugin/
 | **qq-provider 空闲退出** | 纯听歌阶段 provider 空闲;idle-timeout(如 60s 无查询)自动退出,释放几十 MB Python RSS;player 常驻(在放音) | 下次查询冷启动延迟 → 故用 idle-timeout 而非立即退。ncm(Rust ~5MB)可不退,收益小 |
 | **Nuitka `--standalone` 免解压** | 见 §7.2:standalone 目录打包成压缩档,安装解压一次,启动零解压 | 与 `--onefile` 取舍已定,standalone 纯赚 |
 | **默认中等码率** | 无损(FLAC)设 opt-in | 手持机无损 = 更多网络+解码 CPU+电;省码率直接省续航 |
-| **流式解码(边下边播)** | player 把 HTTP 响应流边到边喂解码器,不把整首缓进内存再播 | 控内存上限(整首 FLAC ~30-40MB;手持机内存与 VRAM 共享,省的归游戏)+ 首音更快。与"大缓冲吸收调度抖动"是两回事:那抗卡顿,这控内存。缓冲设**有界滑动窗口**,非无界堆积 |
+| **流式解码(边下边播)** | player 首次 `GET Range: bytes=0-` 判断 CDN 是否支持 byte range:206 则启用 Range seek;200 则顺序播放兜底,非零 seek 直接失败;全程不把整首缓进内存也不写临时文件 | 控内存上限(整首 FLAC ~30-40MB;手持机内存与 VRAM 共享,省的归游戏)+ 首音更快。依赖音频 CDN 支持 byte range 才能完整 seek;不支持时保播放、禁 seek |
 
 ### 13.2 Tier 2 — 低成本边角
 
