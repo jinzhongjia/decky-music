@@ -1,4 +1,5 @@
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Arc};
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
@@ -41,6 +42,10 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
 
     let debug = std::env::var("DECKY_MUSIC_DEBUG").is_ok(); // release 下不发 debug 日志
 
+    // load 代次:每来一个 load(或 stop)自增;后台打开完成时代次已过 → 丢弃,
+    // 迟到的旧 load 绝不夺播(修「UI 显示与实际播放不一致」)。
+    let load_gen = Arc::new(AtomicU64::new(0));
+
     // NDJSON:每条一行 {json}\n,UTF-8,单条 ≤ 1 MiB
     while let Some(line) = lines.next_line().await? {
         let req = match protocol::parse_request(&line) {
@@ -58,29 +63,45 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
         if debug {
             let _ = out_tx.send(log_json(LogLevel::Debug, "cmd", &req.cmd));
         }
-        let resp = handle_request(&cmd_tx, &out_tx, req).await;
+        // load 后台化:慢 CDN 打开(可 20s+)不阻塞命令循环,pause/next/新 load 即时处理
+        if req.cmd == "load" {
+            spawn_load(&load_gen, &cmd_tx, &out_tx, req);
+            continue;
+        }
+        if req.cmd == "stop" {
+            load_gen.fetch_add(1, Ordering::SeqCst); // 作废在途的旧 load 打开
+        }
+        let resp = handle_request(&cmd_tx, req).await;
         let _ = out_tx.send(resp);
     }
     Ok(())
 }
 
-async fn handle_request(
+/// load 后台任务:开流成功且代次未过 → 交音频线程;代次已过(有更新的 load/stop)→ 丢弃。
+fn spawn_load(
+    load_gen: &Arc<AtomicU64>,
     cmd_tx: &mpsc::Sender<AudioCmd>,
     out_tx: &tmpsc::UnboundedSender<String>,
     req: protocol::Request,
-) -> String {
-    match req.cmd.as_str() {
-        "load" => match protocol::parse_args::<protocol::LoadArgs>(&req) {
+) {
+    let gen = load_gen.fetch_add(1, Ordering::SeqCst) + 1;
+    let (gen_ref, cmd_tx, out_tx) = (Arc::clone(load_gen), cmd_tx.clone(), out_tx.clone());
+    tokio::spawn(async move {
+        let resp = match protocol::parse_args::<protocol::LoadArgs>(&req) {
             // 不记 URL(含限时 vkey,避免泄漏);只打开响应头,音频数据由 rodio 按需读取。
             Ok(a) => match open_http_stream(a.url).await {
-                Ok(stream) => {
+                Ok(stream) if gen_ref.load(Ordering::SeqCst) == gen => {
                     let msg = if stream.range_supported() {
                         "stream opened with range"
                     } else {
                         "stream opened without range"
                     };
                     let _ = out_tx.send(log_json(LogLevel::Info, "load", msg));
-                    send(cmd_tx, AudioCmd::Load(Box::new(stream)), req.id)
+                    send(&cmd_tx, AudioCmd::Load(Box::new(stream)), req.id)
+                }
+                Ok(_) => {
+                    let _ = out_tx.send(log_json(LogLevel::Warn, "load", "superseded, dropped"));
+                    protocol::err(req.id, ErrorCode::Superseded, "superseded by newer load")
                 }
                 Err(()) => {
                     let _ = out_tx.send(log_json(LogLevel::Error, "load", "stream open failed"));
@@ -88,7 +109,14 @@ async fn handle_request(
                 }
             },
             Err(_) => protocol::err(req.id, ErrorCode::MissingField, "url required"),
-        },
+        };
+        let _ = out_tx.send(resp);
+    });
+}
+
+async fn handle_request(cmd_tx: &mpsc::Sender<AudioCmd>, req: protocol::Request) -> String {
+    match req.cmd.as_str() {
+        // "load" 不在此处:在 socket_loop 里 spawn 后台处理(见 spawn_load),不阻塞命令循环
         "pause" => send(cmd_tx, AudioCmd::Pause, req.id),
         "resume" => send(cmd_tx, AudioCmd::Resume, req.id),
         "stop" => send(cmd_tx, AudioCmd::Stop, req.id),
@@ -119,10 +147,8 @@ mod tests {
 
     async fn dispatch(cmd: &str, id: u64, args: Value) -> (Value, mpsc::Receiver<AudioCmd>) {
         let (cmd_tx, cmd_rx) = mpsc::channel();
-        let (out_tx, _out_rx) = tmpsc::unbounded_channel();
         let resp = handle_request(
             &cmd_tx,
-            &out_tx,
             protocol::Request {
                 id,
                 cmd: cmd.to_string(),

@@ -20,6 +20,7 @@ pub enum ErrorCode {
     SeekFailed,
     AudioDeviceFailed,
     AudioThreadGone,
+    Superseded,
 }
 
 impl ErrorCode {
@@ -33,6 +34,7 @@ impl ErrorCode {
             ErrorCode::SeekFailed => "seek_failed",
             ErrorCode::AudioDeviceFailed => "audio_device_failed",
             ErrorCode::AudioThreadGone => "audio_thread_gone",
+            ErrorCode::Superseded => "superseded",
         }
     }
 }
