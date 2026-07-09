@@ -62,6 +62,8 @@ class Conn:
         self.connected: asyncio.Event = asyncio.Event()  # 子进程连入后置位
         self._next_id = 0
         self._wlock = asyncio.Lock()  # 只保护写帧原子性;请求周期不再互相排队(修按键排队无响应)
+        self._events: asyncio.Queue = asyncio.Queue()  # 域事件顺序队列(单消费者,保序)
+        self._ev_task: asyncio.Task | None = None
 
     async def listen(self):
         try:
@@ -69,6 +71,19 @@ class Conn:
         except FileNotFoundError:
             pass
         self.server = await asyncio.start_unix_server(self._accept, self.path)
+        self._ev_task = asyncio.create_task(self._pump_events())
+
+    async def _pump_events(self):
+        # 事件单消费者:绝不让 on_event 内联阻塞读循环 —— ended → 自动切歌会向本 Conn
+        # 发 load 并等响应,而响应只能由读循环收,内联即自死锁(每次自然播完卡 60s)。
+        # 独立任务消费还保证事件按到达顺序处理(playing/paused 不乱序)。
+        while True:
+            msg = await self._events.get()
+            try:
+                if self.on_event:
+                    await self.on_event(msg)
+            except Exception as e:  # 单个事件失败不放倒消费循环(宿主安全)
+                log("bridge", "own", "error", f"{self.name} event handler failed: {type(e).__name__}")
 
     async def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.writer = writer
@@ -85,8 +100,7 @@ class Conn:
                 where = msg.where
                 log(self.name, "socket", msg.level, f"{where}: {msg.msg}" if where else msg.msg)
             elif isinstance(msg, protocol.ChildEvent):
-                if self.on_event:
-                    await self.on_event(msg)
+                self._events.put_nowait(msg)  # 入顺序队列,读循环不阻塞(见 _pump_events)
             else:  # ChildResponse:按 id 匹配在途请求;无主(已超时放弃)的迟到响应丢弃
                 fut = self.pending.pop(msg.id, None)
                 if fut and not fut.done():
@@ -114,6 +128,8 @@ class Conn:
             self.pending.pop(rid, None)
 
     async def close(self):
+        if self._ev_task:
+            self._ev_task.cancel()
         if self.writer:
             self.writer.close()
         if self.server:

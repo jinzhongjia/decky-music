@@ -73,3 +73,11 @@ let req;
 window[ck].push([[Symbol()], {}, (r) => (req = r)]);
 // req.m = factory 源码(可 grep 常量);req(id) = 取模块实例
 ```
+
+## 危险:不要用 deckyLoaderAPIInit.connect() 驱动插件
+
+`window.__DECKY_SECRET_INTERNALS…deckyLoaderAPIInit.connect(2, "Decky Music")` 可以拿到插件 API
+并调 callable(诊断诱惑很大),但**第二次 connect 同名插件会顶掉插件自身的事件路由**——
+UI 从此收不到 player/login 事件(表现为进度冻结、显示错歌),且不留任何日志。
+诊断一律走 UI DOM 驱动(点按钮);确需查 bridge 状态,只读快照类 callable 后必须
+`systemctl restart plugin_loader` 恢复现场。
