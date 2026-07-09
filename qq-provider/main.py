@@ -15,6 +15,10 @@ import protocol
 from log import make_log  # 日志实现见 log.py
 from qq import QQ
 
+# 上游调用兜底超时(秒):命令循环是串行的,断网时挂住的 curl 调用会堵死整个循环
+# (积压滚雪球,bridge 侧全部 30s 超时)。15s < bridge 的 30s,对齐 ncm 的 NET_TIMEOUT。
+UPSTREAM_TIMEOUT = 15
+
 
 async def main():
     parser = argparse.ArgumentParser()
@@ -55,7 +59,18 @@ async def main():
             else:
                 log("warn", "protocol", f"bad request: {e}")
             continue
-        await out.put(await handle(qq, req, emit, log))
+        try:
+            resp = await asyncio.wait_for(handle(qq, req, emit, log), UPSTREAM_TIMEOUT)
+        except TimeoutError:
+            log("warn", "cmd", f"{req.cmd} timed out after {UPSTREAM_TIMEOUT}s")
+            resp = protocol.err(req.id, "timeout")
+        except Exception as e:
+            # 上游库异常(断网 curl Timeout / NetworkError 等)只失败该命令,绝不崩进程。
+            # Timeout 类异常映射 timeout 码:playback 的自动切歌熔断靠它识别断网。
+            name = type(e).__name__
+            log("warn", "cmd", f"{req.cmd} failed: {name}")
+            resp = protocol.err(req.id, "timeout" if "Timeout" in name else "provider_error")
+        await out.put(resp)
 
 
 async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
