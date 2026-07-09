@@ -1,9 +1,7 @@
 //! player:拿 URL → HTTP 拉流 → 解码 → 推 PipeWire;上报进度/结束。
 //!
-//! 两个入口:
-//! - `player --play <url>`:P0 出声 spike。独立同步跑,不接 bridge。
-//! - `player --socket <path>`:正式模式。bridge 作 server,player 连入;收 NDJSON 命令、
-//!   发 NDJSON 事件。控制面命令:load / pause / resume / volume / seek / stop。
+//! 入口: `player --socket <path>`。bridge 作 server,player 连入;收 NDJSON 命令、
+//! 发 NDJSON 事件。控制面命令:load / pause / resume / volume / seek / stop。
 //!
 //! rodio 的 OutputStream/Sink 是 !Send,不能跨 tokio await,所以音频跑在专用 OS 线程上,
 //! 与 tokio 侧用 channel 通信。
@@ -23,35 +21,8 @@ use logging::log_json;
 use protocol::ErrorCode;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(url) = arg("--play") {
-        return play_spike(&url);
-    }
-    let socket = arg("--socket").expect("--socket <path> or --play <url> required");
-    // blocking reqwest 不能在 tokio 运行时里跑,所以 play 走同步、socket 才建运行时
+    let socket = arg("--socket").expect("--socket <path> required");
     tokio::runtime::Runtime::new()?.block_on(socket_loop(&socket))
-}
-
-/// P0 出声 spike:拉一段固定 mp3 → rodio 默认设备播放,阻塞到放完。
-fn play_spike(url: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // ponytail: 整首下到内存 + 同步阻塞。流式边下边播留后续。
-    eprintln!("[player] fetching {url}");
-    let bytes = reqwest::blocking::Client::builder()
-        .build()?
-        .get(url)
-        .send()?
-        .error_for_status()?
-        .bytes()?;
-    eprintln!(
-        "[player] fetched {} bytes, opening default audio device",
-        bytes.len()
-    );
-    let (_stream, handle) = rodio::OutputStream::try_default()?;
-    let sink = rodio::Sink::try_new(&handle)?;
-    sink.append(rodio::Decoder::new(Cursor::new(bytes))?);
-    eprintln!("[player] playing… (Ctrl+C to stop)");
-    sink.sleep_until_end();
-    eprintln!("[player] done");
-    Ok(())
 }
 
 // ---- 音频线程 ----

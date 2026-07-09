@@ -8,8 +8,8 @@ name = "player"
 path = "src/main.rs"
 
 [dependencies]
-# 拉流:纯 Rust TLS,不碰系统 OpenSSL。P0 用 blocking(同步拉整首);流式留后续
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+# 拉流:纯 Rust TLS,不碰系统 OpenSSL。
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 # 解码 + 输出:内置 symphonia 解码 + cpal 输出;动态链 libasound
 rodio = "0.20"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"] }
