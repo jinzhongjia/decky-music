@@ -34,6 +34,15 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     nowPlaying: "正在播放",
     nothingPlaying: "暂无播放",
     noLyric: "暂无歌词",
+    recommend: "推荐",
+    smartRadio: "智能电台",
+    guessYouLike: "猜你喜欢",
+    guessDesc: "根据听歌口味推荐",
+    radarRec: "雷达推荐",
+    radarDesc: "无限推荐流",
+    recPlaylists: "推荐歌单",
+    newSongs: "新歌首发",
+    comingSoon: "敬请期待",
     queueTitle: "播放队列",
     queueEmpty: "队列为空",
     clearQueue: "清空",
@@ -97,6 +106,15 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     nowPlaying: "Now playing",
     nothingPlaying: "Nothing playing",
     noLyric: "No lyrics",
+    recommend: "For You",
+    smartRadio: "Smart radio",
+    guessYouLike: "Guess you like",
+    guessDesc: "Based on your taste",
+    radarRec: "Radar",
+    radarDesc: "Endless stream",
+    recPlaylists: "Recommended playlists",
+    newSongs: "New releases",
+    comingSoon: "Coming soon",
     queueTitle: "Queue",
     queueEmpty: "Queue is empty",
     clearQueue: "Clear",
@@ -135,3 +153,10 @@ const lang: Lang = (navigator.language || "").toLowerCase().startsWith("zh") ? "
 export function t(key: keyof (typeof STRINGS)["zh"]): string {
   return STRINGS[lang][key] ?? STRINGS.zh[key] ?? key;
 }
+
+// 大数紧凑格式(播放量角标):zh → 2356万,en → 23.6M
+const nf = new Intl.NumberFormat(lang === "zh" ? "zh-CN" : "en", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+export const fmtCount = (n: number): string => nf.format(n);
