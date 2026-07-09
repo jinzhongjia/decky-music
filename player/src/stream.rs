@@ -234,6 +234,9 @@ fn producer_loop(
     let mut response = initial_response;
     let mut response_generation = initial_generation;
     let mut chunk = vec![0_u8; BUFFER_CHUNK];
+    // 续传防死循环:记录上次因截断重开时的 write_pos,零进展连续 3 次则判流已死
+    let mut resume_at = u64::MAX;
+    let mut resume_stalls = 0;
     loop {
         let generation = {
             let mut state = shared.state.lock();
@@ -291,35 +294,45 @@ fn producer_loop(
             }
         }
 
-        let n = match response
-            .as_mut()
-            .and_then(|resp| resp.read(&mut chunk).ok())
-        {
-            Some(n) => n,
-            None => {
-                let mut state = shared.state.lock();
-                if state.generation == response_generation {
-                    state.error = Some("stream read failed");
-                    shared.can_read.notify_all();
-                }
-                response = None;
-                continue;
-            }
-        };
-
+        let read = response.as_mut().map(|resp| resp.read(&mut chunk));
         let mut state = shared.state.lock();
         if state.generation != response_generation {
             response = None;
             continue;
         }
-        if n == 0 {
-            state.eof = true;
-            response = None;
-            shared.can_read.notify_all();
-            continue;
+        match read {
+            Some(Ok(n)) if n > 0 => {
+                state.push(&chunk[..n]);
+                shared.can_read.notify_all();
+            }
+            other => {
+                // n==0(服务端 FIN)或读错误(含 IO 超时)。到达 content_length 才是真 EOF;
+                // 否则是连接被提前掐(典型:长暂停后 CDN 释放空闲连接)→ Range 从 write_pos 续传,
+                // 不再误判"播完"提前跳歌。长度未知时无从判断,仅正常 FIN 视为播完。
+                let done = match state.content_length {
+                    Some(len) => state.write_pos >= len,
+                    None => matches!(other, Some(Ok(0))),
+                };
+                if done {
+                    state.eof = true;
+                    shared.can_read.notify_all();
+                    response = None;
+                    continue;
+                }
+                if state.write_pos == resume_at {
+                    resume_stalls += 1;
+                } else {
+                    resume_stalls = 0;
+                    resume_at = state.write_pos;
+                }
+                if !state.range_supported || resume_stalls >= 3 {
+                    state.error = Some("stream truncated");
+                    shared.can_read.notify_all();
+                }
+                response = None; // range 可用且未判死:走既有重开路径续传
+                continue;
+            }
         }
-        state.push(&chunk[..n]);
-        shared.can_read.notify_all();
     }
 }
 
@@ -403,6 +416,25 @@ mod tests {
     }
 
     #[test]
+    fn resumes_when_server_truncates_mid_stream() {
+        // 服务端每次最多回 64KB 就掐连接(声明完整长度)→ 客户端应 Range 续传拼出全量
+        let data: Vec<u8> = (0..=255).cycle().take(300_000).collect();
+        let (url, starts) = http_server_impl(data.clone(), true, 64 * 1024);
+        let mut reader = HttpRangeReader::open_url(&url).unwrap();
+        let mut got = vec![0_u8; data.len()];
+        reader.read_exact(&mut got).unwrap();
+        assert_eq!(got, data);
+        let mut requests = 0;
+        while starts.try_recv().is_ok() {
+            requests += 1;
+        }
+        assert!(
+            requests >= 2,
+            "expected range resumes, got {requests} request(s)"
+        );
+    }
+
+    #[test]
     fn rodio_decoder_accepts_http_range_reader() {
         let (url, _starts) = range_server(wav_bytes(80_000));
         let reader = HttpRangeReader::open_url(&url).unwrap();
@@ -412,10 +444,20 @@ mod tests {
     }
 
     fn range_server(data: Vec<u8>) -> (String, Receiver<u64>) {
-        http_server(data, true)
+        http_server_impl(data, true, usize::MAX)
     }
 
     fn http_server(data: Vec<u8>, supports_range: bool) -> (String, Receiver<u64>) {
+        http_server_impl(data, supports_range, usize::MAX)
+    }
+
+    /// cap:每次响应最多发送的 body 字节数(声明完整 Content-Length 但提前掐连接,
+    /// 模拟 CDN 释放空闲连接的截断)。usize::MAX = 不截断。
+    fn http_server_impl(
+        data: Vec<u8>,
+        supports_range: bool,
+        cap: usize,
+    ) -> (String, Receiver<u64>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/song", listener.local_addr().unwrap());
         let (tx, rx) = mpsc::channel();
@@ -425,7 +467,7 @@ mod tests {
                 let data = std::sync::Arc::clone(&data);
                 let tx = tx.clone();
                 std::thread::spawn(move || {
-                    handle_request(stream, data.as_slice(), supports_range, &tx);
+                    handle_request(stream, data.as_slice(), supports_range, cap, &tx);
                 });
             }
         });
@@ -436,6 +478,7 @@ mod tests {
         mut stream: TcpStream,
         data: &[u8],
         supports_range: bool,
+        cap: usize,
         starts: &Sender<u64>,
     ) {
         let mut request = String::new();
@@ -482,7 +525,9 @@ mod tests {
         } else {
             ("HTTP/1.1 200 OK", String::new())
         };
-        write_response(&mut stream, status, &extra, body);
+        // cap:声明完整长度但只发送前 cap 字节后断开(模拟服务端截断)
+        let sent = &body[..body.len().min(cap)];
+        write_response_claiming(&mut stream, status, &extra, sent, body.len());
     }
 
     fn range_start(request: &str) -> Option<u64> {
@@ -498,10 +543,19 @@ mod tests {
     }
 
     fn write_response(stream: &mut TcpStream, status: &str, extra: &str, body: &[u8]) {
-        let headers = format!(
-            "{status}\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\n{extra}\r\n",
-            body.len()
-        );
+        write_response_claiming(stream, status, extra, body, body.len());
+    }
+
+    /// claimed:头部声明的 Content-Length(可大于实际发送量,模拟截断)
+    fn write_response_claiming(
+        stream: &mut TcpStream,
+        status: &str,
+        extra: &str,
+        body: &[u8],
+        claimed: usize,
+    ) {
+        let headers =
+            format!("{status}\r\nContent-Length: {claimed}\r\nAccept-Ranges: bytes\r\n{extra}\r\n");
         let _ = stream.write_all(headers.as_bytes());
         let _ = stream.write_all(body);
     }
