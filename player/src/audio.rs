@@ -59,6 +59,10 @@ impl AudioEv {
     }
 }
 
+/// 周期位置锚点间隔:音频欠载(缓冲停顿)时真实位置落后,UI 墙钟插值会悄悄跑偏;
+/// 播放中定期重报 pos,把漂移上限压到一个间隔内。
+const POS_ANCHOR_INTERVAL: Duration = Duration::from_secs(3);
+
 /// 拥有 OutputStream + Sink 的专用线程。用 recv_timeout 轮询:平时睡,到点醒来查是否播完。
 pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv>) {
     let (_stream, handle) = match rodio::OutputStream::try_default() {
@@ -78,6 +82,7 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
     });
     let mut sink: Option<rodio::Sink> = None;
     let mut active = false; // 是否有在播的曲子(用于判定 ended)
+    let mut last_anchor = std::time::Instant::now(); // 上次位置锚点(Playing 事件)时刻
 
     loop {
         match rx.recv_timeout(Duration::from_millis(250)) {
@@ -95,6 +100,7 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
                     Ok(s) => {
                         sink = Some(s);
                         active = true;
+                        last_anchor = std::time::Instant::now();
                         let _ = ev.send(AudioEv::Playing { pos: 0.0 });
                     }
                     Err(e) => {
@@ -116,6 +122,7 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
             Ok(AudioCmd::Resume) => {
                 if let Some(s) = &sink {
                     s.play();
+                    last_anchor = std::time::Instant::now();
                     let _ = ev.send(AudioEv::Playing {
                         pos: s.get_pos().as_secs_f64(),
                     });
@@ -133,6 +140,12 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
                             code: ErrorCode::SeekFailed,
                             message: "seek failed".into(),
                         });
+                    } else if !s.is_paused() {
+                        // seek 后立刻重锚:其它 UI 面(非发起方)才能同步到新位置
+                        last_anchor = std::time::Instant::now();
+                        let _ = ev.send(AudioEv::Playing {
+                            pos: s.get_pos().as_secs_f64(),
+                        });
                     }
                 }
             }
@@ -147,6 +160,12 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
                         if s.empty() {
                             active = false;
                             let _ = ev.send(AudioEv::Ended);
+                        } else if !s.is_paused() && last_anchor.elapsed() >= POS_ANCHOR_INTERVAL {
+                            // 周期锚点:校准 UI 墙钟插值(缓冲停顿造成的漂移 ≤ 一个间隔)
+                            last_anchor = std::time::Instant::now();
+                            let _ = ev.send(AudioEv::Playing {
+                                pos: s.get_pos().as_secs_f64(),
+                            });
                         }
                     }
                 }
