@@ -13,7 +13,7 @@
 - **循环策略**：支持单曲循环、列表循环、随机播放。
 - **持久化**：随 `settings.json` 落盘，重启 Steam Deck 后可恢复。
 
-普通队列持久化结构为 `"queue": {"ids": [...], "index": 3}`。只存 songId 列表与当前索引，**绝不存解析出的播放 URL**；恢复时按 id 重新向 provider 解析。写入必须走临时文件 + `os.replace()` 原子替换。
+普通队列持久化结构为 `"queue": {"items": [{id, media_mid, name, singer, cover, duration}], "index": 3}`。存 id 类字段（歌曲 id + QQ 解析 URL 所需的 media_mid）+ 展示字段（恢复后队列浮层 / 状态徽章直接显示真实信息），键白名单写入，**绝不存解析出的播放 URL（限时 vkey）**；播放时按 id 重新向 provider 解析。写入必须走临时文件 + `os.replace()` 原子替换。
 
 ### 1.2 电台流模式
 

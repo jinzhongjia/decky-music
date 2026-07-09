@@ -51,8 +51,7 @@ bridge 新增 callable(队列已在 bridge 手里,无需 provider 改动):
 
 新增事件:`{ev:"player", type:"queue", data:{length, index, mode}}` —— 队列结构变化时发(编辑/切模式/清空);浮层打开时收到即重拉 `getQueue`。`PlayerEvent` union 同步。
 
-队列持久化(`QUEUE-BEHAVIOR` §1.1/§5):普通队列 `{"queue":{"ids":[...],"index":N}}` 落 `settings.json`(原子写);启动时恢复 ids + index,**不自动开播**,URL 播放时重新解析。电台内容不落盘。
-注意:恢复只有 id 没有富信息 —— 恢复后的 TrackInfo 缺 name/cover,浮层显示占位;首次 `_play_index` 后由 track 事件补齐当前曲。(ponytail:富信息落盘留后续,先只落 id 对齐规范。)
+队列持久化(`QUEUE-BEHAVIOR` §1.1/§5):普通队列 `{"queue":{"items":[{id,media_mid,name,singer,cover,duration}],"index":N}}` 落 `settings.json`(原子写,键白名单);启动时恢复展示信息,**不自动开播**,播放 URL 一律重新解析、绝不落盘。电台内容不落盘。
 
 ### UI 绘制
 

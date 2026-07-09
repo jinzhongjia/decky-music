@@ -38,6 +38,24 @@ class Plugin:
     async def get_playback(self) -> dict:
         return await self.bridge.get_playback()
 
+    async def get_queue(self) -> dict:
+        return await self.bridge.get_queue()
+
+    async def queue_play(self, index: int):
+        return await self.bridge.queue_play(index)
+
+    async def queue_insert_next(self, item: dict):
+        return await self.bridge.queue_insert_next(item)
+
+    async def queue_append(self, item: dict):
+        return await self.bridge.queue_append(item)
+
+    async def queue_remove(self, index: int):
+        return await self.bridge.queue_remove(index)
+
+    async def queue_clear(self):
+        return await self.bridge.queue_clear()
+
     async def next_track(self):
         return await self.bridge.next_track()
 

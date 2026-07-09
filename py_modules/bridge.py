@@ -145,8 +145,13 @@ class Bridge:
         self.provider_which: str | None = None  # 当前已 spawn 的 provider
         self.provider_lock = asyncio.Lock()  # 串行化 _ensure_provider,保证幂等不重复 spawn
         self.playback = Playback(  # 播放 + 队列编排
-            self.player, self.provider, self.settings.get("play_mode", "list_loop")
+            self.player,
+            self.provider,
+            self.settings.get("play_mode", "list_loop"),
+            persist=self._persist_queue,
         )
+        # 恢复上次的普通队列(只存了 id 类字段;不自动开播,见 QUEUE-BEHAVIOR §1.1)
+        self.playback.restore(self.settings.get("queue"))
         await self.provider.listen()
         await self.player.listen()
         self.player.on_event = self.playback.on_player_event
@@ -236,12 +241,40 @@ class Bridge:
         r = await self.provider.request("account")
         return r.data if r.ok else {}
 
+    def _persist_queue(self, items: list, index: int):
+        # 队列落盘:id 类字段 + 展示字段(恢复后浮层/徽章直接是真名字真封面),
+        # 白名单键,绝不存解析出的播放 URL(限时 vkey)
+        keys = ("id", "media_mid", "name", "singer", "cover", "duration")
+        self.settings["queue"] = {
+            "items": [{k: x.get(k, "") for k in keys} for x in items],
+            "index": index,
+        }
+        save_settings(self.settings)
+
     async def play_queue(self, items: list, start_index: int = 0):
         await self.playback.play_queue(items, start_index)
 
     async def get_playback(self) -> dict:
         # 前端挂载回灌:bridge 是播放/队列真相源(见 playback.snapshot)
         return self.playback.snapshot()
+
+    async def get_queue(self) -> dict:
+        return self.playback.snapshot_queue()
+
+    async def queue_play(self, index: int):
+        await self.playback.queue_play(index)
+
+    async def queue_insert_next(self, item: dict):
+        await self.playback.queue_insert_next(item)
+
+    async def queue_append(self, item: dict):
+        await self.playback.queue_append(item)
+
+    async def queue_remove(self, index: int):
+        await self.playback.queue_remove(index)
+
+    async def queue_clear(self):
+        await self.playback.queue_clear()
 
     async def next_track(self):
         await self.playback.next_track()
