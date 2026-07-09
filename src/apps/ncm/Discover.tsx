@@ -4,10 +4,10 @@
 
 import { useEffect, useState } from "react";
 
-import { DiscoverData, Playlist, api, errorText } from "../../api";
+import { DiscoverData, api, errorText } from "../../api";
 import { guard, reportError } from "../../errors";
 import { t } from "../../i18n";
-import { playQueue } from "../../player/usePlayer";
+import { playPlaylistById, playQueue } from "../../player/usePlayer";
 import { Grid, HeroCard, PlaylistCard, Section } from "../../ui/cards";
 import { theme } from "../../ui/theme";
 
@@ -33,15 +33,8 @@ export function Discover() {
   const playDaily = () =>
     guard(async () => {
       const r = await api.getDailySongs();
-      if (r.ok && r.songs.length) playQueue(r.songs, 0);
-      else reportError(errorText(r.error || "provider_error"));
-    });
-
-  const playPlaylist = (pl: Playlist) =>
-    guard(async () => {
-      const r = await api.getPlaylistSongs(pl.id);
       if (r.ok && r.songs?.length) playQueue(r.songs, 0);
-      else reportError(t("noResults"));
+      else reportError(errorText(r.error || "provider_error"));
     });
 
   if (!data) {
@@ -79,7 +72,7 @@ export function Discover() {
         <Section title={t("recPlaylists")}>
           <Grid cols={6}>
             {data.playlists.map((pl) => (
-              <PlaylistCard key={pl.id} pl={pl} onActivate={() => playPlaylist(pl)} />
+              <PlaylistCard key={pl.id} pl={pl} onActivate={() => playPlaylistById(pl.id)} />
             ))}
           </Grid>
         </Section>

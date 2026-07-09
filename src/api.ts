@@ -59,7 +59,8 @@ export type Song = {
   // ---- QQ 特有(可选:非该 provider 时可能缺省)----
   media_mid?: string; // 取播放链接(vkey filename)用;网易云不需要
 };
-export type SearchResult = { ok: boolean; songs?: Song[] };
+// 歌曲列表结果通用形状(search / playlist_songs / daily_songs);失败可带稳定 error code 供本地化
+export type SearchResult = { ok: boolean; songs?: Song[]; error?: string };
 // 歌单摘要卡(推荐/发现/我的 网格用);play_count=0 时不显示播放量角标
 export type Playlist = {
   id: string;
@@ -70,8 +71,6 @@ export type Playlist = {
 };
 export type RecommendData = { playlists: Playlist[]; newsongs: Song[] };
 export type DiscoverData = { playlists: Playlist[] };
-// 每日推荐(NCM,需登录):失败带稳定 error code(not_logged_in 等)供本地化
-export type DailySongsResult = { ok: boolean; songs: Song[]; error?: string };
 // 归一化歌词(provider 出,见 qq/lyric.py、ncm-provider/src/lyric.rs)。
 // word_by_word=true 时 line 带 words[](逐字高亮,NCM);否则整行高亮(QQ)。tr=该行译文(可空)。
 export type LyricWord = { t_ms: number; dur_ms: number; text: string };
@@ -96,7 +95,7 @@ export const api = {
   getRecommend: callable<[], RecommendData>("get_recommend"),
   getPlaylistSongs: callable<[playlistId: string], SearchResult>("get_playlist_songs"),
   getDiscover: callable<[], DiscoverData>("get_discover"),
-  getDailySongs: callable<[], DailySongsResult>("get_daily_songs"),
+  getDailySongs: callable<[], SearchResult>("get_daily_songs"),
   playQueue: callable<[items: QueueItem[], startIndex: number], void>("play_queue"),
   getPlayback: callable<[], PlaybackState>("get_playback"),
   getQueue: callable<[], QueueState>("get_queue"),

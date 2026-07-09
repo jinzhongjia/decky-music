@@ -76,6 +76,15 @@ export function playQueue(songs: Song[], startIndex: number) {
   guard(() => api.playQueue(songs.map(toQueueItem), startIndex));
 }
 
+// 歌单卡直接播放(推荐/发现页共用;P5c 详情页前的路径):拉曲目 → 整单入队
+export function playPlaylistById(id: string) {
+  guard(async () => {
+    const r = await api.getPlaylistSongs(id);
+    if (r.ok && r.songs?.length) playQueue(r.songs, 0);
+    else reportError(t("noResults"));
+  });
+}
+
 const toTrack = (s: Song): TrackInfo => ({
   id: s.mid,
   name: s.name,

@@ -5,10 +5,10 @@
 import { useEffect, useState } from "react";
 import { FaHeartbeat, FaSatelliteDish } from "react-icons/fa";
 
-import { Playlist, RecommendData, api } from "../../api";
-import { guard, reportError } from "../../errors";
+import { RecommendData, api } from "../../api";
+import { reportError } from "../../errors";
 import { t } from "../../i18n";
-import { playQueue } from "../../player/usePlayer";
+import { playPlaylistById, playQueue } from "../../player/usePlayer";
 import { Grid, HeroCard, PlaylistCard, Section, SongCell } from "../../ui/cards";
 import { theme } from "../../ui/theme";
 
@@ -30,14 +30,6 @@ export function Recommend() {
       alive = false;
     };
   }, []);
-
-  // 歌单卡:拉曲目整单入队开播(P5c 详情页前的直接播放路径)
-  const playPlaylist = (pl: Playlist) =>
-    guard(async () => {
-      const r = await api.getPlaylistSongs(pl.id);
-      if (r.ok && r.songs?.length) playQueue(r.songs, 0);
-      else reportError(t("noResults"));
-    });
 
   if (!data) {
     return <div style={{ margin: "auto", color: theme.textDim }}>{t("loading")}</div>;
@@ -84,7 +76,7 @@ export function Recommend() {
         <Section title={t("recPlaylists")}>
           <Grid cols={6}>
             {data.playlists.map((pl) => (
-              <PlaylistCard key={pl.id} pl={pl} onActivate={() => playPlaylist(pl)} />
+              <PlaylistCard key={pl.id} pl={pl} onActivate={() => playPlaylistById(pl.id)} />
             ))}
           </Grid>
         </Section>
