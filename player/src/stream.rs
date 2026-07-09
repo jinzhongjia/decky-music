@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use parking_lot::{Condvar, Mutex};
 use reqwest::blocking::{Client, Response};
@@ -24,6 +25,14 @@ const BUFFER_LOW_WATER: usize = 1024 * 1024;
 const BUFFER_HIGH_WATER: usize = 3 * 1024 * 1024;
 const BUFFER_REWIND: usize = 256 * 1024;
 const BUFFER_CHUNK: usize = 64 * 1024;
+
+// 网络超时:断网时挂住的连接/读会吊死解码线程(rodio 在 read 里等),进而堵住命令链路。
+// blocking reqwest 的 timeout 是逐操作(connect/read/write)生效,不限制整段流式响应的总时长。
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const IO_TIMEOUT: Duration = Duration::from_secs(15);
+// 读侧兜底:缓冲空且 producer 迟迟不补(网络停摆)时,解码 read 最多等这么久 → 报错结束,
+// 不永久阻塞音频线程。正常补货(内网/CDN)远快于此,不会误伤。
+const READ_STALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(crate) struct HttpRangeReader {
     shared: Arc<SharedBuffer>,
@@ -117,7 +126,10 @@ impl BufferState {
 
 impl HttpRangeReader {
     fn open_url(url: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let client = Client::builder().build()?;
+        let client = Client::builder()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(IO_TIMEOUT)
+            .build()?;
         let (response, range_supported, content_length) = open_http_response(&client, url, 0)?;
         let shared = Arc::new(SharedBuffer {
             state: Mutex::new(BufferState::new(range_supported, content_length)),
@@ -162,7 +174,14 @@ impl Read for HttpRangeReader {
                 self.shared.can_write.notify_one();
                 return Ok(n);
             }
-            self.shared.can_read.wait(&mut state);
+            if self
+                .shared
+                .can_read
+                .wait_for(&mut state, READ_STALL_TIMEOUT)
+                .timed_out()
+            {
+                return Err(io::Error::other("stream stalled"));
+            }
         }
     }
 }
