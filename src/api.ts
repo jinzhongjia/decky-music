@@ -59,6 +59,15 @@ export type Song = {
   media_mid?: string; // 取播放链接(vkey filename)用;网易云不需要
 };
 export type SearchResult = { ok: boolean; songs?: Song[] };
+// 歌单摘要卡(推荐/发现/我的 网格用);play_count=0 时不显示播放量角标
+export type Playlist = {
+  id: string;
+  name: string;
+  cover: string;
+  count: number;
+  play_count: number;
+};
+export type RecommendData = { playlists: Playlist[]; newsongs: Song[] };
 // 归一化歌词(provider 出,见 qq/lyric.py、ncm-provider/src/lyric.rs)。
 // word_by_word=true 时 line 带 words[](逐字高亮,NCM);否则整行高亮(QQ)。tr=该行译文(可空)。
 export type LyricWord = { t_ms: number; dur_ms: number; text: string };
@@ -80,6 +89,8 @@ export const api = {
   getAccount: callable<[], Account>("get_account"),
   search: callable<[keyword: string], SearchResult>("search"),
   getLyric: callable<[mid: string], Lyric>("get_lyric"),
+  getRecommend: callable<[], RecommendData>("get_recommend"),
+  getPlaylistSongs: callable<[playlistId: string], SearchResult>("get_playlist_songs"),
   playQueue: callable<[items: QueueItem[], startIndex: number], void>("play_queue"),
   getPlayback: callable<[], PlaybackState>("get_playback"),
   getQueue: callable<[], QueueState>("get_queue"),

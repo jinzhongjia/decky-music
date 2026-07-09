@@ -82,3 +82,9 @@ class Plugin:
 
     async def get_lyric(self, mid: str) -> dict:
         return await self.bridge.get_lyric(mid)
+
+    async def get_recommend(self) -> dict:
+        return await self.bridge.get_recommend()
+
+    async def get_playlist_songs(self, playlist_id: str) -> dict:
+        return await self.bridge.get_playlist_songs(playlist_id)

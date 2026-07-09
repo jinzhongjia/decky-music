@@ -16,6 +16,8 @@ from qq import account as _account
 from qq import login as _login
 from qq import lyric as _lyric
 from qq import playback as _playback
+from qq import playlist as _playlist
+from qq import recommend as _recommend
 from qq import search as _search
 
 
@@ -54,3 +56,9 @@ class QQ:
 
     async def lyric(self, mid: str) -> dict:
         return await _lyric.get_lyric(self, mid)
+
+    async def recommend(self) -> dict:
+        return await _recommend.get(self)
+
+    async def playlist_songs(self, playlist_id: str) -> list[dict]:
+        return await _playlist.songs(self, playlist_id)

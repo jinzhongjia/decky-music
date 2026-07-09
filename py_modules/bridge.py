@@ -311,6 +311,16 @@ class Bridge:
         r = await self.provider.request("lyric", {"id": mid})
         return r.data if r.ok else {"word_by_word": False, "lines": []}
 
+    async def get_recommend(self) -> dict:
+        # 推荐页数据(QQ);失败回空列表,UI 渲染可恢复空态
+        r = await self.provider.request("recommend")
+        return r.data if r.ok else {"playlists": [], "newsongs": []}
+
+    async def get_playlist_songs(self, playlist_id: str) -> dict:
+        # 歌单曲目;返回沿用 search 的 {ok, songs} 形状
+        r = await self.provider.request("playlist_songs", {"id": playlist_id})
+        return {"ok": r.ok, "songs": r.data.get("songs", []) if r.ok else []}
+
     async def _on_provider_event(self, ev: protocol.ChildEvent):
         # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI
         if ev.ev == "login" and ev.type == "done":

@@ -4,7 +4,8 @@ bridge 作 server,provider 启动后连入 `--socket <path>`。无状态:credent
 经 set_credential 注入(登录成功后 bridge 持久化),provider 不自存。用 Nuitka
 --standalone 打包(scripts/build-qq-provider.sh)。
 
-命令:set_credential / login / song_url / search / lyric。登录是长流程,以事件上报。
+命令:set_credential / login / song_url / search / lyric / recommend / playlist_songs。
+登录是长流程,以事件上报。
 """
 
 import argparse
@@ -109,6 +110,15 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
             keyword = args.get("keyword", "")
             songs = await qq.search(keyword)
             log("debug", "search", f"kw={keyword} -> {len(songs)} songs")
+            return protocol.ok(req.id, {"songs": songs})
+        case "recommend":
+            data = await qq.recommend()
+            counts = f"{len(data['playlists'])} lists, {len(data['newsongs'])} songs"
+            log("debug", "recommend", counts)
+            return protocol.ok(req.id, data)
+        case "playlist_songs":
+            songs = await qq.playlist_songs(args.get("id", ""))
+            log("debug", "playlist_songs", f"id={args.get('id', '')} -> {len(songs)} songs")
             return protocol.ok(req.id, {"songs": songs})
         case "lyric":
             mid = args.get("id", "")
