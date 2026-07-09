@@ -6,10 +6,13 @@
 //! rodio 的 OutputStream/Sink 是 !Send,不能跨 tokio await,所以音频跑在专用 OS 线程上,
 //! 与 tokio 侧用 channel 通信。
 
+use std::collections::VecDeque;
 use std::io::{self, Read, Seek, SeekFrom};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
+use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use parking_lot::{Condvar, Mutex};
 use reqwest::blocking::{Client, Response};
 use reqwest::header::{CONTENT_LENGTH, CONTENT_RANGE, RANGE};
 use reqwest::StatusCode;
@@ -284,88 +287,121 @@ async fn open_http_stream(url: String) -> Result<HttpStream, ()> {
         .map_err(|_| ())
 }
 
+const BUFFER_CAPACITY: usize = 4 * 1024 * 1024;
+const BUFFER_LOW_WATER: usize = 1024 * 1024;
+const BUFFER_HIGH_WATER: usize = 3 * 1024 * 1024;
+const BUFFER_REWIND: usize = 256 * 1024;
+const BUFFER_CHUNK: usize = 64 * 1024;
+
 struct HttpRangeReader {
-    url: String,
-    client: Client,
-    position: u64,
+    shared: Arc<SharedBuffer>,
+}
+
+struct SharedBuffer {
+    state: Mutex<BufferState>,
+    can_read: Condvar,
+    can_write: Condvar,
+}
+
+struct BufferState {
+    buffer: VecDeque<u8>,
+    buffer_start: u64,
+    read_pos: u64,
+    write_pos: u64,
     content_length: Option<u64>,
     range_supported: bool,
-    current_stream: Option<Response>,
+    eof: bool,
+    error: Option<&'static str>,
+    stop: bool,
+    generation: u64,
+}
+
+impl BufferState {
+    fn new(range_supported: bool, content_length: Option<u64>) -> Self {
+        Self {
+            buffer: VecDeque::with_capacity(BUFFER_CAPACITY),
+            buffer_start: 0,
+            read_pos: 0,
+            write_pos: 0,
+            content_length,
+            range_supported,
+            eof: false,
+            error: None,
+            stop: false,
+            generation: 0,
+        }
+    }
+
+    fn readable(&self) -> usize {
+        (self.write_pos - self.read_pos) as usize
+    }
+
+    fn push(&mut self, data: &[u8]) {
+        self.buffer.extend(data);
+        self.write_pos += data.len() as u64;
+    }
+
+    fn read_into(&mut self, out: &mut [u8]) -> usize {
+        let offset = (self.read_pos - self.buffer_start) as usize;
+        let count = out.len().min(self.readable());
+        let (front, back) = self.buffer.as_slices();
+        let mut copied = 0;
+        if offset < front.len() {
+            let n = count.min(front.len() - offset);
+            out[..n].copy_from_slice(&front[offset..offset + n]);
+            copied += n;
+        }
+        if copied < count {
+            let offset = offset.saturating_sub(front.len());
+            let n = (count - copied).min(back.len() - offset);
+            out[copied..copied + n].copy_from_slice(&back[offset..offset + n]);
+            copied += n;
+        }
+        self.read_pos += copied as u64;
+        self.trim_rewind();
+        copied
+    }
+
+    fn trim_rewind(&mut self) {
+        let keep_from = self.read_pos.saturating_sub(BUFFER_REWIND as u64);
+        if keep_from <= self.buffer_start {
+            return;
+        }
+        let drop = (keep_from - self.buffer_start).min(self.buffer.len() as u64) as usize;
+        self.buffer.drain(..drop);
+        self.buffer_start += drop as u64;
+    }
+
+    fn reset(&mut self, pos: u64) {
+        self.buffer.clear();
+        self.buffer_start = pos;
+        self.read_pos = pos;
+        self.write_pos = pos;
+        self.eof = false;
+        self.error = None;
+        self.generation += 1;
+    }
 }
 
 impl HttpRangeReader {
     fn open_url(url: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let mut reader = Self {
-            url: url.to_string(),
-            client: Client::builder().build()?,
-            position: 0,
-            content_length: None,
-            range_supported: false,
-            current_stream: None,
-        };
-        reader.current_stream = Some(reader.open_range(0)?);
-        Ok(reader)
-    }
-
-    fn open_range(
-        &mut self,
-        start: u64,
-    ) -> Result<Response, Box<dyn std::error::Error + Send + Sync>> {
-        let resp = self
-            .client
-            .get(&self.url)
-            .header(RANGE, format!("bytes={start}-"))
-            .send()?;
-        let status = resp.status();
-        let supports_range = status == StatusCode::PARTIAL_CONTENT;
-        if start > 0 && !supports_range {
-            return Err("range request unsupported".into());
-        }
-        if start == 0 {
-            self.range_supported = supports_range;
-        }
-        let resp = resp.error_for_status()?;
-        self.remember_content_length(&resp);
-        Ok(resp)
-    }
-
-    fn open_range_io(&mut self, start: u64) -> io::Result<Response> {
-        self.open_range(start)
-            .map_err(|_| io::Error::other("stream open failed"))
-    }
-
-    fn remember_content_length(&mut self, resp: &Response) {
-        if let Some(total) = content_range_total(resp) {
-            self.content_length = Some(total);
-            return;
-        }
-        if resp.status() == StatusCode::OK {
-            self.content_length = resp
-                .headers()
-                .get(CONTENT_LENGTH)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.parse().ok());
-        }
-    }
-
-    fn content_length(&mut self) -> io::Result<u64> {
-        if let Some(len) = self.content_length {
-            return Ok(len);
-        }
-        let resp = self
-            .client
-            .head(&self.url)
-            .send()
-            .map_err(|_| io::Error::other("content length unavailable"))?
-            .error_for_status()
-            .map_err(|_| io::Error::other("content length unavailable"))?;
-        self.remember_content_length(&resp);
-        self.content_length
-            .ok_or_else(|| io::Error::other("content length unavailable"))
+        let client = Client::builder().build()?;
+        let (response, range_supported, content_length) = open_http_response(&client, url, 0)?;
+        let shared = Arc::new(SharedBuffer {
+            state: Mutex::new(BufferState::new(range_supported, content_length)),
+            can_read: Condvar::new(),
+            can_write: Condvar::new(),
+        });
+        thread::spawn({
+            let shared = Arc::clone(&shared);
+            let url = url.to_string();
+            move || producer_loop(shared, client, url, Some(response), 0)
+        });
+        Ok(Self { shared })
     }
 
     fn range_supported(&self) -> bool {
-        self.range_supported
+        self.shared.state.lock().range_supported
     }
 }
 
@@ -374,41 +410,194 @@ impl Read for HttpRangeReader {
         if out.is_empty() {
             return Ok(0);
         }
-        if self.content_length.is_some_and(|len| self.position >= len) {
-            return Ok(0);
+        let mut state = self.shared.state.lock();
+        loop {
+            if let Some(err) = state.error {
+                return Err(io::Error::other(err));
+            }
+            if state
+                .content_length
+                .is_some_and(|len| state.read_pos >= len)
+                || state.eof
+            {
+                return Ok(0);
+            }
+            if state.read_pos < state.buffer_start || state.read_pos > state.write_pos {
+                return Err(io::Error::other("stream buffer invalid"));
+            }
+            if state.readable() > 0 {
+                let n = state.read_into(out);
+                self.shared.can_write.notify_one();
+                return Ok(n);
+            }
+            self.shared.can_read.wait(&mut state);
         }
-        if self.current_stream.is_none() {
-            self.current_stream = Some(self.open_range_io(self.position)?);
-        }
-        let n = match self.current_stream.as_mut() {
-            Some(stream) => stream.read(out)?,
-            None => 0,
-        };
-        if n == 0 {
-            self.current_stream = None;
-            return Ok(0);
-        }
-        self.position += n as u64;
-        Ok(n)
     }
 }
 
 impl Seek for HttpRangeReader {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let mut state = self.shared.state.lock();
         let next = match pos {
             SeekFrom::Start(n) => n,
-            SeekFrom::Current(offset) => checked_seek(self.position, offset)?,
-            SeekFrom::End(offset) => checked_seek(self.content_length()?, offset)?,
-        };
-        if next != self.position {
-            if next != 0 && !self.range_supported {
-                return Err(io::Error::other("range unsupported"));
+            SeekFrom::Current(offset) => checked_seek(state.read_pos, offset)?,
+            SeekFrom::End(offset) => {
+                let len = state
+                    .content_length
+                    .ok_or_else(|| io::Error::other("content length unavailable"))?;
+                checked_seek(len, offset)?
             }
-            self.position = next;
-            self.current_stream = None;
+        };
+        if next != state.read_pos {
+            if next < state.buffer_start || next > state.write_pos {
+                if next != 0 && !state.range_supported {
+                    return Err(io::Error::other("range unsupported"));
+                }
+                state.reset(next);
+            } else {
+                state.read_pos = next;
+            }
+            self.shared.can_write.notify_all();
+            self.shared.can_read.notify_all();
         }
-        Ok(self.position)
+        Ok(state.read_pos)
     }
+}
+
+impl Drop for HttpRangeReader {
+    fn drop(&mut self) {
+        let mut state = self.shared.state.lock();
+        state.stop = true;
+        self.shared.can_write.notify_all();
+        self.shared.can_read.notify_all();
+    }
+}
+
+fn producer_loop(
+    shared: Arc<SharedBuffer>,
+    client: Client,
+    url: String,
+    initial_response: Option<Response>,
+    initial_generation: u64,
+) {
+    let mut response = initial_response;
+    let mut response_generation = initial_generation;
+    let mut chunk = vec![0_u8; BUFFER_CHUNK];
+    loop {
+        let generation = {
+            let mut state = shared.state.lock();
+            loop {
+                if state.stop {
+                    return;
+                }
+                if state.error.is_some() || state.eof {
+                    shared.can_write.wait(&mut state);
+                    continue;
+                }
+                state.trim_rewind();
+                if state.generation != response_generation {
+                    break state.generation;
+                }
+                if state.buffer.len() < BUFFER_HIGH_WATER {
+                    break state.generation;
+                }
+                while state.buffer.len() > BUFFER_LOW_WATER
+                    && !state.stop
+                    && state.generation == response_generation
+                {
+                    shared.can_write.wait(&mut state);
+                    state.trim_rewind();
+                }
+            }
+        };
+
+        if response.is_none() || response_generation != generation {
+            let start = shared.state.lock().write_pos;
+            match open_http_response(&client, &url, start) {
+                Ok((resp, range_supported, content_length)) => {
+                    let mut state = shared.state.lock();
+                    if state.generation != generation {
+                        continue;
+                    }
+                    if start == 0 {
+                        state.range_supported = range_supported;
+                    }
+                    if content_length.is_some() {
+                        state.content_length = content_length;
+                    }
+                    response = Some(resp);
+                    response_generation = generation;
+                }
+                Err(_) => {
+                    let mut state = shared.state.lock();
+                    if state.generation == generation {
+                        state.error = Some("stream open failed");
+                        shared.can_read.notify_all();
+                    }
+                    response = None;
+                    continue;
+                }
+            }
+        }
+
+        let n = match response
+            .as_mut()
+            .and_then(|resp| resp.read(&mut chunk).ok())
+        {
+            Some(n) => n,
+            None => {
+                let mut state = shared.state.lock();
+                if state.generation == response_generation {
+                    state.error = Some("stream read failed");
+                    shared.can_read.notify_all();
+                }
+                response = None;
+                continue;
+            }
+        };
+
+        let mut state = shared.state.lock();
+        if state.generation != response_generation {
+            response = None;
+            continue;
+        }
+        if n == 0 {
+            state.eof = true;
+            response = None;
+            shared.can_read.notify_all();
+            continue;
+        }
+        state.push(&chunk[..n]);
+        shared.can_read.notify_all();
+    }
+}
+
+fn open_http_response(
+    client: &Client,
+    url: &str,
+    start: u64,
+) -> Result<(Response, bool, Option<u64>), Box<dyn std::error::Error + Send + Sync>> {
+    let resp = client
+        .get(url)
+        .header(RANGE, format!("bytes={start}-"))
+        .send()?;
+    let status = resp.status();
+    let range_supported = status == StatusCode::PARTIAL_CONTENT;
+    if start > 0 && !range_supported {
+        return Err("range request unsupported".into());
+    }
+    let resp = resp.error_for_status()?;
+    let content_length = content_range_total(&resp).or_else(|| {
+        if resp.status() == StatusCode::OK {
+            resp.headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse().ok())
+        } else {
+            None
+        }
+    });
+    Ok((resp, range_supported, content_length))
 }
 
 fn content_range_total(resp: &Response) -> Option<u64> {
@@ -452,7 +641,8 @@ mod tests {
 
     #[test]
     fn http_range_reader_reopens_stream_after_seek() {
-        let data: Vec<u8> = (0..=255).cycle().take(512).collect();
+        let target = (BUFFER_HIGH_WATER + BUFFER_CHUNK) as u64;
+        let data: Vec<u8> = (0..=255).cycle().take(target as usize + 512).collect();
         let (url, starts) = range_server(data.clone());
         let mut reader = HttpRangeReader::open_url(&url).unwrap();
         assert_eq!(starts.recv_timeout(StdDuration::from_secs(2)).unwrap(), 0);
@@ -461,16 +651,21 @@ mod tests {
         reader.read_exact(&mut first).unwrap();
         assert_eq!(&first, &data[0..4]);
 
-        reader.seek(SeekFrom::Start(100)).unwrap();
+        reader.seek(SeekFrom::Start(target)).unwrap();
         let mut next = [0_u8; 4];
         reader.read_exact(&mut next).unwrap();
-        assert_eq!(&next, &data[100..104]);
-        assert_eq!(starts.recv_timeout(StdDuration::from_secs(2)).unwrap(), 100);
+        let target = target as usize;
+        assert_eq!(&next, &data[target..target + 4]);
+        assert_eq!(
+            starts.recv_timeout(StdDuration::from_secs(2)).unwrap(),
+            target as u64
+        );
     }
 
     #[test]
     fn http_reader_falls_back_when_range_is_unsupported() {
-        let data: Vec<u8> = (0..=255).cycle().take(512).collect();
+        let target = (BUFFER_HIGH_WATER + BUFFER_CHUNK) as u64;
+        let data: Vec<u8> = (0..=255).cycle().take(target as usize + 512).collect();
         let (url, _starts) = http_server(data.clone(), false);
         let mut reader = HttpRangeReader::open_url(&url).unwrap();
 
@@ -478,7 +673,7 @@ mod tests {
         let mut first = [0_u8; 4];
         reader.read_exact(&mut first).unwrap();
         assert_eq!(&first, &data[0..4]);
-        assert!(reader.seek(SeekFrom::Start(100)).is_err());
+        assert!(reader.seek(SeekFrom::Start(target)).is_err());
     }
 
     #[test]
@@ -576,8 +771,8 @@ mod tests {
             "{status}\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\n{extra}\r\n",
             body.len()
         );
-        stream.write_all(headers.as_bytes()).unwrap();
-        stream.write_all(body).unwrap();
+        let _ = stream.write_all(headers.as_bytes());
+        let _ = stream.write_all(body);
     }
 
     fn wav_bytes(samples: u32) -> Vec<u8> {
