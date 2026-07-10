@@ -1,8 +1,8 @@
 // 热评视图(P5f,NCM;效果图 ncm-ui/07):正在播放页 X 键在歌词/热评间切换时挂载。
 // 行:头像 + 昵称/时间 + 内容 + 点赞数。点赞快捷键(comment_like)留 P6。
 
-import { Focusable } from "@decky/ui";
-import { useEffect, useState } from "react";
+import { Focusable, GamepadButton } from "@decky/ui";
+import { useEffect, useRef, useState } from "react";
 import { FaThumbsUp } from "react-icons/fa";
 
 import { Comment, api, errorText } from "../api";
@@ -17,6 +17,7 @@ const stripTofu = (s: string) =>
 
 export function CommentsView({ songId }: { songId: string }) {
   const [comments, setComments] = useState<Comment[] | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -49,7 +50,20 @@ export function CommentsView({ songId }: { songId: string }) {
     );
   }
   return (
+    // 可聚焦滚动容器:空 onActivate 使 D-pad 右能走进来;onGamepadDirection 上下滚
+    // (返回 true 消费不逃焦),按左返回 false 放行 → 焦点退回左侧控制列
     <Focusable
+      onActivate={() => {}}
+      ref={boxRef as never}
+      {...({
+        onGamepadDirection: (evt: { detail?: { button?: number } }) => {
+          const b = evt?.detail?.button;
+          if (b === GamepadButton.DIR_UP) boxRef.current?.scrollBy({ top: -110 });
+          else if (b === GamepadButton.DIR_DOWN) boxRef.current?.scrollBy({ top: 110 });
+          else return false;
+          return true;
+        },
+      } as object)}
       style={{
         flexGrow: 1,
         minWidth: 0,
