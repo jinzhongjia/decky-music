@@ -62,7 +62,9 @@ export function SecondaryTabs({ tabs }: { tabs: SecTab[] }) {
         </Focusable>
         <Chip>R2</Chip>
       </div>
-      <div style={{ flexGrow: 1, minHeight: 0, minWidth: 0, display: "flex" }}>
+      {/* key=当前 tab id:同类型内容组件(如两个 PlaylistGridView)切换时强制重挂,
+          否则 React 复用实例、useEffect 不重跑,内容不刷新 */}
+      <div key={tabs[idx].id} style={{ flexGrow: 1, minHeight: 0, minWidth: 0, display: "flex" }}>
         {tabs[idx].content}
       </div>
     </Focusable>
