@@ -49,7 +49,7 @@ function IconBtn({ onClick, children }: { onClick: () => void; children: React.R
 }
 
 export function NowPlaying() {
-  const { current, playing, posSec, wallMs, mode } = usePlayer();
+  const { current, playing, posSec, wallMs, mode, queueMode } = usePlayer();
   const [lyric, setLyric] = useState<Lyric | null>(null);
   const [, tick] = useState(0);
 
@@ -171,15 +171,18 @@ export function NowPlaying() {
             {fmtTime(posMs / 1000)} / {fmtTime(dur)}
           </div>
         </div>
+        {/* 电台模式:无上一首、无播放模式(QUEUE-BEHAVIOR §1.2) */}
         <Focusable style={{ display: "flex", gap: "0.5rem" }}>
-          <IconBtn onClick={prevTrack}>
-            <FaStepBackward />
-          </IconBtn>
+          {queueMode !== "radio" && (
+            <IconBtn onClick={prevTrack}>
+              <FaStepBackward />
+            </IconBtn>
+          )}
           <IconBtn onClick={togglePlay}>{playing ? <FaPause /> : <FaPlay />}</IconBtn>
           <IconBtn onClick={nextTrack}>
             <FaStepForward />
           </IconBtn>
-          <IconBtn onClick={cycleMode}>{modeIcon(mode)}</IconBtn>
+          {queueMode !== "radio" && <IconBtn onClick={cycleMode}>{modeIcon(mode)}</IconBtn>}
         </Focusable>
       </div>
 

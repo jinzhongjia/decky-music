@@ -43,6 +43,31 @@ function QueueModal({ closeModal }: { closeModal?: () => void }) {
   const lo = Math.max(0, index - WINDOW);
   const hi = Math.min(items.length, index + WINDOW + 1);
 
+  // 电台模式:不展示未来曲目(保持电台未知感),只显示当前曲 + 退出入口(QUEUE-BEHAVIOR §4)
+  if (q?.mode === "radio") {
+    const cur = items[0];
+    return (
+      <ModalRoot closeModal={closeModal} onCancel={closeModal}>
+        <div style={{ width: "min(560px, 92vw)" }}>
+          <div style={{ color: theme.text, fontWeight: 700, fontSize: "1.1em" }}>
+            {t("listeningRadio")}
+          </div>
+          {cur && (
+            <div style={{ marginTop: "0.75rem" }}>
+              <QueueRow item={cur} current onPlay={() => {}} onRemove={() => {}} />
+            </div>
+          )}
+          <DialogButton
+            style={{ marginTop: "1rem", width: "100%" }}
+            onClick={() => guard(() => api.queueClear())}
+          >
+            {t("exitRadio")}
+          </DialogButton>
+        </div>
+      </ModalRoot>
+    );
+  }
+
   const ellipsisRow = (
     <div style={{ color: theme.textDim, textAlign: "center", fontSize: "0.8em" }}>⋯</div>
   );

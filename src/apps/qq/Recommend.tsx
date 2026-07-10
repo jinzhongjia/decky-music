@@ -9,6 +9,7 @@ import { RecommendData, api } from "../../api";
 import { reportError } from "../../errors";
 import { t } from "../../i18n";
 import { playQueue } from "../../player/usePlayer";
+import { openRadioPage } from "../../screens/Immersive";
 import { openPlaylistDetail } from "../../screens/PlaylistDetail";
 import { Grid, HeroCard, PlaylistCard, Section, SongCell } from "../../ui/cards";
 import { theme } from "../../ui/theme";
@@ -52,20 +53,19 @@ export function Recommend() {
     >
       <Section title={t("smartRadio")}>
         <div style={{ display: "flex", gap: "0.75rem" }}>
-          {/* P5d 前置灰:不建会失败的入口(specs);A 无动作 */}
           <HeroCard
             title={t("guessYouLike")}
-            subtitle={`${t("guessDesc")} · ${t("comingSoon")}`}
+            subtitle={t("guessDesc")}
             icon={<FaHeartbeat />}
             accent={QQ_GREEN}
-            disabled
+            onActivate={() => openRadioPage("qq_guess", t("guessYouLike"))}
           />
           <HeroCard
             title={t("radarRec")}
-            subtitle={`${t("radarDesc")} · ${t("comingSoon")}`}
+            subtitle={t("radarDesc")}
             icon={<FaSatelliteDish />}
             accent={QQ_GREEN}
-            disabled
+            onActivate={() => openRadioPage("qq_radar", t("radarRec"))}
           />
         </div>
       </Section>

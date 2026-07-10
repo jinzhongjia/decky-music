@@ -5,6 +5,7 @@ import { FaMusic } from "react-icons/fa";
 import { Boundary } from "./Boundary";
 import { Page, ROUTE } from "./Page";
 import { QAM } from "./QAM";
+import { RADIO_ROUTE, RadioPage } from "./screens/Immersive";
 import { DETAIL_ROUTE, PlaylistDetailPage } from "./screens/PlaylistDetail";
 import { disableMenuInjection, enableMenuInjection } from "./steamMenu";
 
@@ -18,6 +19,12 @@ export default definePlugin(() => {
   routerHook.addRoute(DETAIL_ROUTE, () => (
     <Boundary>
       <PlaylistDetailPage />
+    </Boundary>
+  ));
+  // QQ 智能电台沉浸页(猜你喜欢/雷达推荐共用)
+  routerHook.addRoute(RADIO_ROUTE, () => (
+    <Boundary>
+      <RadioPage />
     </Boundary>
   ));
   enableMenuInjection(); // 左侧 Steam 菜单注入「音乐」入口(可选增强,失败不影响 QAM/账号页入口)
@@ -34,6 +41,7 @@ export default definePlugin(() => {
       disableMenuInjection();
       routerHook.removeRoute(ROUTE);
       routerHook.removeRoute(DETAIL_ROUTE);
+      routerHook.removeRoute(RADIO_ROUTE);
     },
   };
 });
