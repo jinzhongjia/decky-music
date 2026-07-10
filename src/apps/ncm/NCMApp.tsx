@@ -22,7 +22,7 @@ export function NCMApp() {
         { id: "fm", title: t("fmTitle"), content: <FM /> },
         { id: "search", title: t("search"), content: <Search /> },
         { id: "my", title: t("myTab"), content: <My /> },
-        { id: "nowplaying", title: t("nowPlaying"), content: <NowPlaying /> },
+        { id: "nowplaying", title: t("nowPlaying"), content: <NowPlaying comments /> },
       ]}
     />
   );
