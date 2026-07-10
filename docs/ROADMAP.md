@@ -6,16 +6,28 @@
 
 ---
 
-## 现状(截至 2026-07-10)
+## 现状(截至 2026-07-11)
 
-- **P3 全部完成**:大屏 shell(首行 Logo | L1 | 页签 | R1 | 状态徽章,内容全宽,无底部播放条)、`Start` 盲操 + 系统图例、正在播放页(封面 + 进度 + 上一首/播放暂停/下一首/模式 + 歌词同步高亮)、歌词后端(QQ 逐行 / NCM 逐字,归一化 `Lyric`)。
-- **播放核心**:搜索、song_url(音质降级)、普通队列 + 自动切歌 + 播放模式、`get_playback` 回灌、协议 v1、player 流式播放(HTTP Range + 有界预取)。
-- **健壮性**:QQ 凭证过期自动刷新、登录具体错误码(设备超限等)、断网防线(见下)。
-- **超时契约**(断网假死修复后确立,改动需保持不等式):
-  `curl 连接 10s(qq 库内) < provider 上游兜底 15s(qq wait_for / ncm NET_TIMEOUT) < bridge 请求 30s`;
+- **P3 / P4 / P5a / P5b / P5c / P5d 完成**:shell 重构、歌词、队列浮层与编辑(富信息持久化)、
+  X 上下文菜单、QQ 推荐页、NCM 发现页、歌单详情(独立路由,B 原生返回)、电台模式
+  (智能电台沉浸路由 + NCM 私人FM 页签,补水/无上一首/不落盘)。
+- **后端内容命令全量就绪**(P5e/P5f 的 provider 层已实现,bridge callable + UI 待做):
+  两端对齐的 `search_songs/search_playlists`、`user_assets`、`fav_songs`、
+  `created_playlists/fav_playlists`、`like_song {id,on}`、`add_to_playlist`、
+  `artist_detail/album_detail`、`radio_fetch {kind}`;QQ 另有 `search_albums/search_artists/recent_songs`;
+  NCM 另有 `search_hot/banner/cloud_songs/listen_rank/comments/comment_like/fm_trash`。
+  边界校验统一返 `invalid_request`,limit 钳制 50,未登录预检返 `not_logged_in`。
+- **并发架构**:bridge Conn id demux + 事件顺序队列(修自然播完自死锁);播放意图代次
+  (最后一次操作赢);player load 后台化 + 代次守卫;双 provider 请求处理并发化。
+- **播放核心**:流式播放(HTTP Range + 有界预取 + 截断续传)、周期位置锚点(3s)、
+  普通/电台双队列模式、`get_playback` 回灌(含 queue_mode/radio_kind)、协议 v1。
+- **健壮性**:QQ 凭证自动刷新、登录具体错误码、settings 0600 原子写、错误提示分域(page/qam)。
+- **超时契约**(改动需保持不等式):
+  `curl 连接 10s(qq 库内) < provider 上游兜底 15s < bridge 请求 30s`;
   player 侧 `connect 10s / 逐操作 IO 15s / 读侧停摆兜底 30s`。
-  qq-provider 命令循环兜住一切异常(Timeout 类映射 `timeout` 码);playback 自动切歌遇 `timeout` 熔断。
-- **未做**:队列浮层/编辑、上下文菜单、队列持久化、电台模式、全部内容页(推荐/发现/FM/我的)、热评、搜索分类。
+  provider 兜住一切异常(Timeout 类映射 `timeout` 码);playback 自动切歌遇 `timeout` 熔断。
+- **未做(UI 层)**:我的音乐/我的(P5e)、热评 + 歌词手动滚/进度 seek/音量(P5f)、
+  搜索分类 Tab/热搜(P6);红心真实收藏态同步(P6)。
 
 ---
 
@@ -34,7 +46,7 @@
 
 ---
 
-## P4 队列浮层 + 上下文菜单(零内容依赖,先兑现图例上已承诺的 Y/X)
+## P4 队列浮层 + 上下文菜单 ✅ 已完成
 
 ### 接口契约
 
@@ -63,7 +75,7 @@ bridge 新增 callable(队列已在 bridge 手里,无需 provider 改动):
 
 ---
 
-## P5a QQ 推荐页(第一个内容页)
+## P5a QQ 推荐页 ✅ 已完成
 
 ### 接口契约
 
@@ -90,7 +102,7 @@ bridge 新增 callable(队列已在 bridge 手里,无需 provider 改动):
 
 ---
 
-## P5b NCM 发现页
+## P5b NCM 发现页 ✅ 已完成
 
 ### 接口契约
 
@@ -109,7 +121,7 @@ Banner 后置(P6):展示价值低、跳转目标类型杂。
 
 ---
 
-## P5c 歌单详情(共享视图)
+## P5c 歌单详情 ✅ 已完成(独立路由)
 
 ### 接口契约
 
@@ -120,13 +132,13 @@ Banner 后置(P6):展示价值低、跳转目标类型杂。
 
 ### UI 绘制
 
-`screens/PlaylistDetail.tsx`(共享):封面头(名称/曲数)+ `SongRow` 全宽列表;`A` 单曲 = 以整单建队定位该曲(QUEUE-BEHAVIOR §2 上下文替换);「播放全部」按钮;`X` 菜单复用 P4。导航:页内子视图(推荐/发现页进入,`B` 返回),不新增顶层页签。
+`screens/PlaylistDetail.tsx`(共享):封面头(名称/曲数)+ `SongRow` 全宽列表;`A` 单曲 = 以整单建队定位该曲(QUEUE-BEHAVIOR §2 上下文替换);「播放全部」按钮;`X` 菜单复用 P4。导航:独立路由 `/music-playlist`(页内子视图的 onCancelButton 拦不住系统返回,已弃),`B` 原生路由返回。
 
 **验收**:从推荐/发现进入详情、整单播放、B 返回焦点恢复。
 
 ---
 
-## P5d 电台模式(bridge)+ 智能电台 / 私人FM 沉浸页
+## P5d 电台模式 + 沉浸页 ✅ 已完成
 
 ### 接口契约
 
@@ -135,8 +147,8 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 | 层 | 契约 |
 | :--- | :--- |
 | provider cmd | `radio_fetch {kind}` -> `{songs:[Song]}`。kind:`qq_guess`(猜你喜欢)/ `qq_radar`(雷达)/ `ncm_fm`(私人FM);每批 10-20 首 |
-| provider cmd | `fm_trash {id}` -> `{}`(仅 NCM);`like {id, on}` -> `{}`(NCM `like`;QQ 后置) |
-| bridge callable | `playRadio(kind)`:清普通队列 -> 拉第一批 -> radio 模式开播;`fmTrash()`:标记当前曲 + 切下一首;`likeCurrent(on)` |
+| provider cmd | `fm_trash {id}` -> `{}`(仅 NCM);`like_song {id, on}` -> `{}`(两端同名实现) |
+| bridge callable | `playRadio(kind)`:清普通队列 -> 拉第一批 -> radio 模式开播;`fmTrash()`:标记当前曲 + 切下一首;`likeCurrent(on)`(当前曲红心,QQ/NCM 通用) |
 | 补水 | ended 推进到批次倒数第二首时后台 `radio_fetch` 追加;radio 下 prev 禁用、播放模式固定 |
 | 事件 | 复用 `queue` 事件(mode 字段);快照 `get_playback`/`get_queue` 带 mode |
 | 持久化 | 只记 `queue_mode:"radio"` + kind,内容不落盘 |
@@ -152,7 +164,7 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 
 ---
 
-## P5e 我的音乐(QQ)/ 我的(NCM)+ NCM 全屏登录页
+## P5e 我的音乐(QQ)/ 我的(NCM)+ NCM 全屏登录页(provider 层 ✅,bridge/UI 待做)
 
 ### 接口契约
 
@@ -173,7 +185,7 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 
 ---
 
-## P5f 正在播放页增强(NCM 热评 + 交互补全)
+## P5f 正在播放页增强(NCM 热评 + 交互补全)(provider 层 ✅,bridge/UI 待做)
 
 ### 接口契约
 
