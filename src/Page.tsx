@@ -38,7 +38,7 @@ export function Page() {
         overflow: "hidden",
       }}
     >
-      <ErrorBanner />
+      <ErrorBanner scope="page" />
       <div style={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
         {provider === undefined ? (
           <div style={{ margin: "auto", color: theme.textDim }}>{t("loading")}</div>

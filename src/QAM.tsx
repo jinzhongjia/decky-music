@@ -76,7 +76,7 @@ export function QAM() {
       } else if (TERMINAL.includes(msg.type)) {
         setQr(null);
         // error 带具体 code(设备超限/封禁/频率)→ 弹 ErrorBanner 说明真实原因,不然回选择页很懵
-        if (msg.type === LoginStatus.Error) reportError(errorText(msg.data.code));
+        if (msg.type === LoginStatus.Error) reportError(errorText(msg.data.code), "qam");
         setView(provider === "qq" ? "qqmethod" : "pick");
       } else if (msg.type === LoginStatus.Scanned) {
         setQr(null); // scanned:已扫码,二维码消失
@@ -87,7 +87,7 @@ export function QAM() {
   // provider 进程级错误(如启动超时):报错并从加载态兜回选源,不然会永远卡"加载中"
   useEffect(() => {
     return onProvider((e) => {
-      reportError(errorText(e.data.code));
+      reportError(errorText(e.data.code), "qam");
       if (S.view === "loading" || S.view === "qr") setView("pick");
     });
   }, []);
@@ -109,7 +109,7 @@ export function QAM() {
       })
       .catch((e) => {
         setView("pick");
-        reportError(e instanceof Error ? e.message : String(e));
+        reportError(e instanceof Error ? e.message : String(e), "qam");
       });
   }, []);
 
@@ -127,7 +127,7 @@ export function QAM() {
       else startLogin(null); // ncm 无登录方式选择,直接扫码
     } catch (e) {
       setView("pick"); // 切源失败回选源,别卡在加载态
-      reportError(e instanceof Error ? e.message : String(e));
+      reportError(e instanceof Error ? e.message : String(e), "qam");
     }
   };
 
@@ -135,18 +135,18 @@ export function QAM() {
     setQr(null);
     setStatus("");
     setView("qr");
-    await guard(() => api.login(type));
+    await guard(() => api.login(type), "login", "qam");
   };
 
   const doLogout = async () => {
-    await guard(() => api.logout());
+    await guard(() => api.logout(), "logout", "qam");
     setAccount(null);
     setView("pick");
   };
 
   return (
     <PanelSection title={t("music")}>
-      <ErrorBanner />
+      <ErrorBanner scope="qam" />
 
       {view === "loading" && (
         <PanelSectionRow>

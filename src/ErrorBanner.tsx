@@ -1,10 +1,10 @@
 import { DialogButton } from "@decky/ui";
 
-import { useError } from "./errors";
+import { type ErrorScope, useError } from "./errors";
 
 // 在 UI 内渲染异步/事件错误(Steam 原生 toast 太短)。有错才显示,可关闭。
-export function ErrorBanner() {
-  const [msg, clear] = useError();
+export function ErrorBanner({ scope = "page" }: { scope?: ErrorScope }) {
+  const [msg, clear] = useError(scope);
   if (!msg) return null;
   return (
     <div
