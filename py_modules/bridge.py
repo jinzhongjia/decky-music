@@ -437,7 +437,7 @@ class Bridge:
         await self.player.request("pause")
 
     async def resume(self):
-        await self.player.request("resume")
+        await self.playback.resume()  # 回灌后冷启动由 playback 判定(空 player 的 resume 是空操作)
 
     async def seek(self, sec: float):
         await self.player.request("seek", {"sec": sec})

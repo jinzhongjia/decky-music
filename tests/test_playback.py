@@ -107,6 +107,25 @@ class TestQueueEdit(unittest.TestCase):
         run(self.pb.play_queue([item("a")], 0))
         self.assertTrue(self.persisted)
 
+    def test_resume_after_restore_cold_starts_current(self):
+        # 重启回灌后 player 没 load 过:resume 应加载当前曲(而非发空操作 resume)
+        self.pb.restore({"items": [item("a"), item("b")], "index": 1})
+        run(self.pb.resume())
+        self.assertTrue(self.pb.playing)
+        self.assertEqual(self.pb.index, 1)
+        self.assertIn("load", self.pb.player.calls)
+        self.assertNotIn("resume", self.pb.player.calls)
+
+    def test_resume_after_play_is_plain_resume(self):
+        run(self.pb.play_queue([item("a")], 0))
+        self.pb.player.calls.clear()
+        run(self.pb.resume())
+        self.assertEqual(self.pb.player.calls, ["resume"])
+
+    def test_resume_on_empty_queue_noops_gracefully(self):
+        run(self.pb.resume())
+        self.assertEqual(self.pb.player.calls, ["resume"])  # 直通空操作,不崩
+
     def test_radio_prev_noops_and_snapshot_hides_future_tracks(self):
         run(self.pb.play_radio("qq_guess", [item("a"), item("b"), item("c")]))
         run(self.pb.next_track())

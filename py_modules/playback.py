@@ -45,6 +45,7 @@ class Playback:
         self.pos = 0.0  # 最近上报的播放位置(秒)
         self.wall = 0  # 该位置对应墙钟(ms),UI 插值用
         self.last_error = ""  # 最近一次 _play_index 失败的错误码(自动切歌熔断判据)
+        self._loaded = False  # 本次 player 进程内是否 load 成功过(restore 回灌不开播 → False)
         self._persist = persist  # bridge 注入的落盘回调 (items, index) -> None;None = 不持久化
         self._play_gen = 0  # 播放意图代次:新意图作废在途旧意图(最后一次操作赢,不排队)
 
@@ -100,6 +101,14 @@ class Playback:
             return
         if self.queue:
             await self._play_index(self._advance_index())
+
+    async def resume(self):
+        """继续播放。重启回灌后 player 是空的(restore 不自动开播),此时 resume 对 player
+        是空操作 —— 落到冷启动:加载当前曲。bridge 与 player 同生共死,_loaded 按进程生命周期算。"""
+        if not self._loaded and 0 <= self.index < len(self.queue):
+            await self._play_index(self.index)
+            return
+        await self.player.request("resume")
 
     async def prev_track(self):
         if self.mode == "radio":
@@ -265,6 +274,7 @@ class Playback:
                 await self.player.request("stop")
             return False
         self.last_error = ""
+        self._loaded = True
         self.playing, self.pos, self.wall = True, 0.0, _now_ms()  # playing 事件会再校准
         if self._persist and self.mode == "normal":
             self._persist(self.queue, self.index)  # index 变化落盘(结构没变,不发 queue 事件)
