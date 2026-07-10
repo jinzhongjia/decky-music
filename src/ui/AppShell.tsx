@@ -132,8 +132,8 @@ function TabPill({
   );
 }
 
-// L1/R1 提示章(页面内提示,非系统图例;非交互)
-function Chip({ children }: { children: ReactNode }) {
+// L1/R1、L2/R2 提示章(页面内提示,非系统图例;非交互)
+export function Chip({ children }: { children: ReactNode }) {
   return (
     <span
       style={{
