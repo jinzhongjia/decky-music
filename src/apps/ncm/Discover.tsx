@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
 import { DiscoverData, api, errorText } from "../../api";
 import { guard, reportError } from "../../errors";
 import { t } from "../../i18n";
-import { playPlaylistById, playQueue } from "../../player/usePlayer";
+import { playQueue } from "../../player/usePlayer";
+import { openPlaylistDetail } from "../../screens/PlaylistDetail";
 import { Grid, HeroCard, PlaylistCard, Section } from "../../ui/cards";
 import { theme } from "../../ui/theme";
 
@@ -72,7 +73,7 @@ export function Discover() {
         <Section title={t("recPlaylists")}>
           <Grid cols={6}>
             {data.playlists.map((pl) => (
-              <PlaylistCard key={pl.id} pl={pl} onActivate={() => playPlaylistById(pl.id)} />
+              <PlaylistCard key={pl.id} pl={pl} onActivate={() => openPlaylistDetail(pl)} />
             ))}
           </Grid>
         </Section>

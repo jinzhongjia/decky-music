@@ -1,29 +1,16 @@
 // 搜索屏(共享,两个 provider 都用)。仅内容区;外框 + 底部播放条由 shell(Page)提供。
 // F2 先做单曲搜索;分类 tab / 热搜 / 富结果行(时长·VIP)留后续,见 BUILD-PLAN。
 
-import { DialogButton, Focusable, Menu, MenuItem, TextField, showContextMenu } from "@decky/ui";
+import { DialogButton, Focusable, TextField } from "@decky/ui";
 import { useState } from "react";
 
 import { Song, api } from "../api";
-import { guard, reportError } from "../errors";
+import { reportError } from "../errors";
 import { t } from "../i18n";
-import { playQueue, toQueueItem } from "../player/usePlayer";
+import { playQueue } from "../player/usePlayer";
 import { SongRow } from "../ui/SongRow";
+import { openSongMenu } from "../ui/songMenu";
 import { theme } from "../ui/theme";
-
-// X 键上下文菜单(P4 最小集:入队两项;收藏/歌手/专辑 P6)。原生 showContextMenu 自管焦点与关闭。
-function openSongMenu(s: Song) {
-  showContextMenu(
-    <Menu label={s.name}>
-      <MenuItem onSelected={() => guard(() => api.queueInsertNext(toQueueItem(s)))}>
-        {t("playNext")}
-      </MenuItem>
-      <MenuItem onSelected={() => guard(() => api.queueAppend(toQueueItem(s)))}>
-        {t("addToQueue")}
-      </MenuItem>
-    </Menu>
-  );
-}
 
 export function Search() {
   const [kw, setKw] = useState("");

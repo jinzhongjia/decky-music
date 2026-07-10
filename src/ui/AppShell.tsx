@@ -16,6 +16,22 @@ import { theme } from "./theme";
 
 export type AppTab = { id: string; title: string; content: ReactNode };
 
+// 全局播放快捷键(Focusable 属性组):Start 盲操播放/暂停 + Y 队列浮层,无当前曲时
+// 不响应且隐藏图例提示。shell 与独立路由页(歌单详情等)共用,保证快捷键处处一致。
+export function usePlaybackShortcuts() {
+  const { current } = usePlayer();
+  return {
+    onMenuButton: () => {
+      if (current) togglePlay();
+    },
+    onMenuActionDescription: current ? t("playPause") : undefined,
+    onOptionsButton: () => {
+      if (current) openQueueOverlay();
+    },
+    onOptionsActionDescription: current ? t("queueTitle") : undefined,
+  };
+}
+
 export function AppShell({
   name,
   accent,
@@ -28,7 +44,7 @@ export function AppShell({
   initial?: string;
 }) {
   const [active, setActive] = useState(initial ?? tabs[0].id);
-  const { current } = usePlayer();
+  const shortcuts = usePlaybackShortcuts();
   const idx = Math.max(
     0,
     tabs.findIndex((tab) => tab.id === active)
@@ -51,14 +67,7 @@ export function AppShell({
         if (detail.button === GamepadButton.BUMPER_LEFT) cycle(-1);
         else if (detail.button === GamepadButton.BUMPER_RIGHT) cycle(1);
       }}
-      onMenuButton={() => {
-        if (current) togglePlay();
-      }}
-      onMenuActionDescription={current ? t("playPause") : undefined}
-      onOptionsButton={() => {
-        if (current) openQueueOverlay(); // Y:队列浮层;队列空(无当前曲)不开也不提示
-      }}
-      onOptionsActionDescription={current ? t("queueTitle") : undefined}
+      {...shortcuts}
     >
       {/* 首行:系统 chrome 在其上方,不绘制不聚焦 */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
