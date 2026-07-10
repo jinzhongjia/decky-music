@@ -145,12 +145,23 @@ def load_settings() -> dict:
 
 
 def save_settings(data: dict):
-    # 原子写:临时文件 → os.replace()。bridge 可能被 kill,半截写会损坏配置。
+    # 原子写:临时文件(创建即 0600) → os.replace()。bridge 可能被 kill,半截写会损坏配置。
     tmp = SETTINGS + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
-    os.replace(tmp, SETTINGS)
-    os.chmod(SETTINGS, 0o600)  # cookie 私有
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            fd = None
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, SETTINGS)
+        os.chmod(SETTINGS, 0o600)  # cookie 私有
+    except Exception:
+        if fd is not None:
+            os.close(fd)
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 class Bridge:
