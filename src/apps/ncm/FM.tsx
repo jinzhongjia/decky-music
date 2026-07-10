@@ -9,11 +9,20 @@ import { guard, reportError } from "../../errors";
 import { t } from "../../i18n";
 import { usePlayer } from "../../player/usePlayer";
 import { Immersive } from "../../screens/Immersive";
+import { LoginGate } from "../../ui/LoginGate";
 import { HeroCard } from "../../ui/cards";
 
 const NCM_RED = "#ec4141";
 
 export function FM() {
+  return (
+    <LoginGate>
+      <FMInner />
+    </LoginGate>
+  );
+}
+
+function FMInner() {
   const { queueMode } = usePlayer();
   const [starting, setStarting] = useState(false);
 

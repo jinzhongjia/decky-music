@@ -164,7 +164,7 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 
 ---
 
-## P5e 我的音乐(QQ)/ 我的(NCM)+ NCM 全屏登录页(provider 层 ✅,bridge/UI 待做)
+## P5e 我的音乐(QQ)/ 我的(NCM)(provider 层 ✅,bridge/UI 待做)
 
 ### 接口契约
 
@@ -179,9 +179,11 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 - **`ui/SecondaryTabs`**:全宽二级审 Tab 行(带计数徽章),`L2/R2` 或 D-pad 左右切,向下进内容区 —— 官方库范式。
 - QQ 我的音乐页:我喜欢(SongRow 高密度列表)/ 自建歌单 / 收藏歌单(PlaylistCard 网格 -> P5c 详情)。
 - NCM 我的页:我喜欢 / 创建歌单 / 收藏歌单(听歌排行、云盘 P6)。
-- **NCM 全屏登录页**(效果图 `ncm-ui/01`):未登录时 NCMApp 整体只显示扫码页(Logo + QR + 状态 + `A` 刷新),复用 QAM 的 onLogin 事件流;登录成功自动进发现页。QQ 未登录:资产页显示登录引导,不渲染空资产。
+- **登录引导(已实现,取代全屏登录页)**:共享 `ui/LoginGate` —— 整页需登录的内容未登录时
+  显示空态 + 「打开快捷菜单登录」(一键拉开 QAM),login done 事件即时放行;登录 UI 只维护 QAM 一份
+  (全屏登录页方案经评估否决,见 specs/ncm-ui.md 登录策略)。我的音乐/我的 直接包 LoginGate。
 
-**验收**:登录态资产真实数据、计数正确;未登录只见登录页/引导;登出确认弹框;二级 Tab 手柄切换顺畅。
+**验收**:登录态资产真实数据、计数正确;未登录只见 LoginGate 引导;登出确认弹框;二级 Tab 手柄切换顺畅。
 
 ---
 
