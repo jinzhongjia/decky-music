@@ -26,8 +26,8 @@
   `curl 连接 10s(qq 库内) < provider 上游兜底 15s < bridge 请求 30s`;
   player 侧 `connect 10s / 逐操作 IO 15s / 读侧停摆兜底 30s`。
   provider 兜住一切异常(Timeout 类映射 `timeout` 码);playback 自动切歌遇 `timeout` 熔断。
-- **未做(UI 层)**:我的音乐/我的(P5e)、热评 + 歌词手动滚/进度 seek/音量(P5f)、
-  搜索分类 Tab/热搜(P6);红心真实收藏态同步(P6)。
+- **未做(UI 层)**:热评 + 歌词手动滚/进度 seek/音量(P5f)、搜索分类 Tab/热搜(P6);
+  红心服务器种子同步、QQ 最近播放(provider 桩)、资产翻页(P6)。
 
 ---
 
@@ -164,7 +164,7 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 
 ---
 
-## P5e 我的音乐(QQ)/ 我的(NCM)(provider 层 ✅,bridge/UI 待做)
+## P5e 我的音乐(QQ)/ 我的(NCM) ✅ 已完成
 
 ### 接口契约
 
