@@ -8,10 +8,11 @@
 
 ## 现状(截至 2026-07-11)
 
-- **P3 / P4 / P5a / P5b / P5c / P5d 完成**:shell 重构、歌词、队列浮层与编辑(富信息持久化)、
-  X 上下文菜单、QQ 推荐页、NCM 发现页、歌单详情(独立路由,B 原生返回)、电台模式
-  (智能电台沉浸路由 + NCM 私人FM 页签,补水/无上一首/不落盘)。
-- **后端内容命令全量就绪**(P5e/P5f 的 provider 层已实现,bridge callable + UI 待做):
+- **P3 / P4 / P5a / P5b / P5c / P5d / P5e / P5f 完成**:shell 重构、歌词、队列浮层与编辑
+  (富信息持久化)、X 上下文菜单、QQ 推荐页、NCM 发现页、歌单详情(独立路由,B 原生返回)、
+  电台模式(智能电台沉浸路由 + NCM 私人FM 页签,补水/无上一首/不落盘)、我的音乐/我的资产页、
+  正在播放交互补全(NCM 热评 X 切换、细条滑块 seek/音量、歌词手动滚)。
+- **后端内容命令全量就绪**(provider 层 + bridge callable 两端已接):
   两端对齐的 `search_songs/search_playlists`、`user_assets`、`fav_songs`、
   `created_playlists/fav_playlists`、`like_song {id,on}`、`add_to_playlist`、
   `artist_detail/album_detail`、`radio_fetch {kind}`;QQ 另有 `search_albums/search_artists/recent_songs`;
@@ -26,8 +27,8 @@
   `curl 连接 10s(qq 库内) < provider 上游兜底 15s < bridge 请求 30s`;
   player 侧 `connect 10s / 逐操作 IO 15s / 读侧停摆兜底 30s`。
   provider 兜住一切异常(Timeout 类映射 `timeout` 码);playback 自动切歌遇 `timeout` 熔断。
-- **未做(UI 层)**:热评 + 歌词手动滚/进度 seek/音量(P5f)、搜索分类 Tab/热搜(P6);
-  红心服务器种子同步、QQ 最近播放(provider 桩)、资产翻页(P6)。
+- **未做**:搜索分类 Tab/热搜(P6);红心服务器种子同步、QQ 最近播放(provider 桩)、
+  资产翻页、评论点赞快捷键(P6)。
 
 ---
 
@@ -187,7 +188,7 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 
 ---
 
-## P5f 正在播放页增强(NCM 热评 + 交互补全)(provider 层 ✅,bridge/UI 待做)
+## P5f 正在播放页增强(NCM 热评 + 交互补全) ✅ 已完成
 
 ### 接口契约
 
@@ -199,9 +200,10 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 ### UI 绘制(效果图 `ncm-ui/07` + specs 正在播放交互)
 
 - NCM:`X` 在歌词/热评间切换(图例同步);`CommentList`(头像/昵称/内容/点赞数)。
-- 共享交互补全:十字键上下**手动滚歌词**(`B`/超时恢复自动跟随)、进度条改可聚焦滑块(左右微调 -> `seek`)、音量控件(-> `volume`)。
+- 共享交互补全:十字键上下**手动滚歌词**(4s 超时恢复自动跟随;`B` 是原生路由返回、不可拦截,不做 B 恢复)、进度条改可聚焦细条滑块(左右微调 -> `seek`)、音量控件(-> `volume`,bridge 持久化并随 `get_playback` 回灌)。
+- 滑块按键语义照抄 Valve 滑块:`onGamepadDirection` 消费 LEFT/RIGHT(调值不丢焦点),UP/DOWN 放行;控制组 `flow-children="column"` 纵向焦点流。热评内容剥离 Steam 字体必然豆腐的 emoji 区段(U+1FA00+/变体选择符/ZWJ/私有区)。
 
-**验收**:热评切换/翻看流畅;歌词手动滚 + 恢复;滑块 seek 生效;图例随模式变化。
+**验收**:热评切换/翻看流畅;歌词手动滚 + 恢复;滑块 seek/音量生效且焦点稳定;图例随模式变化。(已于 2026-07-11 真机验收)
 
 ---
 
