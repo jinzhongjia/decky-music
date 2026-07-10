@@ -71,6 +71,18 @@ export type Playlist = {
 };
 export type RecommendData = { playlists: Playlist[]; newsongs: Song[] };
 export type DiscoverData = { playlists: Playlist[] };
+// 我的资产计数(user_assets;provider 各取子集,缺省 0)
+export type UserAssets = {
+  ok: boolean;
+  error?: string;
+  fav_songs?: number;
+  recent_songs?: number;
+  listen_rank?: number;
+  created_playlists?: number;
+  fav_playlists?: number;
+  cloud?: number;
+};
+export type PlaylistsResult = { ok: boolean; playlists: Playlist[]; error?: string };
 // 归一化歌词(provider 出,见 qq/lyric.py、ncm-provider/src/lyric.rs)。
 // word_by_word=true 时 line 带 words[](逐字高亮,NCM);否则整行高亮(QQ)。tr=该行译文(可空)。
 export type LyricWord = { t_ms: number; dur_ms: number; text: string };
@@ -104,6 +116,11 @@ export const api = {
     "like_current"
   ),
   likeState: callable<[], { id: string; liked: boolean }>("like_state"),
+  getUserAssets: callable<[], UserAssets>("get_user_assets"),
+  getFavSongs: callable<[], SearchResult>("get_fav_songs"),
+  getListenRank: callable<[], SearchResult>("get_listen_rank"),
+  getCreatedPlaylists: callable<[], PlaylistsResult>("get_created_playlists"),
+  getFavPlaylists: callable<[], PlaylistsResult>("get_fav_playlists"),
   getQueue: callable<[], QueueState>("get_queue"),
   queuePlay: callable<[index: number], void>("queue_play"),
   queueInsertNext: callable<[item: QueueItem], void>("queue_insert_next"),

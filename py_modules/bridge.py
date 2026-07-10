@@ -358,6 +358,33 @@ class Bridge:
         log("bridge", "own", "warn", f"like_song failed id={cur}: {code}")
         return {"ok": False, "error": code, "liked": cur in self.liked_ids}
 
+    # ---- 我的资产(P5e;provider 命令两端已就绪,此处透传) ----
+
+    async def get_user_assets(self) -> dict:
+        r = await self.provider.request("user_assets")
+        if r.ok:
+            return {"ok": True, **r.data}
+        return {"ok": False, "error": r.error.code if r.error else "provider_error"}
+
+    async def _list_cmd(self, cmd: str, key: str, limit: int = 50) -> dict:
+        # 列表类资产命令统一形状:{ok, <key>: [...], error?}。首页 50 条(翻页 P6)
+        r = await self.provider.request(cmd, {"limit": limit})
+        if r.ok:
+            return {"ok": True, key: r.data.get(key, [])}
+        return {"ok": False, key: [], "error": r.error.code if r.error else "provider_error"}
+
+    async def get_fav_songs(self) -> dict:
+        return await self._list_cmd("fav_songs", "songs")
+
+    async def get_listen_rank(self) -> dict:
+        return await self._list_cmd("listen_rank", "songs")
+
+    async def get_created_playlists(self) -> dict:
+        return await self._list_cmd("created_playlists", "playlists")
+
+    async def get_fav_playlists(self) -> dict:
+        return await self._list_cmd("fav_playlists", "playlists")
+
     async def like_state(self) -> dict:
         # 当前曲红心态(会话级记忆);沉浸页换曲/重进时拉取点亮
         cur = self.playback.current_id()

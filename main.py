@@ -50,6 +50,21 @@ class Plugin:
     async def like_state(self) -> dict:
         return await self.bridge.like_state()
 
+    async def get_user_assets(self) -> dict:
+        return await self.bridge.get_user_assets()
+
+    async def get_fav_songs(self) -> dict:
+        return await self.bridge.get_fav_songs()
+
+    async def get_listen_rank(self) -> dict:
+        return await self.bridge.get_listen_rank()
+
+    async def get_created_playlists(self) -> dict:
+        return await self.bridge.get_created_playlists()
+
+    async def get_fav_playlists(self) -> dict:
+        return await self.bridge.get_fav_playlists()
+
     async def get_queue(self) -> dict:
         return await self.bridge.get_queue()
 
