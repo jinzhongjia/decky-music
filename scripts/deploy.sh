@@ -8,7 +8,8 @@ cd "$(dirname "$0")/.."
 
 DECK_HOST="${DECK_HOST:-deck@192.168.0.18}"
 DECK_PLUGIN_PATH="${DECK_PLUGIN_PATH:-/home/deck/homebrew/plugins}"
-NAME=$(jq -r '.name' plugin.json) # 显示名 = 磁盘目录名(与商店安装一致,可含空格)
+# 显示名 = 磁盘目录名(与商店安装一致,可含空格)
+NAME=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync("plugin.json", "utf8")).name)')
 DEST="${DECK_PLUGIN_PATH}/${NAME}"
 
 # 官方 CLI:没有就下载(gitignore 已忽略 cli/)
