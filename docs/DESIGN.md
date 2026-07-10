@@ -122,7 +122,7 @@ Decky 只提供两种原语,足够:
 实现约束:
 
 - 构造 / 解码集中在协议模块:bridge `py_modules/protocol.py`,QQ `qq-provider/protocol.py`,NCM `ncm-provider/src/protocol.rs`,player `player/src/protocol.rs`。
-- request id 由 bridge 递增生成。当前每条 `Conn` 用锁串行 request/response,FIFO 足够;id 用于校验错配与丢弃超时后的迟到响应。若后续需要真正乱序并发,再把 response queue 换成 `id -> Future` demux。
+- request id 由 bridge 递增生成。每条 `Conn` 支持多请求在途,bridge 用 `id -> Future` demux 响应并丢弃超时后的迟到响应;写 socket 只锁单帧原子性。provider/player 写回仍经单一 out queue 串行写帧。
 - 失败响应必须带稳定 `error.code`,前端 `src/api.ts` 本地化;`message` 只作安全 fallback。
 - 子进程诊断走 `Log Event`;stderr 只留 panic/traceback 等非预期输出。
 
@@ -410,7 +410,7 @@ graph LR
    - **播放记录(2026-07-04,桌面模式实测):** 二进制 scp 到 Deck,`ldd` 全部解析、无 GLIBC 缺失;`player --play <mp3>` 拉流成功 → `OutputStream::try_default()` 开默认设备无错 → symphonia 解码 → **实际听到声音**、播完 `exit 0`。→ **待验证项② rodio/cpal 格式协商已通过(桌面模式)**。
    - **游戏模式验证(2026-07-04,整链实测):** 插件部署上 Deck,bridge 以 uid 1000(deck)+ 注入 `XDG_RUNTIME_DIR=/run/user/1000` spawn player,UDS 连接建立。游戏模式(gamescope 会话)下经 UI「测试播放」→ bridge `play_url` → player `load` **出声正常,暂停/继续可用**。→ **命门彻底关闭:整条 UI→bridge→player 在真机游戏模式跑通。**
 2. **子进程崩溃恢复。** bridge 仍需 watchdog:监听子进程退出,自动重启并 `emit` 通知 UI;当前进程管理已集中在 `py_modules/bridge.py`,后续在该处补齐。
-3. **NDJSON 乱序并发。** 协议 v1 已有 request id;当前 bridge 每条 `Conn` 用锁串行请求并丢弃迟到响应,足够支撑现有控制面。若后续需要同一子进程多请求乱序并发,再把 FIFO response queue 升级为 `id -> Future` demux。
+3. **NDJSON 乱序并发。** 已完成:bridge `Conn` 支持 request-id demux;QQ/NCM provider 命令处理后台化,慢上游不堵读循环;player `load` 后台化,慢 CDN 不堵控制命令。请求语义按 id 匹配响应,互不等待。
 4. **二进制执行位。** `remote_binary` 下载后确认 `bin/` 下文件有 `+x`;缺失则 bridge 里 `os.chmod`。
 5. **provider 端口/环境差异消除。** 因统一走 UDS + 自写 wrapper,原库的 HTTP server / 端口配置不再使用。
 6. **音频格式覆盖。** 确认 symphonia 覆盖网易云/QQ 实际下发的编码(mp3/flac/aac/ogg);缺项时补 `rubato` 重采样或换解码路径。
@@ -453,7 +453,7 @@ graph LR
 | **P1 QQ 基本播放** | QQ 端打通"选歌→出声→基本控制"整条链 | qq-provider(QQMusicApi + Nuitka standalone 打包)**只实现 `song_url`**;bridge `set_provider`/`play`/`pause`;player `load`/`play`/`pause`,上报 `playing`/`ended`/`error`;最小 UI(QAM 选 QQ + 一个选歌/播放入口,进度条走 §5.5 插值) | 选 QQ → 某首歌响起、可暂停续播;URL 不出 bridge↔子进程;**打包链路(Nuitka standalone→压缩档→安装解压)跑通** |
 | **P2 网易云 基本播放** | ncm 端补齐同样的基本播放 | ncm-provider(ncm-api-rs + UDS wrapper)`song_url`;复用 P1 的 bridge/player/UI;QAM 可选 QQ/网易云 | 选网易云 → 能播、可暂停;QQ↔网易云切换走**同一段统一路径**(停旧进程→起新进程,§4) |
 | **P3 差异化接口 + UI 微调** | 按 provider 各自铺开特色 | 各 provider 补 `search`/`lyric`/`playlist` 等(按各自 API 能力,不强求对齐);大屏平板 UI 铺开;按 provider 做视觉/交互微调(待截图) | 搜歌、显歌词、播歌单;两 provider 各自 UI 特色成形 |
-| **P4 健壮性 + 分发** | 上线就绪 | 崩溃 watchdog(§10.2,自动重启+`emit`);NDJSON request-id 并发(§10.3,若 P1 起实测需要);seek/volume 若 P1 未含则补齐;`remote_binary` 打包+sha256+CI release | 子进程杀掉能自愈;从 GitHub Release 装插件即用 |
+| **P4 健壮性 + 分发** | 上线就绪 | 崩溃 watchdog(§10.2,自动重启+`emit`);seek/volume 若 P1 未含则补齐;`remote_binary` 打包+sha256+CI release | 子进程杀掉能自愈;从 GitHub Release 装插件即用 |
 
 依赖与并行:
 

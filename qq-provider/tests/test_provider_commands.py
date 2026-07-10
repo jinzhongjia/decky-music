@@ -1,5 +1,6 @@
 """QQ provider backend command tests (pure local, no network)."""
 
+import asyncio
 import os
 import sys
 import unittest
@@ -8,7 +9,7 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import protocol  # noqa: E402
-from main import handle  # noqa: E402
+from main import _run_request, handle  # noqa: E402
 from qq.library import (  # noqa: E402
     NotLoggedIn,
     _as_bool,
@@ -195,6 +196,47 @@ class TestProviderLoginRequired(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(NotLoggedIn):
             await _like_song(q, "123", True)
 
+
+class TestProviderConcurrency(unittest.IsolatedAsyncioTestCase):
+    async def test_fast_read_response_is_not_blocked_by_slow_read(self):
+        slow_started = asyncio.Event()
+        release_slow = asyncio.Event()
+        out = asyncio.Queue()
+
+        class QQ:
+            async def search(self, *_args):
+                slow_started.set()
+                await release_slow.wait()
+                return []
+
+            async def account(self):
+                return {"nickname": "ok"}
+
+        def emit(*_args, **_kwargs):
+            raise AssertionError("unexpected event")
+
+        def log(*_args, **_kwargs):
+            pass
+
+        qq = QQ()
+        slow = asyncio.create_task(
+            _run_request(
+                qq,
+                protocol.Request(1, "search", {"keyword": "slow"}),
+                emit,
+                log,
+                out,
+            )
+        )
+        await slow_started.wait()
+        fast = asyncio.create_task(
+            _run_request(qq, protocol.Request(2, "account", {}), emit, log, out)
+        )
+
+        first = await asyncio.wait_for(out.get(), 1)
+        self.assertEqual(first["id"], 2)
+        release_slow.set()
+        await asyncio.gather(slow, fast)
 
 if __name__ == "__main__":
     unittest.main()

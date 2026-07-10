@@ -24,7 +24,7 @@ mod state;
 
 use logging::log_json;
 use protocol::ErrorCode;
-use state::State;
+use state::{Out, State};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -49,10 +49,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // 在跑的登录轮询;新登录来时 abort 掉,避免双循环并发 emit(只在此单线程命令循环里碰)
+    // 在跑的登录轮询;新登录来时 abort 掉,避免双循环并发 emit。
     let mut login_handle: Option<tokio::task::JoinHandle<()>> = None;
 
-    // NDJSON:每条一行 {json}\n(协议 v1)
+    // NDJSON:每条一行 {json}\n(协议 v1)。命令处理后台化,慢上游不堵读循环。
     while let Some(line) = lines.next_line().await? {
         let req = match protocol::parse_request(&line) {
             Ok(r) => r,
@@ -89,113 +89,70 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 login_handle = Some(tokio::spawn(async move { login::login_flow(st, tx).await }));
                 let _ = out_tx.send(protocol::ok_empty(req.id));
             }
-            "search" => {
-                let kw = protocol::parse_args::<protocol::SearchArgs>(&req)
-                    .map(|a| a.keyword)
-                    .unwrap_or_default();
-                let _ = out_tx.send(commands::search(&state, req.id, &kw).await);
-            }
-            "song_url" => {
-                let song_id = protocol::parse_args::<protocol::SongUrlArgs>(&req)
-                    .map(|a| a.id)
-                    .unwrap_or_default();
-                let _ = out_tx.send(commands::song_url(&state, req.id, &song_id, &out_tx).await);
-            }
-            "lyric" => {
-                let song_id = protocol::parse_args::<protocol::IdArgs>(&req)
-                    .map(|a| a.id)
-                    .unwrap_or_default();
-                let _ = out_tx.send(lyric::lyric(&state, req.id, &song_id).await);
-            }
-            "discover" => {
-                let _ = out_tx.send(content::discover(&state, req.id).await);
-            }
-            "daily_songs" => {
-                let _ = out_tx.send(content::daily_songs(&state, req.id).await);
-            }
-            "playlist_songs" => {
-                let pid = protocol::parse_args::<protocol::IdArgs>(&req)
-                    .map(|a| a.id)
-                    .unwrap_or_default();
-                let _ = out_tx.send(content::playlist_songs(&state, req.id, &pid).await);
-            }
-            "search_songs" => {
-                let _ =
-                    out_tx.send(provider_commands::search_songs(&state, req.id, &req.args).await);
-            }
-            "search_playlists" => {
-                let _ = out_tx
-                    .send(provider_commands::search_playlists(&state, req.id, &req.args).await);
-            }
-            "search_hot" => {
-                let _ = out_tx.send(provider_commands::search_hot(&state, req.id).await);
-            }
-            "user_assets" => {
-                let _ = out_tx.send(provider_commands::user_assets(&state, req.id).await);
-            }
-            "fav_songs" => {
-                let _ = out_tx.send(provider_commands::fav_songs(&state, req.id, &req.args).await);
-            }
-            "listen_rank" => {
-                let _ =
-                    out_tx.send(provider_commands::listen_rank(&state, req.id, &req.args).await);
-            }
-            "created_playlists" => {
-                let _ = out_tx
-                    .send(provider_commands::created_playlists(&state, req.id, &req.args).await);
-            }
-            "fav_playlists" => {
-                let _ =
-                    out_tx.send(provider_commands::fav_playlists(&state, req.id, &req.args).await);
-            }
-            "cloud_songs" => {
-                let _ =
-                    out_tx.send(provider_commands::cloud_songs(&state, req.id, &req.args).await);
-            }
-            "banner" => {
-                let _ = out_tx.send(provider_commands::banner(&state, req.id).await);
-            }
-            "like_song" => {
-                let _ = out_tx.send(provider_commands::like_song(&state, req.id, &req.args).await);
-            }
-            "add_to_playlist" => {
-                let _ = out_tx
-                    .send(provider_commands::add_to_playlist(&state, req.id, &req.args).await);
-            }
-            "artist_detail" => {
-                let _ =
-                    out_tx.send(provider_commands::artist_detail(&state, req.id, &req.args).await);
-            }
-            "album_detail" => {
-                let _ =
-                    out_tx.send(provider_commands::album_detail(&state, req.id, &req.args).await);
-            }
-            "radio_fetch" => {
-                let _ =
-                    out_tx.send(provider_commands::radio_fetch(&state, req.id, &req.args).await);
-            }
-            "fm_trash" => {
-                let _ = out_tx.send(provider_commands::fm_trash(&state, req.id, &req.args).await);
-            }
-            "comments" => {
-                let _ = out_tx.send(provider_commands::comments(&state, req.id, &req.args).await);
-            }
-            "comment_like" => {
-                let _ =
-                    out_tx.send(provider_commands::comment_like(&state, req.id, &req.args).await);
-            }
-            "logout" => {
-                let _ = out_tx.send(commands::logout(&state, req.id).await);
-            }
-            "account" => {
-                let _ = out_tx.send(commands::account(&state, req.id).await);
-            }
             _ => {
-                let _ = out_tx.send(protocol::err(req.id, ErrorCode::UnknownCmd, "unknown cmd"));
+                let (st, tx) = (Arc::clone(&state), out_tx.clone());
+                tokio::spawn(async move {
+                    let resp = dispatch(st, tx.clone(), req).await;
+                    let _ = tx.send(resp);
+                });
             }
         }
     }
     Ok(())
+}
+
+async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> String {
+    match req.cmd.as_str() {
+        "search" => {
+            let kw = protocol::parse_args::<protocol::SearchArgs>(&req)
+                .map(|a| a.keyword)
+                .unwrap_or_default();
+            commands::search(&state, req.id, &kw).await
+        }
+        "song_url" => {
+            let song_id = protocol::parse_args::<protocol::SongUrlArgs>(&req)
+                .map(|a| a.id)
+                .unwrap_or_default();
+            commands::song_url(&state, req.id, &song_id, &out_tx).await
+        }
+        "lyric" => {
+            let song_id = protocol::parse_args::<protocol::IdArgs>(&req)
+                .map(|a| a.id)
+                .unwrap_or_default();
+            lyric::lyric(&state, req.id, &song_id).await
+        }
+        "discover" => content::discover(&state, req.id).await,
+        "daily_songs" => content::daily_songs(&state, req.id).await,
+        "playlist_songs" => {
+            let pid = protocol::parse_args::<protocol::IdArgs>(&req)
+                .map(|a| a.id)
+                .unwrap_or_default();
+            content::playlist_songs(&state, req.id, &pid).await
+        }
+        "search_songs" => provider_commands::search_songs(&state, req.id, &req.args).await,
+        "search_playlists" => provider_commands::search_playlists(&state, req.id, &req.args).await,
+        "search_hot" => provider_commands::search_hot(&state, req.id).await,
+        "user_assets" => provider_commands::user_assets(&state, req.id).await,
+        "fav_songs" => provider_commands::fav_songs(&state, req.id, &req.args).await,
+        "listen_rank" => provider_commands::listen_rank(&state, req.id, &req.args).await,
+        "created_playlists" => {
+            provider_commands::created_playlists(&state, req.id, &req.args).await
+        }
+        "fav_playlists" => provider_commands::fav_playlists(&state, req.id, &req.args).await,
+        "cloud_songs" => provider_commands::cloud_songs(&state, req.id, &req.args).await,
+        "banner" => provider_commands::banner(&state, req.id).await,
+        "like_song" => provider_commands::like_song(&state, req.id, &req.args).await,
+        "add_to_playlist" => provider_commands::add_to_playlist(&state, req.id, &req.args).await,
+        "artist_detail" => provider_commands::artist_detail(&state, req.id, &req.args).await,
+        "album_detail" => provider_commands::album_detail(&state, req.id, &req.args).await,
+        "radio_fetch" => provider_commands::radio_fetch(&state, req.id, &req.args).await,
+        "fm_trash" => provider_commands::fm_trash(&state, req.id, &req.args).await,
+        "comments" => provider_commands::comments(&state, req.id, &req.args).await,
+        "comment_like" => provider_commands::comment_like(&state, req.id, &req.args).await,
+        "logout" => commands::logout(&state, req.id).await,
+        "account" => commands::account(&state, req.id).await,
+        _ => protocol::err(req.id, ErrorCode::UnknownCmd, "unknown cmd"),
+    }
 }
 
 fn arg(flag: &str) -> Option<String> {
