@@ -1,11 +1,12 @@
 // provider app 外壳(共享):首行 = Logo | L1 | 顶层页签 | R1 | 播放状态徽章;内容全宽。
 // 遵循 specs/steam-deck-ui-rules.md「去常驻播放条」「顶栏分层」:
-//  - 无底部 MiniPlayer;徽章纯展示(小封面 + 跑马灯 + EQ),不进焦点树;
+//  - 无底部 MiniPlayer;徽章纯展示(小封面 + EQ,不带歌名——CSS 视口仅 854px,
+//    NCM 五页签下歌名跑马灯会把首行挤形变),不进焦点树;
 //  - 根级 Focusable 接管 L1/R1 切页(onButtonDown)与 Start 盲操播放/暂停(onMenuButton),
 //    无当前曲时 Start 不响应且不出提示;底部图例由系统渲染,只声明文案。
 // 不用原生 Tabs:它把内容区也约束进头行中列(Logo/徽章占位后内容失去全宽)。
 
-import { Focusable, GamepadButton, Marquee } from "@decky/ui";
+import { Focusable, GamepadButton } from "@decky/ui";
 import { ReactNode, useState } from "react";
 import { FaMusic } from "react-icons/fa";
 
@@ -132,7 +133,8 @@ function TabPill({
   );
 }
 
-// L1/R1、L2/R2 提示章(页面内提示,非系统图例;非交互)
+// L1/R1、L2/R2 提示章(页面内提示,非系统图例;非交互)。
+// 白底小章,字号/内边距压小一号,省首行宽度预算(纯灰字方案被否:太素)。
 export function Chip({ children }: { children: ReactNode }) {
   return (
     <span
@@ -141,9 +143,9 @@ export function Chip({ children }: { children: ReactNode }) {
         background: "#fff",
         color: "#000",
         fontWeight: 700,
-        fontSize: "0.8em",
-        borderRadius: 4,
-        padding: "0.15em 0.5em",
+        fontSize: "0.65em",
+        borderRadius: 3,
+        padding: "0.1em 0.4em",
       }}
     >
       {children}
@@ -151,20 +153,13 @@ export function Chip({ children }: { children: ReactNode }) {
   );
 }
 
-// 顶层页签行右侧状态徽章:小封面 + 歌名跑马灯 + EQ 播放态。纯展示,不参与焦点。
+// 顶层页签行右侧状态徽章:小封面 + EQ 播放态。纯展示,不参与焦点。
+// 不带歌名:歌名在正在播放页/队列浮层可见,首行宽度留给页签。
 function NowPlayingBadge({ accent }: { accent: string }) {
   const { current, playing } = usePlayer();
-  if (!current || !current.name) return null; // 无名(旧存档恢复占位)不显示,避免孤零零一个 "-"
+  if (!current || !current.name) return null; // 无名(旧存档恢复占位)不显示,避免孤零零一个 EQ
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "0.5rem",
-        flexShrink: 0,
-        maxWidth: 240,
-      }}
-    >
+    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
       {current.cover && (
         <img
           src={current.cover}
@@ -172,11 +167,6 @@ function NowPlayingBadge({ accent }: { accent: string }) {
           alt=""
         />
       )}
-      <Marquee play style={{ maxWidth: 160 }}>
-        <span style={{ color: theme.textDim, fontSize: "0.85em", whiteSpace: "nowrap" }}>
-          {current.name} - {current.singer}
-        </span>
-      </Marquee>
       <EqBars playing={playing} color={accent} />
     </div>
   );
