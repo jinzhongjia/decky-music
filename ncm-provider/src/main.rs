@@ -77,6 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let ck = cred["cookie"].as_str().map(String::from);
                 let msg = if ck.is_some() { "injected" } else { "cleared" };
                 *state.cookie.lock().await = ck;
+                *state.uid.lock().await = None; // 凭证变化,uid 缓存作废
                 let _ = out_tx.send(log_json("info", "credential", msg));
                 let _ = out_tx.send(protocol::ok_empty(req.id));
             }

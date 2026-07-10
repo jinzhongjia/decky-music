@@ -22,6 +22,9 @@ pub async fn with_timeout<F: Future>(fut: F) -> Result<F::Output, Elapsed> {
 pub struct State {
     pub client: ApiClient, // create_client(None),cookie 走 Query 逐次覆盖
     pub cookie: Mutex<Option<String>>,
+    /// uid 缓存:资产/电台类命令都要 uid,避免每个命令先打一发 login_status
+    /// (一屏多命令时延叠加)。set_credential 时清空。
+    pub uid: Mutex<Option<String>>,
 }
 
 impl State {
@@ -29,6 +32,7 @@ impl State {
         Self {
             client: create_client(None),
             cookie: Mutex::new(None),
+            uid: Mutex::new(None),
         }
     }
 

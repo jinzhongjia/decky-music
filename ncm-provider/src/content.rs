@@ -1,34 +1,13 @@
 //! 内容页数据(P5b):发现页推荐歌单 / 每日推荐 / 歌单曲目。
 //! 归一化到共享形状(Playlist / Song,见 src/api.ts);song_brief 复用 commands.rs。
 
-use std::future::Future;
-
-use ncm_api_rs::{ApiResponse, NcmError, Query};
+use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
 use crate::commands::song_brief;
 use crate::protocol::{self, ErrorCode};
+use crate::provider_commands::{fetch, map_arr};
 use crate::state::{with_timeout, State};
-
-/// 上游调用 → 响应收口:成功用 pick 从 body 提数据,库错/超时折叠成标准错误响应。
-async fn fetch<F: Future<Output = Result<ApiResponse, NcmError>>>(
-    fut: F,
-    id: u64,
-    pick: impl FnOnce(&Value) -> Value,
-) -> String {
-    match with_timeout(fut).await {
-        Ok(Ok(r)) => protocol::ok(id, pick(&r.body)),
-        Ok(Err(_)) => protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-        Err(_) => protocol::err(id, ErrorCode::Timeout, "timeout"),
-    }
-}
-
-/// body 数组字段 → 归一化列表(缺省空)
-fn map_arr(v: &Value, f: fn(&Value) -> Value) -> Vec<Value> {
-    v.as_array()
-        .map(|a| a.iter().map(f).collect())
-        .unwrap_or_default()
-}
 
 /// 发现页:个性化推荐歌单(匿名可用;登录后更个性化)
 pub async fn discover(state: &State, id: u64) -> String {

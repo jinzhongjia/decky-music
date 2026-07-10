@@ -28,7 +28,7 @@ const DEFAULT_LIMIT: i64 = 30;
 const DEFAULT_OFFSET: i64 = 0;
 const MAX_LIMIT: i64 = 50;
 
-async fn fetch<F: Future<Output = Result<ApiResponse, NcmError>>>(
+pub(crate) async fn fetch<F: Future<Output = Result<ApiResponse, NcmError>>>(
     fut: F,
     id: u64,
     pick: impl FnOnce(&Value) -> Value,
@@ -117,6 +117,10 @@ async fn current_uid(state: &State, id: u64) -> Result<(String, String), String>
     let Some(cookie) = state.cookie().await else {
         return Err(protocol::err(id, ErrorCode::NotLoggedIn, "not_logged_in"));
     };
+    // uid 按会话缓存(set_credential 时清空):免去每个资产/电台命令先打一发 login_status
+    if let Some(uid) = state.uid.lock().await.clone() {
+        return Ok((uid, cookie));
+    }
     let q = Query::new().cookie(&cookie);
     let status = match with_timeout(state.client.login_status(&q)).await {
         Ok(Ok(r)) => r,
@@ -133,6 +137,7 @@ async fn current_uid(state: &State, id: u64) -> Result<(String, String), String>
     if uid.is_empty() {
         return Err(protocol::err(id, ErrorCode::NotLoggedIn, "not_logged_in"));
     }
+    *state.uid.lock().await = Some(uid.clone());
     Ok((uid, cookie))
 }
 
@@ -147,7 +152,7 @@ fn id_eq(v: &Value, id: &str) -> bool {
     id_string(v) == id
 }
 
-fn map_arr(v: &Value, f: fn(&Value) -> Value) -> Vec<Value> {
+pub(crate) fn map_arr(v: &Value, f: fn(&Value) -> Value) -> Vec<Value> {
     v.as_array()
         .map(|a| a.iter().map(f).collect())
         .unwrap_or_default()
