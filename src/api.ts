@@ -83,6 +83,16 @@ export type UserAssets = {
   cloud?: number;
 };
 export type PlaylistsResult = { ok: boolean; playlists: Playlist[]; error?: string };
+// 热评(NCM;provider comment_brief 归一化)
+export type Comment = {
+  id: string;
+  user: string;
+  avatar: string;
+  content: string;
+  likes: number;
+  time: string;
+};
+export type CommentsResult = { ok: boolean; comments: Comment[]; error?: string };
 // 归一化歌词(provider 出,见 qq/lyric.py、ncm-provider/src/lyric.rs)。
 // word_by_word=true 时 line 带 words[](逐字高亮,NCM);否则整行高亮(QQ)。tr=该行译文(可空)。
 export type LyricWord = { t_ms: number; dur_ms: number; text: string };
@@ -116,6 +126,7 @@ export const api = {
     "like_current"
   ),
   likeState: callable<[], { id: string; liked: boolean }>("like_state"),
+  getComments: callable<[songId: string], CommentsResult>("get_comments"),
   getUserAssets: callable<[], UserAssets>("get_user_assets"),
   getFavSongs: callable<[], SearchResult>("get_fav_songs"),
   getListenRank: callable<[], SearchResult>("get_listen_rank"),
@@ -164,6 +175,7 @@ export type PlaybackState = {
   mode: PlayMode;
   queue_mode: QueueMode; // radio 时 UI 隐藏上一首/队列等不适用控件
   radio_kind: string; // 当前电台种类("" = 非电台)
+  volume?: number; // 0..1,bridge 持久化
 };
 // 电台种类(provider radio_fetch 的 kind 参数)
 export type RadioKind = "qq_guess" | "qq_radar" | "ncm_fm";

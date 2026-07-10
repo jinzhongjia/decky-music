@@ -358,6 +358,13 @@ class Bridge:
         log("bridge", "own", "warn", f"like_song failed id={cur}: {code}")
         return {"ok": False, "error": code, "liked": cur in self.liked_ids}
 
+    async def get_comments(self, song_id: str) -> dict:
+        # 热评(P5f;NCM 专属命令,QQ 调用会得 unknown_cmd → 空列表 + error)
+        r = await self.provider.request("comments", {"id": song_id, "limit": 30})
+        if r.ok:
+            return {"ok": True, "comments": r.data.get("comments", [])}
+        return {"ok": False, "comments": [], "error": r.error.code if r.error else "provider_error"}
+
     # ---- 我的资产(P5e;provider 命令两端已就绪,此处透传) ----
 
     async def get_user_assets(self) -> dict:
@@ -394,8 +401,8 @@ class Bridge:
         await self.playback.play_queue(items, start_index)
 
     async def get_playback(self) -> dict:
-        # 前端挂载回灌:bridge 是播放/队列真相源(见 playback.snapshot)
-        return self.playback.snapshot()
+        # 前端挂载回灌:bridge 是播放/队列真相源(见 playback.snapshot);音量归 bridge 持久化
+        return {**self.playback.snapshot(), "volume": self.settings.get("volume", 0.8)}
 
     async def get_queue(self) -> dict:
         return self.playback.snapshot_queue()

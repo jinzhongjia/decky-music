@@ -50,6 +50,9 @@ class Plugin:
     async def like_state(self) -> dict:
         return await self.bridge.like_state()
 
+    async def get_comments(self, song_id: str) -> dict:
+        return await self.bridge.get_comments(song_id)
+
     async def get_user_assets(self) -> dict:
         return await self.bridge.get_user_assets()
 

@@ -25,6 +25,7 @@ type State = {
   wallMs: number; // 该位置墙钟(插值:pos + (now - wallMs))
   mode: PlayMode;
   queueMode: QueueMode; // radio 时 UI 隐藏上一首/队列等控件
+  volume: number; // 0..1
 };
 
 const state: State = {
@@ -34,6 +35,7 @@ const state: State = {
   wallMs: 0,
   mode: "list_loop",
   queueMode: "normal",
+  volume: 0.8,
 };
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
@@ -68,7 +70,11 @@ onPlayer((e) => {
 api
   .getPlayback()
   .then((s) => {
-    if (gotEvent || !s.current) return;
+    if (typeof s.volume === "number") state.volume = s.volume; // 音量无事件,始终回灌
+    if (gotEvent || !s.current) {
+      notify();
+      return;
+    }
     state.current = s.current;
     state.playing = s.playing;
     state.posSec = s.pos;
@@ -116,6 +122,12 @@ export function seek(sec: number) {
   guard(() => api.seek(sec));
 }
 
+export function setVolume(val: number) {
+  state.volume = Math.max(0, Math.min(1, val));
+  notify();
+  guard(() => api.volume(state.volume));
+}
+
 const MODES: PlayMode[] = ["list_loop", "single_loop", "shuffle"];
 export function cycleMode() {
   state.mode = MODES[(MODES.indexOf(state.mode) + 1) % MODES.length];
@@ -139,6 +151,7 @@ export function usePlayer() {
     playing: state.playing,
     mode: state.mode,
     queueMode: state.queueMode,
+    volume: state.volume,
     posSec: state.posSec,
     wallMs: state.wallMs,
   };
