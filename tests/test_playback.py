@@ -234,3 +234,37 @@ class TestQueueEdit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSongsToItems(unittest.TestCase):
+    """bridge 边界映射:provider Song 形状(mid)→ 队列项形状(id)。P5d 电台回归。"""
+
+    def test_maps_mid_to_id_and_filters_junk(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+        from py_modules.bridge import _songs_to_items  # noqa: PLC0415
+
+        items = _songs_to_items(
+            [
+                {"mid": "9", "name": "n", "singer": "s", "cover": "c", "duration": 7},
+                {"name": "no-mid"},
+                "junk",
+            ]
+        )
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["id"], "9")
+        self.assertEqual(items[0]["media_mid"], "")
+
+    def test_non_list_returns_empty(self):
+        from py_modules.bridge import _songs_to_items  # noqa: PLC0415
+
+        self.assertEqual(_songs_to_items(None), [])
+
+
+class TestRadioSongShapeRegression(unittest.TestCase):
+    """回归:电台队列项缺 id(旧 bug 是 Song 形状直灌)不再 KeyError,走失败路径。"""
+
+    def test_play_index_tolerates_missing_id(self):
+        pb = Playback(FakeConn(), FakeConn())
+        pb.queue = [{"name": "song-without-id"}]
+        res = run(pb._play_index(0))
+        self.assertTrue(res)  # FakeConn 对任意 id 都返回成功;重点是不抛 KeyError

@@ -38,6 +38,18 @@ class Plugin:
     async def get_playback(self) -> dict:
         return await self.bridge.get_playback()
 
+    async def play_radio(self, kind: str) -> dict:
+        return await self.bridge.play_radio(kind)
+
+    async def fm_trash(self):
+        return await self.bridge.fm_trash()
+
+    async def like_current(self, on: bool) -> dict:
+        return await self.bridge.like_current(on)
+
+    async def like_state(self) -> dict:
+        return await self.bridge.like_state()
+
     async def get_queue(self) -> dict:
         return await self.bridge.get_queue()
 

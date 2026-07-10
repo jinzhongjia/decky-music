@@ -98,6 +98,12 @@ export const api = {
   getDailySongs: callable<[], SearchResult>("get_daily_songs"),
   playQueue: callable<[items: QueueItem[], startIndex: number], void>("play_queue"),
   getPlayback: callable<[], PlaybackState>("get_playback"),
+  playRadio: callable<[kind: RadioKind], { ok: boolean; error?: string | null }>("play_radio"),
+  fmTrash: callable<[], void>("fm_trash"),
+  likeCurrent: callable<[on: boolean], { ok: boolean; error?: string | null; liked?: boolean }>(
+    "like_current"
+  ),
+  likeState: callable<[], { id: string; liked: boolean }>("like_state"),
   getQueue: callable<[], QueueState>("get_queue"),
   queuePlay: callable<[index: number], void>("queue_play"),
   queueInsertNext: callable<[item: QueueItem], void>("queue_insert_next"),
@@ -139,7 +145,11 @@ export type PlaybackState = {
   pos: number;
   wall: number;
   mode: PlayMode;
+  queue_mode: QueueMode; // radio 时 UI 隐藏上一首/队列等不适用控件
+  radio_kind: string; // 当前电台种类("" = 非电台)
 };
+// 电台种类(provider radio_fetch 的 kind 参数)
+export type RadioKind = "qq_guess" | "qq_radar" | "ncm_fm";
 // 队列快照(Y 浮层用);radio 模式 items 只含当前曲(电台未知感,见 QUEUE-BEHAVIOR §4)
 export type QueueMode = "normal" | "radio";
 export type QueueState = { mode: QueueMode; index: number; items: TrackInfo[] };

@@ -136,6 +136,25 @@ class Conn:
             self.server.close()
 
 
+def _songs_to_items(songs) -> list[dict]:
+    # provider 出 Song 形状(mid);队列项形状是 id(前端 toQueueItem 同款映射)。
+    # 电台/后端直灌队列的路径必须在此边界归一,否则 playback 读 item["id"] 会炸。
+    if not isinstance(songs, list):
+        return []
+    return [
+        {
+            "id": str(s.get("mid", "")),
+            "media_mid": s.get("media_mid", "") or "",
+            "name": s.get("name", "") or "",
+            "singer": s.get("singer", "") or "",
+            "cover": s.get("cover", "") or "",
+            "duration": s.get("duration", 0) or 0,
+        }
+        for s in songs
+        if isinstance(s, dict) and s.get("mid")
+    ]
+
+
 def load_settings() -> dict:
     try:
         with open(SETTINGS, encoding="utf-8") as f:
@@ -166,6 +185,11 @@ def save_settings(data: dict):
 
 class Bridge:
     """总线实现:管理 player/provider 两个子进程,编排 UI 命令,路由子进程事件。"""
+
+    def __init__(self):
+        # 会话级红心记忆:like 成功后记 id,重进沉浸页红心保持点亮;切 provider 清空。
+        # ponytail: 服务器端历史收藏的种子同步(跨会话点亮)留 P6。
+        self.liked_ids: set[str] = set()
 
     async def start(self):
         self.settings = load_settings()
@@ -245,6 +269,7 @@ class Bridge:
     async def set_provider(self, which: str | None):
         if self.settings.get("provider") != which:
             await self.playback.queue_clear()
+            self.liked_ids.clear()  # 两家 id 体系不通用
         self.settings["provider"] = which
         save_settings(self.settings)
         await self._ensure_provider(which)
@@ -290,12 +315,53 @@ class Bridge:
             code = r.error.code if r.error else "provider_error"
             log("bridge", "own", "warn", f"radio_fetch failed kind={kind}: {code}")
             return []
-        songs = r.data.get("songs", [])
-        return songs if isinstance(songs, list) else []
+        return _songs_to_items(r.data.get("songs", []))
 
     async def _play_radio(self, kind: str, first_batch: list[dict] | None = None):
         items = first_batch if first_batch is not None else await self._radio_fetch(kind)
         return await self.playback.play_radio(kind, items)
+
+    async def play_radio(self, kind: str) -> dict:
+        # 进电台模式(P5d):拉第一批开播。失败带稳定 error code(not_logged_in 等)供前端 i18n
+        r = await self.provider.request("radio_fetch", {"kind": kind})
+        if not r.ok:
+            code = r.error.code if r.error else "provider_error"
+            log("bridge", "own", "warn", f"radio start failed kind={kind}: {code}")
+            return {"ok": False, "error": code}
+        ok = await self.playback.play_radio(kind, _songs_to_items(r.data.get("songs", [])))
+        return {"ok": bool(ok), "error": None if ok else "provider_error"}
+
+    async def fm_trash(self):
+        # FM 垃圾桶:标记当前曲不喜欢 + 切下一首(仅 radio 模式;NCM 专属)
+        cur = self.playback.current_id()
+        if self.playback.mode != "radio" or not cur:
+            return
+        r = await self.provider.request("fm_trash", {"id": cur})
+        if not r.ok:
+            log("bridge", "own", "warn", f"fm_trash failed: {r.error.code if r.error else '?'}")
+        await self.playback.next_track()
+
+    async def like_current(self, on: bool) -> dict:
+        # 红心当前曲(QQ/NCM 同名命令 like_song {id, on})。
+        # QQ 以 data.success 表达业务失败(如曲目查不到),必须一并校验,不能只看 r.ok。
+        cur = self.playback.current_id()
+        if not cur:
+            log("bridge", "own", "warn", "like_current ignored: no current track")
+            return {"ok": False, "error": "provider_error"}
+        r = await self.provider.request("like_song", {"id": cur, "on": on})
+        success = r.ok and bool(r.data.get("success", True))
+        if success:
+            (self.liked_ids.add if on else self.liked_ids.discard)(cur)
+            log("bridge", "own", "info", f"like_song ok id={cur} on={on}")
+            return {"ok": True, "error": None, "liked": on}
+        code = (r.error.code if r.error else "provider_error") if not r.ok else "provider_error"
+        log("bridge", "own", "warn", f"like_song failed id={cur}: {code}")
+        return {"ok": False, "error": code, "liked": cur in self.liked_ids}
+
+    async def like_state(self) -> dict:
+        # 当前曲红心态(会话级记忆);沉浸页换曲/重进时拉取点亮
+        cur = self.playback.current_id()
+        return {"id": cur, "liked": bool(cur) and cur in self.liked_ids}
 
     async def play_queue(self, items: list, start_index: int = 0):
         await self.playback.play_queue(items, start_index)

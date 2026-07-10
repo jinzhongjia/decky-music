@@ -214,7 +214,13 @@ class Playback:
             "pos": self.pos,
             "wall": self.wall,
             "mode": self.play_mode,
+            "queue_mode": self.mode,  # normal | radio:UI 据此隐藏上一首/队列等电台不适用控件
+            "radio_kind": self._radio_kind,
         }
+
+    def current_id(self) -> str:
+        cur = self.queue[self.index] if 0 <= self.index < len(self.queue) else None
+        return (cur or {}).get("id", "")
 
     # ---- 内部 ----
 
@@ -233,8 +239,9 @@ class Playback:
         gen = self._play_gen
         self.index = i
         item = self.queue[i]
+        # 防御取值(宿主安全):畸形队列项走失败路径,绝不 KeyError 炸掉调用链
         r = await self.provider.request(
-            "song_url", {"id": item["id"], "media_mid": item.get("media_mid", "")}
+            "song_url", {"id": item.get("id", ""), "media_mid": item.get("media_mid", "")}
         )
         if gen != self._play_gen:
             return None  # 等待期间用户又切了歌:让位,不发事件不碰状态

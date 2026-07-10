@@ -4,7 +4,17 @@
 
 import { useEffect, useState } from "react";
 
-import { PlayMode, PlayerEv, QueueItem, Song, TrackInfo, api, errorText, onPlayer } from "../api";
+import {
+  PlayMode,
+  PlayerEv,
+  QueueItem,
+  QueueMode,
+  Song,
+  TrackInfo,
+  api,
+  errorText,
+  onPlayer,
+} from "../api";
 import { guard, reportError } from "../errors";
 import { t } from "../i18n";
 
@@ -14,9 +24,17 @@ type State = {
   posSec: number; // 最近上报位置
   wallMs: number; // 该位置墙钟(插值:pos + (now - wallMs))
   mode: PlayMode;
+  queueMode: QueueMode; // radio 时 UI 隐藏上一首/队列等控件
 };
 
-const state: State = { current: null, playing: false, posSec: 0, wallMs: 0, mode: "list_loop" };
+const state: State = {
+  current: null,
+  playing: false,
+  posSec: 0,
+  wallMs: 0,
+  mode: "list_loop",
+  queueMode: "normal",
+};
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
@@ -37,6 +55,8 @@ onPlayer((e) => {
   } else if (e.type === PlayerEv.Track) {
     state.current = e.data.song;
     if (!e.data.song) state.playing = false; // song=null:队列清空进入空态
+  } else if (e.type === PlayerEv.Queue) {
+    state.queueMode = e.data.mode; // 电台/普通模式跟随 bridge 广播
   } else if (e.type === PlayerEv.Error) {
     state.playing = false;
     reportError(errorText(e.data.code) || t("playError"));
@@ -54,6 +74,7 @@ api
     state.posSec = s.pos;
     state.wallMs = s.wall;
     state.mode = s.mode;
+    state.queueMode = s.queue_mode ?? "normal";
     notify();
   })
   .catch(() => {});
@@ -117,6 +138,7 @@ export function usePlayer() {
     current: state.current,
     playing: state.playing,
     mode: state.mode,
+    queueMode: state.queueMode,
     posSec: state.posSec,
     wallMs: state.wallMs,
   };

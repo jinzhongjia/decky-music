@@ -156,6 +156,7 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
                 return protocol.ok(req.id, {"playlists": playlists})
             case "like_song":
                 ok = await qq.like_song(_as_str(args, "id"), _as_bool(args, "on"))
+                log("debug", "like_song", f"id={args.get('id', '')} on={args.get('on')} -> {ok}")
                 return protocol.ok(req.id, {"success": ok})
             case "add_to_playlist":
                 ok = await qq.add_to_playlist(
