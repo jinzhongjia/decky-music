@@ -78,11 +78,11 @@ pub async fn playlist_songs(state: &State, id: u64, playlist_id: &str) -> String
     .await
 }
 
-fn playlist_brief(v: &Value) -> Value {
+pub(crate) fn playlist_brief(v: &Value) -> Value {
     json!({
         "id": v["id"].as_i64().map(|i| i.to_string()).unwrap_or_default(),
         "name": v["name"].as_str().unwrap_or(""),
-        "cover": v["picUrl"].as_str().unwrap_or(""),
+        "cover": v["picUrl"].as_str().or_else(|| v["coverImgUrl"].as_str()).unwrap_or(""),
         "count": v["trackCount"].as_i64().unwrap_or(0),
         "play_count": v["playCount"].as_i64().unwrap_or(0),
     })

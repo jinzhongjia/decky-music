@@ -13,10 +13,13 @@ import uuid
 from qqmusic_api import Client, Credential
 
 from qq import account as _account
+from qq import details as _details
+from qq import library as _library
 from qq import login as _login
 from qq import lyric as _lyric
 from qq import playback as _playback
 from qq import playlist as _playlist
+from qq import radio as _radio
 from qq import recommend as _recommend
 from qq import search as _search
 
@@ -54,6 +57,18 @@ class QQ:
     async def search(self, keyword: str, limit: int = 20) -> list[dict]:
         return await _search.search(self, keyword, limit)
 
+    async def search_songs(self, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
+        return await _search.songs(self, keyword, limit, offset)
+
+    async def search_playlists(self, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
+        return await _search.playlists(self, keyword, limit, offset)
+
+    async def search_albums(self, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
+        return await _search.albums(self, keyword, limit, offset)
+
+    async def search_artists(self, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
+        return await _search.artists(self, keyword, limit, offset)
+
     async def lyric(self, mid: str) -> dict:
         return await _lyric.get_lyric(self, mid)
 
@@ -62,3 +77,33 @@ class QQ:
 
     async def playlist_songs(self, playlist_id: str) -> list[dict]:
         return await _playlist.songs(self, playlist_id)
+
+    async def user_assets(self) -> dict:
+        return await _library.user_assets(self)
+
+    async def fav_songs(self, limit: int = 20, offset: int = 0) -> list[dict]:
+        return await _library.fav_songs(self, limit, offset)
+
+    async def recent_songs(self, limit: int = 20, offset: int = 0) -> list[dict]:
+        return await _library.recent_songs(self, limit, offset)
+
+    async def created_playlists(self, limit: int = 20, offset: int = 0) -> list[dict]:
+        return await _library.created_playlists(self, limit, offset)
+
+    async def fav_playlists(self, limit: int = 20, offset: int = 0) -> list[dict]:
+        return await _library.fav_playlists(self, limit, offset)
+
+    async def like_song(self, song_id: str, on: bool) -> bool:
+        return await _library.like_song(self, song_id, on)
+
+    async def add_to_playlist(self, playlist_id: int, song_id: str) -> bool:
+        return await _library.add_to_playlist(self, playlist_id, song_id)
+
+    async def artist_detail(self, artist_id: str, limit: int = 20, offset: int = 0) -> dict:
+        return await _details.artist_detail(self, artist_id, limit, offset)
+
+    async def album_detail(self, album_id: str, limit: int = 50, offset: int = 0) -> dict:
+        return await _details.album_detail(self, album_id, limit, offset)
+
+    async def radio_fetch(self, kind: str) -> list[dict]:
+        return await _radio.fetch(self, kind)

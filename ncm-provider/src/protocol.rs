@@ -12,6 +12,7 @@ pub struct ProtocolError(pub String);
 #[derive(Debug, Clone, Copy)]
 pub enum ErrorCode {
     UnknownCmd,
+    InvalidRequest,
     Timeout,
     NoPlayable,
     ProviderError,
@@ -22,6 +23,7 @@ impl ErrorCode {
     pub fn as_str(self) -> &'static str {
         match self {
             ErrorCode::UnknownCmd => "unknown_cmd",
+            ErrorCode::InvalidRequest => "invalid_request",
             ErrorCode::Timeout => "timeout",
             ErrorCode::NoPlayable => "no_playable",
             ErrorCode::ProviderError => "provider_error",
