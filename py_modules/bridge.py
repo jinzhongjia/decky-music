@@ -168,6 +168,7 @@ class Bridge:
             self.provider,
             self.settings.get("play_mode", "list_loop"),
             persist=self._persist_queue,
+            radio_fetcher=self._radio_fetch,
         )
         # 恢复上次的普通队列(只存了 id 类字段;不自动开播,见 QUEUE-BEHAVIOR §1.1)
         self.playback.restore(self.settings.get("queue"))
@@ -231,6 +232,8 @@ class Bridge:
                     log("bridge", "own", "info", f"{which} credential auto-refreshed, persisted")
 
     async def set_provider(self, which: str | None):
+        if self.settings.get("provider") != which:
+            await self.playback.queue_clear()
         self.settings["provider"] = which
         save_settings(self.settings)
         await self._ensure_provider(which)
@@ -270,6 +273,19 @@ class Bridge:
         }
         save_settings(self.settings)
 
+    async def _radio_fetch(self, kind: str) -> list[dict]:
+        r = await self.provider.request("radio_fetch", {"kind": kind})
+        if not r.ok:
+            code = r.error.code if r.error else "provider_error"
+            log("bridge", "own", "warn", f"radio_fetch failed kind={kind}: {code}")
+            return []
+        songs = r.data.get("songs", [])
+        return songs if isinstance(songs, list) else []
+
+    async def _play_radio(self, kind: str, first_batch: list[dict] | None = None):
+        items = first_batch if first_batch is not None else await self._radio_fetch(kind)
+        return await self.playback.play_radio(kind, items)
+
     async def play_queue(self, items: list, start_index: int = 0):
         await self.playback.play_queue(items, start_index)
 
@@ -302,9 +318,9 @@ class Bridge:
         await self.playback.prev_track()
 
     async def set_play_mode(self, mode: str):
-        self.settings["play_mode"] = mode  # 播放模式归 bridge 持久化
-        save_settings(self.settings)
-        self.playback.set_play_mode(mode)
+        if self.playback.set_play_mode(mode):
+            self.settings["play_mode"] = mode  # 播放模式归 bridge 持久化
+            save_settings(self.settings)
 
     async def pause(self):
         await self.player.request("pause")

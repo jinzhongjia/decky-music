@@ -1,10 +1,11 @@
-"""播放 + 普通队列编排:持有 player + provider 连接,管理队列、自动切歌、播放态快照。
+"""播放 + 队列编排:持有 player + provider 连接,管理队列、电台流、自动切歌、播放态快照。
 
 bridge 是播放/队列的**真相源**:队列存富信息(id/media_mid/名/歌手/封面/时长),并跟踪播放态与进度,
 供前端挂载时经 `get_playback` 回灌(前端重载后仍能同步,不再 desync)。队列语义见 docs/QUEUE-BEHAVIOR.md。
-当前实现普通队列;电台流 / 队列持久化留后续。Conn 走鸭子类型,不 import bridge。
+Conn 走鸭子类型,不 import bridge。
 """
 
+import asyncio
 import random
 import time
 
@@ -33,7 +34,7 @@ def _public(item: dict | None) -> dict | None:
 
 
 class Playback:
-    def __init__(self, player, provider, play_mode: str = "list_loop", persist=None):
+    def __init__(self, player, provider, play_mode: str = "list_loop", persist=None, radio_fetcher=None):
         self.player = player
         self.provider = provider
         self.play_mode = play_mode if play_mode in PLAY_MODES else "list_loop"
@@ -46,6 +47,19 @@ class Playback:
         self.last_error = ""  # 最近一次 _play_index 失败的错误码(自动切歌熔断判据)
         self._persist = persist  # bridge 注入的落盘回调 (items, index) -> None;None = 不持久化
         self._play_gen = 0  # 播放意图代次:新意图作废在途旧意图(最后一次操作赢,不排队)
+
+        self._radio_kind = ""
+        self._radio_fetcher = radio_fetcher  # async (kind) -> list[dict];bridge 注入 provider radio_fetch
+        self._radio_refill_task: asyncio.Task | None = None
+        self._radio_gen = 0
+
+    def _exit_radio(self):
+        self._radio_gen += 1
+        if self._radio_refill_task and not self._radio_refill_task.done():
+            self._radio_refill_task.cancel()
+        self._radio_refill_task = None
+        self._radio_kind = ""
+        self.mode = "normal"
 
     def restore(self, saved: dict | None):
         """启动时从 settings 恢复普通队列(含展示字段;旧存档缺失则空串占位),不自动开播。"""
@@ -70,6 +84,8 @@ class Playback:
     # ---- 对外命令 ----
 
     async def play_queue(self, items: list[dict], start_index: int = 0):
+        if self.mode == "radio":
+            self._exit_radio()
         self.queue = items or []
         if not self.queue:
             self.index = -1
@@ -79,25 +95,54 @@ class Playback:
         await self._queue_changed()
 
     async def next_track(self):
+        if self.mode == "radio":
+            await self._radio_next()
+            return
         if self.queue:
             await self._play_index(self._advance_index())
 
     async def prev_track(self):
+        if self.mode == "radio":
+            return
         if self.queue:
             await self._play_index((self.index - 1) % len(self.queue))
+
+
+    async def play_radio(self, kind: str, items: list[dict]):
+        self._exit_radio()
+        self.queue, self.index = [], -1
+        if self._persist:
+            self._persist([], -1)  # clear saved normal queue; never persist radio contents
+        self.mode, self._radio_kind = "radio", kind
+        self.queue = items or []
+        if not self.queue:
+            self.playing, self.pos, self.wall = False, 0.0, _now_ms()
+            await self.player.request("stop")
+            await self._emit("track", {"index": -1, "song": None})
+            await self._queue_changed()
+            return False
+        res = await self._play_index(0)
+        await self._queue_changed()
+        return res
 
     # ---- 队列查看 / 编辑(P4;语义见 QUEUE-BEHAVIOR §2/§4) ----
 
     def snapshot_queue(self) -> dict:
         """队列快照(浮层用)。radio 模式只暴露当前曲,保持电台未知感(P5d)。"""
-        items = [self.queue[self.index]] if self.mode == "radio" and 0 <= self.index < len(self.queue) else self.queue
-        return {"mode": self.mode, "index": self.index, "items": [_public(x) for x in items]}
+        if self.mode == "radio":
+            cur = self.queue[self.index] if 0 <= self.index < len(self.queue) else None
+            return {"mode": "radio", "index": 0 if cur else -1, "items": [_public(cur)] if cur else []}
+        return {"mode": self.mode, "index": self.index, "items": [_public(x) for x in self.queue]}
 
     async def queue_play(self, index: int):
+        if self.mode == "radio":
+            return
         if 0 <= index < len(self.queue):
             await self._play_index(index)
 
     async def queue_insert_next(self, item: dict):
+        if self.mode == "radio":
+            return
         # 无当前曲(空队列)时直接开播:否则曲子躺在队列里,Start 对空 sink 也无声
         if self.index < 0:
             self.queue = [item]
@@ -107,6 +152,8 @@ class Playback:
         await self._queue_changed()
 
     async def queue_append(self, item: dict):
+        if self.mode == "radio":
+            return
         if self.index < 0:
             self.queue = [item]
             await self._play_index(0)
@@ -115,6 +162,8 @@ class Playback:
         await self._queue_changed()
 
     async def queue_remove(self, index: int):
+        if self.mode == "radio":
+            return
         if not (0 <= index < len(self.queue)):
             return  # 越界忽略(浮层与事件间的竞态)
         removing_current = index == self.index
@@ -134,6 +183,7 @@ class Playback:
 
     async def _stop_empty(self):
         """清空进入空态:停播 + 通知 UI 当前曲清空(QUEUE-BEHAVIOR §3.1)。"""
+        self._exit_radio()
         self.queue, self.index = [], -1
         self.playing, self.pos, self.wall = False, 0.0, _now_ms()
         await self.player.request("stop")
@@ -142,13 +192,17 @@ class Playback:
 
     async def _queue_changed(self):
         # 结构变化:落盘(只存 id 类字段,见 QUEUE-BEHAVIOR §1.1)+ 广播给浮层刷新
-        if self._persist:
+        if self._persist and self.mode == "normal":
             self._persist(self.queue, self.index)
         await self._emit("queue", {"length": len(self.queue), "index": self.index, "mode": self.mode})
 
-    def set_play_mode(self, mode: str):
+    def set_play_mode(self, mode: str) -> bool:
+        if self.mode == "radio":
+            return False
         if mode in PLAY_MODES:
             self.play_mode = mode
+            return True
+        return False
 
     def snapshot(self) -> dict:
         """当前播放态快照,供前端挂载回灌(bridge 是真相源)。"""
@@ -205,15 +259,72 @@ class Playback:
             return False
         self.last_error = ""
         self.playing, self.pos, self.wall = True, 0.0, _now_ms()  # playing 事件会再校准
-        if self._persist:
+        if self._persist and self.mode == "normal":
             self._persist(self.queue, self.index)  # index 变化落盘(结构没变,不发 queue 事件)
-        log("bridge", "own", "info", f"queue -> {i + 1}/{len(self.queue)} (mode={self.play_mode})")
+        log("bridge", "own", "info", f"queue -> {i + 1}/{len(self.queue)} (mode={self.mode if self.mode == 'radio' else self.play_mode})")
         # 告知 UI 当前曲(含展示信息,不依赖前端队列)
         await self._emit("track", {"index": i, "song": _public(item)})
         return True
 
+    async def _radio_next(self):
+        if not self.queue:
+            return
+        near_tail = self.index >= len(self.queue) - 2
+        if self.index + 1 < len(self.queue):
+            if near_tail:
+                self._kick_radio_refill()
+            await self._play_index(self.index + 1)
+            return
+        await self._refill_radio()
+        if self.index + 1 < len(self.queue):
+            await self._play_index(self.index + 1)
+        else:
+            log("bridge", "own", "warn", "radio advance stopped: no next track")
+
+    def _kick_radio_refill(self):
+        if not (self._radio_fetcher and self._radio_kind):
+            return None
+        task = self._radio_refill_task
+        if task and not task.done():
+            return task
+        kind, gen = self._radio_kind, self._radio_gen
+
+        async def fetch():
+            try:
+                batch = await self._radio_fetcher(kind)
+                if not isinstance(batch, list):
+                    log("bridge", "own", "warn", f"radio refill failed kind={kind}: invalid response")
+                    return
+                items = [x for x in batch if isinstance(x, dict)]
+                if items and self.mode == "radio" and self._radio_gen == gen:
+                    self.queue.extend(items)
+                    await self._queue_changed()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log("bridge", "own", "warn", f"radio refill failed kind={kind}: {type(e).__name__}")
+            finally:
+                if self._radio_refill_task is task:
+                    self._radio_refill_task = None
+
+        task = asyncio.create_task(fetch())
+        self._radio_refill_task = task
+        return task
+
+    async def _refill_radio(self):
+        task = self._kick_radio_refill()
+        if not task:
+            return
+        try:
+            await task
+        except asyncio.CancelledError:
+            return
+
     async def _on_ended(self):
         if not self.queue:
+            return
+        if self.mode == "radio":
+            await self._radio_next()
             return
         if self.play_mode == "single_loop":
             await self._play_index(self.index)  # ended 后 sink 已空,重放需重新 load
