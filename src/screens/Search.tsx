@@ -31,8 +31,17 @@ export function Search() {
   };
 
   return (
+    // minWidth:0 必须有:缺了则 min-width:auto 以行内 nowrap 长歌名的 min-content 为下限,
+    // 长标题会把整页撑宽,焦点滚动进而横向拽走 Page 容器(分页加载后实测踩过)
     <div
-      style={{ display: "flex", flexDirection: "column", gap: "1rem", flexGrow: 1, minHeight: 0 }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+        flexGrow: 1,
+        minWidth: 0,
+        minHeight: 0,
+      }}
     >
       <Focusable style={{ flexShrink: 0 }}>
         <TextField
@@ -50,12 +59,12 @@ export function Search() {
             {
               id: "songs",
               title: t("catSongs"),
-              content: <SongListView fetch={() => api.searchSongs(query)} />,
+              content: <SongListView fetch={(offset) => api.searchSongs(query, offset)} />,
             },
             {
               id: "playlists",
               title: t("catPlaylists"),
-              content: <PlaylistGridView fetch={() => api.searchPlaylists(query)} />,
+              content: <PlaylistGridView fetch={(offset) => api.searchPlaylists(query, offset)} />,
             },
           ]}
         />

@@ -1,8 +1,8 @@
-// 资产 Tab 内容视图(P5e 共享):歌曲列表(高密度 SongRow)/ 歌单网格(PlaylistCard)。
-// fetch 由调用方注入(fav_songs / listen_rank / created_playlists / fav_playlists)。
-// ponytail: 首页 50 条,翻页 P6。
+// 资产/搜索列表视图(共享):歌曲列表(高密度 SongRow)/ 歌单网格(PlaylistCard)。
+// fetch(offset) 由调用方注入;usePaged 追加分页,滚近容器底部自动拉下一页(P6)。
 
 import { Focusable } from "@decky/ui";
+import { UIEvent } from "react";
 
 import { PlaylistsResult, SearchResult, errorText } from "../api";
 import { reportError } from "../errors";
@@ -13,18 +13,24 @@ import { SongRow } from "./SongRow";
 import { openSongMenu } from "./songMenu";
 import { Grid, PlaylistCard } from "./cards";
 import { theme } from "./theme";
-import { useAsync } from "./useAsync";
+import { usePaged } from "./useAsync";
 
-export function SongListView({ fetch }: { fetch: () => Promise<SearchResult> }) {
-  const songs = useAsync(
-    () =>
-      fetch()
+// 距底 300px 内触发下一页(焦点移动把行滚入视口时同样产生 scroll 事件,手柄可用)
+const nearBottom = (e: UIEvent<HTMLDivElement>) => {
+  const el = e.currentTarget;
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - 300;
+};
+
+export function SongListView({ fetch }: { fetch: (offset: number) => Promise<SearchResult> }) {
+  const { items: songs, loadMore } = usePaged(
+    (offset) =>
+      fetch(offset)
         .then((r) => {
           if (!r.ok) reportError(errorText(r.error || "provider_error"));
           return r.songs ?? [];
         })
         .catch(() => []),
-    []
+    (s) => s.mid
   );
 
   if (songs === null) {
@@ -35,6 +41,7 @@ export function SongListView({ fetch }: { fetch: () => Promise<SearchResult> }) 
   }
   return (
     <Focusable
+      onScroll={(e) => nearBottom(e) && loadMore()}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -56,16 +63,20 @@ export function SongListView({ fetch }: { fetch: () => Promise<SearchResult> }) 
   );
 }
 
-export function PlaylistGridView({ fetch }: { fetch: () => Promise<PlaylistsResult> }) {
-  const playlists = useAsync(
-    () =>
-      fetch()
+export function PlaylistGridView({
+  fetch,
+}: {
+  fetch: (offset: number) => Promise<PlaylistsResult>;
+}) {
+  const { items: playlists, loadMore } = usePaged(
+    (offset) =>
+      fetch(offset)
         .then((r) => {
           if (!r.ok) reportError(errorText(r.error || "provider_error"));
           return r.playlists ?? [];
         })
         .catch(() => []),
-    []
+    (pl) => pl.id
   );
 
   if (playlists === null) {
@@ -75,10 +86,13 @@ export function PlaylistGridView({ fetch }: { fetch: () => Promise<PlaylistsResu
     return <div style={{ margin: "auto", color: theme.textDim }}>{t("noResults")}</div>;
   }
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}>
+    <div
+      onScroll={(e) => nearBottom(e) && loadMore()}
+      style={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: "auto" }}
+    >
       <Grid cols={6}>
-        {playlists.map((pl) => (
-          <PlaylistCard key={pl.id} pl={pl} onActivate={() => openPlaylistDetail(pl)} />
+        {playlists.map((pl, i) => (
+          <PlaylistCard key={`${pl.id}-${i}`} pl={pl} onActivate={() => openPlaylistDetail(pl)} />
         ))}
       </Grid>
     </div>
