@@ -69,6 +69,9 @@ class QQ:
     async def search_artists(self, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
         return await _search.artists(self, keyword, limit, offset)
 
+    async def search_hot(self, limit: int = 20) -> list[dict]:
+        return await _search.hot_keywords(self, limit)
+
     async def lyric(self, mid: str) -> dict:
         return await _lyric.get_lyric(self, mid)
 

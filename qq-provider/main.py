@@ -139,6 +139,10 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
                 artists = await qq.search_artists(keyword(args), _limit(args), _offset(args))
                 log("debug", "search_artists", f"-> {len(artists)} artists")
                 return protocol.ok(req.id, {"artists": artists})
+            case "search_hot":
+                keywords = await qq.search_hot(_limit(args))
+                log("debug", "search_hot", f"-> {len(keywords)} keywords")
+                return protocol.ok(req.id, {"keywords": keywords})
             case "user_assets":
                 return protocol.ok(req.id, await qq.user_assets())
             case "fav_songs":

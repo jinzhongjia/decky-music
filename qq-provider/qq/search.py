@@ -35,6 +35,17 @@ async def artists(q, keyword: str, limit: int = 20, offset: int = 0) -> list[dic
     return [_artist_brief(a) for a in resp.singer[skip : skip + limit]]
 
 
+async def hot_keywords(q, limit: int = 20) -> list[dict]:
+    """热搜词,归一化对齐 NCM search_hot 的 {keyword, label} 形状(label: hot|none)。"""
+    resp = await q.client.search.get_hotkey()
+    keys = (resp or {}).get("vec_hotkey") or []
+    return [
+        {"keyword": k.get("query", ""), "label": "hot" if k.get("need_top") else "none"}
+        for k in keys[:limit]
+        if isinstance(k, dict) and k.get("query")
+    ]
+
+
 def _page_args(limit: int, offset: int) -> tuple[int, int, int]:
     skip = offset % limit
     return offset // limit + 1, limit + skip, skip
