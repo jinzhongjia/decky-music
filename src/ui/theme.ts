@@ -3,11 +3,9 @@
 
 export const theme = {
   bg: "#0e0e10", // 近黑背景
-  surface: "#1a1a1e", // 卡片/播放条底
   accent: "#1a9fff", // Steam 蓝:主交互色
   text: "#e6e6e6",
   textDim: "rgba(230,230,230,0.55)",
-  focusRing: "0 0 0 2px rgba(255,255,255,0.9)", // 细白描边焦点态
   listHighlight: "linear-gradient(90deg, rgba(255,255,255,0.10), transparent)",
   radius: 4, // 直角~小圆角,不用手机式大圆角
 };

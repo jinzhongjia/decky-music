@@ -19,24 +19,14 @@ export function Section({ title, children }: { title: string; children: ReactNod
   );
 }
 
-// 网格容器:MAINTAIN_X。cols = 固定列数(配合取数条数凑整行,避免残行);min = 自适应列宽
-export function Grid({
-  cols,
-  min,
-  children,
-}: {
-  cols?: number;
-  min?: number;
-  children: ReactNode;
-}) {
+// 网格容器:MAINTAIN_X。cols = 固定列数(配合取数条数凑整行,避免残行)
+export function Grid({ cols, children }: { cols: number; children: ReactNode }) {
   return (
     <Focusable
       navEntryPreferPosition={NavEntryPositionPreferences.MAINTAIN_X}
       style={{
         display: "grid",
-        gridTemplateColumns: cols
-          ? `repeat(${cols}, minmax(0, 1fr))`
-          : `repeat(auto-fill, minmax(${min ?? 140}px, 1fr))`,
+        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
         gap: "0.75rem",
       }}
     >
