@@ -9,11 +9,8 @@ pub(crate) fn epoch_ms() -> u64 {
 }
 
 pub(crate) fn checked_seek(base: u64, offset: i64) -> io::Result<u64> {
-    let next = base as i128 + offset as i128;
-    if next < 0 || next > u64::MAX as i128 {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid seek"));
-    }
-    Ok(next as u64)
+    base.checked_add_signed(offset)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid seek"))
 }
 
 pub(crate) fn arg(flag: &str) -> Option<String> {
