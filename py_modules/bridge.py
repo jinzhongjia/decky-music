@@ -317,10 +317,6 @@ class Bridge:
             return []
         return _songs_to_items(r.data.get("songs", []))
 
-    async def _play_radio(self, kind: str, first_batch: list[dict] | None = None):
-        items = first_batch if first_batch is not None else await self._radio_fetch(kind)
-        return await self.playback.play_radio(kind, items)
-
     async def play_radio(self, kind: str) -> dict:
         # 进电台模式(P5d):拉第一批开播。失败带稳定 error code(not_logged_in 等)供前端 i18n
         r = await self.provider.request("radio_fetch", {"kind": kind})

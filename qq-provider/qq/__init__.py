@@ -54,9 +54,6 @@ class QQ:
     async def song_url(self, mid: str, media_mid: str = "") -> str | None:
         return await _playback.song_url(self, mid, media_mid)
 
-    async def search(self, keyword: str, limit: int = 20) -> list[dict]:
-        return await _search.search(self, keyword, limit)
-
     async def search_songs(self, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
         return await _search.songs(self, keyword, limit, offset)
 

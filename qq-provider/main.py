@@ -118,11 +118,6 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
                     return protocol.ok(req.id, {"url": url})
                 log("warn", "song_url", f"no playable url id={song_id} (no rights / login / VIP)")
                 return protocol.err(req.id, "no_playable")
-            case "search":
-                kw = args.get("keyword", "")
-                songs = await qq.search(kw)
-                log("debug", "search", f"kw={kw} -> {len(songs)} songs")
-                return protocol.ok(req.id, {"songs": songs})
             case "search_songs":
                 songs = await qq.search_songs(keyword(args), _limit(args), _offset(args))
                 log("debug", "search_songs", f"-> {len(songs)} songs")
