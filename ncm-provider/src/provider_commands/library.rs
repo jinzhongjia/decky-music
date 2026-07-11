@@ -1,4 +1,4 @@
-use ncm_api_rs::Query;
+use ncm_api_rs::{CryptoType, Query, RequestOption};
 use serde_json::{json, Value};
 
 use crate::commands::song_brief;
@@ -220,9 +220,27 @@ pub async fn add_to_playlist(state: &State, id: u64, args: &Value) -> String {
         Ok(v) => v,
         Err(e) => return e,
     };
-    let q = Query::new()
-        .param("pid", &playlist_id)
-        .param("ids", &song_id)
-        .cookie(&cookie);
-    fetch(state.client.playlist_track_add(&q), id, |_| json!({})).await
+    // 经典收藏路径 /playlist/manipulate/tracks,按 Node 参考实现走 weapi(绕过库封装:
+    // 库的 playlist_tracks 写死 eapi 且该端点 eapi 发送即失败;playlist_track_add 新端点
+    // 又返 401 无权限——均真机实测)。歌已存在(502)库层特判为成功,天然幂等。
+    let data = json!({
+        "op": "add",
+        "pid": playlist_id,
+        "trackIds": json!([song_id]).to_string(),
+        "imme": "true",
+    });
+    let opt = RequestOption {
+        crypto: CryptoType::Weapi,
+        cookie: Some(cookie),
+        ..Default::default()
+    };
+    match call(
+        state.client.request("/api/playlist/manipulate/tracks", data, opt),
+        id,
+    )
+    .await
+    {
+        Ok(_) => protocol::ok(id, json!({})),
+        Err(e) => e,
+    }
 }

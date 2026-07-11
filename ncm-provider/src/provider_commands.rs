@@ -36,10 +36,11 @@ pub(crate) async fn call<F: Future<Output = Result<ApiResponse, NcmError>>>(
 ) -> Result<ApiResponse, String> {
     match with_timeout(fut).await {
         Ok(Ok(r)) => Ok(r),
-        Ok(Err(_)) => Err(protocol::err(
+        // message 携带上游错误简述(业务码+msg,无凭证)供 bridge 落日志诊断;UI 仍按 code 本地化
+        Ok(Err(e)) => Err(protocol::err(
             id,
             ErrorCode::ProviderError,
-            "provider_error",
+            &format!("provider_error: {e}"),
         )),
         Err(_) => Err(protocol::err(id, ErrorCode::Timeout, "timeout")),
     }
