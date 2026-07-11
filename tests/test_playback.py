@@ -287,3 +287,31 @@ class TestRadioSongShapeRegression(unittest.TestCase):
         pb.queue = [{"name": "song-without-id"}]
         res = run(pb._play_index(0))
         self.assertTrue(res)  # FakeConn 对任意 id 都返回成功;重点是不抛 KeyError
+
+
+class RecordingConn:
+    """记录 (cmd, args) 的假 provider,验证分页参数逐层透传。"""
+
+    def __init__(self):
+        self.calls = []
+
+    async def request(self, cmd, args=None):
+        self.calls.append((cmd, args))
+        return types.SimpleNamespace(ok=True, data={}, error=None)
+
+
+class TestListCmdPaging(unittest.TestCase):
+    def setUp(self):
+        self.bridge = Bridge.__new__(Bridge)  # 不 start():只测 callable → provider 参数
+        self.bridge.provider = RecordingConn()
+
+    def test_asset_offset_passthrough(self):
+        run(self.bridge.get_fav_songs(50))
+        self.assertEqual(self.bridge.provider.calls[0], ("fav_songs", {"limit": 50, "offset": 50}))
+
+    def test_search_keyword_and_offset_passthrough(self):
+        run(self.bridge.search_songs("k", 100))
+        self.assertEqual(
+            self.bridge.provider.calls[0],
+            ("search_songs", {"limit": 50, "keyword": "k", "offset": 100}),
+        )

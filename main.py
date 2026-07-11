@@ -56,17 +56,17 @@ class Plugin:
     async def get_user_assets(self) -> dict:
         return await self.bridge.get_user_assets()
 
-    async def get_fav_songs(self) -> dict:
-        return await self.bridge.get_fav_songs()
+    async def get_fav_songs(self, offset: int = 0) -> dict:
+        return await self.bridge.get_fav_songs(offset)
 
-    async def get_listen_rank(self) -> dict:
-        return await self.bridge.get_listen_rank()
+    async def get_listen_rank(self, offset: int = 0) -> dict:
+        return await self.bridge.get_listen_rank(offset)
 
-    async def get_created_playlists(self) -> dict:
-        return await self.bridge.get_created_playlists()
+    async def get_created_playlists(self, offset: int = 0) -> dict:
+        return await self.bridge.get_created_playlists(offset)
 
-    async def get_fav_playlists(self) -> dict:
-        return await self.bridge.get_fav_playlists()
+    async def get_fav_playlists(self, offset: int = 0) -> dict:
+        return await self.bridge.get_fav_playlists(offset)
 
     async def get_queue(self) -> dict:
         return await self.bridge.get_queue()
@@ -107,11 +107,11 @@ class Plugin:
     async def volume(self, val: float):
         return await self.bridge.volume(val)
 
-    async def search_songs(self, keyword: str) -> dict:
-        return await self.bridge.search_songs(keyword)
+    async def search_songs(self, keyword: str, offset: int = 0) -> dict:
+        return await self.bridge.search_songs(keyword, offset)
 
-    async def search_playlists(self, keyword: str) -> dict:
-        return await self.bridge.search_playlists(keyword)
+    async def search_playlists(self, keyword: str, offset: int = 0) -> dict:
+        return await self.bridge.search_playlists(keyword, offset)
 
     async def search_hot(self) -> dict:
         return await self.bridge.search_hot()

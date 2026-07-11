@@ -377,28 +377,29 @@ class Bridge:
         return {"ok": False, key: [], "error": r.error.code if r.error else "provider_error"}
 
     # ---- 搜索(P6:分类 + 热搜;老 search callable 已被下列分类命令取代) ----
+    # 列表类统一分页:offset 由前端翻页传入(usePaged),页大小恒 50(provider MAX_LIMIT 同值)
 
-    async def search_songs(self, keyword: str) -> dict:
-        return await self._list_cmd("search_songs", "songs", 30, {"keyword": keyword})
+    async def search_songs(self, keyword: str, offset: int = 0) -> dict:
+        return await self._list_cmd("search_songs", "songs", extra={"keyword": keyword, "offset": offset})
 
-    async def search_playlists(self, keyword: str) -> dict:
-        return await self._list_cmd("search_playlists", "playlists", 30, {"keyword": keyword})
+    async def search_playlists(self, keyword: str, offset: int = 0) -> dict:
+        return await self._list_cmd("search_playlists", "playlists", extra={"keyword": keyword, "offset": offset})
 
     async def search_hot(self) -> dict:
         # 双 provider 同名命令(qq get_hotkey / ncm search_hot_detail),形状 {keyword,label}
         return await self._list_cmd("search_hot", "keywords", 20)
 
-    async def get_fav_songs(self) -> dict:
-        return await self._list_cmd("fav_songs", "songs")
+    async def get_fav_songs(self, offset: int = 0) -> dict:
+        return await self._list_cmd("fav_songs", "songs", extra={"offset": offset})
 
-    async def get_listen_rank(self) -> dict:
-        return await self._list_cmd("listen_rank", "songs")
+    async def get_listen_rank(self, offset: int = 0) -> dict:
+        return await self._list_cmd("listen_rank", "songs", extra={"offset": offset})
 
-    async def get_created_playlists(self) -> dict:
-        return await self._list_cmd("created_playlists", "playlists")
+    async def get_created_playlists(self, offset: int = 0) -> dict:
+        return await self._list_cmd("created_playlists", "playlists", extra={"offset": offset})
 
-    async def get_fav_playlists(self) -> dict:
-        return await self._list_cmd("fav_playlists", "playlists")
+    async def get_fav_playlists(self, offset: int = 0) -> dict:
+        return await self._list_cmd("fav_playlists", "playlists", extra={"offset": offset})
 
     async def like_state(self) -> dict:
         # 当前曲红心态(会话级记忆);沉浸页换曲/重进时拉取点亮
