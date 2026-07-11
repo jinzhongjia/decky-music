@@ -71,7 +71,10 @@ def _song_brief(s) -> dict:
 
 def _playlist_brief(p) -> dict:
     return {
-        "id": str(getattr(p, "dirid", 0) or getattr(p, "id", 0) or ""),
+        # id = 全局 tid(songlist.get_detail 只认它;自建歌单的 dirid 查详情必空)
+        "id": str(getattr(p, "id", 0) or getattr(p, "dirid", 0) or ""),
+        # dirid = 用户目录号(songlist.add_songs 收藏动作用;非自建列表为 0)
+        "dirid": int(getattr(p, "dirid", 0) or 0),
         "name": getattr(p, "title", "") or getattr(p, "name", "") or "",
         "cover": getattr(p, "picurl", "") or getattr(p, "cover", "") or "",
         "count": int(getattr(p, "songnum", 0) or 0),
