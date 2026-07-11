@@ -6,11 +6,12 @@
 import { Focusable, TextField } from "@decky/ui";
 import { useEffect, useState } from "react";
 
-import { HotKeyword, api } from "../api";
+import { api } from "../api";
 import { t } from "../i18n";
 import { SecondaryTabs } from "../ui/SecondaryTabs";
 import { PlaylistGridView, SongListView } from "../ui/assetViews";
 import { theme } from "../ui/theme";
+import { useAsync } from "../ui/useAsync";
 
 const DEBOUNCE_MS = 600;
 
@@ -67,18 +68,14 @@ export function Search() {
 
 // 热搜胶囊墙:挂载拉一次;失败/空静默隐藏(热搜是锦上添花,不打扰搜索主流程)
 function HotSearch({ onPick }: { onPick: (kw: string) => void }) {
-  const [hot, setHot] = useState<HotKeyword[] | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .searchHot()
-      .then((r) => alive && setHot(r.ok ? (r.keywords ?? []) : []))
-      .catch(() => alive && setHot([]));
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const hot = useAsync(
+    () =>
+      api
+        .searchHot()
+        .then((r) => (r.ok ? (r.keywords ?? []) : []))
+        .catch(() => []),
+    []
+  );
 
   if (!hot?.length) return null;
   return (

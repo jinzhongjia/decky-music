@@ -5,7 +5,6 @@
 
 import { Focusable, Navigation } from "@decky/ui";
 import { DialogButton } from "@decky/ui";
-import { useEffect, useState } from "react";
 
 import { Playlist, Song, api } from "../api";
 import { reportError } from "../errors";
@@ -15,6 +14,7 @@ import { usePlaybackShortcuts } from "../ui/AppShell";
 import { SongRow } from "../ui/SongRow";
 import { openSongMenu } from "../ui/songMenu";
 import { theme } from "../ui/theme";
+import { useAsync } from "../ui/useAsync";
 
 export const DETAIL_ROUTE = "/music-playlist";
 
@@ -28,23 +28,20 @@ export function openPlaylistDetail(pl: Playlist) {
 
 export function PlaylistDetailPage() {
   const pl = currentPl;
-  const [songs, setSongs] = useState<Song[] | null>(null);
   const shortcuts = usePlaybackShortcuts();
-
-  useEffect(() => {
-    if (!pl) return;
-    let alive = true;
-    api
-      .getPlaylistSongs(pl.id)
-      .then((r) => alive && setSongs(r.ok ? (r.songs ?? []) : []))
-      .catch((e) => {
-        reportError(e instanceof Error ? e.message : String(e));
-        if (alive) setSongs([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [pl?.id]);
+  const songs = useAsync<Song[] | null>(
+    () =>
+      pl
+        ? api
+            .getPlaylistSongs(pl.id)
+            .then((r) => (r.ok ? (r.songs ?? []) : []))
+            .catch((e) => {
+              reportError(e instanceof Error ? e.message : String(e));
+              return [];
+            })
+        : Promise.resolve(null),
+    [pl?.id]
+  );
 
   return (
     // 独立路由页:自带全屏框架(与 Page 同规格的安全边距)

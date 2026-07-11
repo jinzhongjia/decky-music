@@ -2,34 +2,26 @@
 // 每日推荐需登录:未登录 A 触发后经 error code 提示去 QAM 扫码(errNotLoggedIn)。
 // ponytail: 歌单详情页 P5c 再上,歌单卡 A 先整单入队开播;Banner 后置 P6。
 
-import { useEffect, useState } from "react";
-
-import { DiscoverData, api, errorText } from "../../api";
+import { api, errorText } from "../../api";
 import { guard, reportError } from "../../errors";
 import { t } from "../../i18n";
 import { playQueue } from "../../player/usePlayer";
 import { openPlaylistDetail } from "../../screens/PlaylistDetail";
 import { Grid, HeroCard, PlaylistCard, Section } from "../../ui/cards";
 import { theme } from "../../ui/theme";
+import { useAsync } from "../../ui/useAsync";
 
 const NCM_RED = "#ec4141";
 
 export function Discover() {
-  const [data, setData] = useState<DiscoverData | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .getDiscover()
-      .then((d) => alive && setData(d))
-      .catch((e) => {
+  const data = useAsync(
+    () =>
+      api.getDiscover().catch((e) => {
         reportError(e instanceof Error ? e.message : String(e));
-        if (alive) setData({ playlists: [] });
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+        return { playlists: [] };
+      }),
+    []
+  );
 
   const playDaily = () =>
     guard(async () => {

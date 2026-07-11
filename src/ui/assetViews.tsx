@@ -3,9 +3,8 @@
 // ponytail: 首页 50 条,翻页 P6。
 
 import { Focusable } from "@decky/ui";
-import { useEffect, useState } from "react";
 
-import { Playlist, PlaylistsResult, SearchResult, Song, errorText } from "../api";
+import { PlaylistsResult, SearchResult, errorText } from "../api";
 import { reportError } from "../errors";
 import { t } from "../i18n";
 import { playQueue } from "../player/usePlayer";
@@ -14,23 +13,19 @@ import { SongRow } from "./SongRow";
 import { openSongMenu } from "./songMenu";
 import { Grid, PlaylistCard } from "./cards";
 import { theme } from "./theme";
+import { useAsync } from "./useAsync";
 
 export function SongListView({ fetch }: { fetch: () => Promise<SearchResult> }) {
-  const [songs, setSongs] = useState<Song[] | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    fetch()
-      .then((r) => {
-        if (!alive) return;
-        if (!r.ok) reportError(errorText(r.error || "provider_error"));
-        setSongs(r.songs ?? []);
-      })
-      .catch(() => alive && setSongs([]));
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const songs = useAsync(
+    () =>
+      fetch()
+        .then((r) => {
+          if (!r.ok) reportError(errorText(r.error || "provider_error"));
+          return r.songs ?? [];
+        })
+        .catch(() => []),
+    []
+  );
 
   if (songs === null) {
     return <div style={{ margin: "auto", color: theme.textDim }}>{t("loading")}</div>;
@@ -62,21 +57,16 @@ export function SongListView({ fetch }: { fetch: () => Promise<SearchResult> }) 
 }
 
 export function PlaylistGridView({ fetch }: { fetch: () => Promise<PlaylistsResult> }) {
-  const [playlists, setPlaylists] = useState<Playlist[] | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    fetch()
-      .then((r) => {
-        if (!alive) return;
-        if (!r.ok) reportError(errorText(r.error || "provider_error"));
-        setPlaylists(r.playlists ?? []);
-      })
-      .catch(() => alive && setPlaylists([]));
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const playlists = useAsync(
+    () =>
+      fetch()
+        .then((r) => {
+          if (!r.ok) reportError(errorText(r.error || "provider_error"));
+          return r.playlists ?? [];
+        })
+        .catch(() => []),
+    []
+  );
 
   if (playlists === null) {
     return <div style={{ margin: "auto", color: theme.textDim }}>{t("loading")}</div>;

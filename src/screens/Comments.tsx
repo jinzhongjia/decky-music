@@ -2,13 +2,14 @@
 // 行:头像 + 昵称/时间 + 内容 + 点赞数。点赞快捷键(comment_like)留 P6。
 
 import { Focusable, GamepadButton } from "@decky/ui";
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { FaThumbsUp } from "react-icons/fa";
 
-import { Comment, api, errorText } from "../api";
+import { api, errorText } from "../api";
 import { reportError } from "../errors";
 import { fmtCount, t } from "../i18n";
 import { theme } from "../ui/theme";
+import { useAsync } from "../ui/useAsync";
 
 // 剥离 Steam 字体必然渲染成豆腐块的区段:新世代 emoji(U+1FA00+)、变体选择符、
 // ZWJ、私有区。老 emoji(Steam 有字形)保留;NCM [表情] 括号文本本就按字面显示。
@@ -16,24 +17,18 @@ const stripTofu = (s: string) =>
   s.replace(/[\u{FE0F}\u{200D}\u{E000}-\u{F8FF}\u{1FA00}-\u{1FFFF}]/gu, "");
 
 export function CommentsView({ songId }: { songId: string }) {
-  const [comments, setComments] = useState<Comment[] | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setComments(null);
-    api
-      .getComments(songId)
-      .then((r) => {
-        if (!alive) return;
-        if (!r.ok) reportError(errorText(r.error || "provider_error"));
-        setComments(r.comments ?? []);
-      })
-      .catch(() => alive && setComments([]));
-    return () => {
-      alive = false;
-    };
-  }, [songId]);
+  const comments = useAsync(
+    () =>
+      api
+        .getComments(songId)
+        .then((r) => {
+          if (!r.ok) reportError(errorText(r.error || "provider_error"));
+          return r.comments ?? [];
+        })
+        .catch(() => []),
+    [songId]
+  );
 
   if (comments === null) {
     return (

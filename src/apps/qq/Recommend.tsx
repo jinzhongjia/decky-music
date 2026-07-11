@@ -2,10 +2,9 @@
 // 电台卡 P5d(radio 队列模式)前置灰;歌单卡 A = 拉曲目整单入队开播。
 // ponytail: 歌单详情页 P5c 再上,届时歌单卡 A 改进详情。
 
-import { useEffect, useState } from "react";
 import { FaHeartbeat, FaSatelliteDish } from "react-icons/fa";
 
-import { RecommendData, api } from "../../api";
+import { api } from "../../api";
 import { reportError } from "../../errors";
 import { t } from "../../i18n";
 import { playQueue } from "../../player/usePlayer";
@@ -13,25 +12,19 @@ import { openRadioPage } from "../../screens/Immersive";
 import { openPlaylistDetail } from "../../screens/PlaylistDetail";
 import { Grid, HeroCard, PlaylistCard, Section, SongCell } from "../../ui/cards";
 import { theme } from "../../ui/theme";
+import { useAsync } from "../../ui/useAsync";
 
 const QQ_GREEN = "#31c27c";
 
 export function Recommend() {
-  const [data, setData] = useState<RecommendData | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .getRecommend()
-      .then((d) => alive && setData(d))
-      .catch((e) => {
+  const data = useAsync(
+    () =>
+      api.getRecommend().catch((e) => {
         reportError(e instanceof Error ? e.message : String(e));
-        if (alive) setData({ playlists: [], newsongs: [] });
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+        return { playlists: [], newsongs: [] };
+      }),
+    []
+  );
 
   if (!data) {
     return <div style={{ margin: "auto", color: theme.textDim }}>{t("loading")}</div>;

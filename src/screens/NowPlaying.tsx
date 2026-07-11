@@ -8,6 +8,8 @@
 
 import { DialogButton, Focusable, GamepadButton } from "@decky/ui";
 import { useEffect, useRef, useState } from "react";
+
+import { useAsync } from "../ui/useAsync";
 import {
   FaPause,
   FaPlay,
@@ -94,26 +96,17 @@ function IconBtn({ onClick, children }: { onClick: () => void; children: React.R
 
 export function NowPlaying({ comments = false }: { comments?: boolean }) {
   const { current, playing, posSec, wallMs, mode, queueMode, volume } = usePlayer();
-  const [lyric, setLyric] = useState<Lyric | null>(null);
   const [pane, setPane] = useState<"lyric" | "comments">("lyric");
   const [, tick] = useState(0);
 
   // 换曲回到歌词面(热评是"当前曲"语境)
   useEffect(() => setPane("lyric"), [current?.id]);
 
-  // 换曲拉歌词(id 变才重拉);alive 防止旧请求回来覆盖新曲
-  useEffect(() => {
-    if (!current) return;
-    let alive = true;
-    setLyric(null);
-    api
-      .getLyric(current.id)
-      .then((l) => alive && setLyric(l))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [current?.id]);
+  // 换曲拉歌词(id 变才重拉);useAsync 丢弃旧请求防覆盖新曲
+  const lyric = useAsync<Lyric | null>(
+    () => (current ? api.getLyric(current.id) : Promise.resolve(null)),
+    [current?.id]
+  );
 
   // 播放时定时刷新(驱动歌词滚动/逐字);暂停不跑
   useEffect(() => {

@@ -1,39 +1,15 @@
-// NCM 我的(P5e,效果图 ncm-ui/05):官方库范式二级 Tab + 全宽内容。
-// Tab:我喜欢 / 听歌排行 / 创建歌单 / 收藏歌单(云盘 P6)。需登录(LoginGate)。
+// NCM 我的(P5e,效果图 ncm-ui/05):资产共骨 AssetTabs。
+// Tab:我喜欢 / 听歌排行 / 创建歌单 / 收藏歌单(云盘 P6)。需登录(LoginGate 在共骨内)。
 
-import { useEffect, useState } from "react";
-
-import { UserAssets, api } from "../../api";
+import { api } from "../../api";
 import { t } from "../../i18n";
-import { LoginGate } from "../../ui/LoginGate";
-import { SecondaryTabs } from "../../ui/SecondaryTabs";
+import { AssetTabs } from "../../ui/AssetTabs";
 import { PlaylistGridView, SongListView } from "../../ui/assetViews";
 
 export function My() {
   return (
-    <LoginGate>
-      <Inner />
-    </LoginGate>
-  );
-}
-
-function Inner() {
-  const [assets, setAssets] = useState<UserAssets | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .getUserAssets()
-      .then((a) => alive && setAssets(a))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  return (
-    <SecondaryTabs
-      tabs={[
+    <AssetTabs
+      tabs={(assets) => [
         {
           id: "fav",
           title: t("favSongs"),
