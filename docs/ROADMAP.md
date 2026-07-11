@@ -209,7 +209,10 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 
 ## P6 深化(按需排期)
 
-- 搜索分类 Tab(`search_by_type` / cloudsearch type)+ 热搜(`get_hotkey` / `search_hot_detail`)+ 联想;`L2/R2` 切分类。
+- ✅ 搜索分类 Tab(单曲/歌单,`L2/R2` 切,复用 SecondaryTabs)+ 热搜(双端 `search_hot`,
+  QQ 侧 get_hotkey 归一化对齐 NCM 的 `{keyword,label}`)。输入即搜(600ms 防抖,无搜索按钮),
+  空查询显示热搜胶囊。专辑/歌手分类待歌手/专辑详情页落地后加;联想补全未做。
+- 收藏到歌单(X 菜单第 3 项)、QQ 红心、查看歌手/专辑页、榜单页、搜索联想补全。
 - 收藏到歌单(X 菜单第 3 项)、QQ 红心、查看歌手/专辑页、榜单页。
 - NCM:听歌排行、云盘、Banner;评论点赞。
 - 队列富信息持久化;歌单详情分页;本地缓存。
