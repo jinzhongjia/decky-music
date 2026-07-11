@@ -3,15 +3,8 @@
 from qqmusic_api.modules.search import SearchType
 
 
-async def search(q, keyword: str, limit: int = 20) -> list[dict]:
-    resp = await q.client.search.general_search(keyword, num=limit)
-    items = getattr(getattr(resp, "song", None), "items", None) or []
-    return [_song_brief(s) for s in items]
-
-
 async def songs(q, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
-    if offset == 0:
-        return await search(q, keyword, limit)
+    # 全程 search_by_type:首页曾走 general_search,与后续页排序源不同,翻页会轻微错位/重复
     page, num, skip = _page_args(limit, offset)
     resp = await q.client.search.search_by_type(keyword, SearchType.SONG, num=num, page=page)
     return [_song_brief(s) for s in resp.song[skip : skip + limit]]
