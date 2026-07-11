@@ -44,7 +44,6 @@ function parseArgs(args) {
   let all = false;
   for (const arg of args) {
     if (arg === "--all") all = true;
-    else if (arg.startsWith("--duration=")) seconds = Number(arg.slice("--duration=".length));
     else if (!targetArg) targetArg = arg;
     else if (/^\d+$/.test(arg)) seconds = Number(arg);
   }

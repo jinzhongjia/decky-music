@@ -34,15 +34,11 @@ const KEY_NAMES = {
   Space: " ",
 };
 
-export function cdpBaseUrl(env = process.env) {
-  if (env.DECK_CDP_URL) return trimTrailingSlash(env.DECK_CDP_URL);
-  const host = env.DECK_CDP_HOST || "localhost";
-  const port = env.DECK_CDP_PORT || DEFAULT_CDP_PORT;
-  if (env.DECK_CDP_HOST || env.DECK_CDP_PORT) return `http://${host}:${port}`;
-  return DEFAULT_CDP_BASE_URL;
+export function cdpBaseUrl() {
+  return DEFAULT_CDP_BASE_URL; // 隧道固定 localhost:8080(见 README)
 }
 
-export function targetAlias(spec) {
+function targetAlias(spec) {
   const key = String(spec || "").toLowerCase();
   return Object.hasOwn(ALIAS_MATCHERS, key) ? key : null;
 }
