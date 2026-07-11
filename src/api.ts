@@ -93,6 +93,9 @@ export type Comment = {
   time: string;
 };
 export type CommentsResult = { ok: boolean; comments: Comment[]; error?: string };
+// 热搜词(P6;qq get_hotkey / ncm search_hot_detail 归一化):label hot|new|none
+export type HotKeyword = { keyword: string; label: string };
+export type HotSearchResult = { ok: boolean; keywords: HotKeyword[]; error?: string };
 // 归一化歌词(provider 出,见 qq/lyric.py、ncm-provider/src/lyric.rs)。
 // word_by_word=true 时 line 带 words[](逐字高亮,NCM);否则整行高亮(QQ)。tr=该行译文(可空)。
 export type LyricWord = { t_ms: number; dur_ms: number; text: string };
@@ -112,7 +115,9 @@ export const api = {
   login: callable<[loginType: LoginType | null], void>("login"),
   logout: callable<[], void>("logout"),
   getAccount: callable<[], Account>("get_account"),
-  search: callable<[keyword: string], SearchResult>("search"),
+  searchSongs: callable<[keyword: string], SearchResult>("search_songs"),
+  searchPlaylists: callable<[keyword: string], PlaylistsResult>("search_playlists"),
+  searchHot: callable<[], HotSearchResult>("search_hot"),
   getLyric: callable<[mid: string], Lyric>("get_lyric"),
   getRecommend: callable<[], RecommendData>("get_recommend"),
   getPlaylistSongs: callable<[playlistId: string], SearchResult>("get_playlist_songs"),

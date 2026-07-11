@@ -373,12 +373,24 @@ class Bridge:
             return {"ok": True, **r.data}
         return {"ok": False, "error": r.error.code if r.error else "provider_error"}
 
-    async def _list_cmd(self, cmd: str, key: str, limit: int = 50) -> dict:
-        # 列表类资产命令统一形状:{ok, <key>: [...], error?}。首页 50 条(翻页 P6)
-        r = await self.provider.request(cmd, {"limit": limit})
+    async def _list_cmd(self, cmd: str, key: str, limit: int = 50, extra: dict | None = None) -> dict:
+        # 列表类命令统一形状:{ok, <key>: [...], error?}。首页 50 条(翻页 P6)
+        r = await self.provider.request(cmd, {"limit": limit, **(extra or {})})
         if r.ok:
             return {"ok": True, key: r.data.get(key, [])}
         return {"ok": False, key: [], "error": r.error.code if r.error else "provider_error"}
+
+    # ---- 搜索(P6:分类 + 热搜;老 search callable 已被下列分类命令取代) ----
+
+    async def search_songs(self, keyword: str) -> dict:
+        return await self._list_cmd("search_songs", "songs", 30, {"keyword": keyword})
+
+    async def search_playlists(self, keyword: str) -> dict:
+        return await self._list_cmd("search_playlists", "playlists", 30, {"keyword": keyword})
+
+    async def search_hot(self) -> dict:
+        # 双 provider 同名命令(qq get_hotkey / ncm search_hot_detail),形状 {keyword,label}
+        return await self._list_cmd("search_hot", "keywords", 20)
 
     async def get_fav_songs(self) -> dict:
         return await self._list_cmd("fav_songs", "songs")
@@ -446,11 +458,6 @@ class Bridge:
         self.settings["volume"] = val  # 音量 bridge 持久化 + 直接下发 player
         save_settings(self.settings)
         await self.player.request("volume", {"val": val})
-
-    async def search(self, keyword: str) -> dict:
-        # UI callable 返回沿用旧形状 {ok, songs}。
-        r = await self.provider.request("search", {"keyword": keyword})
-        return {"ok": r.ok, "songs": r.data.get("songs", []) if r.ok else []}
 
     async def get_lyric(self, mid: str) -> dict:
         # 透传 provider 归一化歌词;失败回空歌词(前端显示占位,不报错)

@@ -107,8 +107,14 @@ class Plugin:
     async def volume(self, val: float):
         return await self.bridge.volume(val)
 
-    async def search(self, keyword: str) -> dict:
-        return await self.bridge.search(keyword)
+    async def search_songs(self, keyword: str) -> dict:
+        return await self.bridge.search_songs(keyword)
+
+    async def search_playlists(self, keyword: str) -> dict:
+        return await self.bridge.search_playlists(keyword)
+
+    async def search_hot(self) -> dict:
+        return await self.bridge.search_hot()
 
     async def get_lyric(self, mid: str) -> dict:
         return await self.bridge.get_lyric(mid)
