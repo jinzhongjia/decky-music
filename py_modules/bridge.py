@@ -401,6 +401,20 @@ class Bridge:
     async def get_fav_playlists(self, offset: int = 0) -> dict:
         return await self._list_cmd("fav_playlists", "playlists", extra={"offset": offset})
 
+    async def add_to_playlist(self, playlist_id: str, song_id: str) -> dict:
+        # 收藏到歌单(P6,X 菜单):QQ 传 dirid(add_songs 语义)、NCM 传 pid,由前端按数据形状选
+        r = await self.provider.request(
+            "add_to_playlist", {"playlist_id": playlist_id, "song_id": song_id}
+        )
+        # QQ 带 success 布尔(查无此歌等假成功),NCM 无该字段默认 True(同 like_current 口径)
+        if r.ok and bool(r.data.get("success", True)):
+            log("bridge", "own", "info", f"add_to_playlist ok id={song_id}")
+            return {"ok": True}
+        code = r.error.code if (not r.ok and r.error) else "provider_error"
+        detail = r.error.message if (not r.ok and r.error) else ""
+        log("bridge", "own", "warn", f"add_to_playlist failed id={song_id}: {code} {detail}")
+        return {"ok": False, "error": code}
+
     async def like_state(self) -> dict:
         # 当前曲红心态(会话级记忆);沉浸页换曲/重进时拉取点亮
         cur = self.playback.current_id()

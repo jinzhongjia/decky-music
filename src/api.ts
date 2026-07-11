@@ -63,7 +63,8 @@ export type Song = {
 export type SearchResult = { ok: boolean; songs?: Song[]; error?: string };
 // 歌单摘要卡(推荐/发现/我的 网格用);play_count=0 时不显示播放量角标
 export type Playlist = {
-  id: string;
+  id: string; // 全局歌单 id(详情/曲目查询用)
+  dirid?: number; // QQ 自建歌单目录号(收藏动作 add_songs 用;NCM/非自建无)
   name: string;
   cover: string;
   count: number;
@@ -131,6 +132,10 @@ export const api = {
     "like_current"
   ),
   likeState: callable<[], { id: string; liked: boolean }>("like_state"),
+  addToPlaylist: callable<
+    [playlistId: string, songId: string],
+    { ok: boolean; error?: string | null }
+  >("add_to_playlist"),
   getComments: callable<[songId: string], CommentsResult>("get_comments"),
   getUserAssets: callable<[], UserAssets>("get_user_assets"),
   getFavSongs: callable<[offset: number], SearchResult>("get_fav_songs"),

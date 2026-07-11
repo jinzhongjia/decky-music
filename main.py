@@ -56,6 +56,9 @@ class Plugin:
     async def get_user_assets(self) -> dict:
         return await self.bridge.get_user_assets()
 
+    async def add_to_playlist(self, playlist_id: str, song_id: str) -> dict:
+        return await self.bridge.add_to_playlist(playlist_id, song_id)
+
     async def get_fav_songs(self, offset: int = 0) -> dict:
         return await self.bridge.get_fav_songs(offset)
 
