@@ -212,10 +212,14 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
 - ✅ 搜索分类 Tab(单曲/歌单,`L2/R2` 切,复用 SecondaryTabs)+ 热搜(双端 `search_hot`,
   QQ 侧 get_hotkey 归一化对齐 NCM 的 `{keyword,label}`)。输入即搜(600ms 防抖,无搜索按钮),
   空查询显示热搜胶囊。专辑/歌手分类待歌手/专辑详情页落地后加;联想补全未做。
-- 收藏到歌单(X 菜单第 3 项)、QQ 红心、查看歌手/专辑页、榜单页、搜索联想补全。
-- 收藏到歌单(X 菜单第 3 项)、QQ 红心、查看歌手/专辑页、榜单页。
-- NCM:听歌排行、云盘、Banner;评论点赞。
-- 队列富信息持久化;歌单详情分页;本地缓存。
+- ✅ 分页(资产 Tab + 搜索两分类):列表 callable 统一 offset,前端 usePaged 滚近底自动翻页,
+  按 mid/id 去重 + 整页重复判尾(NCM 云搜索 ~300 条后 offset 回绕返重复页,真机实测)。
+  未做:歌单详情前 200 首上限(需改 provider playlist_songs,QQ 侧要重建二进制)。
+- 收藏到歌单(X 菜单第 3 项,provider 两端 add_to_playlist 已就绪,差歌单选择浮层)。
+- 歌手/专辑详情页(provider 两端 detail 命令已就绪;落地后搜索补专辑/歌手分类)、榜单页。
+- 搜索联想补全;红心服务器种子同步(跨会话点亮,QQ 侧只能部分种)。
+- NCM:云盘、Banner;评论点赞快捷键。
+- 本地缓存;QueueOverlay 右侧抽屉样式对齐效果图;QQ 最近播放(等上游库)。
 
 ---
 
