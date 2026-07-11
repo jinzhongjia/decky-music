@@ -18,21 +18,17 @@ pub(super) fn comment_brief(v: &Value) -> Value {
 }
 
 pub async fn comments(state: &State, id: u64, args: &Value) -> String {
-    let resource_id = match string_arg(args, "id") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(resource_id) = string_arg(args, "id") else {
+        return invalid(id);
     };
-    let typ = match optional_string(args, "type", "0") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(typ) = optional_string(args, "type", "0") else {
+        return invalid(id);
     };
-    let limit = match optional_i64(args, "limit", 20) {
-        Ok(v) => v.to_string(),
-        Err(_) => return invalid(id),
+    let Ok(limit) = optional_i64(args, "limit", 20).map(|v| v.to_string()) else {
+        return invalid(id);
     };
-    let offset = match optional_i64(args, "offset", 0) {
-        Ok(v) => v.to_string(),
-        Err(_) => return invalid(id),
+    let Ok(offset) = optional_i64(args, "offset", 0).map(|v| v.to_string()) else {
+        return invalid(id);
     };
     let q = maybe_cookie(
         Query::new()
@@ -58,21 +54,17 @@ pub async fn comments(state: &State, id: u64, args: &Value) -> String {
 }
 
 pub async fn comment_like(state: &State, id: u64, args: &Value) -> String {
-    let resource_id = match string_arg(args, "id") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(resource_id) = string_arg(args, "id") else {
+        return invalid(id);
     };
-    let comment_id = match string_arg(args, "comment_id") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(comment_id) = string_arg(args, "comment_id") else {
+        return invalid(id);
     };
-    let on = match bool_arg(args, "on") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(on) = bool_arg(args, "on") else {
+        return invalid(id);
     };
-    let typ = match optional_string(args, "type", "0") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(typ) = optional_string(args, "type", "0") else {
+        return invalid(id);
     };
     let (_, cookie) = match current_uid(state, id).await {
         Ok(v) => v,

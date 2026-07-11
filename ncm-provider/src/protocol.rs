@@ -49,12 +49,6 @@ pub struct SetCredentialArgs {
     pub cred: Value, // {cookie:...} 或 null
 }
 
-#[derive(Debug, Deserialize)]
-pub struct SearchArgs {
-    #[serde(default)]
-    pub keyword: String,
-}
-
 // ncm 只用 id;bridge 附带的 media_mid 作为未知字段被 serde 忽略(QQ 才需要)。
 #[derive(Debug, Deserialize)]
 pub struct SongUrlArgs {
@@ -148,10 +142,10 @@ mod tests {
 
     #[test]
     fn parse_request_and_args() {
-        let r = parse_request(r#"{"id":5,"cmd":"search","args":{"keyword":"abc"}}"#).unwrap();
+        let r = parse_request(r#"{"id":5,"cmd":"song_url","args":{"id":"abc"}}"#).unwrap();
         assert_eq!(r.id, 5);
-        let a: SearchArgs = parse_args(&r).unwrap();
-        assert_eq!(a.keyword, "abc");
+        let a: SongUrlArgs = parse_args(&r).unwrap();
+        assert_eq!(a.id, "abc");
     }
 
     #[test]

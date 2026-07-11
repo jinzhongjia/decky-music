@@ -104,12 +104,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> String {
     match req.cmd.as_str() {
-        "search" => {
-            let kw = protocol::parse_args::<protocol::SearchArgs>(&req)
-                .map(|a| a.keyword)
-                .unwrap_or_default();
-            commands::search(&state, req.id, &kw).await
-        }
         "song_url" => {
             let song_id = protocol::parse_args::<protocol::SongUrlArgs>(&req)
                 .map(|a| a.id)

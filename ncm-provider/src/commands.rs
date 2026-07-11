@@ -1,4 +1,4 @@
-//! 同步命令处理:search / song_url / logout / account(登录长流程在 login.rs)。
+//! 同步命令处理:song_url / logout / account(登录长流程在 login.rs;搜索在 provider_commands)。
 //! 每个命令返回协议 v1 响应 JSON(带 request id);错误统一走 error code。
 
 use ncm_api_rs::Query;
@@ -7,28 +7,6 @@ use serde_json::{json, Value};
 use crate::logging::log_json;
 use crate::protocol::{self, ErrorCode};
 use crate::state::{with_timeout, Out, State};
-
-pub async fn search(state: &State, id: u64, keyword: &str) -> String {
-    let mut q = Query::new()
-        .param("keywords", keyword)
-        .param("type", "1")
-        .param("limit", "30");
-    if let Some(c) = state.cookie().await {
-        q = q.cookie(&c);
-    }
-    match with_timeout(state.client.cloudsearch(&q)).await {
-        Ok(Ok(r)) => {
-            let songs: Vec<Value> = r.body["result"]["songs"]
-                .as_array()
-                .map(|arr| arr.iter().map(song_brief).collect())
-                .unwrap_or_default();
-            protocol::ok(id, json!({ "songs": songs }))
-        }
-        // 库原始错误不透 UI(协议 v1);search 无 out 通道,不落日志(与改造前一致)
-        Ok(Err(_)) => protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-        Err(_) => protocol::err(id, ErrorCode::Timeout, "timeout"),
-    }
-}
 
 pub(crate) fn song_brief(s: &Value) -> Value {
     let artists = s["ar"].as_array().or_else(|| s["artists"].as_array());
@@ -101,10 +79,9 @@ pub async fn account(state: &State, id: u64) -> String {
     if let Some(c) = &ck {
         q = q.cookie(c);
     }
-    let status = match with_timeout(state.client.login_status(&q)).await {
-        Ok(Ok(r)) => r,
-        Ok(Err(_)) => return protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-        Err(_) => return protocol::err(id, ErrorCode::Timeout, "timeout"),
+    let status = match crate::provider_commands::call(state.client.login_status(&q), id).await {
+        Ok(r) => r,
+        Err(e) => return e,
     };
     let p = &status.body["profile"];
     // VIP 档位 code(前端 vipText() 本地化,不用服务端图标)。vip_info 失败/超时只是不显示,不影响账号。

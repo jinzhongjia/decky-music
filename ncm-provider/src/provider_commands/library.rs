@@ -3,12 +3,10 @@ use serde_json::{json, Value};
 
 use crate::commands::song_brief;
 use crate::content::playlist_brief;
-use crate::protocol::{self, ErrorCode};
-use crate::state::with_timeout;
+use crate::protocol;
 
 use super::{
-    bool_arg, current_uid, fetch, id_eq, id_string, invalid, map_arr, paging, slice_values,
-    string_arg, State,
+    bool_arg, call, current_uid, fetch, id_string, invalid, map_arr, paging, string_arg, State,
 };
 
 fn cloud_song(v: &Value) -> Value {
@@ -35,21 +33,19 @@ pub async fn user_assets(state: &State, id: u64) -> String {
         Ok(v) => v,
         Err(e) => return e,
     };
-    let sub = match with_timeout(state.client.user_subcount(&Query::new().cookie(&cookie))).await {
-        Ok(Ok(r)) => r,
-        Ok(Err(_)) => return protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-        Err(_) => return protocol::err(id, ErrorCode::Timeout, "timeout"),
-    };
-    let liked = match with_timeout(
-        state
-            .client
-            .likelist(&Query::new().param("uid", &uid).cookie(&cookie)),
+    let sub = match call(
+        state.client.user_subcount(&Query::new().cookie(&cookie)),
+        id,
     )
     .await
     {
-        Ok(Ok(r)) => r,
-        Ok(Err(_)) => return protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-        Err(_) => return protocol::err(id, ErrorCode::Timeout, "timeout"),
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    let liked_q = Query::new().param("uid", &uid).cookie(&cookie);
+    let liked = match call(state.client.likelist(&liked_q), id).await {
+        Ok(r) => r,
+        Err(e) => return e,
     };
     let fav_songs = liked.body["ids"].as_array().map(|a| a.len()).unwrap_or(0);
     protocol::ok(id, user_assets_data(uid, &sub.body, fav_songs))
@@ -64,10 +60,9 @@ pub async fn fav_songs(state: &State, id: u64, args: &Value) -> String {
         Err(e) => return e,
     };
     let q = Query::new().param("uid", &uid).cookie(&cookie);
-    let liked = match with_timeout(state.client.likelist(&q)).await {
-        Ok(Ok(r)) => r,
-        Ok(Err(_)) => return protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-        Err(_) => return protocol::err(id, ErrorCode::Timeout, "timeout"),
+    let liked = match call(state.client.likelist(&q), id).await {
+        Ok(r) => r,
+        Err(e) => return e,
     };
     let ids = liked.body["ids"]
         .as_array()
@@ -132,18 +127,11 @@ async fn user_playlists(state: &State, id: u64) -> Result<(String, Vec<Value>), 
         .param("uid", &uid)
         .param("limit", "1000")
         .cookie(&cookie);
-    match with_timeout(state.client.user_playlist(&q)).await {
-        Ok(Ok(r)) => Ok((
-            uid,
-            r.body["playlist"].as_array().cloned().unwrap_or_default(),
-        )),
-        Ok(Err(_)) => Err(protocol::err(
-            id,
-            ErrorCode::ProviderError,
-            "provider_error",
-        )),
-        Err(_) => Err(protocol::err(id, ErrorCode::Timeout, "timeout")),
-    }
+    let r = call(state.client.user_playlist(&q), id).await?;
+    Ok((
+        uid,
+        r.body["playlist"].as_array().cloned().unwrap_or_default(),
+    ))
 }
 
 pub async fn created_playlists(state: &State, id: u64, args: &Value) -> String {
@@ -156,13 +144,12 @@ pub async fn created_playlists(state: &State, id: u64, args: &Value) -> String {
     };
     let playlists = lists
         .iter()
-        .filter(|p| id_eq(&p["creator"]["userId"], &uid))
+        .filter(|p| id_string(&p["creator"]["userId"]) == uid)
+        .skip(offset)
+        .take(limit)
         .map(playlist_brief)
         .collect::<Vec<_>>();
-    protocol::ok(
-        id,
-        json!({ "playlists": slice_values(playlists, limit, offset) }),
-    )
+    protocol::ok(id, json!({ "playlists": playlists }))
 }
 
 pub async fn fav_playlists(state: &State, id: u64, args: &Value) -> String {
@@ -175,13 +162,12 @@ pub async fn fav_playlists(state: &State, id: u64, args: &Value) -> String {
     };
     let playlists = lists
         .iter()
-        .filter(|p| !id_eq(&p["creator"]["userId"], &uid))
+        .filter(|p| id_string(&p["creator"]["userId"]) != uid)
+        .skip(offset)
+        .take(limit)
         .map(playlist_brief)
         .collect::<Vec<_>>();
-    protocol::ok(
-        id,
-        json!({ "playlists": slice_values(playlists, limit, offset) }),
-    )
+    protocol::ok(id, json!({ "playlists": playlists }))
 }
 
 pub async fn cloud_songs(state: &State, id: u64, args: &Value) -> String {
@@ -205,13 +191,11 @@ pub async fn cloud_songs(state: &State, id: u64, args: &Value) -> String {
 }
 
 pub async fn like_song(state: &State, id: u64, args: &Value) -> String {
-    let song_id = match string_arg(args, "id") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(song_id) = string_arg(args, "id") else {
+        return invalid(id);
     };
-    let on = match bool_arg(args, "on") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(on) = bool_arg(args, "on") else {
+        return invalid(id);
     };
     let (uid, cookie) = match current_uid(state, id).await {
         Ok(v) => v,
@@ -226,13 +210,11 @@ pub async fn like_song(state: &State, id: u64, args: &Value) -> String {
 }
 
 pub async fn add_to_playlist(state: &State, id: u64, args: &Value) -> String {
-    let playlist_id = match string_arg(args, "playlist_id") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(playlist_id) = string_arg(args, "playlist_id") else {
+        return invalid(id);
     };
-    let song_id = match string_arg(args, "song_id") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(song_id) = string_arg(args, "song_id") else {
+        return invalid(id);
     };
     let (_, cookie) = match current_uid(state, id).await {
         Ok(v) => v,

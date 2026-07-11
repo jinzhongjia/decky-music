@@ -33,9 +33,8 @@ pub(super) fn artist_brief(v: &Value) -> Value {
 }
 
 pub async fn artist_detail(state: &State, id: u64, args: &Value) -> String {
-    let artist_id = match string_arg(args, "id") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(artist_id) = string_arg(args, "id") else {
+        return invalid(id);
     };
     let q = maybe_cookie(Query::new().param("id", &artist_id), state.cookie().await);
     fetch(
@@ -47,9 +46,8 @@ pub async fn artist_detail(state: &State, id: u64, args: &Value) -> String {
 }
 
 pub async fn album_detail(state: &State, id: u64, args: &Value) -> String {
-    let album_id = match string_arg(args, "id") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(album_id) = string_arg(args, "id") else {
+        return invalid(id);
     };
     let q = maybe_cookie(Query::new().param("id", &album_id), state.cookie().await);
     fetch(state.client.album(&q), id, |b| {

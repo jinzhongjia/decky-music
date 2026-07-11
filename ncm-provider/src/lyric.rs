@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
-use crate::protocol::{self, ErrorCode};
-use crate::state::{with_timeout, State};
+use crate::protocol;
+use crate::state::State;
 
 struct Word {
     t_ms: i64,
@@ -43,10 +43,9 @@ pub async fn lyric(state: &State, id: u64, song_id: &str) -> String {
     if let Some(c) = state.cookie().await {
         q = q.cookie(&c);
     }
-    let body = match with_timeout(state.client.lyric_new(&q)).await {
-        Ok(Ok(r)) => r.body,
-        Ok(Err(_)) => return protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-        Err(_) => return protocol::err(id, ErrorCode::Timeout, "timeout"),
+    let body = match crate::provider_commands::call(state.client.lyric_new(&q), id).await {
+        Ok(r) => r.body,
+        Err(e) => return e,
     };
 
     let yrc = body["yrc"]["lyric"].as_str().unwrap_or("");

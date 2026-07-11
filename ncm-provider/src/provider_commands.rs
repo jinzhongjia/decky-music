@@ -28,15 +28,31 @@ const DEFAULT_LIMIT: i64 = 30;
 const DEFAULT_OFFSET: i64 = 0;
 const MAX_LIMIT: i64 = 50;
 
+/// 上游调用统一三态:成功给响应,库错误 → provider_error,超时 → timeout。
+/// Err 即协议错误响应串,String 返回的命令 match 后直接 return,Result 命令用 `?`。
+pub(crate) async fn call<F: Future<Output = Result<ApiResponse, NcmError>>>(
+    fut: F,
+    id: u64,
+) -> Result<ApiResponse, String> {
+    match with_timeout(fut).await {
+        Ok(Ok(r)) => Ok(r),
+        Ok(Err(_)) => Err(protocol::err(
+            id,
+            ErrorCode::ProviderError,
+            "provider_error",
+        )),
+        Err(_) => Err(protocol::err(id, ErrorCode::Timeout, "timeout")),
+    }
+}
+
 pub(crate) async fn fetch<F: Future<Output = Result<ApiResponse, NcmError>>>(
     fut: F,
     id: u64,
     pick: impl FnOnce(&Value) -> Value,
 ) -> String {
-    match with_timeout(fut).await {
-        Ok(Ok(r)) => protocol::ok(id, pick(&r.body)),
-        Ok(Err(_)) => protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-        Err(_) => protocol::err(id, ErrorCode::Timeout, "timeout"),
+    match call(fut, id).await {
+        Ok(r) => protocol::ok(id, pick(&r.body)),
+        Err(e) => e,
     }
 }
 
@@ -80,10 +96,6 @@ fn paging(args: &Value) -> Result<(usize, usize), ()> {
     Ok((limit, offset))
 }
 
-fn slice_values(items: Vec<Value>, limit: usize, offset: usize) -> Vec<Value> {
-    items.into_iter().skip(offset).take(limit).collect()
-}
-
 fn optional_string(args: &Value, name: &str, default: &str) -> Result<String, ()> {
     match args.get(name) {
         Some(v) => v
@@ -121,18 +133,7 @@ async fn current_uid(state: &State, id: u64) -> Result<(String, String), String>
     if let Some(uid) = state.uid.lock().await.clone() {
         return Ok((uid, cookie));
     }
-    let q = Query::new().cookie(&cookie);
-    let status = match with_timeout(state.client.login_status(&q)).await {
-        Ok(Ok(r)) => r,
-        Ok(Err(_)) => {
-            return Err(protocol::err(
-                id,
-                ErrorCode::ProviderError,
-                "provider_error",
-            ))
-        }
-        Err(_) => return Err(protocol::err(id, ErrorCode::Timeout, "timeout")),
-    };
+    let status = call(state.client.login_status(&Query::new().cookie(&cookie)), id).await?;
     let uid = id_string(&status.body["profile"]["userId"]);
     if uid.is_empty() {
         return Err(protocol::err(id, ErrorCode::NotLoggedIn, "not_logged_in"));
@@ -146,10 +147,6 @@ fn id_string(v: &Value) -> String {
         .map(|i| i.to_string())
         .or_else(|| v.as_str().filter(|s| !s.is_empty()).map(str::to_owned))
         .unwrap_or_default()
-}
-
-fn id_eq(v: &Value, id: &str) -> bool {
-    id_string(v) == id
 }
 
 pub(crate) fn map_arr(v: &Value, f: fn(&Value) -> Value) -> Vec<Value> {

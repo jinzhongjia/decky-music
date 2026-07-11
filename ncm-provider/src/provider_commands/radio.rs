@@ -6,15 +6,14 @@ use crate::commands::song_brief;
 use super::{current_uid, fetch, invalid, map_arr, string_arg, State};
 
 pub async fn radio_fetch(state: &State, id: u64, args: &Value) -> String {
-    let kind = match string_arg(args, "kind") {
-        Ok(v) if v == "ncm_fm" => v,
-        _ => return invalid(id),
-    };
+    if string_arg(args, "kind").ok().as_deref() != Some("ncm_fm") {
+        return invalid(id);
+    }
     let (_, cookie) = match current_uid(state, id).await {
         Ok(v) => v,
         Err(e) => return e,
     };
-    let q = Query::new().param("kind", &kind).cookie(&cookie);
+    let q = Query::new().param("kind", "ncm_fm").cookie(&cookie);
     fetch(
         state.client.personal_fm(&q),
         id,
@@ -24,9 +23,8 @@ pub async fn radio_fetch(state: &State, id: u64, args: &Value) -> String {
 }
 
 pub async fn fm_trash(state: &State, id: u64, args: &Value) -> String {
-    let song_id = match string_arg(args, "id") {
-        Ok(v) => v,
-        Err(_) => return invalid(id),
+    let Ok(song_id) = string_arg(args, "id") else {
+        return invalid(id);
     };
     let (_, cookie) = match current_uid(state, id).await {
         Ok(v) => v,
