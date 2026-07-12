@@ -116,6 +116,18 @@ class Plugin:
     async def search_playlists(self, keyword: str, offset: int = 0) -> dict:
         return await self.bridge.search_playlists(keyword, offset)
 
+    async def search_albums(self, keyword: str, offset: int = 0) -> dict:
+        return await self.bridge.search_albums(keyword, offset)
+
+    async def search_artists(self, keyword: str, offset: int = 0) -> dict:
+        return await self.bridge.search_artists(keyword, offset)
+
+    async def get_artist_detail(self, artist_id: str) -> dict:
+        return await self.bridge.get_artist_detail(artist_id)
+
+    async def get_album_detail(self, album_id: str) -> dict:
+        return await self.bridge.get_album_detail(album_id)
+
     async def search_hot(self) -> dict:
         return await self.bridge.search_hot()
 

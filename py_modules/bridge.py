@@ -385,9 +385,29 @@ class Bridge:
     async def search_playlists(self, keyword: str, offset: int = 0) -> dict:
         return await self._list_cmd("search_playlists", "playlists", extra={"keyword": keyword, "offset": offset})
 
+    async def search_albums(self, keyword: str, offset: int = 0) -> dict:
+        return await self._list_cmd("search_albums", "albums", extra={"keyword": keyword, "offset": offset})
+
+    async def search_artists(self, keyword: str, offset: int = 0) -> dict:
+        return await self._list_cmd("search_artists", "artists", extra={"keyword": keyword, "offset": offset})
+
     async def search_hot(self) -> dict:
         # 双 provider 同名命令(qq get_hotkey / ncm search_hot_detail),形状 {keyword,label}
         return await self._list_cmd("search_hot", "keywords", 20)
+
+    # ---- 歌手/专辑详情(P6):双端 {artist|album, songs} ----
+
+    async def get_artist_detail(self, artist_id: str) -> dict:
+        r = await self.provider.request("artist_detail", {"id": artist_id, "limit": 50})
+        if r.ok:
+            return {"ok": True, **r.data}
+        return {"ok": False, "error": r.error.code if r.error else "provider_error"}
+
+    async def get_album_detail(self, album_id: str) -> dict:
+        r = await self.provider.request("album_detail", {"id": album_id, "limit": 50})
+        if r.ok:
+            return {"ok": True, **r.data}
+        return {"ok": False, "error": r.error.code if r.error else "provider_error"}
 
     async def get_fav_songs(self, offset: int = 0) -> dict:
         return await self._list_cmd("fav_songs", "songs", extra={"offset": offset})

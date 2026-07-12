@@ -84,6 +84,13 @@ export type UserAssets = {
   cloud?: number;
 };
 export type PlaylistsResult = { ok: boolean; playlists: Playlist[]; error?: string };
+// 专辑/歌手(P6:搜索分类 + 详情页;provider brief 归一化)
+export type Album = { id: string; name: string; cover: string; artist: string; count: number };
+export type Artist = { id: string; name: string; avatar: string };
+export type AlbumsResult = { ok: boolean; albums: Album[]; error?: string };
+export type ArtistsResult = { ok: boolean; artists: Artist[]; error?: string };
+export type ArtistDetailResult = { ok: boolean; artist?: Artist; songs?: Song[]; error?: string };
+export type AlbumDetailResult = { ok: boolean; album?: Album; songs?: Song[]; error?: string };
 // 热评(NCM;provider comment_brief 归一化)
 export type Comment = {
   id: string;
@@ -118,7 +125,11 @@ export const api = {
   getAccount: callable<[], Account>("get_account"),
   searchSongs: callable<[keyword: string, offset: number], SearchResult>("search_songs"),
   searchPlaylists: callable<[keyword: string, offset: number], PlaylistsResult>("search_playlists"),
+  searchAlbums: callable<[keyword: string, offset: number], AlbumsResult>("search_albums"),
+  searchArtists: callable<[keyword: string, offset: number], ArtistsResult>("search_artists"),
   searchHot: callable<[], HotSearchResult>("search_hot"),
+  getArtistDetail: callable<[artistId: string], ArtistDetailResult>("get_artist_detail"),
+  getAlbumDetail: callable<[albumId: string], AlbumDetailResult>("get_album_detail"),
   getLyric: callable<[mid: string], Lyric>("get_lyric"),
   getRecommend: callable<[], RecommendData>("get_recommend"),
   getPlaylistSongs: callable<[playlistId: string], SearchResult>("get_playlist_songs"),
