@@ -137,8 +137,8 @@ class Plugin:
     async def get_recommend(self) -> dict:
         return await self.bridge.get_recommend()
 
-    async def get_playlist_songs(self, playlist_id: str) -> dict:
-        return await self.bridge.get_playlist_songs(playlist_id)
+    async def get_playlist_songs(self, playlist_id: str, offset: int = 0) -> dict:
+        return await self.bridge.get_playlist_songs(playlist_id, offset)
 
     async def get_discover(self) -> dict:
         return await self.bridge.get_discover()

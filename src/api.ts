@@ -132,7 +132,9 @@ export const api = {
   getAlbumDetail: callable<[albumId: string], AlbumDetailResult>("get_album_detail"),
   getLyric: callable<[mid: string], Lyric>("get_lyric"),
   getRecommend: callable<[], RecommendData>("get_recommend"),
-  getPlaylistSongs: callable<[playlistId: string], SearchResult>("get_playlist_songs"),
+  getPlaylistSongs: callable<[playlistId: string, offset: number], SearchResult>(
+    "get_playlist_songs"
+  ),
   getDiscover: callable<[], DiscoverData>("get_discover"),
   getDailySongs: callable<[], SearchResult>("get_daily_songs"),
   playQueue: callable<[items: QueueItem[], startIndex: number], void>("play_queue"),
