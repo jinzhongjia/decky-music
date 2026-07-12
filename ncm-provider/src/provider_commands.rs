@@ -22,7 +22,7 @@ pub use library::{
     listen_rank, user_assets,
 };
 pub use radio::{fm_trash, radio_fetch};
-pub use search::{banner, search_hot, search_playlists, search_songs};
+pub use search::{banner, search_albums, search_artists, search_hot, search_playlists, search_songs};
 
 const DEFAULT_LIMIT: i64 = 30;
 const DEFAULT_OFFSET: i64 = 0;
@@ -234,6 +234,14 @@ mod tests {
         assert_eq!(
             search::hot_keyword(&json!({"searchWord":"k"})),
             json!({"keyword":"k","label":"none"})
+        );
+        // 搜索专辑/歌手命中高亮 <em>(可带属性)剥除
+        assert_eq!(
+            search::album_brief_clean(&json!({
+                "id":5,"name":"<em class=\"s-fc7\">海</em>屿你","picUrl":"p",
+                "artist":{"name":"<em>白</em>允"},"size":1
+            })),
+            json!({"id":"5","name":"海屿你","cover":"p","artist":"白允","count":1})
         );
         assert_eq!(
             library::user_assets_data(

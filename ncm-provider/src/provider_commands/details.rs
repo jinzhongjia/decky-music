@@ -36,12 +36,14 @@ pub async fn artist_detail(state: &State, id: u64, args: &Value) -> String {
     let Ok(artist_id) = string_arg(args, "id") else {
         return invalid(id);
     };
+    // /artists:歌手信息 + hotSongs 热门 50 首(artist_detail 端点不带歌,详情页会空)
     let q = maybe_cookie(Query::new().param("id", &artist_id), state.cookie().await);
-    fetch(
-        state.client.artist_detail(&q),
-        id,
-        |b| json!({ "artist": artist_brief(&b["data"]["artist"]) }),
-    )
+    fetch(state.client.artists(&q), id, |b| {
+        json!({
+            "artist": artist_brief(&b["artist"]),
+            "songs": map_arr(&b["hotSongs"], song_brief),
+        })
+    })
     .await
 }
 
