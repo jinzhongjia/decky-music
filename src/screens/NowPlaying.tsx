@@ -167,27 +167,19 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
             justifyContent: "center",
           }}
         >
-          {current.cover ? (
-            <img
-              src={current.cover}
-              style={{
-                maxWidth: "min(100%, 300px)",
-                maxHeight: "100%",
-                borderRadius: theme.radius,
-                objectFit: "contain",
-              }}
-              alt=""
-            />
-          ) : (
-            <div
-              style={{
-                width: "min(100%, 220px)",
-                aspectRatio: "1",
-                borderRadius: theme.radius,
-                background: "#333",
-              }}
-            />
-          )}
+          <img
+            src={current.cover || undefined}
+            style={{
+              width: current.cover ? undefined : "min(100%, 220px)",
+              maxWidth: "min(100%, 300px)",
+              maxHeight: "100%",
+              aspectRatio: current.cover ? undefined : "1",
+              borderRadius: theme.radius,
+              objectFit: "contain",
+              background: "#333",
+            }}
+            alt=""
+          />
         </div>
         <div style={{ textAlign: "center", maxWidth: "100%" }}>
           <div style={{ color: theme.text, fontSize: "1.3em", fontWeight: 600 }}>

@@ -22,7 +22,9 @@ pub use library::{
     listen_rank, user_assets,
 };
 pub use radio::{fm_trash, radio_fetch};
-pub use search::{banner, search_albums, search_artists, search_hot, search_playlists, search_songs};
+pub use search::{
+    banner, search_albums, search_artists, search_hot, search_playlists, search_songs,
+};
 
 const DEFAULT_LIMIT: i64 = 30;
 const DEFAULT_OFFSET: i64 = 0;
@@ -119,7 +121,7 @@ fn paged_query(args: &Value, type_id: &str) -> Result<Query, ()> {
         .param("offset", &offset))
 }
 
-fn maybe_cookie(mut q: Query, cookie: Option<String>) -> Query {
+pub(crate) fn maybe_cookie(mut q: Query, cookie: Option<String>) -> Query {
     if let Some(c) = cookie {
         q = q.cookie(&c);
     }

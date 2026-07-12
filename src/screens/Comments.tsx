@@ -72,23 +72,17 @@ export function CommentsView({ songId }: { songId: string }) {
     >
       {comments.map((c) => (
         <div key={c.id} style={{ display: "flex", gap: "0.6rem" }}>
-          {c.avatar ? (
-            <img
-              src={c.avatar}
-              style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }}
-              alt=""
-            />
-          ) : (
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: "50%",
-                background: "#333",
-                flexShrink: 0,
-              }}
-            />
-          )}
+          <img
+            src={c.avatar || undefined}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              background: "#333",
+              flexShrink: 0,
+            }}
+            alt=""
+          />
           <div style={{ minWidth: 0, flexGrow: 1 }}>
             <div style={{ color: theme.textDim, fontSize: "0.78em" }}>{c.user}</div>
             <div style={{ color: theme.text, fontSize: "0.92em", lineHeight: 1.45 }}>

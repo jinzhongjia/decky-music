@@ -8,6 +8,7 @@ use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
 use crate::protocol;
+use crate::provider_commands::maybe_cookie;
 use crate::state::State;
 
 struct Word {
@@ -39,10 +40,7 @@ impl Line {
 }
 
 pub async fn lyric(state: &State, id: u64, song_id: &str) -> String {
-    let mut q = Query::new().param("id", song_id);
-    if let Some(c) = state.cookie().await {
-        q = q.cookie(&c);
-    }
+    let q = maybe_cookie(Query::new().param("id", song_id), state.cookie().await);
     let body = match crate::provider_commands::call(state.client.lyric_new(&q), id).await {
         Ok(r) => r.body,
         Err(e) => return e,

@@ -85,28 +85,18 @@ export function PlaylistCard({ pl, onActivate }: { pl: Playlist; onActivate: () 
   return (
     <Focusable onActivate={onActivate} style={{ borderRadius: theme.radius }}>
       <div style={{ position: "relative" }}>
-        {pl.cover ? (
-          <img
-            src={pl.cover}
-            style={{
-              width: "100%",
-              aspectRatio: "1",
-              objectFit: "cover",
-              borderRadius: theme.radius,
-              display: "block",
-            }}
-            alt=""
-          />
-        ) : (
-          <div
-            style={{
-              width: "100%",
-              aspectRatio: "1",
-              borderRadius: theme.radius,
-              background: "#333",
-            }}
-          />
-        )}
+        <img
+          src={pl.cover || undefined}
+          style={{
+            width: "100%",
+            aspectRatio: "1",
+            objectFit: "cover",
+            borderRadius: theme.radius,
+            background: "#333",
+            display: "block",
+          }}
+          alt=""
+        />
         {pl.play_count > 0 && (
           <span
             style={{
@@ -155,29 +145,18 @@ export function SongCell({ song, onActivate }: { song: Song; onActivate: () => v
         borderRadius: theme.radius,
       }}
     >
-      {song.cover ? (
-        <img
-          src={song.cover}
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: theme.radius,
-            objectFit: "cover",
-            flexShrink: 0,
-          }}
-          alt=""
-        />
-      ) : (
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: theme.radius,
-            background: "#333",
-            flexShrink: 0,
-          }}
-        />
-      )}
+      <img
+        src={song.cover || undefined}
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: theme.radius,
+          objectFit: "cover",
+          background: "#333",
+          flexShrink: 0,
+        }}
+        alt=""
+      />
       <div style={{ minWidth: 0 }}>
         <div
           style={{
@@ -210,28 +189,18 @@ export function SongCell({ song, onActivate }: { song: Song; onActivate: () => v
 export function AlbumCard({ album, onActivate }: { album: Album; onActivate: () => void }) {
   return (
     <Focusable onActivate={onActivate} style={{ borderRadius: theme.radius }}>
-      {album.cover ? (
-        <img
-          src={album.cover}
-          style={{
-            width: "100%",
-            aspectRatio: "1",
-            objectFit: "cover",
-            borderRadius: theme.radius,
-            display: "block",
-          }}
-          alt=""
-        />
-      ) : (
-        <div
-          style={{
-            width: "100%",
-            aspectRatio: "1",
-            borderRadius: theme.radius,
-            background: "#333",
-          }}
-        />
-      )}
+      <img
+        src={album.cover || undefined}
+        style={{
+          width: "100%",
+          aspectRatio: "1",
+          objectFit: "cover",
+          borderRadius: theme.radius,
+          background: "#333",
+          display: "block",
+        }}
+        alt=""
+      />
       <div
         style={{
           color: theme.text,
@@ -268,21 +237,18 @@ export function ArtistCard({ artist, onActivate }: { artist: Artist; onActivate:
       onActivate={onActivate}
       style={{ borderRadius: theme.radius, textAlign: "center", padding: "0.25rem" }}
     >
-      {artist.avatar ? (
-        <img
-          src={artist.avatar}
-          style={{
-            width: "100%",
-            aspectRatio: "1",
-            objectFit: "cover",
-            borderRadius: "50%",
-            display: "block",
-          }}
-          alt=""
-        />
-      ) : (
-        <div style={{ width: "100%", aspectRatio: "1", borderRadius: "50%", background: "#333" }} />
-      )}
+      <img
+        src={artist.avatar || undefined}
+        style={{
+          width: "100%",
+          aspectRatio: "1",
+          objectFit: "cover",
+          borderRadius: "50%",
+          background: "#333",
+          display: "block",
+        }}
+        alt=""
+      />
       <div
         style={{
           color: theme.text,

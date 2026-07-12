@@ -16,7 +16,6 @@ export function NCMApp() {
     <AppShell
       name={t("ncm")}
       accent={NCM_RED}
-      initial="discover"
       tabs={[
         { id: "discover", title: t("discover"), content: <Discover /> },
         { id: "fm", title: t("fmTitle"), content: <FM /> },

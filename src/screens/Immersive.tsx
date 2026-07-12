@@ -139,27 +139,17 @@ export function Immersive({ title, trash }: { title: string; trash: boolean }) {
       }}
     >
       <div style={{ color: theme.textDim, fontSize: "0.85em" }}>{title}</div>
-      {current.cover ? (
-        <img
-          src={current.cover}
-          style={{
-            width: "min(34vh, 240px)",
-            aspectRatio: "1",
-            borderRadius: theme.radius,
-            objectFit: "cover",
-          }}
-          alt=""
-        />
-      ) : (
-        <div
-          style={{
-            width: "min(34vh, 240px)",
-            aspectRatio: "1",
-            borderRadius: theme.radius,
-            background: "#333",
-          }}
-        />
-      )}
+      <img
+        src={current.cover || undefined}
+        style={{
+          width: "min(34vh, 240px)",
+          aspectRatio: "1",
+          borderRadius: theme.radius,
+          objectFit: "cover",
+          background: "#333",
+        }}
+        alt=""
+      />
       <div style={{ textAlign: "center", maxWidth: "70%" }}>
         <div style={{ color: theme.text, fontSize: "1.25em", fontWeight: 700 }}>{current.name}</div>
         <div style={{ color: theme.textDim, marginTop: "0.2rem" }}>{current.singer}</div>

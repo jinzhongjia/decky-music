@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> String {
     match req.cmd.as_str() {
         "song_url" => {
-            let song_id = protocol::parse_args::<protocol::SongUrlArgs>(&req)
+            let song_id = protocol::parse_args::<protocol::IdArgs>(&req)
                 .map(|a| a.id)
                 .unwrap_or_default();
             commands::song_url(&state, req.id, &song_id, &out_tx).await
@@ -153,11 +153,5 @@ async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> Str
 }
 
 fn arg(flag: &str) -> Option<String> {
-    let mut args = std::env::args();
-    while let Some(a) = args.next() {
-        if a == flag {
-            return args.next();
-        }
-    }
-    None
+    std::env::args().skip_while(|a| a != flag).nth(1)
 }

@@ -29,29 +29,18 @@ export function SongRow({
         borderRadius: theme.radius,
       }}
     >
-      {song.cover ? (
-        <img
-          src={song.cover}
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: theme.radius,
-            objectFit: "cover",
-            flexShrink: 0,
-          }}
-          alt=""
-        />
-      ) : (
-        <div
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: theme.radius,
-            background: "#333",
-            flexShrink: 0,
-          }}
-        />
-      )}
+      <img
+        src={song.cover || undefined}
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: theme.radius,
+          objectFit: "cover",
+          background: "#333",
+          flexShrink: 0,
+        }}
+        alt=""
+      />
       <div style={{ flexGrow: 1, minWidth: 0 }}>
         <div
           style={{

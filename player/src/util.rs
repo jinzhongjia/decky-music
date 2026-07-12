@@ -14,11 +14,5 @@ pub(crate) fn checked_seek(base: u64, offset: i64) -> io::Result<u64> {
 }
 
 pub(crate) fn arg(flag: &str) -> Option<String> {
-    let mut args = std::env::args();
-    while let Some(a) = args.next() {
-        if a == flag {
-            return args.next();
-        }
-    }
-    None
+    std::env::args().skip_while(|a| a != flag).nth(1)
 }

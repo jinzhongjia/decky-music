@@ -170,17 +170,18 @@ function QueueRow({
         borderRadius: theme.radius,
       }}
     >
-      {item.cover ? (
-        <img
-          src={item.cover}
-          style={{ width: 40, height: 40, borderRadius: 2, objectFit: "cover", flexShrink: 0 }}
-          alt=""
-        />
-      ) : (
-        <div
-          style={{ width: 40, height: 40, borderRadius: 2, background: "#333", flexShrink: 0 }}
-        />
-      )}
+      <img
+        src={item.cover || undefined}
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 2,
+          objectFit: "cover",
+          background: "#333",
+          flexShrink: 0,
+        }}
+        alt=""
+      />
       <div style={{ flexGrow: 1, minWidth: 0 }}>
         <div
           style={{

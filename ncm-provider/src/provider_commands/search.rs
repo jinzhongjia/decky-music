@@ -97,9 +97,11 @@ pub async fn search_albums(state: &State, id: u64, args: &Value) -> String {
         return invalid(id);
     };
     let q = maybe_cookie(q, state.cookie().await);
-    fetch(state.client.cloudsearch(&q), id, |b| {
-        json!({ "albums": map_arr(&b["result"]["albums"], album_brief_clean) })
-    })
+    fetch(
+        state.client.cloudsearch(&q),
+        id,
+        |b| json!({ "albums": map_arr(&b["result"]["albums"], album_brief_clean) }),
+    )
     .await
 }
 
@@ -108,9 +110,11 @@ pub async fn search_artists(state: &State, id: u64, args: &Value) -> String {
         return invalid(id);
     };
     let q = maybe_cookie(q, state.cookie().await);
-    fetch(state.client.cloudsearch(&q), id, |b| {
-        json!({ "artists": map_arr(&b["result"]["artists"], artist_brief_clean) })
-    })
+    fetch(
+        state.client.cloudsearch(&q),
+        id,
+        |b| json!({ "artists": map_arr(&b["result"]["artists"], artist_brief_clean) }),
+    )
     .await
 }
 

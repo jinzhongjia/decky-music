@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 
 use crate::logging::log_json;
 use crate::protocol::{self, ErrorCode};
+use crate::provider_commands::{call, maybe_cookie};
 use crate::state::{with_timeout, Out, State};
 
 pub(crate) fn song_brief(s: &Value) -> Value {
@@ -40,12 +41,9 @@ pub(crate) fn song_brief(s: &Value) -> Value {
 const LEVELS: [&str; 2] = ["exhigh", "standard"];
 
 pub async fn song_url(state: &State, id: u64, song_id: &str, tx: &Out) -> String {
-    let cookie = state.cookie().await;
+    let base = maybe_cookie(Query::new().param("id", song_id), state.cookie().await);
     for level in LEVELS {
-        let mut q = Query::new().param("id", song_id).param("level", level);
-        if let Some(c) = &cookie {
-            q = q.cookie(c);
-        }
+        let q = base.clone().param("level", level);
         match with_timeout(state.client.song_url_v1(&q)).await {
             // 不记 URL(含限时 token)
             Ok(Ok(r)) => match r.body["data"][0]["url"].as_str() {
@@ -75,21 +73,15 @@ pub async fn logout(state: &State, id: u64) -> String {
 
 pub async fn account(state: &State, id: u64) -> String {
     let ck = state.cookie().await;
-    let mut q = Query::new();
-    if let Some(c) = &ck {
-        q = q.cookie(c);
-    }
-    let status = match crate::provider_commands::call(state.client.login_status(&q), id).await {
+    let q = maybe_cookie(Query::new(), ck.clone());
+    let status = match call(state.client.login_status(&q), id).await {
         Ok(r) => r,
         Err(e) => return e,
     };
     let p = &status.body["profile"];
     // VIP 档位 code(前端 vipText() 本地化,不用服务端图标)。vip_info 失败/超时只是不显示,不影响账号。
     let mut vip = String::new();
-    let mut vq = Query::new();
-    if let Some(c) = &ck {
-        vq = vq.cookie(c);
-    }
+    let vq = maybe_cookie(Query::new(), ck);
     if let Ok(Ok(v)) = with_timeout(state.client.vip_info(&vq)).await {
         let d = &v.body["data"];
         if d["redVipLevel"].as_i64().unwrap_or(0) > 0 {

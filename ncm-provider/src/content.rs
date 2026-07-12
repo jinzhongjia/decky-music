@@ -6,15 +6,12 @@ use serde_json::{json, Value};
 
 use crate::commands::song_brief;
 use crate::protocol::{self, ErrorCode};
-use crate::provider_commands::{fetch, map_arr};
+use crate::provider_commands::{fetch, map_arr, maybe_cookie};
 use crate::state::{with_timeout, State};
 
 /// 发现页:个性化推荐歌单(匿名可用;登录后更个性化)
 pub async fn discover(state: &State, id: u64) -> String {
-    let mut q = Query::new().param("limit", "12");
-    if let Some(c) = state.cookie().await {
-        q = q.cookie(&c);
-    }
+    let q = maybe_cookie(Query::new().param("limit", "12"), state.cookie().await);
     fetch(
         state.client.personalized(&q),
         id,
@@ -45,10 +42,10 @@ pub async fn daily_songs(state: &State, id: u64) -> String {
 
 /// 歌单曲目(与 QQ 同名命令,bridge 透传共用)。前 200,分页 P6。
 pub async fn playlist_songs(state: &State, id: u64, playlist_id: &str) -> String {
-    let mut q = Query::new().param("id", playlist_id).param("limit", "200");
-    if let Some(c) = state.cookie().await {
-        q = q.cookie(&c);
-    }
+    let q = maybe_cookie(
+        Query::new().param("id", playlist_id).param("limit", "200"),
+        state.cookie().await,
+    );
     fetch(
         state.client.playlist_track_all(&q),
         id,

@@ -49,14 +49,7 @@ pub struct SetCredentialArgs {
     pub cred: Value, // {cookie:...} 或 null
 }
 
-// ncm 只用 id;bridge 附带的 media_mid 作为未知字段被 serde 忽略(QQ 才需要)。
-#[derive(Debug, Deserialize)]
-pub struct SongUrlArgs {
-    #[serde(default)]
-    pub id: String,
-}
-
-// 通用 {id} 参数(lyric / playlist_songs 等按 id 取数的命令共用)
+// 通用 {id} 参数。song_url 多余的 media_mid 会被 serde 忽略(QQ 才需要)。
 #[derive(Debug, Deserialize)]
 pub struct IdArgs {
     #[serde(default)]
@@ -144,7 +137,7 @@ mod tests {
     fn parse_request_and_args() {
         let r = parse_request(r#"{"id":5,"cmd":"song_url","args":{"id":"abc"}}"#).unwrap();
         assert_eq!(r.id, 5);
-        let a: SongUrlArgs = parse_args(&r).unwrap();
+        let a: IdArgs = parse_args(&r).unwrap();
         assert_eq!(a.id, "abc");
     }
 
@@ -157,7 +150,7 @@ mod tests {
     fn song_url_args_ignores_extra_media_mid() {
         let r = parse_request(r#"{"id":6,"cmd":"song_url","args":{"id":"123","media_mid":"x"}}"#)
             .unwrap();
-        let a: SongUrlArgs = parse_args(&r).unwrap();
+        let a: IdArgs = parse_args(&r).unwrap();
         assert_eq!(a.id, "123");
     }
 

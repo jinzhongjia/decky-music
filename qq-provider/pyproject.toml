@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["nuitka", "ruff"]
+dev = ["ruff"]
 
 [tool.ruff]
 line-length = 100

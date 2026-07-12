@@ -235,7 +235,9 @@ pub async fn add_to_playlist(state: &State, id: u64, args: &Value) -> String {
         ..Default::default()
     };
     match call(
-        state.client.request("/api/playlist/manipulate/tracks", data, opt),
+        state
+            .client
+            .request("/api/playlist/manipulate/tracks", data, opt),
         id,
     )
     .await

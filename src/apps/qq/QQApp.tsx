@@ -15,7 +15,6 @@ export function QQApp() {
     <AppShell
       name={t("qq")}
       accent={QQ_GREEN}
-      initial="recommend"
       tabs={[
         { id: "recommend", title: t("recommend"), content: <Recommend /> },
         { id: "search", title: t("search"), content: <Search /> },

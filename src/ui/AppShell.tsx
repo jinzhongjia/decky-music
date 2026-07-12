@@ -37,14 +37,12 @@ export function AppShell({
   name,
   accent,
   tabs,
-  initial,
 }: {
   name: string; // provider 显示名(Logo 旁)
   accent: string; // 品牌色:只用于 Logo 与徽章 EQ 点缀(规则:品牌色不铺底)
   tabs: AppTab[];
-  initial?: string;
 }) {
-  const [active, setActive] = useState(initial ?? tabs[0].id);
+  const [active, setActive] = useState(tabs[0].id);
   const shortcuts = usePlaybackShortcuts();
   const idx = Math.max(
     0,

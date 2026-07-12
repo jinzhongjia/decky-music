@@ -56,11 +56,11 @@ export function CollectionPage({
         <>
           {/* 封面头 */}
           <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexShrink: 0 }}>
-            {cover ? (
-              <img src={cover} style={{ ...coverStyle, objectFit: "cover" }} alt="" />
-            ) : (
-              <div style={{ ...coverStyle, background: "#333" }} />
-            )}
+            <img
+              src={cover || undefined}
+              style={{ ...coverStyle, objectFit: "cover", background: "#333" }}
+              alt=""
+            />
             <div style={{ minWidth: 0, flexGrow: 1 }}>
               <div style={{ color: theme.text, fontWeight: 700, fontSize: "1.15em" }}>{title}</div>
               <div style={{ color: theme.textDim, fontSize: "0.85em", marginTop: "0.25rem" }}>
