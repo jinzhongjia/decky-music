@@ -75,8 +75,10 @@ class QQ:
     async def recommend(self) -> dict:
         return await _recommend.get(self)
 
-    async def playlist_songs(self, playlist_id: str) -> list[dict]:
-        return await _playlist.songs(self, playlist_id)
+    async def playlist_songs(
+        self, playlist_id: str, limit: int = 50, offset: int = 0
+    ) -> list[dict]:
+        return await _playlist.songs(self, playlist_id, limit, offset)
 
     async def user_assets(self) -> dict:
         return await _library.user_assets(self)

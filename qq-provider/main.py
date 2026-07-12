@@ -182,7 +182,7 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
                 log("debug", "recommend", counts)
                 return protocol.ok(req.id, data)
             case "playlist_songs":
-                songs = await qq.playlist_songs(args.get("id", ""))
+                songs = await qq.playlist_songs(args.get("id", ""), _limit(args), _offset(args))
                 log("debug", "playlist_songs", f"id={args.get('id', '')} -> {len(songs)} songs")
                 return protocol.ok(req.id, {"songs": songs})
             case "lyric":
