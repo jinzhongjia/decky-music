@@ -217,7 +217,11 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
   未做:歌单详情前 200 首上限(需改 provider playlist_songs,QQ 侧要重建二进制)。
 - ✅ 收藏到歌单(X 菜单第 3 项 → 二级菜单列自建歌单;QQ dirid / NCM pid 按数据形状分流)。
   NCM 侧绕过库封装以 weapi 调 manipulate/tracks(库 bug,已提上游 SPlayer-Dev/ncm-api-rs#2)。
-- 歌手/专辑详情页(provider 两端 detail 命令已就绪;落地后搜索补专辑/歌手分类)、榜单页。
+- ✅ 歌手/专辑详情页(CollectionPage 共骨,歌单详情一并迁移;独立路由 /music-album、/music-artist)
+  + 搜索补齐专辑/歌手分类(四分类 L2/R2)。NCM artist_detail 换 /artists 带热门 50 首,补
+  search_albums/artists;搜索命中高亮 <em> 两端归一化层剥除。上游 bug 绕行:QQ 歌手搜索走
+  general_search 直达区(QQMusicApi#285),NCM 收藏走 weapi(ncm-api-rs#2),修复后可回退。
+- 榜单页。
 - 搜索联想补全;红心服务器种子同步(跨会话点亮,QQ 侧只能部分种)。
 - NCM:云盘、Banner;评论点赞快捷键。
 - 本地缓存;QueueOverlay 右侧抽屉样式对齐效果图;QQ 最近播放(等上游库)。
