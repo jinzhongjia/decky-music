@@ -5,6 +5,8 @@ import { FaMusic } from "react-icons/fa";
 import { Boundary } from "./Boundary";
 import { Page, ROUTE } from "./Page";
 import { QAM } from "./QAM";
+import { ALBUM_ROUTE, AlbumDetailPage } from "./screens/AlbumDetail";
+import { ARTIST_ROUTE, ArtistDetailPage } from "./screens/ArtistDetail";
 import { RADIO_ROUTE, RadioPage } from "./screens/Immersive";
 import { DETAIL_ROUTE, PlaylistDetailPage } from "./screens/PlaylistDetail";
 import { disableMenuInjection, enableMenuInjection } from "./steamMenu";
@@ -19,6 +21,17 @@ export default definePlugin(() => {
   routerHook.addRoute(DETAIL_ROUTE, () => (
     <Boundary>
       <PlaylistDetailPage />
+    </Boundary>
+  ));
+  // 专辑/歌手详情独立路由(P6,与歌单详情同范式)
+  routerHook.addRoute(ALBUM_ROUTE, () => (
+    <Boundary>
+      <AlbumDetailPage />
+    </Boundary>
+  ));
+  routerHook.addRoute(ARTIST_ROUTE, () => (
+    <Boundary>
+      <ArtistDetailPage />
     </Boundary>
   ));
   // QQ 智能电台沉浸页(猜你喜欢/雷达推荐共用)
@@ -41,6 +54,8 @@ export default definePlugin(() => {
       disableMenuInjection();
       routerHook.removeRoute(ROUTE);
       routerHook.removeRoute(DETAIL_ROUTE);
+      routerHook.removeRoute(ALBUM_ROUTE);
+      routerHook.removeRoute(ARTIST_ROUTE);
       routerHook.removeRoute(RADIO_ROUTE);
     },
   };

@@ -5,7 +5,7 @@
 import { Focusable, NavEntryPositionPreferences } from "@decky/ui";
 import { ReactNode } from "react";
 
-import { Playlist, Song } from "../api";
+import { Album, Artist, Playlist, Song } from "../api";
 import { fmtCount } from "../i18n";
 import { theme } from "./theme";
 
@@ -201,6 +201,99 @@ export function SongCell({ song, onActivate }: { song: Song; onActivate: () => v
         >
           {song.singer}
         </div>
+      </div>
+    </Focusable>
+  );
+}
+
+// 专辑卡(搜索专辑分类):方形封面 + 专辑名 + 歌手副题
+export function AlbumCard({ album, onActivate }: { album: Album; onActivate: () => void }) {
+  return (
+    <Focusable onActivate={onActivate} style={{ borderRadius: theme.radius }}>
+      {album.cover ? (
+        <img
+          src={album.cover}
+          style={{
+            width: "100%",
+            aspectRatio: "1",
+            objectFit: "cover",
+            borderRadius: theme.radius,
+            display: "block",
+          }}
+          alt=""
+        />
+      ) : (
+        <div
+          style={{
+            width: "100%",
+            aspectRatio: "1",
+            borderRadius: theme.radius,
+            background: "#333",
+          }}
+        />
+      )}
+      <div
+        style={{
+          color: theme.text,
+          fontSize: "0.82em",
+          marginTop: "0.35rem",
+          lineHeight: 1.3,
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+      >
+        {album.name}
+      </div>
+      <div
+        style={{
+          color: theme.textDim,
+          fontSize: "0.72em",
+          overflow: "hidden",
+          whiteSpace: "nowrap",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {album.artist}
+      </div>
+    </Focusable>
+  );
+}
+
+// 歌手卡(搜索歌手分类):圆头像 + 居中名字
+export function ArtistCard({ artist, onActivate }: { artist: Artist; onActivate: () => void }) {
+  return (
+    <Focusable
+      onActivate={onActivate}
+      style={{ borderRadius: theme.radius, textAlign: "center", padding: "0.25rem" }}
+    >
+      {artist.avatar ? (
+        <img
+          src={artist.avatar}
+          style={{
+            width: "100%",
+            aspectRatio: "1",
+            objectFit: "cover",
+            borderRadius: "50%",
+            display: "block",
+          }}
+          alt=""
+        />
+      ) : (
+        <div style={{ width: "100%", aspectRatio: "1", borderRadius: "50%", background: "#333" }} />
+      )}
+      <div
+        style={{
+          color: theme.text,
+          fontSize: "0.82em",
+          marginTop: "0.35rem",
+          overflow: "hidden",
+          whiteSpace: "nowrap",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {artist.name}
       </div>
     </Focusable>
   );

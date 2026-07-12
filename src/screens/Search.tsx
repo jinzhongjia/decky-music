@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { t } from "../i18n";
 import { SecondaryTabs } from "../ui/SecondaryTabs";
-import { PlaylistGridView, SongListView } from "../ui/assetViews";
+import { AlbumGridView, ArtistGridView, PlaylistGridView, SongListView } from "../ui/assetViews";
 import { theme } from "../ui/theme";
 import { useAsync } from "../ui/useAsync";
 
@@ -65,6 +65,16 @@ export function Search() {
               id: "playlists",
               title: t("catPlaylists"),
               content: <PlaylistGridView fetch={(offset) => api.searchPlaylists(query, offset)} />,
+            },
+            {
+              id: "albums",
+              title: t("catAlbums"),
+              content: <AlbumGridView fetch={(offset) => api.searchAlbums(query, offset)} />,
+            },
+            {
+              id: "artists",
+              title: t("catArtists"),
+              content: <ArtistGridView fetch={(offset) => api.searchArtists(query, offset)} />,
             },
           ]}
         />

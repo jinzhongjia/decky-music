@@ -1,0 +1,109 @@
+// 歌单/专辑/歌手详情共骨:独立路由全屏框架(与 Page 同规格安全边距)+
+// 封面头(标题/副题/播放全部)+ SongRow 全宽列表。B = Steam 原生路由返回。
+// A 单曲 = 以整列建队定位该曲(QUEUE-BEHAVIOR §2);X = 入队菜单。
+
+import { DialogButton, Focusable } from "@decky/ui";
+
+import { Song } from "../api";
+import { t } from "../i18n";
+import { playQueue } from "../player/usePlayer";
+import { usePlaybackShortcuts } from "../ui/AppShell";
+import { SongRow } from "../ui/SongRow";
+import { openSongMenu } from "../ui/songMenu";
+import { theme } from "../ui/theme";
+
+export function CollectionPage({
+  cover,
+  roundCover = false,
+  title,
+  subtitle,
+  songs,
+  empty = false,
+}: {
+  cover: string;
+  roundCover?: boolean; // 歌手页头像用圆形
+  title: string;
+  subtitle: string;
+  songs: Song[] | null; // null = 加载中
+  empty?: boolean; // 无选中项(未经入口直进路由)
+}) {
+  const shortcuts = usePlaybackShortcuts();
+  const coverStyle = {
+    width: 96,
+    height: 96,
+    borderRadius: roundCover ? "50%" : theme.radius,
+    flexShrink: 0,
+  } as const;
+
+  return (
+    <Focusable
+      {...shortcuts}
+      style={{
+        height: "100%",
+        boxSizing: "border-box",
+        padding: "48px 2rem 44px",
+        background: theme.bg,
+        color: theme.text,
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+        overflow: "hidden",
+      }}
+    >
+      {empty ? (
+        <div style={{ margin: "auto", color: theme.textDim }}>{t("noResults")}</div>
+      ) : (
+        <>
+          {/* 封面头 */}
+          <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexShrink: 0 }}>
+            {cover ? (
+              <img src={cover} style={{ ...coverStyle, objectFit: "cover" }} alt="" />
+            ) : (
+              <div style={{ ...coverStyle, background: "#333" }} />
+            )}
+            <div style={{ minWidth: 0, flexGrow: 1 }}>
+              <div style={{ color: theme.text, fontWeight: 700, fontSize: "1.15em" }}>{title}</div>
+              <div style={{ color: theme.textDim, fontSize: "0.85em", marginTop: "0.25rem" }}>
+                {subtitle}
+              </div>
+            </div>
+            <DialogButton
+              disabled={!songs?.length}
+              onClick={() => songs?.length && playQueue(songs, 0)}
+              style={{ minWidth: 0, width: "auto", padding: "0.5em 1.5em", flexShrink: 0 }}
+            >
+              {t("playAll")}
+            </DialogButton>
+          </div>
+
+          {/* 曲目列表 */}
+          <Focusable
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.4rem",
+              flexGrow: 1,
+              minHeight: 0,
+              overflowY: "auto",
+            }}
+          >
+            {songs === null ? (
+              <div style={{ color: theme.textDim }}>{t("loading")}</div>
+            ) : songs.length === 0 ? (
+              <div style={{ color: theme.textDim }}>{t("noResults")}</div>
+            ) : (
+              songs.map((s, i) => (
+                <SongRow
+                  key={`${s.mid}-${i}`}
+                  song={s}
+                  onClick={() => playQueue(songs, i)}
+                  onMenu={() => openSongMenu(s)}
+                />
+              ))
+            )}
+          </Focusable>
+        </>
+      )}
+    </Focusable>
+  );
+}
