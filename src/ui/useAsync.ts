@@ -2,10 +2,16 @@
 // 组件卸载或依赖已变后到达的旧结果丢弃(防 setState-after-unmount / 旧数据覆盖新查询)。
 // 错误处理留在 fn 内(reportError / 返回兜底值),钩子只管生命周期。
 
-import { useEffect, useRef, useState } from "react";
+import { UIEvent, useEffect, useRef, useState } from "react";
 
 // 列表统一页大小(与 bridge/_list_cmd 及 provider MAX_LIMIT 对齐)
 export const PAGE_SIZE = 50;
+
+// 距底 300px 内触发下一页(焦点移动把行滚入视口时同样产生 scroll 事件,手柄可用)
+export const nearBottom = (e: UIEvent<HTMLDivElement>) => {
+  const el = e.currentTarget;
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - 300;
+};
 
 /** 追加式分页:挂载拉第一页,loadMore 拉下一页(在途/已到尾自动忽略)。
  *  fetchPage 需自行兜错(返回 [] 即视为到尾);翻页语义:offset = 服务端已取原始条数。

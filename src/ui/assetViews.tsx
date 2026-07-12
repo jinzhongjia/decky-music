@@ -2,7 +2,6 @@
 // fetch(offset) 由调用方注入;usePaged 追加分页,滚近容器底部自动拉下一页(P6)。
 
 import { Focusable } from "@decky/ui";
-import { UIEvent } from "react";
 
 import { AlbumsResult, ArtistsResult, PlaylistsResult, SearchResult, errorText } from "../api";
 import { reportError } from "../errors";
@@ -15,13 +14,7 @@ import { SongRow } from "./SongRow";
 import { openSongMenu } from "./songMenu";
 import { AlbumCard, ArtistCard, Grid, PlaylistCard } from "./cards";
 import { theme } from "./theme";
-import { usePaged } from "./useAsync";
-
-// 距底 300px 内触发下一页(焦点移动把行滚入视口时同样产生 scroll 事件,手柄可用)
-const nearBottom = (e: UIEvent<HTMLDivElement>) => {
-  const el = e.currentTarget;
-  return el.scrollTop + el.clientHeight >= el.scrollHeight - 300;
-};
+import { nearBottom, usePaged } from "./useAsync";
 
 export function SongListView({ fetch }: { fetch: (offset: number) => Promise<SearchResult> }) {
   const { items: songs, loadMore } = usePaged(

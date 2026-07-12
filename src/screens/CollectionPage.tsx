@@ -11,6 +11,7 @@ import { usePlaybackShortcuts } from "../ui/AppShell";
 import { SongRow } from "../ui/SongRow";
 import { openSongMenu } from "../ui/songMenu";
 import { theme } from "../ui/theme";
+import { nearBottom } from "../ui/useAsync";
 
 export function CollectionPage({
   cover,
@@ -19,6 +20,7 @@ export function CollectionPage({
   subtitle,
   songs,
   empty = false,
+  loadMore,
 }: {
   cover: string;
   roundCover?: boolean; // 歌手页头像用圆形
@@ -26,6 +28,7 @@ export function CollectionPage({
   subtitle: string;
   songs: Song[] | null; // null = 加载中
   empty?: boolean; // 无选中项(未经入口直进路由)
+  loadMore?: () => void; // 分页取数(歌单详情);滚近列表底部触发
 }) {
   const shortcuts = usePlaybackShortcuts();
   const coverStyle = {
@@ -78,6 +81,7 @@ export function CollectionPage({
 
           {/* 曲目列表 */}
           <Focusable
+            onScroll={loadMore ? (e) => nearBottom(e) && loadMore() : undefined}
             style={{
               display: "flex",
               flexDirection: "column",
