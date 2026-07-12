@@ -221,7 +221,9 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
   + 搜索补齐专辑/歌手分类(四分类 L2/R2)。NCM artist_detail 换 /artists 带热门 50 首,补
   search_albums/artists;搜索命中高亮 <em> 两端归一化层剥除。上游 bug 绕行:QQ 歌手搜索走
   general_search 直达区(QQMusicApi#285),NCM 收藏走 weapi(ncm-api-rs#2),修复后可回退。
-- 榜单页;红心服务器种子同步(跨会话点亮,QQ 侧只能部分种)。
+- ✅ 红心服务器种子同步:双端 liked_ids 命令(NCM likelist 全量 / QQ get_fav_song 大 num
+  一发全量,quaverq 实证 num 不受 50 限制),bridge 启动/登录/切源后后台种,合并不覆盖会话增量。
+- 榜单页。
 - ❌ 不做(2026-07-13 决策):搜索联想补全(输入即搜已覆盖)、NCM 云盘、评论点赞快捷键、
   NCM Banner(运营广告位,跳转目标类型杂且多为站内 H5 无处落地)。
 - 本地缓存;QueueOverlay 右侧抽屉样式对齐效果图;QQ 最近播放(等上游库)。
