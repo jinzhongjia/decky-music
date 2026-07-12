@@ -83,6 +83,9 @@ class QQ:
     async def user_assets(self) -> dict:
         return await _library.user_assets(self)
 
+    async def liked_ids(self) -> list[str]:
+        return await _library.liked_ids(self)
+
     async def fav_songs(self, limit: int = 20, offset: int = 0) -> list[dict]:
         return await _library.fav_songs(self, limit, offset)
 

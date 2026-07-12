@@ -87,6 +87,15 @@ async def user_assets(q) -> dict:
     }
 
 
+async def liked_ids(q, limit: int = 500) -> list[str]:
+    """红心种子:get_fav_song 大 num 一发拉全量(每页 50 是本插件钳制,非接口限制;
+    quaverq 实证 num=500 可用)。返回 mid 列表,与 like_current/current_id 同一 id 体系。"""
+    cred = _credential(q)
+    resp = await q.client.user.get_fav_song(cred.encrypt_uin, page=1, num=limit, credential=cred)
+    songs = getattr(resp, "songs", None) or []
+    return [s.mid for s in songs if getattr(s, "mid", "")]
+
+
 async def fav_songs(q, limit: int = 20, offset: int = 0) -> list[dict]:
     cred = _credential(q)
     page = offset // limit + 1

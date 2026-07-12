@@ -140,6 +140,10 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
                 return protocol.ok(req.id, {"keywords": keywords})
             case "user_assets":
                 return protocol.ok(req.id, await qq.user_assets())
+            case "liked_ids":
+                ids = await qq.liked_ids()
+                log("debug", "liked_ids", f"-> {len(ids)} ids")
+                return protocol.ok(req.id, {"ids": ids})
             case "fav_songs":
                 songs = await qq.fav_songs(_limit(args), _offset(args))
                 log("debug", "fav_songs", f"-> {len(songs)} songs")
