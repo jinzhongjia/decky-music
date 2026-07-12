@@ -374,7 +374,11 @@ class Bridge:
         r = await self.provider.request(cmd, {"limit": limit, **(extra or {})})
         if r.ok:
             return {"ok": True, key: r.data.get(key, [])}
-        return {"ok": False, key: [], "error": r.error.code if r.error else "provider_error"}
+        code = r.error.code if r.error else "provider_error"
+        detail = r.error.message if r.error else ""
+        # 失败必落日志(UI 只有 error banner,无迹可查的瞬时抖动全靠这里定位)
+        log("bridge", "own", "warn", f"{cmd} failed: {code} {detail}")
+        return {"ok": False, key: [], "error": code}
 
     # ---- 搜索(P6:分类 + 热搜;老 search callable 已被下列分类命令取代) ----
     # 列表类统一分页:offset 由前端翻页传入(usePaged),页大小恒 50(provider MAX_LIMIT 同值)
@@ -397,17 +401,20 @@ class Bridge:
 
     # ---- 歌手/专辑详情(P6):双端 {artist|album, songs} ----
 
-    async def get_artist_detail(self, artist_id: str) -> dict:
-        r = await self.provider.request("artist_detail", {"id": artist_id, "limit": 50})
+    async def _detail_cmd(self, cmd: str, item_id: str) -> dict:
+        r = await self.provider.request(cmd, {"id": item_id, "limit": 50})
         if r.ok:
             return {"ok": True, **r.data}
-        return {"ok": False, "error": r.error.code if r.error else "provider_error"}
+        code = r.error.code if r.error else "provider_error"
+        detail = r.error.message if r.error else ""
+        log("bridge", "own", "warn", f"{cmd} failed id={item_id}: {code} {detail}")
+        return {"ok": False, "error": code}
+
+    async def get_artist_detail(self, artist_id: str) -> dict:
+        return await self._detail_cmd("artist_detail", artist_id)
 
     async def get_album_detail(self, album_id: str) -> dict:
-        r = await self.provider.request("album_detail", {"id": album_id, "limit": 50})
-        if r.ok:
-            return {"ok": True, **r.data}
-        return {"ok": False, "error": r.error.code if r.error else "provider_error"}
+        return await self._detail_cmd("album_detail", album_id)
 
     async def get_fav_songs(self, offset: int = 0) -> dict:
         return await self._list_cmd("fav_songs", "songs", extra={"offset": offset})
