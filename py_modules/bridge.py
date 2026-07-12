@@ -187,8 +187,8 @@ class Bridge:
     """总线实现:管理 player/provider 两个子进程,编排 UI 命令,路由子进程事件。"""
 
     def __init__(self):
-        # 会话级红心记忆:like 成功后记 id,重进沉浸页红心保持点亮;切 provider 清空。
-        # ponytail: 服务器端历史收藏的种子同步(跨会话点亮)留 P6。
+        # 红心记忆:启动/登录后由 _kick_seed_liked 从服务器种全量,like 动作增量维护;
+        # 切 provider 清空(两家 id 体系不通用)。
         self.liked_ids: set[str] = set()
 
     async def start(self):
@@ -265,6 +265,25 @@ class Bridge:
                     self.settings.setdefault("accounts", {})[which] = new_cred
                     save_settings(self.settings)
                     log("bridge", "own", "info", f"{which} credential auto-refreshed, persisted")
+                self._kick_seed_liked()
+
+    def _kick_seed_liked(self):
+        # 红心种子(P6):后台拉服务器已收藏 id 全集灌 liked_ids,跨会话点亮与服务器一致。
+        # 双端 liked_ids 命令:NCM likelist 全量;QQ get_fav_song 大 num 一发拉全(quaverq 实证)。
+        async def seed():
+            try:
+                r = await self.provider.request("liked_ids")
+                if r.ok:
+                    ids = {str(i) for i in r.data.get("ids", []) if i}
+                    self.liked_ids |= ids  # 合并,不覆盖本会话已点的
+                    log("bridge", "own", "info", f"liked seed: {len(ids)} ids")
+                else:
+                    code = r.error.code if r.error else "provider_error"
+                    log("bridge", "own", "debug", f"liked seed skipped: {code}")
+            except Exception as e:
+                log("bridge", "own", "debug", f"liked seed failed: {e}")
+
+        asyncio.create_task(seed())
 
     async def set_provider(self, which: str | None):
         if self.settings.get("provider") != which:
@@ -530,6 +549,7 @@ class Bridge:
             self.settings.setdefault("accounts", {})[which] = ev.data.get("cred")
             save_settings(self.settings)
             log("bridge", "own", "info", f"{which} login success, credential persisted")
+            self._kick_seed_liked()
             await decky.emit("login", {"ev": "login", "type": "done", "data": {}})
             return
         if ev.type == "error":
