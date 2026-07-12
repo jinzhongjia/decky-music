@@ -214,7 +214,7 @@ bridge 队列引入 `mode: normal | radio`(QUEUE-BEHAVIOR §1.2/§3):
   空查询显示热搜胶囊。专辑/歌手分类待歌手/专辑详情页落地后加;联想补全未做。
 - ✅ 分页(资产 Tab + 搜索两分类):列表 callable 统一 offset,前端 usePaged 滚近底自动翻页,
   按 mid/id 去重 + 整页重复判尾(NCM 云搜索 ~300 条后 offset 回绕返重复页,真机实测)。
-  未做:歌单详情前 200 首上限(需改 provider playlist_songs,QQ 侧要重建二进制)。
+  歌单详情同样滚动翻页(200 首上限已移除,QQ num/page / NCM track_all 原生分页)。
 - ✅ 收藏到歌单(X 菜单第 3 项 → 二级菜单列自建歌单;QQ dirid / NCM pid 按数据形状分流)。
   NCM 侧绕过库封装以 weapi 调 manipulate/tracks(库 bug,已提上游 SPlayer-Dev/ncm-api-rs#2)。
 - ✅ 歌手/专辑详情页(CollectionPage 共骨,歌单详情一并迁移;独立路由 /music-album、/music-artist)
