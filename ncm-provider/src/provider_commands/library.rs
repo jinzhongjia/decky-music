@@ -51,6 +51,28 @@ pub async fn user_assets(state: &State, id: u64) -> String {
     protocol::ok(id, user_assets_data(uid, &sub.body, fav_songs))
 }
 
+pub async fn liked_ids(state: &State, id: u64) -> String {
+    // 红心种子:likelist 全量 id(bridge 启动/登录后灌 liked_ids,跨会话点亮)
+    let (uid, cookie) = match current_uid(state, id).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let q = Query::new().param("uid", &uid).cookie(&cookie);
+    fetch(state.client.likelist(&q), id, |b| {
+        let ids = b["ids"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(id_string)
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        json!({ "ids": ids })
+    })
+    .await
+}
+
 pub async fn fav_songs(state: &State, id: u64, args: &Value) -> String {
     let Ok((limit, offset)) = paging(args) else {
         return invalid(id);
