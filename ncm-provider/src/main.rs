@@ -118,12 +118,7 @@ async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> Str
         }
         "discover" => content::discover(&state, req.id).await,
         "daily_songs" => content::daily_songs(&state, req.id).await,
-        "playlist_songs" => {
-            let pid = protocol::parse_args::<protocol::IdArgs>(&req)
-                .map(|a| a.id)
-                .unwrap_or_default();
-            content::playlist_songs(&state, req.id, &pid).await
-        }
+        "playlist_songs" => content::playlist_songs(&state, req.id, &req.args).await,
         "search_songs" => provider_commands::search_songs(&state, req.id, &req.args).await,
         "search_playlists" => provider_commands::search_playlists(&state, req.id, &req.args).await,
         "search_albums" => provider_commands::search_albums(&state, req.id, &req.args).await,

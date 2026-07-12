@@ -59,11 +59,11 @@ pub(crate) async fn fetch<F: Future<Output = Result<ApiResponse, NcmError>>>(
     }
 }
 
-fn invalid(id: u64) -> String {
+pub(crate) fn invalid(id: u64) -> String {
     protocol::err(id, ErrorCode::InvalidRequest, "invalid_request")
 }
 
-fn string_arg(args: &Value, name: &str) -> Result<String, ()> {
+pub(crate) fn string_arg(args: &Value, name: &str) -> Result<String, ()> {
     args.get(name)
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
@@ -93,7 +93,7 @@ fn optional_limit(args: &Value, default: i64) -> Result<i64, ()> {
     }
 }
 
-fn paging(args: &Value) -> Result<(usize, usize), ()> {
+pub(crate) fn paging(args: &Value) -> Result<(usize, usize), ()> {
     let limit = optional_limit(args, DEFAULT_LIMIT)? as usize;
     let offset = optional_i64(args, "offset", DEFAULT_OFFSET)? as usize;
     Ok((limit, offset))

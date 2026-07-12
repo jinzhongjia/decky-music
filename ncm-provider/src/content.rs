@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use crate::commands::song_brief;
 use crate::protocol::{self, ErrorCode};
-use crate::provider_commands::{fetch, map_arr, maybe_cookie};
+use crate::provider_commands::{fetch, invalid, map_arr, maybe_cookie, paging, string_arg};
 use crate::state::{with_timeout, State};
 
 /// 发现页:个性化推荐歌单(匿名可用;登录后更个性化)
@@ -40,10 +40,19 @@ pub async fn daily_songs(state: &State, id: u64) -> String {
     }
 }
 
-/// 歌单曲目(与 QQ 同名命令,bridge 透传共用)。前 200,分页 P6。
-pub async fn playlist_songs(state: &State, id: u64, playlist_id: &str) -> String {
+/// 歌单曲目(与 QQ 同名命令,bridge 透传共用)。limit/offset 分页(track_all 原生支持)。
+pub async fn playlist_songs(state: &State, id: u64, args: &Value) -> String {
+    let Ok(playlist_id) = string_arg(args, "id") else {
+        return invalid(id);
+    };
+    let Ok((limit, offset)) = paging(args) else {
+        return invalid(id);
+    };
     let q = maybe_cookie(
-        Query::new().param("id", playlist_id).param("limit", "200"),
+        Query::new()
+            .param("id", &playlist_id)
+            .param("limit", &limit.to_string())
+            .param("offset", &offset.to_string()),
         state.cookie().await,
     );
     fetch(
