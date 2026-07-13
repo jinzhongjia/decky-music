@@ -71,6 +71,8 @@ export function CollectionPage({
               </div>
             </div>
             <DialogButton
+              // 进入详情页立即取焦(Valve nav 原生 prop,decky 类型未声明,经 spread 透传)
+              {...({ autoFocus: true } as object)}
               disabled={!songs?.length}
               onClick={() => songs?.length && playQueue(songs, 0)}
               style={{ minWidth: 0, width: "auto", padding: "0.5em 1.5em", flexShrink: 0 }}

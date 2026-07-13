@@ -110,7 +110,9 @@ export function AppShell({
   );
 }
 
-// 页签胶囊:激活态浅底深字(对齐效果图),可聚焦可 A 激活(硬规则:交互元素全可聚焦)
+// 页签胶囊:激活态浅底深字(对齐效果图),可聚焦可 A 激活(硬规则:交互元素全可聚焦)。
+// 活动页签带 autoFocus(Valve 原生 prop,焦点树激活时自动取焦):进入页面立即有焦点,
+// 快捷键/图例即刻生效,不用先按一下方向键"唤醒"。
 function TabPill({
   title,
   active,
@@ -123,6 +125,7 @@ function TabPill({
   return (
     <Focusable
       onActivate={onActivate}
+      {...(active ? ({ autoFocus: true } as object) : {})}
       style={{
         padding: "0.25em 1em",
         borderRadius: 999,

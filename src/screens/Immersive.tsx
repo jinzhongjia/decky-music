@@ -175,7 +175,9 @@ export function Immersive({ title, trash }: { title: string; trash: boolean }) {
         <OpBtn onClick={like} active={liked} activeColor="#ec4141">
           <FaHeart />
         </OpBtn>
-        <OpBtn onClick={togglePlay}>{playing ? <FaPause /> : <FaPlay />}</OpBtn>
+        <OpBtn onClick={togglePlay} autoFocus>
+          {playing ? <FaPause /> : <FaPlay />}
+        </OpBtn>
         <OpBtn onClick={forward}>{trash ? <FaTrash /> : <FaStepForward />}</OpBtn>
       </Focusable>
     </Focusable>
@@ -186,16 +188,19 @@ function OpBtn({
   onClick,
   active,
   activeColor,
+  autoFocus = false,
   children,
 }: {
   onClick: () => void;
   active?: boolean;
   activeColor?: string;
+  autoFocus?: boolean; // 沉浸页进入时聚焦主键(Valve nav 原生 prop,经 spread 透传)
   children: React.ReactNode;
 }) {
   return (
     <DialogButton
       onClick={onClick}
+      {...(autoFocus ? ({ autoFocus: true } as object) : {})}
       style={{
         minWidth: 0,
         width: 52,
