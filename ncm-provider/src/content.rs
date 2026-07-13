@@ -63,6 +63,18 @@ pub async fn playlist_songs(state: &State, id: u64, args: &Value) -> String {
     .await
 }
 
+/// 榜单列表(P6):NCM 榜单本质是官方歌单,归一化成 Playlist 形状;
+/// 榜单曲目直接走 playlist_songs(main.rs 里 toplist_songs 别名到它)。
+pub async fn toplists(state: &State, id: u64) -> String {
+    let q = maybe_cookie(Query::new(), state.cookie().await);
+    fetch(
+        state.client.toplist(&q),
+        id,
+        |b| json!({ "toplists": map_arr(&b["list"], playlist_brief) }),
+    )
+    .await
+}
+
 pub(crate) fn playlist_brief(v: &Value) -> Value {
     json!({
         "id": v["id"].as_i64().map(|i| i.to_string()).unwrap_or_default(),

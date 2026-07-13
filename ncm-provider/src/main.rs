@@ -119,6 +119,9 @@ async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> Str
         "discover" => content::discover(&state, req.id).await,
         "daily_songs" => content::daily_songs(&state, req.id).await,
         "playlist_songs" => content::playlist_songs(&state, req.id, &req.args).await,
+        "toplists" => content::toplists(&state, req.id).await,
+        // NCM 榜单即歌单:曲目命令直接别名(同 {id,limit,offset} 参数)
+        "toplist_songs" => content::playlist_songs(&state, req.id, &req.args).await,
         "search_songs" => provider_commands::search_songs(&state, req.id, &req.args).await,
         "search_playlists" => provider_commands::search_playlists(&state, req.id, &req.args).await,
         "search_albums" => provider_commands::search_albums(&state, req.id, &req.args).await,
