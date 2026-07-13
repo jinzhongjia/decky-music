@@ -2,6 +2,7 @@
 // 热评(P5f)待做。
 
 import { t } from "../../i18n";
+import { usePlayer } from "../../player/usePlayer";
 import { NowPlaying } from "../../screens/NowPlaying";
 import { Search } from "../../screens/Search";
 import { AppShell } from "../../ui/AppShell";
@@ -12,6 +13,7 @@ import { My } from "./My";
 const NCM_RED = "#ec4141"; // 品牌色:仅 Logo/徽章点缀
 
 export function NCMApp() {
+  const { current } = usePlayer();
   return (
     <AppShell
       name={t("ncm")}
@@ -21,7 +23,12 @@ export function NCMApp() {
         { id: "fm", title: t("fmTitle"), content: <FM /> },
         { id: "search", title: t("search"), content: <Search /> },
         { id: "my", title: t("myTab"), content: <My /> },
-        { id: "nowplaying", title: t("nowPlaying"), content: <NowPlaying comments /> },
+        {
+          id: "nowplaying",
+          title: t("nowPlaying"),
+          content: <NowPlaying comments />,
+          focusTabFallback: !current,
+        },
       ]}
     />
   );

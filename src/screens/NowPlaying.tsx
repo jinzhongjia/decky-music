@@ -32,6 +32,7 @@ import {
   togglePlay,
   usePlayer,
 } from "../player/usePlayer";
+import { usePageAutoFocus } from "../ui/AppShell";
 import { fmtTime, theme } from "../ui/theme";
 import { CommentsView } from "./Comments";
 
@@ -75,10 +76,19 @@ function ThinBar({ pct, onAdjust }: { pct: number; onAdjust: (dir: -1 | 1) => vo
 }
 
 // 紧凑图标按钮(方形,居中图标)
-function IconBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function IconBtn({
+  onClick,
+  initialFocus,
+  children,
+}: {
+  onClick: () => void;
+  initialFocus?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <DialogButton
       onClick={onClick}
+      {...(initialFocus ? ({ autoFocus: true } as object) : {})}
       style={{
         minWidth: 0,
         width: 44,
@@ -96,6 +106,7 @@ function IconBtn({ onClick, children }: { onClick: () => void; children: React.R
 
 export function NowPlaying({ comments = false }: { comments?: boolean }) {
   const { current, playing, posSec, wallMs, mode, queueMode, volume } = usePlayer();
+  const initialFocus = usePageAutoFocus();
   const [pane, setPane] = useState<"lyric" | "comments">("lyric");
   const [, tick] = useState(0);
 
@@ -218,7 +229,9 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
                 <FaStepBackward />
               </IconBtn>
             )}
-            <IconBtn onClick={togglePlay}>{playing ? <FaPause /> : <FaPlay />}</IconBtn>
+            <IconBtn onClick={togglePlay} initialFocus={initialFocus}>
+              {playing ? <FaPause /> : <FaPlay />}
+            </IconBtn>
             <IconBtn onClick={nextTrack}>
               <FaStepForward />
             </IconBtn>

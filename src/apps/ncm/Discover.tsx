@@ -7,6 +7,7 @@ import { guard, reportError } from "../../errors";
 import { t } from "../../i18n";
 import { playQueue } from "../../player/usePlayer";
 import { openPlaylistDetail } from "../../screens/PlaylistDetail";
+import { usePageAutoFocus } from "../../ui/AppShell";
 import { ToplistSection } from "../../ui/ToplistSection";
 import { Grid, HeroCard, PlaylistCard, Section } from "../../ui/cards";
 import { theme } from "../../ui/theme";
@@ -15,6 +16,7 @@ import { useAsync } from "../../ui/useAsync";
 const NCM_RED = "#ec4141";
 
 export function Discover() {
+  const initialFocus = usePageAutoFocus();
   const data = useAsync(
     () =>
       api.getDiscover().catch((e) => {
@@ -56,6 +58,7 @@ export function Discover() {
             icon={<span style={{ fontWeight: 800 }}>{new Date().getDate()}</span>}
             accent={NCM_RED}
             onActivate={playDaily}
+            initialFocus={initialFocus}
           />
         </div>
       </Section>

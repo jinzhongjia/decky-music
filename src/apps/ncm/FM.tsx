@@ -9,6 +9,7 @@ import { guard, reportError } from "../../errors";
 import { t } from "../../i18n";
 import { usePlayer } from "../../player/usePlayer";
 import { Immersive } from "../../screens/Immersive";
+import { usePageAutoFocus } from "../../ui/AppShell";
 import { LoginGate } from "../../ui/LoginGate";
 import { HeroCard } from "../../ui/cards";
 
@@ -25,6 +26,7 @@ export function FM() {
 function FMInner() {
   const { queueMode } = usePlayer();
   const [starting, setStarting] = useState(false);
+  const initialFocus = usePageAutoFocus();
 
   if (queueMode === "radio") {
     return <Immersive title={t("fmTitle")} trash />;
@@ -59,6 +61,7 @@ function FMInner() {
           accent={NCM_RED}
           onActivate={start}
           disabled={starting}
+          initialFocus={initialFocus}
         />
       </div>
     </div>

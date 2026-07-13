@@ -10,6 +10,7 @@ import { t } from "../../i18n";
 import { playQueue } from "../../player/usePlayer";
 import { openRadioPage } from "../../screens/Immersive";
 import { openPlaylistDetail } from "../../screens/PlaylistDetail";
+import { usePageAutoFocus } from "../../ui/AppShell";
 import { ToplistSection } from "../../ui/ToplistSection";
 import { Grid, HeroCard, PlaylistCard, Section, SongCell } from "../../ui/cards";
 import { theme } from "../../ui/theme";
@@ -18,6 +19,7 @@ import { useAsync } from "../../ui/useAsync";
 const QQ_GREEN = "#31c27c";
 
 export function Recommend() {
+  const initialFocus = usePageAutoFocus();
   const data = useAsync(
     () =>
       api.getRecommend().catch((e) => {
@@ -53,6 +55,7 @@ export function Recommend() {
             icon={<FaHeartbeat />}
             accent={QQ_GREEN}
             onActivate={() => openRadioPage("qq_guess", t("guessYouLike"))}
+            initialFocus={initialFocus}
           />
           <HeroCard
             title={t("radarRec")}

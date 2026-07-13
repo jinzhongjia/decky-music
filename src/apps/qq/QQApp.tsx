@@ -2,6 +2,7 @@
 // 智能电台沉浸页走独立路由(推荐页大卡进入)。
 
 import { t } from "../../i18n";
+import { usePlayer } from "../../player/usePlayer";
 import { NowPlaying } from "../../screens/NowPlaying";
 import { Search } from "../../screens/Search";
 import { AppShell } from "../../ui/AppShell";
@@ -11,6 +12,7 @@ import { Recommend } from "./Recommend";
 const QQ_GREEN = "#31c27c"; // 品牌色:仅 Logo/徽章点缀
 
 export function QQApp() {
+  const { current } = usePlayer();
   return (
     <AppShell
       name={t("qq")}
@@ -19,7 +21,12 @@ export function QQApp() {
         { id: "recommend", title: t("recommend"), content: <Recommend /> },
         { id: "search", title: t("search"), content: <Search /> },
         { id: "mymusic", title: t("myMusic"), content: <MyMusic /> },
-        { id: "nowplaying", title: t("nowPlaying"), content: <NowPlaying /> },
+        {
+          id: "nowplaying",
+          title: t("nowPlaying"),
+          content: <NowPlaying />,
+          focusTabFallback: !current,
+        },
       ]}
     />
   );

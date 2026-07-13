@@ -8,10 +8,12 @@ import { FaUserLock } from "react-icons/fa";
 
 import { LoginStatus, api, onLogin } from "../api";
 import { t } from "../i18n";
+import { usePageAutoFocus } from "./AppShell";
 import { theme } from "./theme";
 
 export function LoginGate({ children }: { children: ReactNode }) {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null); // null = 检查中
+  const initialFocus = usePageAutoFocus();
 
   useEffect(() => {
     let alive = true;
@@ -49,6 +51,7 @@ export function LoginGate({ children }: { children: ReactNode }) {
       <FaUserLock style={{ fontSize: "2.2em", color: theme.textDim }} />
       <div style={{ color: theme.textDim }}>{t("errNotLoggedIn")}</div>
       <DialogButton
+        {...(initialFocus ? ({ autoFocus: true } as object) : {})}
         style={{ minWidth: 0, width: "auto", padding: "0.5em 1.5em" }}
         onClick={() => Navigation.OpenQuickAccessMenu()}
       >

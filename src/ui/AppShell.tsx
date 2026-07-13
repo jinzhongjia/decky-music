@@ -7,15 +7,27 @@
 // 不用原生 Tabs:它把内容区也约束进头行中列(Logo/徽章占位后内容失去全宽)。
 
 import { Focusable, GamepadButton } from "@decky/ui";
-import { ReactNode, useState } from "react";
+import { createContext, ReactNode, useContext, useState } from "react";
 import { FaMusic } from "react-icons/fa";
 
 import { t } from "../i18n";
 import { openQueueOverlay } from "../overlays/QueueOverlay";
 import { togglePlay, usePlayer } from "../player/usePlayer";
+import { cancelInitialFocus, createPageFocusState, cyclePage, selectPage } from "./pageFocus";
 import { theme } from "./theme";
 
-export type AppTab = { id: string; title: string; content: ReactNode };
+export type AppTab = {
+  id: string;
+  title: string;
+  content: ReactNode;
+  focusTabFallback?: boolean;
+};
+
+type AppShellProps = {
+  name: string; // provider 显示名(Logo 旁)
+  accent: string; // 品牌色:只用于 Logo 与徽章 EQ 点缀(规则:品牌色不铺底)
+  tabs: AppTab[];
+};
 
 // tab 循环选择(AppShell L1/R1 与 SecondaryTabs L2/R2 共用):id 定位 + 循环步进
 export function useTabCycle<T extends { id: string }>(tabs: T[], initial?: string) {
@@ -44,16 +56,12 @@ export function usePlaybackShortcuts() {
   };
 }
 
-export function AppShell({
-  name,
-  accent,
-  tabs,
-}: {
-  name: string; // provider 显示名(Logo 旁)
-  accent: string; // 品牌色:只用于 Logo 与徽章 EQ 点缀(规则:品牌色不铺底)
-  tabs: AppTab[];
-}) {
-  const { idx, cycle, setActive } = useTabCycle(tabs);
+export function AppShell({ name, accent, tabs }: AppShellProps) {
+  const [pageFocus, setPageFocus] = useState(() => createPageFocusState(tabs[0].id));
+  const idx = Math.max(
+    0,
+    tabs.findIndex((tab) => tab.id === pageFocus.activeId)
+  );
   const shortcuts = usePlaybackShortcuts();
 
   return (
@@ -69,63 +77,99 @@ export function AppShell({
       onButtonDown={(evt) => {
         const detail = evt?.detail;
         if (!detail || detail.is_repeat) return;
-        if (detail.button === GamepadButton.BUMPER_LEFT) cycle(-1);
-        else if (detail.button === GamepadButton.BUMPER_RIGHT) cycle(1);
+        if (detail.button === GamepadButton.BUMPER_LEFT) {
+          setPageFocus((state) => cyclePage(state, tabs, -1));
+        } else if (detail.button === GamepadButton.BUMPER_RIGHT) {
+          setPageFocus((state) => cyclePage(state, tabs, 1));
+        } else {
+          setPageFocus(cancelInitialFocus);
+        }
       }}
       {...shortcuts}
     >
-      {/* 首行:系统 chrome 在其上方,不绘制不聚焦 */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
-          <FaMusic style={{ color: accent }} />
-          <span style={{ color: theme.text, fontWeight: 600, whiteSpace: "nowrap" }}>{name}</span>
+      <AppHeader
+        name={name}
+        accent={accent}
+        tabs={tabs}
+        activeId={tabs[idx].id}
+        allowInitialFocus={pageFocus.allowInitialFocus}
+        onSelect={(id) => setPageFocus((state) => selectPage(state, id))}
+      />
+      {/* 内容:全宽,页面自管滚动。页面主要控件仅在用户尚未移动焦点时取初始焦点。 */}
+      <PageAutoFocusContext.Provider value={pageFocus.allowInitialFocus}>
+        <div style={{ flexGrow: 1, minHeight: 0, minWidth: 0, display: "flex" }}>
+          {tabs[idx].content}
         </div>
-        <Chip>L1</Chip>
-        <Focusable
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: "0.5rem",
-            flexGrow: 1,
-            minWidth: 0,
-          }}
-        >
-          {tabs.map((tab) => (
-            <TabPill
-              key={tab.id}
-              title={tab.title}
-              active={tab.id === tabs[idx].id}
-              onActivate={() => setActive(tab.id)}
-            />
-          ))}
-        </Focusable>
-        <Chip>R1</Chip>
-        <NowPlayingBadge accent={accent} />
-      </div>
-      {/* 内容:全宽,页面自管滚动 */}
-      <div style={{ flexGrow: 1, minHeight: 0, minWidth: 0, display: "flex" }}>
-        {tabs[idx].content}
-      </div>
+      </PageAutoFocusContext.Provider>
     </Focusable>
   );
 }
 
+type AppHeaderProps = {
+  name: string;
+  accent: string;
+  tabs: AppTab[];
+  activeId: string;
+  allowInitialFocus: boolean;
+  onSelect: (id: string) => void;
+};
+
+// 首行:系统 chrome 在其上方,不绘制不聚焦。
+function AppHeader({ name, accent, tabs, activeId, allowInitialFocus, onSelect }: AppHeaderProps) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+        <FaMusic style={{ color: accent }} />
+        <span style={{ color: theme.text, fontWeight: 600, whiteSpace: "nowrap" }}>{name}</span>
+      </div>
+      <Chip>L1</Chip>
+      <Focusable
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          gap: "0.5rem",
+          flexGrow: 1,
+          minWidth: 0,
+        }}
+      >
+        {tabs.map((tab) => {
+          const active = tab.id === activeId;
+          return (
+            <TabPill
+              key={`${tab.id}:${active ? "active" : "inactive"}:${
+                tab.focusTabFallback ? "fallback" : "content"
+              }`}
+              title={tab.title}
+              active={active}
+              autoFocus={active && !!tab.focusTabFallback && allowInitialFocus}
+              onActivate={() => onSelect(tab.id)}
+            />
+          );
+        })}
+      </Focusable>
+      <Chip>R1</Chip>
+      <NowPlayingBadge accent={accent} />
+    </div>
+  );
+}
+
 // 页签胶囊:激活态浅底深字(对齐效果图),可聚焦可 A 激活(硬规则:交互元素全可聚焦)。
-// 活动页签带 autoFocus(Valve 原生 prop,焦点树激活时自动取焦):进入页面立即有焦点,
-// 快捷键/图例即刻生效,不用先按一下方向键"唤醒"。
+// 常规页面不由页签抢默认焦点；只有当前页面没有可执行控件时才显式作为 fallback。
 function TabPill({
   title,
   active,
+  autoFocus,
   onActivate,
 }: {
   title: string;
   active: boolean;
+  autoFocus: boolean;
   onActivate: () => void;
 }) {
   return (
     <Focusable
       onActivate={onActivate}
-      {...(active ? ({ autoFocus: true } as object) : {})}
+      {...(autoFocus ? ({ autoFocus: true } as object) : {})}
       style={{
         padding: "0.25em 1em",
         borderRadius: 999,
@@ -138,6 +182,13 @@ function TabPill({
       {title}
     </Focusable>
   );
+}
+
+const PageAutoFocusContext = createContext(true);
+
+/** 当前页面的异步主要控件是否仍可取初始焦点。用户产生其他输入后即为 false。 */
+export function usePageAutoFocus() {
+  return useContext(PageAutoFocusContext);
 }
 
 // L1/R1、L2/R2 提示章(页面内提示,非系统图例;非交互)。

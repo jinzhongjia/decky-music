@@ -43,6 +43,7 @@ export function HeroCard({
   accent,
   onActivate,
   disabled,
+  initialFocus,
 }: {
   title: string;
   subtitle: string;
@@ -50,10 +51,12 @@ export function HeroCard({
   accent: string;
   onActivate?: () => void;
   disabled?: boolean;
+  initialFocus?: boolean;
 }) {
   return (
     <Focusable
       onActivate={disabled ? undefined : onActivate}
+      autoFocus={initialFocus}
       style={{
         flex: 1,
         display: "flex",

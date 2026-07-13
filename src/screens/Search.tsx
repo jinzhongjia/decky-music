@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api";
 import { t } from "../i18n";
+import { usePageAutoFocus } from "../ui/AppShell";
 import { SecondaryTabs } from "../ui/SecondaryTabs";
 import { AlbumGridView, ArtistGridView, PlaylistGridView, SongListView } from "../ui/assetViews";
 import { theme } from "../ui/theme";
@@ -16,6 +17,7 @@ import { useAsync } from "../ui/useAsync";
 const DEBOUNCE_MS = 600;
 
 export function Search() {
+  const initialFocus = usePageAutoFocus();
   const [kw, setKw] = useState(""); // 输入框值
   const [query, setQuery] = useState(""); // 生效查询("" = 显示热搜)
 
@@ -45,6 +47,7 @@ export function Search() {
     >
       <Focusable style={{ flexShrink: 0 }}>
         <TextField
+          focusOnMount={initialFocus}
           value={kw}
           onChange={(e) => setKw(e.target.value)}
           {...({ placeholder: t("searchPlaceholder") } as object)}

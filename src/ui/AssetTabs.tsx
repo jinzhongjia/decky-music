@@ -4,6 +4,7 @@
 import { UserAssets, api } from "../api";
 import { LoginGate } from "./LoginGate";
 import { SecTab, SecondaryTabs } from "./SecondaryTabs";
+import { usePageAutoFocus } from "./AppShell";
 import { useAsync } from "./useAsync";
 
 export function AssetTabs({ tabs }: { tabs: (assets: UserAssets | null) => SecTab[] }) {
@@ -16,5 +17,6 @@ export function AssetTabs({ tabs }: { tabs: (assets: UserAssets | null) => SecTa
 
 function Inner({ tabs }: { tabs: (assets: UserAssets | null) => SecTab[] }) {
   const assets = useAsync(() => api.getUserAssets(), []);
-  return <SecondaryTabs tabs={tabs(assets)} />;
+  const initialFocus = usePageAutoFocus();
+  return <SecondaryTabs tabs={tabs(assets)} initialFocus={initialFocus} />;
 }
