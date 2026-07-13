@@ -1,8 +1,7 @@
 // DeckProbe-inspired CDP helpers, kept local and dependency-free for Decky Music.
 // Uses Node >= 21 globals: fetch + WebSocket.
 
-const DEFAULT_CDP_PORT = "8080";
-const DEFAULT_CDP_BASE_URL = `http://localhost:${DEFAULT_CDP_PORT}`;
+const CDP_URL = "http://localhost:8080"; // 隧道固定端口(见 README)
 
 const ALIAS_MATCHERS = {
   bp: (target) => includesAny(titleOf(target), ["big picture", "大屏"]),
@@ -34,10 +33,6 @@ const KEY_NAMES = {
   Space: " ",
 };
 
-export function cdpBaseUrl() {
-  return DEFAULT_CDP_BASE_URL; // 隧道固定 localhost:8080(见 README)
-}
-
 function targetAlias(spec) {
   const key = String(spec || "").toLowerCase();
   return Object.hasOwn(ALIAS_MATCHERS, key) ? key : null;
@@ -68,7 +63,7 @@ export function resolveTarget(targets, spec) {
   throw new Error(`no target matching "${spec}". Available: ${available || "(none)"}`);
 }
 
-export async function fetchTargets(baseUrl = cdpBaseUrl()) {
+export async function fetchTargets(baseUrl = CDP_URL) {
   const response = await fetch(`${trimTrailingSlash(baseUrl)}/json`);
   if (!response.ok)
     throw new Error(`target list failed: ${response.status} ${response.statusText}`);
@@ -76,7 +71,7 @@ export async function fetchTargets(baseUrl = cdpBaseUrl()) {
 }
 
 export async function openSession(spec, options = {}) {
-  const baseUrl = options.baseUrl || cdpBaseUrl();
+  const baseUrl = options.baseUrl || CDP_URL;
   const target = typeof spec === "object" ? spec : resolveTarget(await fetchTargets(baseUrl), spec);
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   const eventListeners = new Set();

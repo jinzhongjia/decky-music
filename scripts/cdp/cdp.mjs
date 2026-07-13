@@ -7,7 +7,7 @@
 //   node scripts/cdp/cdp.mjs targets
 //   node scripts/cdp/cdp.mjs <target|alias> <exprFile>
 //   node scripts/cdp/cdp.mjs mainmenu scripts/cdp/probe-mainmenu.js
-// 别名:bp/qam/shared/sjc/mainmenu;默认连 http://localhost:8080,也支持 DECK_CDP_URL 或 DECK_CDP_HOST/PORT。
+// 别名:bp/qam/shared/sjc/mainmenu;默认连 http://localhost:8080。
 // 需要 Node ≥ 21(全局 WebSocket)。
 
 import { evaluate, fetchTargets, formatTargets, openSession, runtimeValue } from "./cdp-lib.mjs";
