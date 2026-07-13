@@ -9,6 +9,7 @@ import { ALBUM_ROUTE, AlbumDetailPage } from "./screens/AlbumDetail";
 import { ARTIST_ROUTE, ArtistDetailPage } from "./screens/ArtistDetail";
 import { RADIO_ROUTE, RadioPage } from "./screens/Immersive";
 import { DETAIL_ROUTE, PlaylistDetailPage } from "./screens/PlaylistDetail";
+import { TOPLIST_ROUTE, ToplistDetailPage } from "./screens/ToplistDetail";
 import { disableMenuInjection, enableMenuInjection } from "./steamMenu";
 
 export default definePlugin(() => {
@@ -34,6 +35,11 @@ export default definePlugin(() => {
       <ArtistDetailPage />
     </Boundary>
   ));
+  routerHook.addRoute(TOPLIST_ROUTE, () => (
+    <Boundary>
+      <ToplistDetailPage />
+    </Boundary>
+  ));
   // QQ 智能电台沉浸页(猜你喜欢/雷达推荐共用)
   routerHook.addRoute(RADIO_ROUTE, () => (
     <Boundary>
@@ -56,6 +62,7 @@ export default definePlugin(() => {
       routerHook.removeRoute(DETAIL_ROUTE);
       routerHook.removeRoute(ALBUM_ROUTE);
       routerHook.removeRoute(ARTIST_ROUTE);
+      routerHook.removeRoute(TOPLIST_ROUTE);
       routerHook.removeRoute(RADIO_ROUTE);
     },
   };

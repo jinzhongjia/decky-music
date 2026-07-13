@@ -10,6 +10,7 @@ import { t } from "../../i18n";
 import { playQueue } from "../../player/usePlayer";
 import { openRadioPage } from "../../screens/Immersive";
 import { openPlaylistDetail } from "../../screens/PlaylistDetail";
+import { ToplistSection } from "../../ui/ToplistSection";
 import { Grid, HeroCard, PlaylistCard, Section, SongCell } from "../../ui/cards";
 import { theme } from "../../ui/theme";
 import { useAsync } from "../../ui/useAsync";
@@ -85,6 +86,8 @@ export function Recommend() {
           </Grid>
         </Section>
       )}
+
+      <ToplistSection />
     </div>
   );
 }
