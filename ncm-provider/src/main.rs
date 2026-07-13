@@ -135,8 +135,6 @@ async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> Str
             provider_commands::created_playlists(&state, req.id, &req.args).await
         }
         "fav_playlists" => provider_commands::fav_playlists(&state, req.id, &req.args).await,
-        "cloud_songs" => provider_commands::cloud_songs(&state, req.id, &req.args).await,
-        "banner" => provider_commands::banner(&state, req.id).await,
         "like_song" => provider_commands::like_song(&state, req.id, &req.args).await,
         "add_to_playlist" => provider_commands::add_to_playlist(&state, req.id, &req.args).await,
         "artist_detail" => provider_commands::artist_detail(&state, req.id, &req.args).await,
@@ -144,7 +142,6 @@ async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> Str
         "radio_fetch" => provider_commands::radio_fetch(&state, req.id, &req.args).await,
         "fm_trash" => provider_commands::fm_trash(&state, req.id, &req.args).await,
         "comments" => provider_commands::comments(&state, req.id, &req.args).await,
-        "comment_like" => provider_commands::comment_like(&state, req.id, &req.args).await,
         "logout" => commands::logout(&state, req.id).await,
         "account" => commands::account(&state, req.id).await,
         _ => protocol::err(req.id, ErrorCode::UnknownCmd, "unknown cmd"),

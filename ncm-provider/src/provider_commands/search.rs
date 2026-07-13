@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use crate::commands::song_brief;
 use crate::content::playlist_brief;
 
-use super::{fetch, id_string, invalid, map_arr, maybe_cookie, paged_query, State};
+use super::{fetch, invalid, map_arr, maybe_cookie, paged_query, State};
 
 pub(super) fn hot_keyword(v: &Value) -> Value {
     let icon_type = v["iconType"].as_i64().unwrap_or(0);
@@ -19,16 +19,6 @@ pub(super) fn hot_keyword(v: &Value) -> Value {
     })
 }
 
-fn banner_brief(v: &Value) -> Value {
-    let target_id = id_string(&v["targetId"]);
-    json!({
-        "id": id_string(&v["bannerId"]),
-        "title": v["typeTitle"].as_str().or_else(|| v["title"].as_str()).unwrap_or(""),
-        "cover": v["pic"].as_str().or_else(|| v["imageUrl"].as_str()).unwrap_or(""),
-        "target_type": id_string(&v["targetType"]),
-        "target_id": target_id,
-    })
-}
 
 pub async fn search_songs(state: &State, id: u64, args: &Value) -> String {
     let Ok(q) = paged_query(args, "1") else {
@@ -127,11 +117,3 @@ pub async fn search_hot(state: &State, id: u64) -> String {
     .await
 }
 
-pub async fn banner(state: &State, id: u64) -> String {
-    fetch(
-        state.client.banner(&Query::new()),
-        id,
-        |b| json!({ "banners": map_arr(&b["banners"], banner_brief) }),
-    )
-    .await
-}

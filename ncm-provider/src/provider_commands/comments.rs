@@ -2,8 +2,8 @@ use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
 use super::{
-    bool_arg, current_uid, fetch, id_string, invalid, map_arr, maybe_cookie, optional_i64,
-    optional_string, string_arg, State,
+    fetch, id_string, invalid, map_arr, maybe_cookie, optional_i64, optional_string, string_arg,
+    State,
 };
 
 pub(super) fn comment_brief(v: &Value) -> Value {
@@ -51,30 +51,4 @@ pub async fn comments(state: &State, id: u64, args: &Value) -> String {
         "3" | "album" => fetch(state.client.comment_album(&q), id, pick).await,
         _ => invalid(id),
     }
-}
-
-pub async fn comment_like(state: &State, id: u64, args: &Value) -> String {
-    let Ok(resource_id) = string_arg(args, "id") else {
-        return invalid(id);
-    };
-    let Ok(comment_id) = string_arg(args, "comment_id") else {
-        return invalid(id);
-    };
-    let Ok(on) = bool_arg(args, "on") else {
-        return invalid(id);
-    };
-    let Ok(typ) = optional_string(args, "type", "0") else {
-        return invalid(id);
-    };
-    let (_, cookie) = match current_uid(state, id).await {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let q = Query::new()
-        .param("id", &resource_id)
-        .param("cid", &comment_id)
-        .param("type", &typ)
-        .param("t", if on { "1" } else { "0" })
-        .cookie(&cookie);
-    fetch(state.client.comment_like(&q), id, |_| json!({})).await
 }

@@ -9,13 +9,6 @@ use super::{
     bool_arg, call, current_uid, fetch, id_string, invalid, map_arr, paging, string_arg, State,
 };
 
-fn cloud_song(v: &Value) -> Value {
-    if v["simpleSong"].is_object() {
-        song_brief(&v["simpleSong"])
-    } else {
-        song_brief(v)
-    }
-}
 
 pub(super) fn user_assets_data(uid: String, sub: &Value, fav_songs: usize) -> Value {
     json!({
@@ -192,25 +185,6 @@ pub async fn fav_playlists(state: &State, id: u64, args: &Value) -> String {
     protocol::ok(id, json!({ "playlists": playlists }))
 }
 
-pub async fn cloud_songs(state: &State, id: u64, args: &Value) -> String {
-    let Ok((limit, offset)) = paging(args) else {
-        return invalid(id);
-    };
-    let (_, cookie) = match current_uid(state, id).await {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let q = Query::new()
-        .param("limit", &limit.to_string())
-        .param("offset", &offset.to_string())
-        .cookie(&cookie);
-    fetch(
-        state.client.user_cloud(&q),
-        id,
-        |b| json!({ "songs": map_arr(&b["data"], cloud_song) }),
-    )
-    .await
-}
 
 pub async fn like_song(state: &State, id: u64, args: &Value) -> String {
     let Ok(song_id) = string_arg(args, "id") else {
