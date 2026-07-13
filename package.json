@@ -7,6 +7,7 @@
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c -w",
+    "test:ui": "node --test tests/*.test.mjs",
     "test:focus": "node --test tests/pageFocus.test.mjs",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",

@@ -6,7 +6,7 @@
 import { Focusable, TextField } from "@decky/ui";
 import { useEffect, useState } from "react";
 
-import { api } from "../api";
+import { HotKeyword, api } from "../api";
 import { t } from "../i18n";
 import { usePageAutoFocus } from "../ui/AppShell";
 import { SecondaryTabs } from "../ui/SecondaryTabs";
@@ -106,37 +106,56 @@ function HotSearch({ onPick }: { onPick: (kw: string) => void }) {
         {t("hotSearch")}
       </div>
       <Focusable style={{ display: "flex", flexWrap: "wrap", gap: "0.6rem" }}>
-        {hot.map((k) => (
-          <Focusable
-            key={k.keyword}
-            onActivate={() => onPick(k.keyword)}
-            style={{
-              padding: "0.25em 0.9em",
-              borderRadius: 999,
-              background: "rgba(255,255,255,0.06)",
-              color: theme.text,
-              fontSize: "0.9em",
-              whiteSpace: "nowrap",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.4em",
-            }}
-          >
-            {k.label !== "none" && (
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: theme.accent,
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            {k.keyword}
-          </Focusable>
+        {hot.map((keyword) => (
+          <HotKeywordChip key={keyword.keyword} keyword={keyword} onPick={onPick} />
         ))}
       </Focusable>
     </div>
+  );
+}
+
+function HotKeywordChip({
+  keyword,
+  onPick,
+}: {
+  keyword: HotKeyword;
+  onPick: (keyword: string) => void;
+}) {
+  const label =
+    keyword.label === "hot" ? t("hotTag") : keyword.label === "new" ? t("newTag") : null;
+
+  return (
+    <Focusable
+      onActivate={() => onPick(keyword.keyword)}
+      style={{
+        padding: "0.25em 0.9em",
+        borderRadius: 999,
+        background: "rgba(255,255,255,0.06)",
+        color: theme.text,
+        fontSize: "0.9em",
+        whiteSpace: "nowrap",
+        display: "flex",
+        alignItems: "center",
+        gap: "0.4em",
+      }}
+    >
+      {label && (
+        <span
+          style={{
+            padding: "0 0.35em",
+            borderRadius: 3,
+            background: `${theme.accent}22`,
+            color: theme.accent,
+            fontSize: "0.72em",
+            fontWeight: 700,
+            lineHeight: 1.4,
+            flexShrink: 0,
+          }}
+        >
+          {label}
+        </span>
+      )}
+      {keyword.keyword}
+    </Focusable>
   );
 }

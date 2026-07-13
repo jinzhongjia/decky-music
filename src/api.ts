@@ -104,7 +104,7 @@ export type Comment = {
 };
 export type CommentsResult = { ok: boolean; comments: Comment[]; error?: string };
 // 热搜词(P6;qq get_hotkey / ncm search_hot_detail 归一化):label hot|new|none
-export type HotKeyword = { keyword: string; label: string };
+export type HotKeyword = { keyword: string; label: "hot" | "new" | "none" };
 export type HotSearchResult = { ok: boolean; keywords: HotKeyword[]; error?: string };
 // 归一化歌词(provider 出,见 qq/lyric.py、ncm-provider/src/lyric.rs)。
 // word_by_word=true 时 line 带 words[](逐字高亮,NCM);否则整行高亮(QQ)。tr=该行译文(可空)。
