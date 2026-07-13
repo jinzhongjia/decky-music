@@ -4,8 +4,25 @@
 
 import { UIEvent, useEffect, useRef, useState } from "react";
 
+import { errorText } from "../api";
+import { reportError } from "../errors";
+
 // 列表统一页大小(与 bridge/_list_cmd 及 provider MAX_LIMIT 对齐)
-export const PAGE_SIZE = 50;
+const PAGE_SIZE = 50;
+
+/** 统一解包列表类结果 {ok, <key>, error}:失败上报错误横幅,一律返回列表(异常兜空)。 */
+export async function unwrapList<R extends { ok: boolean; error?: string | null }, T>(
+  promise: Promise<R>,
+  pick: (r: R) => T[] | undefined
+): Promise<T[]> {
+  try {
+    const r = await promise;
+    if (!r.ok) reportError(errorText(r.error || "provider_error"));
+    return pick(r) ?? [];
+  } catch {
+    return [];
+  }
+}
 
 // 距底 300px 内触发下一页(焦点移动把行滚入视口时同样产生 scroll 事件,手柄可用)
 export const nearBottom = (e: UIEvent<HTMLDivElement>) => {

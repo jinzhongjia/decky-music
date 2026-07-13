@@ -3,10 +3,9 @@
 
 import { Navigation } from "@decky/ui";
 
-import { Artist, api, errorText } from "../api";
-import { reportError } from "../errors";
+import { Artist, api } from "../api";
 import { t } from "../i18n";
-import { useAsync } from "../ui/useAsync";
+import { unwrapList, useAsync } from "../ui/useAsync";
 import { CollectionPage } from "./CollectionPage";
 
 export const ARTIST_ROUTE = "/music-artist";
@@ -22,15 +21,7 @@ export function ArtistDetailPage() {
   const artist = currentArtist;
   const songs = useAsync(
     () =>
-      artist
-        ? api
-            .getArtistDetail(artist.id)
-            .then((r) => {
-              if (!r.ok) reportError(errorText(r.error || "provider_error"));
-              return r.songs ?? [];
-            })
-            .catch(() => [])
-        : Promise.resolve(null),
+      artist ? unwrapList(api.getArtistDetail(artist.id), (r) => r.songs) : Promise.resolve(null),
     [artist?.id]
   );
 

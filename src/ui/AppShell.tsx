@@ -17,6 +17,17 @@ import { theme } from "./theme";
 
 export type AppTab = { id: string; title: string; content: ReactNode };
 
+// tab 循环选择(AppShell L1/R1 与 SecondaryTabs L2/R2 共用):id 定位 + 循环步进
+export function useTabCycle<T extends { id: string }>(tabs: T[], initial?: string) {
+  const [active, setActive] = useState(initial ?? tabs[0].id);
+  const idx = Math.max(
+    0,
+    tabs.findIndex((tab) => tab.id === active)
+  );
+  const cycle = (d: number) => setActive(tabs[(idx + d + tabs.length) % tabs.length].id);
+  return { idx, cycle, setActive };
+}
+
 // 全局播放快捷键(Focusable 属性组):Start 盲操播放/暂停 + Y 队列浮层,无当前曲时
 // 不响应且隐藏图例提示。shell 与独立路由页(歌单详情等)共用,保证快捷键处处一致。
 export function usePlaybackShortcuts() {
@@ -42,13 +53,8 @@ export function AppShell({
   accent: string; // 品牌色:只用于 Logo 与徽章 EQ 点缀(规则:品牌色不铺底)
   tabs: AppTab[];
 }) {
-  const [active, setActive] = useState(tabs[0].id);
+  const { idx, cycle, setActive } = useTabCycle(tabs);
   const shortcuts = usePlaybackShortcuts();
-  const idx = Math.max(
-    0,
-    tabs.findIndex((tab) => tab.id === active)
-  );
-  const cycle = (d: number) => setActive(tabs[(idx + d + tabs.length) % tabs.length].id);
 
   return (
     <Focusable

@@ -3,10 +3,9 @@
 
 import { Navigation } from "@decky/ui";
 
-import { Album, api, errorText } from "../api";
-import { reportError } from "../errors";
+import { Album, api } from "../api";
 import { t } from "../i18n";
-import { useAsync } from "../ui/useAsync";
+import { unwrapList, useAsync } from "../ui/useAsync";
 import { CollectionPage } from "./CollectionPage";
 
 export const ALBUM_ROUTE = "/music-album";
@@ -22,15 +21,7 @@ export function AlbumDetailPage() {
   const album = currentAlbum;
   const songs = useAsync(
     () =>
-      album
-        ? api
-            .getAlbumDetail(album.id)
-            .then((r) => {
-              if (!r.ok) reportError(errorText(r.error || "provider_error"));
-              return r.songs ?? [];
-            })
-            .catch(() => [])
-        : Promise.resolve(null),
+      album ? unwrapList(api.getAlbumDetail(album.id), (r) => r.songs) : Promise.resolve(null),
     [album?.id]
   );
 

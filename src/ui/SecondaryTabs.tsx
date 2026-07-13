@@ -2,20 +2,15 @@
 // L2/R2 循环切换(顶层已占 L1/R1);Tab 胶囊可聚焦可 A 激活,D-pad 向下进内容区。
 
 import { Focusable, GamepadButton } from "@decky/ui";
-import { ReactNode, useState } from "react";
+import { ReactNode } from "react";
 
-import { Chip } from "./AppShell";
+import { Chip, useTabCycle } from "./AppShell";
 import { theme } from "./theme";
 
 export type SecTab = { id: string; title: string; count?: number; content: ReactNode };
 
 export function SecondaryTabs({ tabs }: { tabs: SecTab[] }) {
-  const [active, setActive] = useState(tabs[0].id);
-  const idx = Math.max(
-    0,
-    tabs.findIndex((tab) => tab.id === active)
-  );
-  const cycle = (d: number) => setActive(tabs[(idx + d + tabs.length) % tabs.length].id);
+  const { idx, cycle, setActive } = useTabCycle(tabs);
 
   return (
     <Focusable

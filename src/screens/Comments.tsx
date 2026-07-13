@@ -5,11 +5,10 @@ import { Focusable, GamepadButton } from "@decky/ui";
 import { useRef } from "react";
 import { FaThumbsUp } from "react-icons/fa";
 
-import { api, errorText } from "../api";
-import { reportError } from "../errors";
+import { api } from "../api";
 import { fmtCount, t } from "../i18n";
 import { theme } from "../ui/theme";
-import { useAsync } from "../ui/useAsync";
+import { unwrapList, useAsync } from "../ui/useAsync";
 
 // 剥离 Steam 字体必然渲染成豆腐块的区段:新世代 emoji(U+1FA00+)、变体选择符、
 // ZWJ、私有区。老 emoji(Steam 有字形)保留;NCM [表情] 括号文本本就按字面显示。
@@ -18,17 +17,7 @@ const stripTofu = (s: string) =>
 
 export function CommentsView({ songId }: { songId: string }) {
   const boxRef = useRef<HTMLDivElement>(null);
-  const comments = useAsync(
-    () =>
-      api
-        .getComments(songId)
-        .then((r) => {
-          if (!r.ok) reportError(errorText(r.error || "provider_error"));
-          return r.comments ?? [];
-        })
-        .catch(() => []),
-    [songId]
-  );
+  const comments = useAsync(() => unwrapList(api.getComments(songId), (r) => r.comments), [songId]);
 
   if (comments === null) {
     return (
