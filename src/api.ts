@@ -84,6 +84,8 @@ export type UserAssets = {
   cloud?: number;
 };
 export type PlaylistsResult = { ok: boolean; playlists: Playlist[]; error?: string };
+// 榜单卡沿用 Playlist 形状(NCM 榜单即官方歌单;QQ 分类打平归一化)
+export type ToplistsResult = { ok: boolean; toplists: Playlist[]; error?: string };
 // 专辑/歌手(P6:搜索分类 + 详情页;provider brief 归一化)
 export type Album = { id: string; name: string; cover: string; artist: string; count: number };
 export type Artist = { id: string; name: string; avatar: string };
@@ -135,6 +137,8 @@ export const api = {
   getPlaylistSongs: callable<[playlistId: string, offset: number], SearchResult>(
     "get_playlist_songs"
   ),
+  getToplists: callable<[], ToplistsResult>("get_toplists"),
+  getToplistSongs: callable<[topId: string, offset: number], SearchResult>("get_toplist_songs"),
   getDiscover: callable<[], DiscoverData>("get_discover"),
   getDailySongs: callable<[], SearchResult>("get_daily_songs"),
   playQueue: callable<[items: QueueItem[], startIndex: number], void>("play_queue"),

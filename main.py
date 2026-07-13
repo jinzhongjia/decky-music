@@ -140,6 +140,12 @@ class Plugin:
     async def get_playlist_songs(self, playlist_id: str, offset: int = 0) -> dict:
         return await self.bridge.get_playlist_songs(playlist_id, offset)
 
+    async def get_toplists(self) -> dict:
+        return await self.bridge.get_toplists()
+
+    async def get_toplist_songs(self, top_id: str, offset: int = 0) -> dict:
+        return await self.bridge.get_toplist_songs(top_id, offset)
+
     async def get_discover(self) -> dict:
         return await self.bridge.get_discover()
 

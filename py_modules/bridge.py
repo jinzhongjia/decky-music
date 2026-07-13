@@ -526,6 +526,13 @@ class Bridge:
         r = await self.provider.request("recommend")
         return r.data if r.ok else {"playlists": [], "newsongs": []}
 
+    async def get_toplists(self) -> dict:
+        # 榜单卡列表(Playlist 形状;两端 toplists 同名命令,数量几十一次拉全)
+        return await self._list_cmd("toplists", "toplists", 100)
+
+    async def get_toplist_songs(self, top_id: str, offset: int = 0) -> dict:
+        return await self._list_cmd("toplist_songs", "songs", extra={"id": top_id, "offset": offset})
+
     async def get_playlist_songs(self, playlist_id: str, offset: int = 0) -> dict:
         # 歌单曲目,统一 offset 分页(QQ/NCM 同名命令,透传共用;失败经 _list_cmd 落日志)
         return await self._list_cmd("playlist_songs", "songs", extra={"id": playlist_id, "offset": offset})
