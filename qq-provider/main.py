@@ -144,6 +144,14 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
                 ids = await qq.liked_ids()
                 log("debug", "liked_ids", f"-> {len(ids)} ids")
                 return protocol.ok(req.id, {"ids": ids})
+            case "toplists":
+                toplists = await qq.toplists()
+                log("debug", "toplists", f"-> {len(toplists)} lists")
+                return protocol.ok(req.id, {"toplists": toplists})
+            case "toplist_songs":
+                songs = await qq.toplist_songs(_as_str(args, "id"), _limit(args), _offset(args))
+                log("debug", "toplist_songs", f"-> {len(songs)} songs")
+                return protocol.ok(req.id, {"songs": songs})
             case "fav_songs":
                 songs = await qq.fav_songs(_limit(args), _offset(args))
                 log("debug", "fav_songs", f"-> {len(songs)} songs")

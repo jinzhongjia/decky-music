@@ -22,6 +22,7 @@ from qq import playlist as _playlist
 from qq import radio as _radio
 from qq import recommend as _recommend
 from qq import search as _search
+from qq import top as _top
 
 
 class QQ:
@@ -85,6 +86,12 @@ class QQ:
 
     async def liked_ids(self) -> list[str]:
         return await _library.liked_ids(self)
+
+    async def toplists(self) -> list[dict]:
+        return await _top.toplists(self)
+
+    async def toplist_songs(self, top_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+        return await _top.songs(self, top_id, limit, offset)
 
     async def fav_songs(self, limit: int = 20, offset: int = 0) -> list[dict]:
         return await _library.fav_songs(self, limit, offset)
