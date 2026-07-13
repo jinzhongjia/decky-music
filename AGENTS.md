@@ -95,6 +95,19 @@ curl -s localhost:8080/json | jq '.[].title'       # 列 target:SharedJSContext 
 - player 出声是命门:真实 gamescope 会话里听到声音、`ldd` 只动态依赖 `libasound`。
 - 每个含 UI 阶段:注入错误/杀后端/畸形数据/断网,**Steam UI 不崩不冻**。
 
+### UI 实机截图与渲染图
+
+- 修改 `src/` 中任何会影响视觉、文案、布局或手柄焦点的 UI 代码后，必须在同一次变更中更新
+  `docs/ui-design/assets/device-screenshots/<provider>/` 下对应场景的 Steam Deck 设备原始截图；
+  共享 UI 变更需要同步更新 QQ / NCM 两端所有受影响截图。
+- 实机截图是当前 UI 效果的事实源；`docs/ui-design/assets/device-renders/` 是基于实机截图生成的
+  展示图，不能代替真机验收，也不能用历史设计图或旧渲染图冒充当前实现。
+- 图片文件名保持稳定，并由 Git LFS 追踪。新增场景时使用可读的稳定名称，避免把日期或随机后缀写进文件名。
+- 更新实机截图后，必须明确提示用户使用最新实机截图重新渲染对应的实机渲染图；重渲染完成前，
+  不得把旧渲染图描述为当前效果。
+- 获取新截图如需重新部署，必须先按本文 Agent behavior 规则征得用户同意；未获同意前不得伪造截图，
+  应明确说明截图更新被真机部署授权阻塞。
+
 ## Logging rules
 
 统一日志系统,复用 Decky 自带的 `decky.logger`(写到 `DECKY_PLUGIN_LOG_DIR`)。bridge 是唯一落盘点。

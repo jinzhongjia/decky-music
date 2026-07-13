@@ -9,6 +9,26 @@
 3. **底部图例归系统渲染**：插件可通过 `Focusable` 的 `actionDescriptionMap` / `onOKActionDescription` 改文案，但白圈图标、排列、位置和左侧 `STEAM` 菜单项由系统控制。
 4. **我的音乐页采用官方库范式**：废弃 PC/平板式左侧栏；个人资产使用全宽二级 Tab 行 + 全宽内容区。
 
+## 当前实现的实机素材
+
+以下目录记录当前代码的真实 UI，均由 `.gitattributes` 配置为 Git LFS 素材：
+
+| 目录 | 内容 | 定位 |
+| :--- | :--- | :--- |
+| `assets/device-screenshots/qq/` | 16 张 QQ 音乐 Steam Deck 设备原始截图 | 当前 QQ UI 的视觉事实源 |
+| `assets/device-screenshots/ncm/` | 18 张网易云音乐 Steam Deck 设备原始截图 | 当前 NCM UI 的视觉事实源 |
+| `assets/device-renders/qq/` | 首页、搜索、我的音乐、电台、正在播放共 5 张实机渲染图 | 基于实机截图制作的展示素材 |
+| `assets/device-renders/ncm/` | 首页、搜索、我的、电台、正在播放共 5 张实机渲染图 | 基于实机截图制作的展示素材 |
+
+实机截图覆盖首页/榜单、搜索及四分类、歌单/专辑/歌手详情、个人资产、电台与正在播放。
+文件名按稳定场景编号维护；更新 UI 后直接替换受影响场景，不创建带日期或随机后缀的副本。
+
+同步顺序：
+
+1. 修改 UI，并在获得用户重新部署许可后于 Steam Deck 上更新对应 `device-screenshots/` 原始截图。
+2. 保持文件名不变，让 Git LFS 记录新版本；共享 UI 变更同时核对 QQ / NCM。
+3. 明确提示用户使用最新实机截图重新生成对应 `device-renders/`；渲染图更新前不得把旧图当作当前效果。
+
 ## 规格文档
 
 | 文件 | 说明 |
