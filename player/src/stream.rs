@@ -27,12 +27,18 @@ const BUFFER_REWIND: usize = 256 * 1024;
 const BUFFER_CHUNK: usize = 64 * 1024;
 
 // 网络超时:断网时挂住的连接/读会吊死解码线程(rodio 在 read 里等),进而堵住命令链路。
-// blocking reqwest 的 timeout 是逐操作(connect/read/write)生效,不限制整段流式响应的总时长。
+// blocking reqwest 的 timeout 是**整请求总时限**(含读完响应体,blocking 未暴露 read_timeout);
+// 曾设 15s 导致每条流必被掐、反复无谓续传。放宽到覆盖最长单曲的流生命周期,
+// 超限走既有 Range 续传(有进展不判死),死连接由读停摆兜底 + 续传退避判死。
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const IO_TIMEOUT: Duration = Duration::from_secs(15);
+const RESPONSE_TIMEOUT: Duration = Duration::from_secs(600);
 // 读侧兜底:缓冲空且 producer 迟迟不补(网络停摆)时,解码 read 最多等这么久 → 报错结束,
 // 不永久阻塞音频线程。正常补货(内网/CDN)远快于此,不会误伤。
 const READ_STALL_TIMEOUT: Duration = Duration::from_secs(30);
+// 续传重开失败重试:瞬时网络抖动(WiFi 漫游/CDN 摘除节点)不该判死整条流。
+// 指数退避 500ms/1s/2s,三次全败才置 error。
+const OPEN_RETRIES: u32 = 3;
+const OPEN_BACKOFF_BASE: Duration = Duration::from_millis(500);
 
 pub(crate) struct HttpRangeReader {
     shared: Arc<SharedBuffer>,
@@ -128,7 +134,7 @@ impl HttpRangeReader {
     fn open_url(url: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(IO_TIMEOUT)
+            .timeout(RESPONSE_TIMEOUT)
             .build()?;
         let (response, range_supported, content_length) = open_http_response(&client, url, 0)?;
         let shared = Arc::new(SharedBuffer {
@@ -147,6 +153,25 @@ impl HttpRangeReader {
     pub(crate) fn range_supported(&self) -> bool {
         self.shared.state.lock().range_supported
     }
+
+    /// 流状态探针:stream 随 Decoder 被 Sink 吞掉后,音频线程靠它区分
+    /// 「真播完」与「流中途死亡」(解码器把 IO 错误静默吞成 EOF,曾误报 ended 提前切歌)。
+    pub(crate) fn probe(&self) -> StreamProbe {
+        StreamProbe {
+            shared: Arc::clone(&self.shared),
+        }
+    }
+}
+
+pub(crate) struct StreamProbe {
+    shared: Arc<SharedBuffer>,
+}
+
+impl StreamProbe {
+    /// Some(原因) = 流已带错死亡(open 失败/截断判死/读停摆),None = 无错。
+    pub(crate) fn failure(&self) -> Option<&'static str> {
+        self.shared.state.lock().error
+    }
 }
 
 impl Read for HttpRangeReader {
@@ -156,6 +181,18 @@ impl Read for HttpRangeReader {
         }
         let mut state = self.shared.state.lock();
         loop {
+            if state.read_pos < state.buffer_start || state.read_pos > state.write_pos {
+                return Err(io::Error::other("stream buffer invalid"));
+            }
+            // 顺序是正确性关键:必须先排空缓冲,再看 error/eof。
+            // eof 判定在前时,下载完成瞬间(producer 置 eof)缓冲里未消费的尾巴
+            // 会被整段丢弃 —— 长歌被吞掉最后几 MB(高水位滞留量),短歌秒下完后
+            // 只播两秒即"播完",即"歌曲没播放完就切下一曲"的根因。
+            if state.readable() > 0 {
+                let n = state.read_into(out);
+                self.shared.can_write.notify_one();
+                return Ok(n);
+            }
             if let Some(err) = state.error {
                 return Err(io::Error::other(err));
             }
@@ -165,14 +202,6 @@ impl Read for HttpRangeReader {
                 || state.eof
             {
                 return Ok(0);
-            }
-            if state.read_pos < state.buffer_start || state.read_pos > state.write_pos {
-                return Err(io::Error::other("stream buffer invalid"));
-            }
-            if state.readable() > 0 {
-                let n = state.read_into(out);
-                self.shared.can_write.notify_one();
-                return Ok(n);
             }
             if self
                 .shared
@@ -237,6 +266,8 @@ fn producer_loop(
     // 续传防死循环:记录上次因截断重开时的 write_pos,零进展连续 3 次则判流已死
     let mut resume_at = u64::MAX;
     let mut resume_stalls = 0;
+    // 续传重开失败计数(带退避重试;成功或换代后清零)
+    let mut open_attempts: u32 = 0;
     loop {
         let generation = {
             let mut state = shared.state.lock();
@@ -281,12 +312,26 @@ fn producer_loop(
                     }
                     response = Some(resp);
                     response_generation = generation;
+                    open_attempts = 0;
                 }
                 Err(_) => {
+                    // 瞬时网络抖动不判死:退避重试 OPEN_RETRIES 次;期间 stop/seek 换代会提前唤醒
+                    open_attempts += 1;
                     let mut state = shared.state.lock();
-                    if state.generation == generation {
+                    if state.generation != generation {
+                        open_attempts = 0;
+                        response = None;
+                        continue;
+                    }
+                    if open_attempts >= OPEN_RETRIES {
                         state.error = Some("stream open failed");
                         shared.can_read.notify_all();
+                    } else {
+                        let backoff = OPEN_BACKOFF_BASE * 2_u32.pow(open_attempts - 1);
+                        let _ = shared.can_write.wait_for(&mut state, backoff);
+                        if state.stop {
+                            return;
+                        }
                     }
                     response = None;
                     continue;
@@ -435,6 +480,32 @@ mod tests {
     }
 
     #[test]
+    fn mid_stream_death_errors_instead_of_silent_eof() {
+        // 声明全量长度但只发一半,之后拒绝一切连接:read 必须报错(经退避重试判死),
+        // probe 暴露死因。曾经这里静默 EOF → 被音频线程误判"正常播完"提前切歌。
+        let data: Vec<u8> = (0..=255).cycle().take(200_000).collect();
+        let (url, _starts) = http_server_dying(data.clone(), 100_000);
+        let mut reader = HttpRangeReader::open_url(&url).unwrap();
+        let probe = reader.probe();
+        let mut got = vec![0_u8; data.len()];
+        let err = reader.read_exact(&mut got).unwrap_err();
+        assert_eq!(err.to_string(), "stream open failed");
+        assert_eq!(probe.failure(), Some("stream open failed"));
+    }
+
+    #[test]
+    fn clean_eof_leaves_probe_unfailed() {
+        let data: Vec<u8> = (0..=255).cycle().take(50_000).collect();
+        let (url, _starts) = range_server(data.clone());
+        let mut reader = HttpRangeReader::open_url(&url).unwrap();
+        let probe = reader.probe();
+        let mut got = vec![0_u8; data.len()];
+        reader.read_exact(&mut got).unwrap();
+        assert_eq!(got, data);
+        assert_eq!(probe.failure(), None);
+    }
+
+    #[test]
     fn rodio_decoder_accepts_http_range_reader() {
         let (url, _starts) = range_server(wav_bytes(80_000));
         let reader = HttpRangeReader::open_url(&url).unwrap();
@@ -443,12 +514,46 @@ mod tests {
         assert!(decoder.next().is_some());
     }
 
+    #[test]
+    fn truncation_stress_no_early_eof() {
+        // 回归压测:反复截断+续传下必须逐字节完整,不许提前 EOF。
+        // 曾因 read() 先判 eof 后排空缓冲,下载完成瞬间丢弃未消费尾巴(调度相关,
+        // 单次跑难复现)—— 即"歌曲没播放完就切下一曲"的根因。
+        for round in 0..10 {
+            let data: Vec<u8> = (0..=255).cycle().take(300_000).collect();
+            let (url, _starts) = http_server_impl(data.clone(), true, 64 * 1024);
+            let mut reader = HttpRangeReader::open_url(&url).unwrap();
+            let probe = reader.probe();
+            let mut got = vec![0_u8; data.len()];
+            reader
+                .read_exact(&mut got)
+                .unwrap_or_else(|e| panic!("round {round}: {e}"));
+            assert_eq!(got, data, "round {round}: data mismatch");
+            assert_eq!(probe.failure(), None);
+        }
+    }
+
     fn range_server(data: Vec<u8>) -> (String, Receiver<u64>) {
         http_server_impl(data, true, usize::MAX)
     }
 
     fn http_server(data: Vec<u8>, supports_range: bool) -> (String, Receiver<u64>) {
         http_server_impl(data, supports_range, usize::MAX)
+    }
+
+    /// 只服务一个请求(声明全量、发送 cap 字节)后关停监听:后续连接全部被拒,
+    /// 模拟"断流 + 网络不可达",逼出续传重试判死路径。
+    fn http_server_dying(data: Vec<u8>, cap: usize) -> (String, Receiver<u64>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/song", listener.local_addr().unwrap());
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            if let Some(stream) = listener.incoming().flatten().next() {
+                handle_request(stream, &data, true, cap, &tx);
+            }
+            // listener 随作用域 drop → 之后 connect 全部拒绝
+        });
+        (url, rx)
     }
 
     /// cap:每次响应最多发送的 body 字节数(声明完整 Content-Length 但提前掐连接,

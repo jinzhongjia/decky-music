@@ -6,7 +6,7 @@ use tokio::sync::mpsc as tmpsc;
 
 use crate::logging::{log_json, LogLevel};
 use crate::protocol::{self, ErrorCode};
-use crate::stream::HttpStream;
+use crate::stream::{HttpStream, StreamProbe};
 use crate::util::epoch_ms;
 
 pub(crate) enum AudioCmd {
@@ -81,16 +81,20 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
         msg: "default audio device opened".into(),
     });
     let mut sink: Option<rodio::Sink> = None;
+    // 流状态探针:与 sink 同生命周期。rodio 解码器把流的 IO 错误静默吞成 EOF,
+    // sink 放空时必须回查流是否带错死亡,否则中途断流会被误报成 ended 提前切歌。
+    let mut probe: Option<StreamProbe> = None;
     let mut active = false; // 是否有在播的曲子(用于判定 ended)
     let mut last_anchor = std::time::Instant::now(); // 上次位置锚点(Playing 事件)时刻
 
     loop {
         match rx.recv_timeout(Duration::from_millis(250)) {
             Ok(AudioCmd::Load(stream)) => {
+                let stream_probe = stream.probe();
                 match rodio::Sink::try_new(&handle)
                     .map_err(|e| e.to_string())
                     .and_then(|s| {
-                        rodio::Decoder::new(stream)
+                        rodio::Decoder::new(*stream)
                             .map(|d| {
                                 s.append(d);
                                 s
@@ -99,6 +103,7 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
                     }) {
                     Ok(s) => {
                         sink = Some(s);
+                        probe = Some(stream_probe);
                         active = true;
                         last_anchor = std::time::Instant::now();
                         let _ = ev.send(AudioEv::Playing { pos: 0.0 });
@@ -151,15 +156,28 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
             }
             Ok(AudioCmd::Stop) => {
                 sink = None;
+                probe = None;
                 active = false;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                // 播完检测:曾在播 && sink 空了 → ended(只报一次)
+                // 播完检测:曾在播 && sink 空了。先回查流死因 —— 解码器把 IO 错误
+                // 静默吞成 EOF,流带错死亡必须报 error(bridge 落日志 + UI 横幅),
+                // 报 ended 会被当"播完"自动切歌(即"没播完就下一曲"的根因)。
                 if active {
                     if let Some(s) = &sink {
                         if s.empty() {
                             active = false;
-                            let _ = ev.send(AudioEv::Ended);
+                            match probe.as_ref().and_then(StreamProbe::failure) {
+                                Some(reason) => {
+                                    let _ = ev.send(AudioEv::Error {
+                                        code: ErrorCode::FetchFailed,
+                                        message: format!("stream died mid-play: {reason}"),
+                                    });
+                                }
+                                None => {
+                                    let _ = ev.send(AudioEv::Ended);
+                                }
+                            }
                         } else if !s.is_paused() && last_anchor.elapsed() >= POS_ANCHOR_INTERVAL {
                             // 周期锚点:校准 UI 墙钟插值(缓冲停顿造成的漂移 ≤ 一个间隔)
                             last_anchor = std::time::Instant::now();
