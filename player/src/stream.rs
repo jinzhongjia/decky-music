@@ -13,11 +13,49 @@ use crate::util::checked_seek;
 
 pub(crate) type HttpStream = HttpRangeReader;
 
-pub(crate) async fn open_http_stream(url: String) -> Result<HttpStream, ()> {
-    tokio::task::spawn_blocking(move || HttpRangeReader::open_url(&url))
-        .await
-        .map_err(|_| ())?
-        .map_err(|_| ())
+/// 首开失败的分类:慢网(握手/响应超时)与断网(DNS 失败/拒连)对用户是两种提示,
+/// 前者该等等再试,后者该去检查网络。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum OpenError {
+    Timeout,
+    Network,
+}
+
+// 首开重试:带宽被打满(如 Steam 同时下载游戏)时单次握手常超时,一次失败即报误伤慢网。
+// 只重试一次:两次 connect_timeout + 退避必须 < bridge 的 30s 请求上限,
+// 否则错误码在 bridge 侧被笼统的 timeout 顶掉,分类就白做了。
+const INITIAL_OPEN_ATTEMPTS: u32 = 2;
+const INITIAL_OPEN_BACKOFF: Duration = Duration::from_secs(1);
+
+pub(crate) async fn open_http_stream(url: String) -> Result<HttpStream, OpenError> {
+    let mut last = OpenError::Network;
+    for attempt in 0..INITIAL_OPEN_ATTEMPTS {
+        if attempt > 0 {
+            tokio::time::sleep(INITIAL_OPEN_BACKOFF).await;
+        }
+        let u = url.clone();
+        match tokio::task::spawn_blocking(move || HttpRangeReader::open_url(&u)).await {
+            Ok(Ok(s)) => return Ok(s),
+            Ok(Err(e)) => last = classify_open_error(e.as_ref()),
+            Err(_) => {}
+        }
+    }
+    Err(last)
+}
+
+/// 沿 source 链找 reqwest 错误:is_timeout(含 connect 超时)→ 慢网,其余 → 断网。
+fn classify_open_error(e: &(dyn std::error::Error + 'static)) -> OpenError {
+    let mut cur = Some(e);
+    while let Some(err) = cur {
+        if err
+            .downcast_ref::<reqwest::Error>()
+            .is_some_and(reqwest::Error::is_timeout)
+        {
+            return OpenError::Timeout;
+        }
+        cur = err.source();
+    }
+    OpenError::Network
 }
 
 const BUFFER_CAPACITY: usize = 4 * 1024 * 1024;

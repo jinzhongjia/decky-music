@@ -8,7 +8,7 @@ use tokio::sync::mpsc as tmpsc;
 use crate::audio::{audio_thread, AudioCmd, AudioEv};
 use crate::logging::{log_json, LogLevel};
 use crate::protocol::{self, ErrorCode};
-use crate::stream::open_http_stream;
+use crate::stream::{open_http_stream, OpenError};
 
 pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
     let stream = UnixStream::connect(socket).await?;
@@ -103,9 +103,16 @@ fn spawn_load(
                     let _ = out_tx.send(log_json(LogLevel::Warn, "load", "superseded, dropped"));
                     protocol::err(req.id, ErrorCode::Superseded, "superseded by newer load")
                 }
-                Err(()) => {
-                    let _ = out_tx.send(log_json(LogLevel::Error, "load", "stream open failed"));
-                    protocol::err(req.id, ErrorCode::FetchFailed, "stream open failed")
+                Err(e) => {
+                    let (code, msg) = match e {
+                        OpenError::Timeout => (
+                            ErrorCode::FetchTimeout,
+                            "stream open timed out (slow network)",
+                        ),
+                        OpenError::Network => (ErrorCode::FetchFailed, "stream open failed"),
+                    };
+                    let _ = out_tx.send(log_json(LogLevel::Error, "load", msg));
+                    protocol::err(req.id, code, msg)
                 }
             },
             Err(_) => protocol::err(req.id, ErrorCode::MissingField, "url required"),

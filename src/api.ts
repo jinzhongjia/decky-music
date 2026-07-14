@@ -12,7 +12,10 @@ const ERR_CODES: Record<string, string> = {
   no_playable: "playError",
   play_failed: "playError",
   provider_start_timeout: "errProviderStart",
-  fetch_failed: "errPlayback",
+  // 首开分类:fetch_timeout = 慢网(等等再试),fetch_failed = 断网/连不上(查网络);
+  // 中途断流也走 fetch_failed,同属网络异常
+  fetch_timeout: "errNetSlow",
+  fetch_failed: "errNetwork",
   decode_failed: "errPlayback",
   seek_failed: "errPlayback",
   audio_device_failed: "errAudio",
