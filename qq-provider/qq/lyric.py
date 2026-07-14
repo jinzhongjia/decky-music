@@ -9,16 +9,19 @@ import re
 # LRC 时间标签 [mm:ss] / [mm:ss.xx] / [mm:ss.xxx];元数据标签([ti:]/[ar:] 等)不匹配 → 天然跳过
 _TAG = re.compile(r"\[(\d+):(\d+)(?:\.(\d+))?\]")
 
+# QQ LRC 用 "//" 作占位(主词的空行间隔、译文的"该行无翻译"),不是歌词内容,渲染出来即垃圾行
+_JUNK = {"//", "/"}
+
 
 def _parse_lrc(text: str) -> list[dict]:
-    """LRC 文本 → [{t_ms, text}],按时间升序;一行多标签则拆成多行。无时间戳/空正文行跳过。"""
+    """LRC 文本 → [{t_ms, text}],按时间升序;一行多标签则拆成多行。无时间戳/空正文/占位行跳过。"""
     out: list[dict] = []
     for line in text.splitlines():
         tags = list(_TAG.finditer(line))
         if not tags:
             continue
         body = line[tags[-1].end() :].strip()
-        if not body:
+        if not body or body in _JUNK:
             continue
         for m in tags:
             mm, ss, frac = m.group(1), m.group(2), m.group(3)

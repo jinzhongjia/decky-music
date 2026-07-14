@@ -38,3 +38,18 @@ class TestMerge(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestJunkFilter(unittest.TestCase):
+    def test_slash_placeholder_lines_dropped(self):
+        # QQ 用 "//" 占位(空行间隔/无翻译);不是歌词,渲染即垃圾行
+        raw = "[00:01.00]Written by: X\n[00:02.00]//\n[00:03.00]real lyric\n[00:04.00]/"
+        lines = _parse_lrc(raw)
+        self.assertEqual([x["text"] for x in lines], ["Written by: X", "real lyric"])
+
+    def test_slash_translation_becomes_empty(self):
+        main = _parse_lrc("[00:01.00]hello\n[00:02.00]world")
+        trans = _parse_lrc("[00:01.00]你好\n[00:02.00]//")
+        merged = _merge(main, trans)
+        self.assertEqual(merged[0]["tr"], "你好")
+        self.assertEqual(merged[1]["tr"], "")  # "//" 译文按无翻译处理
