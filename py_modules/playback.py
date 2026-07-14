@@ -15,6 +15,12 @@ from log import log
 
 PLAY_MODES = ("list_loop", "single_loop", "shuffle")
 
+# 自动切歌熔断:这些错误码意味着网络/后端系统性不可用(而非单曲问题),顺延只会
+# 逐首撞超时把命令通道堵死几分钟(timeout = bridge 30s 请求上限;fetch_timeout =
+# player 首开慢网重试 ~21s/首)。单曲性失败(no_playable 秒回)不在此列,照常跳过;
+# fetch_failed 单发可能只是单曲坏 URL,连续 2 次按断网熔断(见 _fuse_check)。
+FUSE_ERRORS = ("timeout", "fetch_timeout")
+
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
@@ -141,12 +147,18 @@ class Playback:
             await self._emit("track", {"index": -1, "song": None})
             await self._queue_changed()
             return False
-        # 首歌不可播(如真 VIP 歌)不打死整个电台:顺次尝试本批,timeout 熔断
+        # 首歌不可播(如真 VIP 歌)不打死整个电台:顺次尝试本批,系统性错误熔断
         res: bool | None = False
+        fails = 0
         for i in range(len(self.queue)):
-            res = await self._play_index(i)
-            if res or res is None or self.last_error == "timeout":
+            res = await self._play_index(i, quiet=True)
+            if res or res is None:
                 break
+            fails, fused = self._fuse_check(fails)
+            if fused:
+                break
+        if res is False:
+            await self._skip_gave_up("radio start")
         await self._queue_changed()
         return res
 
@@ -258,8 +270,26 @@ class Playback:
             return j
         return (self.index + 1) % n
 
-    async def _play_index(self, i: int) -> bool | None:
-        """播放队列第 i 首。True 成功 / False 失败 / None 被更新的播放意图取代(静默让位)。"""
+    def _fuse_check(self, net_fails: int) -> tuple[int, bool]:
+        """顺延熔断判据 → (新的连续 fetch_failed 计数, 是否熔断)。
+        FUSE_ERRORS 立即熔断;fetch_failed 连续 2 次按断网熔断(单发可能只是单曲坏 URL,
+        跳过是对的;连续两首都拉不开基本是网断了);其余(如 no_playable)清零继续跳。"""
+        if self.last_error in FUSE_ERRORS:
+            return net_fails, True
+        if self.last_error == "fetch_failed":
+            return net_fails + 1, net_fails + 1 >= 2
+        return 0, False
+
+    async def _skip_gave_up(self, place: str):
+        """顺延放弃:统一报一次最后的错误(quiet 跳过期间不逐首刷屏)。"""
+        code = self.last_error or "play_failed"
+        log("bridge", "own", "warn", f"{place}: give up advancing, last error {code}")
+        await self._emit("error", {"code": code, "message": code})
+
+    async def _play_index(self, i: int, quiet: bool = False) -> bool | None:
+        """播放队列第 i 首。True 成功 / False 失败 / None 被更新的播放意图取代(静默让位)。
+        quiet=True(自动顺延用):失败不发 error 事件,由调用方放弃时统一报一次,避免跳过
+        多首不可播时 UI 连闪一串错误横幅。"""
         self._play_gen += 1
         gen = self._play_gen
         self.index = i
@@ -282,7 +312,8 @@ class Playback:
             self.last_error = r.error.code if r.error else "play_failed"
             message = r.error.message if r.error else "play_failed"
             log("bridge", "own", "warn", f"song_url failed id={item['id']}: {self.last_error}")
-            await self._emit("error", {"code": self.last_error, "message": message})
+            if not quiet:
+                await self._emit("error", {"code": self.last_error, "message": message})
             return False
         pr = await self.player.request("load", {"url": r.data["url"]})
         if gen != self._play_gen:
@@ -291,7 +322,8 @@ class Playback:
             # load 失败(拉流打不开/player 超时)也算失败:不发 track、不装作在播
             self.last_error = pr.error.code if pr.error else "play_failed"
             log("bridge", "own", "warn", f"player load failed id={item['id']}: {self.last_error}")
-            await self._emit("error", {"code": self.last_error, "message": self.last_error})
+            if not quiet:
+                await self._emit("error", {"code": self.last_error, "message": self.last_error})
             if self.last_error == "timeout":
                 # 迟到的 load 可能稍后在 player 侧打开:补发 stop 作废(player 按代次丢弃),
                 # 否则会"UI 报错却出声/歌不对"
@@ -315,12 +347,21 @@ class Playback:
             self._kick_radio_refill()
         if self.index + 1 >= len(self.queue):
             await self._refill_radio()
-        # 顺次尝试后续曲目(跳过不可播,timeout 熔断),与普通模式自动切歌语义一致
+        # 顺次尝试后续曲目(跳过不可播,系统性错误熔断),与普通模式自动切歌语义一致
+        fails = 0
+        failed_any = False
         while self.index + 1 < len(self.queue):
-            res = await self._play_index(self.index + 1)
-            if res or res is None or self.last_error == "timeout":
+            res = await self._play_index(self.index + 1, quiet=True)
+            if res or res is None:
                 return
-        log("bridge", "own", "warn", "radio advance stopped: no next track")
+            failed_any = True
+            fails, fused = self._fuse_check(fails)
+            if fused:
+                break
+        if failed_any:
+            await self._skip_gave_up("radio advance")
+        else:
+            log("bridge", "own", "warn", "radio advance stopped: no next track")
 
     def _kick_radio_refill(self):
         if not (self._radio_fetcher and self._radio_kind):
@@ -370,18 +411,25 @@ class Playback:
         if self.play_mode == "single_loop":
             await self._play_index(self.index)  # ended 后 sink 已空,重放需重新 load
             return
-        # 列表/随机:自动往后;跳过不可播的(no_playable 秒回),最多试一圈。
-        # timeout = 网络/后端垮了:立即熔断停止推进,不然逐首撞 30s 超时会把命令通道堵死几分钟。
-        for _ in range(len(self.queue)):
-            res = await self._play_index(self._advance_index())
+        # 列表/随机:自动往后跳过不可播的,最多一圈,系统性错误熔断(_fuse_check)。
+        # 随机模式用一次性乱序候选:重复抽签可能反复抽同一首不可播的、漏掉可播的。
+        n = len(self.queue)
+        if self.play_mode == "shuffle" and n > 1:
+            candidates = [j for j in range(n) if j != self.index]
+            random.shuffle(candidates)
+        else:
+            candidates = [(self.index + 1 + k) % n for k in range(n)]
+        fails = 0
+        for j in candidates:
+            res = await self._play_index(j, quiet=True)
             if res:
                 return
             if res is None:
                 return  # 被用户新的播放意图取代:自动切歌让位
-            if self.last_error == "timeout":
-                log("bridge", "own", "warn", "auto-advance stopped: timeout (network/backend down)")
-                return
-        log("bridge", "own", "warn", "auto-advance: no playable track in queue")
+            fails, fused = self._fuse_check(fails)
+            if fused:
+                break
+        await self._skip_gave_up("auto-advance")
 
     async def _emit(self, typ: str, data: dict):
         await decky.emit("player", {"ev": "player", "type": typ, "data": data})

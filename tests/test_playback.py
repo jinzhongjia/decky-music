@@ -386,3 +386,113 @@ class TestAuthRetryAndRadioSkip(unittest.TestCase):
         run(pb.next_track())  # a 播完 → b 不可播 → 跳到 c
         self.assertEqual(pb.index, 2)
         self.assertTrue(pb.playing)
+
+
+class SlowNetPlayer:
+    """load 恒报 fetch_timeout(慢网首开超时),其余命令成功。"""
+
+    def __init__(self):
+        self.calls = []
+
+    async def request(self, cmd, args=None):
+        self.calls.append(cmd)
+        if cmd == "load":
+            err = types.SimpleNamespace(code="fetch_timeout", message="fetch_timeout")
+            return types.SimpleNamespace(ok=False, data={}, error=err)
+        return types.SimpleNamespace(ok=True, data={}, error=None)
+
+
+class TestAutoAdvanceFuse(unittest.TestCase):
+    def test_ended_fuses_on_fetch_timeout(self):
+        """慢网熔断:播完自动切歌遇 fetch_timeout 只试一首,不逐首撞 21s 重试。"""
+        player = SlowNetPlayer()
+        pb = Playback(player, FakeConn())
+        pb.queue = [item("a"), item("b"), item("c")]
+        pb.index = 0
+        run(pb._on_ended())
+        self.assertEqual(player.calls.count("load"), 1)
+        self.assertFalse(pb.playing)
+        self.assertEqual(pb.last_error, "fetch_timeout")
+
+    def test_radio_start_fuses_on_fetch_timeout(self):
+        player = SlowNetPlayer()
+        pb = Playback(player, FakeConn())
+        res = run(pb.play_radio("qq_guess", [item("a"), item("b"), item("c")]))
+        self.assertFalse(res)
+        self.assertEqual(player.calls.count("load"), 1)
+
+
+class OfflinePlayer:
+    """load 恒报 fetch_failed(断网/坏 URL),其余命令成功。"""
+
+    def __init__(self):
+        self.calls = []
+
+    async def request(self, cmd, args=None):
+        self.calls.append(cmd)
+        if cmd == "load":
+            err = types.SimpleNamespace(code="fetch_failed", message="fetch_failed")
+            return types.SimpleNamespace(ok=False, data={}, error=err)
+        return types.SimpleNamespace(ok=True, data={}, error=None)
+
+
+def _capture_events(pb_coro):
+    """跑协程并收集 decky.emit 的事件 payload。"""
+    import playback as playback_mod
+
+    events = []
+
+    async def rec(_name, payload):
+        events.append(payload)
+
+    old = playback_mod.decky.emit
+    playback_mod.decky.emit = rec
+    try:
+        run(pb_coro)
+    finally:
+        playback_mod.decky.emit = old
+    return events
+
+
+class TestAutoAdvancePolish(unittest.TestCase):
+    def test_two_consecutive_fetch_failed_fuse(self):
+        """断网:fetch_failed 连续 2 次熔断,不把整个队列扫一圈。"""
+        player = OfflinePlayer()
+        pb = Playback(player, FakeConn())
+        pb.queue = [item(c) for c in "abcde"]
+        pb.index = 0
+        run(pb._on_ended())
+        self.assertEqual(player.calls.count("load"), 2)
+        self.assertFalse(pb.playing)
+
+    def test_shuffle_skip_always_finds_playable(self):
+        """随机模式顺延用一次性乱序:多首不可播也必然找到唯一可播的那首。"""
+        conn = VipOnlyConn(blocked=["a", "b", "d"])
+        pb = Playback(FakeConn(), conn, play_mode="shuffle")
+        pb.queue = [item(c) for c in "abcd"]
+        pb.index = 0
+        run(pb._on_ended())
+        self.assertTrue(pb.playing)
+        self.assertEqual(pb.queue[pb.index]["id"], "c")
+
+    def test_skip_is_quiet_until_success(self):
+        """跳过不可播的歌不逐首发 error;成功接上后 UI 只看到 track 事件。"""
+        conn = VipOnlyConn(blocked=["b"])
+        pb = Playback(FakeConn(), conn)
+        pb.queue = [item("a"), item("b"), item("c")]
+        pb.index = 0
+        events = _capture_events(pb._on_ended())
+        self.assertEqual([e["type"] for e in events if e["type"] == "error"], [])
+        self.assertTrue(pb.playing)
+
+    def test_give_up_emits_single_error(self):
+        """整圈都不可播:放弃时只报一次错,不刷一串横幅。"""
+        conn = VipOnlyConn(blocked=["a", "b", "c"])
+        pb = Playback(FakeConn(), conn)
+        pb.queue = [item("a"), item("b"), item("c")]
+        pb.index = 0
+        events = _capture_events(pb._on_ended())
+        errs = [e for e in events if e["type"] == "error"]
+        self.assertEqual(len(errs), 1)
+        self.assertEqual(errs[0]["data"]["code"], "no_playable")
+        self.assertFalse(pb.playing)
