@@ -778,7 +778,7 @@ wheels = [
 
 [[package]]
 name = "qq-provider"
-version = "0.1.0"
+version = "1.0.0b0"
 source = { virtual = "." }
 dependencies = [
     { name = "curl-cffi" },
