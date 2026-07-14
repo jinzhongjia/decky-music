@@ -34,7 +34,15 @@ def _public(item: dict | None) -> dict | None:
 
 
 class Playback:
-    def __init__(self, player, provider, play_mode: str = "list_loop", persist=None, radio_fetcher=None):
+    def __init__(
+        self,
+        player,
+        provider,
+        play_mode: str = "list_loop",
+        persist=None,
+        radio_fetcher=None,
+        auth_retry=None,
+    ):
         self.player = player
         self.provider = provider
         self.play_mode = play_mode if play_mode in PLAY_MODES else "list_loop"
@@ -53,6 +61,9 @@ class Playback:
         self._radio_fetcher = radio_fetcher  # async (kind) -> list[dict];bridge 注入 provider radio_fetch
         self._radio_refill_task: asyncio.Task | None = None
         self._radio_gen = 0
+        # bridge 注入的凭证刷新回调 async () -> bool(是否真的刷新了)。
+        # QQ musickey 会话中途过期时所有歌报 no_playable(误导性"无权限"),刷新后重试即恢复。
+        self._auth_retry = auth_retry
 
     def _exit_radio(self):
         self._radio_gen += 1
@@ -130,7 +141,12 @@ class Playback:
             await self._emit("track", {"index": -1, "song": None})
             await self._queue_changed()
             return False
-        res = await self._play_index(0)
+        # 首歌不可播(如真 VIP 歌)不打死整个电台:顺次尝试本批,timeout 熔断
+        res: bool | None = False
+        for i in range(len(self.queue)):
+            res = await self._play_index(i)
+            if res or res is None or self.last_error == "timeout":
+                break
         await self._queue_changed()
         return res
 
@@ -249,11 +265,19 @@ class Playback:
         self.index = i
         item = self.queue[i]
         # 防御取值(宿主安全):畸形队列项走失败路径,绝不 KeyError 炸掉调用链
-        r = await self.provider.request(
-            "song_url", {"id": item.get("id", ""), "media_mid": item.get("media_mid", "")}
-        )
+        args = {"id": item.get("id", ""), "media_mid": item.get("media_mid", "")}
+        r = await self.provider.request("song_url", args)
         if gen != self._play_gen:
             return None  # 等待期间用户又切了歌:让位,不发事件不碰状态
+        if not r.ok and r.error and r.error.code == "no_playable" and self._auth_retry:
+            # 可能是凭证过期的连带假象:刷新一次,真刷新了才重试(真无版权不浪费第二发)
+            if await self._auth_retry():
+                if gen != self._play_gen:
+                    return None
+                log("bridge", "own", "info", f"retry song_url after credential refresh id={item.get('id', '')}")
+                r = await self.provider.request("song_url", args)
+                if gen != self._play_gen:
+                    return None
         if not r.ok:
             self.last_error = r.error.code if r.error else "play_failed"
             message = r.error.message if r.error else "play_failed"
@@ -287,16 +311,16 @@ class Playback:
         if not self.queue:
             return
         near_tail = self.index >= len(self.queue) - 2
-        if self.index + 1 < len(self.queue):
-            if near_tail:
-                self._kick_radio_refill()
-            await self._play_index(self.index + 1)
-            return
-        await self._refill_radio()
-        if self.index + 1 < len(self.queue):
-            await self._play_index(self.index + 1)
-        else:
-            log("bridge", "own", "warn", "radio advance stopped: no next track")
+        if near_tail and self.index + 1 < len(self.queue):
+            self._kick_radio_refill()
+        if self.index + 1 >= len(self.queue):
+            await self._refill_radio()
+        # 顺次尝试后续曲目(跳过不可播,timeout 熔断),与普通模式自动切歌语义一致
+        while self.index + 1 < len(self.queue):
+            res = await self._play_index(self.index + 1)
+            if res or res is None or self.last_error == "timeout":
+                return
+        log("bridge", "own", "warn", "radio advance stopped: no next track")
 
     def _kick_radio_refill(self):
         if not (self._radio_fetcher and self._radio_kind):

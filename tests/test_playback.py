@@ -315,3 +315,74 @@ class TestListCmdPaging(unittest.TestCase):
             self.bridge.provider.calls[0],
             ("search_songs", {"limit": 50, "keyword": "k", "offset": 100}),
         )
+
+
+class FlakyAuthConn:
+    """song_url 先报 no_playable,凭证刷新后放行(模拟 musickey 会话中途过期)。"""
+
+    def __init__(self):
+        self.calls = []
+        self.refreshed = False
+
+    async def request(self, cmd, args=None):
+        self.calls.append(cmd)
+        if cmd == "song_url" and not self.refreshed:
+            err = types.SimpleNamespace(code="no_playable", message="no_playable")
+            return types.SimpleNamespace(ok=False, data={}, error=err)
+        return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
+
+
+class VipOnlyConn:
+    """指定 id 恒不可播(真 VIP 歌),其余正常。"""
+
+    def __init__(self, blocked):
+        self.blocked = set(blocked)
+        self.calls = []
+
+    async def request(self, cmd, args=None):
+        self.calls.append((cmd, (args or {}).get("id")))
+        if cmd == "song_url" and (args or {}).get("id") in self.blocked:
+            err = types.SimpleNamespace(code="no_playable", message="no_playable")
+            return types.SimpleNamespace(ok=False, data={}, error=err)
+        return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
+
+
+class TestAuthRetryAndRadioSkip(unittest.TestCase):
+    def test_no_playable_refresh_then_retry_succeeds(self):
+        conn = FlakyAuthConn()
+
+        async def refresh():
+            conn.refreshed = True
+            return True
+
+        pb = Playback(FakeConn(), conn, auth_retry=refresh)
+        run(pb.play_queue([item("a")], 0))
+        self.assertTrue(pb.playing)
+        self.assertEqual(conn.calls.count("song_url"), 2)  # 失败 → 刷新 → 重试成功
+
+    def test_no_refresh_means_no_retry(self):
+        conn = FlakyAuthConn()
+
+        async def refresh():
+            return False  # 凭证没过期:真无版权,不浪费第二发
+
+        pb = Playback(FakeConn(), conn, auth_retry=refresh)
+        run(pb.play_queue([item("a")], 0))
+        self.assertFalse(pb.playing)
+        self.assertEqual(conn.calls.count("song_url"), 1)
+
+    def test_radio_start_skips_unplayable_first_song(self):
+        conn = VipOnlyConn(blocked=["a"])
+        pb = Playback(FakeConn(), conn)
+        res = run(pb.play_radio("qq_guess", [item("a"), item("b")]))
+        self.assertTrue(res)
+        self.assertEqual(pb.index, 1)  # 首歌 VIP 被跳过,第二首开播
+        self.assertTrue(pb.playing)
+
+    def test_radio_advance_skips_unplayable(self):
+        conn = VipOnlyConn(blocked=["b"])
+        pb = Playback(FakeConn(), conn)
+        run(pb.play_radio("qq_guess", [item("a"), item("b"), item("c")]))
+        run(pb.next_track())  # a 播完 → b 不可播 → 跳到 c
+        self.assertEqual(pb.index, 2)
+        self.assertTrue(pb.playing)

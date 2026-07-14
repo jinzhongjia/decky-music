@@ -204,6 +204,7 @@ class Bridge:
             self.settings.get("play_mode", "list_loop"),
             persist=self._persist_queue,
             radio_fetcher=self._radio_fetch,
+            auth_retry=self._refresh_credential,
         )
         # 恢复上次的普通队列(只存了 id 类字段;不自动开播,见 QUEUE-BEHAVIOR §1.1)
         self.playback.restore(self.settings.get("queue"))
@@ -218,6 +219,33 @@ class Bridge:
         # spawn+连接延迟,避免面板闪一下"选源"再跳账号态。
         if self.settings.get("provider"):
             asyncio.create_task(self._ensure_provider(self.settings["provider"]))
+        asyncio.create_task(self._credential_refresh_loop())
+
+    async def _refresh_credential(self) -> bool:
+        """重注入当前凭证触发 provider 侧过期检测/刷新(QQ musickey 有效期撑不过长会话;
+        NCM 无刷新概念,幂等无害)。返回是否真的刷新了(供播放失败重试判断值不值得再试)。"""
+        which = self.settings.get("provider")
+        cred = (self.settings.get("accounts") or {}).get(which)
+        if not cred:
+            return False
+        r = await self.provider.request("set_credential", {"cred": cred})
+        new_cred = r.data.get("refreshed") if r.ok else None
+        if new_cred:
+            self.settings.setdefault("accounts", {})[which] = new_cred
+            save_settings(self.settings)
+            log("bridge", "own", "info", f"{which} credential refreshed mid-session, persisted")
+            return True
+        return False
+
+    async def _credential_refresh_loop(self):
+        # 每小时查一次过期(曾发生 13h 长会话 musickey 过期 → 全部歌报"无权限");
+        # 播放路径另有 no_playable 时的即时刷新重试兜底,这里把常态过期窗口压到 ≤1h
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                await self._refresh_credential()
+            except Exception as e:
+                log("bridge", "own", "debug", f"credential refresh loop: {type(e).__name__}")
 
     async def _ensure_provider(self, which: str | None):
         """幂等:确保 which("qq"/"ncm"/None)对应的 provider 进程在运行。
