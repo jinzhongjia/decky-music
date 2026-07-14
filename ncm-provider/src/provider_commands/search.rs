@@ -19,7 +19,6 @@ pub(super) fn hot_keyword(v: &Value) -> Value {
     })
 }
 
-
 pub async fn search_songs(state: &State, id: u64, args: &Value) -> String {
     let Ok(q) = paged_query(args, "1") else {
         return invalid(id);
@@ -116,4 +115,3 @@ pub async fn search_hot(state: &State, id: u64) -> String {
     )
     .await
 }
-

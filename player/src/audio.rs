@@ -65,7 +65,7 @@ const POS_ANCHOR_INTERVAL: Duration = Duration::from_secs(3);
 
 /// 拥有 OutputStream + Sink 的专用线程。用 recv_timeout 轮询:平时睡,到点醒来查是否播完。
 pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv>) {
-    let (_stream, handle) = match rodio::OutputStream::try_default() {
+    let device_sink = match rodio::DeviceSinkBuilder::open_default_sink() {
         Ok(v) => v,
         Err(e) => {
             let _ = ev.send(AudioEv::Error {
@@ -80,7 +80,7 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
         place: "audio",
         msg: "default audio device opened".into(),
     });
-    let mut sink: Option<rodio::Sink> = None;
+    let mut sink: Option<rodio::Player> = None;
     // 流状态探针:与 sink 同生命周期。rodio 解码器把流的 IO 错误静默吞成 EOF,
     // sink 放空时必须回查流是否带错死亡,否则中途断流会被误报成 ended 提前切歌。
     let mut probe: Option<StreamProbe> = None;
@@ -91,16 +91,11 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
         match rx.recv_timeout(Duration::from_millis(250)) {
             Ok(AudioCmd::Load(stream)) => {
                 let stream_probe = stream.probe();
-                match rodio::Sink::try_new(&handle)
-                    .map_err(|e| e.to_string())
-                    .and_then(|s| {
-                        rodio::Decoder::new(*stream)
-                            .map(|d| {
-                                s.append(d);
-                                s
-                            })
-                            .map_err(|e| e.to_string())
-                    }) {
+                match rodio::Decoder::new(*stream).map(|d| {
+                    let s = rodio::Player::connect_new(device_sink.mixer());
+                    s.append(d);
+                    s
+                }) {
                     Ok(s) => {
                         sink = Some(s);
                         probe = Some(stream_probe);

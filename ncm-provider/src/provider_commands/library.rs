@@ -9,7 +9,6 @@ use super::{
     bool_arg, call, current_uid, fetch, id_string, invalid, map_arr, paging, string_arg, State,
 };
 
-
 pub(super) fn user_assets_data(uid: String, sub: &Value, fav_songs: usize) -> Value {
     json!({
         "uid": uid,
@@ -184,7 +183,6 @@ pub async fn fav_playlists(state: &State, id: u64, args: &Value) -> String {
         .collect::<Vec<_>>();
     protocol::ok(id, json!({ "playlists": playlists }))
 }
-
 
 pub async fn like_song(state: &State, id: u64, args: &Value) -> String {
     let Ok(song_id) = string_arg(args, "id") else {
