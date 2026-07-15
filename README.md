@@ -1,14 +1,29 @@
 # Decky Music
 
-在 Steam Deck 游戏模式中使用 QQ 音乐和网易云音乐的 Decky Loader 插件。插件提供手柄优先的
-大屏界面，并将音乐服务访问、播放队列和音频输出放在独立进程中，避免重计算和音频解码阻塞
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/jinzhongjia/decky-music/main/assets/decky_music_logo_small.png"
+    alt="Decky Music"
+    width="600"
+  />
+</p>
+
+<p align="center">
+  <strong>在 Steam Deck 游戏模式中享受 QQ 音乐与网易云音乐。</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/jinzhongjia/decky-music/releases">Releases</a> ·
+  <a href="docs/DESIGN.md">架构设计</a> ·
+  <a href="docs/ROADMAP.md">开发路线图</a> ·
+  <a href="docs/ui-design/README.md">UI 设计与完整实机截图</a>
+</p>
+
+Decky Music 是为 Steam Deck 游戏模式设计的 Decky Loader 音乐插件。前端采用手柄优先的大屏
+界面；音乐服务访问、播放队列和音频输出运行在独立进程中，避免网络请求、解码或后端异常阻塞
 Steam UI。
 
 > 当前版本为 **1.0.0-beta.2**。这是预发布软件，安装前请阅读下方限制与说明。
-
-[查看 Releases](https://github.com/jinzhongjia/decky-music/releases) ·
-[架构设计](docs/DESIGN.md) · [开发路线图](docs/ROADMAP.md) ·
-[UI 设计与完整实机截图](docs/ui-design/README.md)
 
 ## 实机界面
 
@@ -16,21 +31,32 @@ Steam UI。
 | :---: | :---: |
 | ![QQ 音乐首页](docs/ui-design/assets/device-screenshots/qq/01-home.png) | ![网易云音乐首页](docs/ui-design/assets/device-screenshots/ncm/01-home.png) |
 
-## 功能
+## 功能特性
 
-- **双音乐源**：QQ 音乐和网易云音乐，可在快捷菜单中切换。
-- **内容浏览**：推荐/发现、热搜、榜单，以及歌曲、歌单、专辑和歌手的分类搜索与分页。
-- **个人音乐库**：喜欢的歌曲、自建歌单、收藏歌单；网易云音乐额外支持听歌排行。
-- **电台**：QQ 猜你喜欢/雷达推荐，以及网易云私人 FM。
-- **完整播放控制**：后台连续播放、播放队列、上一首/下一首、暂停/继续、进度跳转、音量、
-  列表循环/单曲循环/随机播放。
-- **播放页**：同步歌词、逐字歌词与翻译；网易云音乐支持热评浏览。
-- **收藏操作**：红心歌曲、添加到自建歌单，以及手柄 `X` 键上下文菜单。
-- **Steam Deck 原生交互**：全程手柄导航、`L1/R1` 顶层切页、`Y` 播放队列、`Start`
-  全局暂停/继续，并使用 SteamOS Footer Legend 显示当前按键语义。
+在原有双平台、扫码登录、个性化推荐、我的音乐和沉浸播放基础上，当前实现补齐了分类搜索、
+内容详情、播放队列、电台与完整手柄交互。
+
+### 双平台内容
+
+| 功能 | QQ 音乐 | 网易云音乐 |
+| :--- | :--- | :--- |
+| 扫码登录 | 手机 QQ 或微信扫码 | 网易云音乐 APP 扫码 |
+| 推荐与发现 | 推荐歌单、新歌首发、猜你喜欢、雷达推荐、榜单 | 每日推荐、推荐歌单、私人 FM、榜单 |
+| 搜索 | 热搜；歌曲、歌单、专辑、歌手分类搜索与分页 | 热搜；歌曲、歌单、专辑、歌手分类搜索与分页 |
+| 我的音乐 | 喜欢的歌曲、自建歌单、收藏歌单 | 喜欢的歌曲、听歌排行、自建歌单、收藏歌单 |
+| 电台 | 猜你喜欢、雷达推荐 | 私人 FM，支持红心与垃圾桶 |
+| 播放页 | 同步歌词与翻译 | 逐字歌词、翻译与热评 |
+
+### 播放与 Steam Deck 体验
+
+- **完整播放控制**：后台连续播放、播放队列、上一首/下一首、暂停/继续、进度跳转、音量，
+  支持列表循环、单曲循环和随机播放。
+- **收藏与队列操作**：红心歌曲、添加到自建歌单，以及手柄 `X` 键上下文菜单。
+- **手柄优先**：全程焦点导航，`L1/R1` 顶层切页、`Y` 播放队列、`Start` 全局暂停/继续，
+  并由 SteamOS Footer Legend 显示当前按键语义。
 - **中英双语**：根据 Steam 客户端语言自动切换中文或英文。
-- **故障隔离**：provider 与 player 均为独立进程；后端、网络或数据异常只进入插件错误态，
-  不应拖垮 Steam UI。
+- **故障隔离**：QQ/网易云 provider 与 player 均为独立进程；网络、数据或后端异常在插件内
+  降级为错误态，避免拖垮 Steam UI。
 
 ## 安装
 
@@ -66,6 +92,7 @@ Decky 当前的手动安装器只接受 ZIP 的 URL，详见
 - 切换 QQ 音乐与网易云音乐会停止播放并清空当前队列，因为两端的歌曲 ID 不兼容。
 - 电台内容不会跨会话持久化；普通队列会恢复，但插件重启后不会自动开始播放。
 - 当前为 beta 版本，主要面向 Steam Deck/SteamOS `x86_64` 游戏模式。
+- 当前未提供搜索建议、最近播放历史、跨平台音源兜底或音质偏好设置。
 
 ## 架构
 
