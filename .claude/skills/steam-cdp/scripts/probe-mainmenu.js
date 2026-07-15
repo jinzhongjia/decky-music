@@ -1,13 +1,15 @@
-// 主菜单结构探针:在活动 MainMenu 页跑,输出左侧 Steam 主菜单的可 patch 结构。
-// 支撑 issue #28(左侧菜单注入音乐入口)的可行性验证 —— 结论见 issue #28 评论。
+// Main-menu structure probe: run against the active MainMenu target; prints the
+// patchable structure of Steam's left-side main menu (feasibility check for
+// injecting a custom menu entry).
 //
-// 用法:node scripts/cdp/cdp.mjs MainMenu scripts/cdp/probe-mainmenu.js
+// Usage: node cdp.mjs mainmenu probe-mainmenu.js
 //
-// 关键实测结论(当前 SteamOS):
-//   - 存在 navID === "MainNavMenuContainer"(稳定锚点)。
-//   - menuNode.return.type = fn:fe(可 patch,有 alternate)。
-//   - 菜单项组件 = Ae,props: {route,label,icon,active,onGamepadFocus}(可复用)。
-//   - 但菜单项距该 navID 锚点约 11 个组件边界,深嵌套 —— “一跳 findInReactTree”拿不到菜单项数组。
+// Findings on then-current SteamOS (verify before relying on them):
+//   - navID === "MainNavMenuContainer" exists (stable anchor).
+//   - menuNode.return.type is a patchable function component (has alternate).
+//   - Menu item component props: {route,label,icon,active,onGamepadFocus} (reusable).
+//   - Items sit ~11 component boundaries below the anchor — a one-hop
+//     findInReactTree will NOT reach the item array.
 (() => {
   let el = null,
     key = null;
@@ -54,7 +56,8 @@
   out.push("menuNode type=" + nm(menuNode.type) + "  return.type=" + nm(menuNode.return?.type));
   out.push("return has alternate: " + !!menuNode.return?.alternate);
 
-  // 从容器往下找第一个 route 菜单项,打印 item -> container 的组件链(patch 需要下钻的层数)
+  // Walk down from the container to the first routed item; print the item -> container
+  // component chain (how many levels a patch has to dive through)
   let item = null;
   const dive = (f) => {
     if (!f || item) return;

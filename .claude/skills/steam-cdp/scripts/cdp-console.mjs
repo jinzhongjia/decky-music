@@ -1,7 +1,7 @@
 // Stream console warnings/errors and uncaught exceptions from a CEF target.
-// 用法:
-//   node scripts/cdp/cdp-console.mjs <target|alias> [seconds] [--all]
-//   node scripts/cdp/cdp-console.mjs shared 30
+// Usage:
+//   node cdp-console.mjs <target|alias> [seconds] [--all]
+//   node cdp-console.mjs shared 30
 
 import { openSession } from "./cdp-lib.mjs";
 

@@ -76,9 +76,8 @@ curl -s localhost:8080/json | jq '.[].title'
 Key targets: `SharedJSContext` (main JS context, no pixels), `QuickAccess`, `MainMenu`, and the
 **gamepad UI window** (title like "Steam Big Picture Mode" — the visible screen; screenshot this
 one). Connect a target's `webSocketDebuggerUrl` with Node ≥ 21 (global `WebSocket`), then
-`Runtime.enable` + `Runtime.evaluate`. Reference clients live in this repo's `scripts/cdp/`
-(`cdp.mjs` evaluate, `cdp-shot.mjs` screenshot, `cdp-nav.mjs` route navigation, `cdp-key.mjs`
-key input, README with probe recipes).
+`Runtime.enable` + `Runtime.evaluate`. The full toolkit (ready-made scripts + probe/driving
+recipes) is the **steam-cdp skill** — see `.claude/skills/steam-cdp/`.
 
 What works, learned the hard way:
 

@@ -1,8 +1,9 @@
-// 列出左侧主菜单的**所有**项(含无 route 的「好友与聊天」「电源」),按渲染顺序。
-// 用来核对「音乐」注入后的真实位置 —— 别用只筛 route 的探针,那会漏掉无 route 项、看错位置。
+// List ALL left main-menu items (including route-less ones like Friends & Chat
+// and Power), in render order. Use this to verify where an injected entry really
+// lands — a probe that filters by route misses route-less items and misleads.
 //
-// 用法:node scripts/cdp/cdp.mjs SharedJSContext scripts/cdp/probe-menu-items.js
-// 注意:每项 label 会出现两次(Ae 路由包裹 + 内层),看相对顺序即可。
+// Usage: node cdp.mjs mainmenu probe-menu-items.js
+// Note: each label appears twice (route wrapper + inner node); read relative order only.
 (() => {
   let el = null,
     key = null;

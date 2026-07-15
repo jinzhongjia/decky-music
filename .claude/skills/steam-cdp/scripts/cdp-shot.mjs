@@ -1,8 +1,9 @@
-// 截图某个 CEF target 到 PNG(只读排查/UI 对比用)。需先开隧道(见 README)。
-// 用法:
-//   node scripts/cdp/cdp-shot.mjs <target|alias> <out.png>
-//   node scripts/cdp/cdp-shot.mjs bp /tmp/music.png
-// 别名:bp/qam/shared/sjc/mainmenu。Node ≥ 21(全局 WebSocket)。
+// Screenshot a CEF target to PNG (read-only diagnosis / UI comparison).
+// Tunnel required (see SKILL.md).
+// Usage:
+//   node cdp-shot.mjs <target|alias> <out.png>
+//   node cdp-shot.mjs bp /tmp/ui.png
+// Aliases: bp/qam/shared/sjc/mainmenu. Node >= 21 (global WebSocket).
 
 import { captureScreenshot, openSession } from "./cdp-lib.mjs";
 

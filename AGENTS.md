@@ -71,7 +71,8 @@ bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
 
 通用的 Decky 开发调试流程 —— 侧载部署、拉日志、CDP 驱动运行中的 Steam UI(导航/点击/截图/按键)、
 防休眠、自动化验证循环 —— 全部见 **`decky-dev` skill**(`.claude/skills/decky-dev/SKILL.md`),
-本文不再重复。CDP 现成工具在 `scripts/cdp/`(含 README)。
+本文不再重复。CDP 驱动 Steam UI 的工具与配方独立成 **`steam-cdp` skill**
+(`.claude/skills/steam-cdp/`,脚本随 skill 存放)。
 
 Agent 注意:开始长时间真机调试前按 skill 挂防休眠阻断器,结束记得解除,别让 Deck 常亮过夜。
 

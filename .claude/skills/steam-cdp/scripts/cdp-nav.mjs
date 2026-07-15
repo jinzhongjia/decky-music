@@ -1,9 +1,11 @@
-// 让游戏模式主窗口导航到某个路由(用于全自动调试:部署后自己跳到 /music 再截图,免手动重开)。
-// 用法: node scripts/cdp/cdp-nav.mjs /music
+// Navigate the gamepad-UI main window to a route (for hands-free debugging:
+// deploy, then jump straight to your plugin route and screenshot).
+// Usage: node cdp-nav.mjs /your-route
 //
-// 原理:@decky/ui 的 Navigation.Navigate 依赖"当前聚焦窗口",CDP eval 无聚焦窗口 → 落错窗口。
-// 改用**原始 Router**(findModuleExport(e => e.Navigate && e.NavigationManager)),直接导航主窗口历史。
-// 需先开隧道(见 README)。Node ≥ 21。
+// Why not @decky/ui Navigation.Navigate: it targets the "currently focused window",
+// and under CDP eval there is none, so it lands in the wrong window. Use the raw
+// Router instead (findModuleExport(e => e.Navigate && e.NavigationManager)) which
+// drives the main window history directly. Tunnel required (see SKILL.md). Node >= 21.
 
 import { evaluate, openSession, runtimeValue, sleep } from "./cdp-lib.mjs";
 
@@ -36,7 +38,7 @@ const session = await openSession("shared");
 try {
   const result = await evaluate(session, expr);
   console.log(result.exceptionDetails ? "EXCEPTION" : runtimeValue(result));
-  await sleep(900); // 等页面过渡落定,随后截图才不空
+  await sleep(900); // let the page transition settle so a follow-up screenshot isn't blank
 } finally {
   session.close();
 }

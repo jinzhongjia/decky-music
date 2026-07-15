@@ -1,14 +1,15 @@
-// 极简 CDP 客户端:列 target / 连接 target(支持 DeckProbe 风格别名) / Runtime.evaluate 一段 JS 文件。
-// 只读排查用(查 Steam 前端 React 树 / webpack 模块),不进插件。
+// Minimal CDP client: list targets / connect to a target (alias support) /
+// Runtime.evaluate a JS probe file. Read-only diagnosis of the running Steam UI
+// (React tree, webpack modules) — never ship any of this inside a plugin.
 //
-// 前置:先开隧道到 Deck 的 CEF 调试端口(见 README.md):
+// Prereq: tunnel to the device's CEF debug port (see SKILL.md):
 //   ssh -N -L 8080:localhost:8080 deck@<ip> &
-// 用法:
+// Usage:
 //   node scripts/cdp/cdp.mjs targets
 //   node scripts/cdp/cdp.mjs <target|alias> <exprFile>
 //   node scripts/cdp/cdp.mjs mainmenu scripts/cdp/probe-mainmenu.js
-// 别名:bp/qam/shared/sjc/mainmenu;默认连 http://localhost:8080。
-// 需要 Node ≥ 21(全局 WebSocket)。
+// Aliases: bp/qam/shared/sjc/mainmenu; connects to http://localhost:8080 by default.
+// Node >= 21 (global WebSocket).
 
 import { evaluate, fetchTargets, formatTargets, openSession, runtimeValue } from "./cdp-lib.mjs";
 

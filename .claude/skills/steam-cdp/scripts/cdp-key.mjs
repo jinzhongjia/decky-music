@@ -1,7 +1,7 @@
 // Send keyDown/keyUp pairs through CDP Input.dispatchKeyEvent.
-// 用法:
-//   node scripts/cdp/cdp-key.mjs <target|alias> <key> [key ...]
-//   node scripts/cdp/cdp-key.mjs bp ArrowDown Enter
+// Usage:
+//   node cdp-key.mjs <target|alias> <key> [key ...]
+//   node cdp-key.mjs bp ArrowDown Enter
 
 import { dispatchKey, openSession } from "./cdp-lib.mjs";
 

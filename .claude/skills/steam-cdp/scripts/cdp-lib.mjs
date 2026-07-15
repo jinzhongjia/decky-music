@@ -1,9 +1,10 @@
-// DeckProbe-inspired CDP helpers, kept local and dependency-free for Decky Music.
+// Dependency-free CDP helpers for driving Steam's CEF (Chrome DevTools Protocol).
 // Uses Node >= 21 globals: fetch + WebSocket.
 
-const CDP_URL = "http://localhost:8080"; // 隧道固定端口(见 README)
+const CDP_URL = "http://localhost:8080"; // fixed tunnel port (see SKILL.md)
 
 const ALIAS_MATCHERS = {
+  // "大屏" matches the localized gamepad-UI window title on zh-locale Steam
   bp: (target) => includesAny(titleOf(target), ["big picture", "大屏"]),
   bigpicture: (target) => includesAny(titleOf(target), ["big picture", "大屏"]),
   qam: (target) => includesAny(titleOf(target), ["quickaccess", "quick access"]),

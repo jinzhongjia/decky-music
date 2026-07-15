@@ -13,7 +13,7 @@
 
 ## 菜单结构(CDP 实测,当前 SteamOS)
 
-用 `scripts/cdp/` 连活动前端逆向出来的结构:
+用 steam-cdp skill(`.claude/skills/steam-cdp/`)连活动前端逆向出来的结构:
 
 - 菜单容器 fiber:`memoizedProps.navID === "MainNavMenuContainer"`(稳定锚点)。
 - 菜单项组件 = `Ae`,props:`{ route, label, icon, active:"if-within-route", onGamepadFocus }`,**可复用**。
@@ -74,7 +74,7 @@
 - **闪烁窗口**:`fe` 的 element 被父级重建后、下次 retry 命中前(≤1s),「音乐」项会短暂消失。
   可接受(可选增强)。想更稳可缩短 retry 或抬高锚点(代价是更深的下钻)。
 - **Steam 更新脆弱点**:`navID` 串、`fe`/`Ie` 的 prop 签名、`Ae` 的 props 约定任一变化都会让注入
-  静默失效(退回 fallback,不崩)。升级时用 `scripts/cdp/probe-mainmenu.js` 重新核对。
+  静默失效(退回 fallback,不崩)。升级时用 steam-cdp skill 的 `probe-mainmenu.js` 重新核对。
 
 ## 踩坑记录:定位插错(第 5 → 第 4)
 
@@ -86,17 +86,17 @@
   残缺菜单,误以为「媒体前 = 第 4」。真实数组里「好友与聊天」夹在商店与媒体之间,于是"媒体前"实际
   落到它**之后** = 第 5。(插入代码用的一直是真实数组,错的只是"看不见它、锚点选偏"。)
 - 修法:锚「**商店 `/steamweb` 之后**」(无视中间几个无 route 项),核对改用
-  `scripts/cdp/probe-menu-items.js`(列**所有带 label 的项**,含无 route 的)。
+  steam-cdp skill 的 `probe-menu-items.js`(列**所有带 label 的项**,含无 route 的)。
 
 **教训:验证要看完整数组,别用过滤过的子集 —— 量错了还以为对了。**
 
 ## 复验 / 调试
 
-见 `scripts/cdp/README.md`。核对结构:
+见 steam-cdp skill(`.claude/skills/steam-cdp/SKILL.md`)。核对结构:
 
 ```bash
 ssh -N -L 8080:localhost:8080 deck@<ip> &
-node scripts/cdp/cdp.mjs SharedJSContext scripts/cdp/probe-mainmenu.js
+node .claude/skills/steam-cdp/scripts/cdp.mjs SharedJSContext .claude/skills/steam-cdp/scripts/probe-mainmenu.js
 ```
 
 关注:`navID` 仍是 `MainNavMenuContainer`、菜单项组件仍有 `{route,label,icon,onGamepadFocus}`、
