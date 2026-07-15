@@ -7,6 +7,8 @@ Decky 加进 sys.path 且被 CLI 打包。日志见 log.py。
 import asyncio
 import json
 import os
+import shutil
+import tarfile
 
 import decky
 import protocol
@@ -25,6 +27,35 @@ def BIN(name: str) -> str:
     # 二进制经 remote_binary(正式)或开发期侧载放入 bin/。
     # 例:BIN("player") → .../decky-music/bin/player
     return os.path.join(decky.DECKY_PLUGIN_DIR, "bin", name)
+
+
+def qq_exe() -> str:
+    """qq-provider 可执行路径,必要时自解包。
+
+    Nuitka standalone 是目录包(tar.gz);remote_binary 安装时 Decky 只把资产原样存成
+    bin/qq-provider 文件、不解包(侧载则由 deploy.sh 解),首次用到时在这里自解。
+    归档经 remote_binary 的 sha256 校验,内容可信;bin/ 由安装器创建、deck 可写。
+    阻塞(~秒级),调用方走 asyncio.to_thread。"""
+    bin_dir = os.path.join(decky.DECKY_PLUGIN_DIR, "bin")
+    exe = os.path.join(bin_dir, "qq-provider", "qq-provider")
+    if os.path.isfile(exe):
+        return exe
+    tarball = os.path.join(bin_dir, "qq-provider")
+    if not os.path.isfile(tarball):
+        return exe  # 归档也缺失:让 spawn 报自然错误
+    tmp = os.path.join(bin_dir, ".qq-unpack")
+    shutil.rmtree(tmp, ignore_errors=True)
+    with tarfile.open(tarball) as tf:
+        tf.extractall(tmp)  # 顶层即 qq-provider/ 目录
+    os.chmod(os.path.join(tmp, "qq-provider", "qq-provider"), 0o755)
+    # 目录顶掉同名 tar 文件:先挪开,目录就位后再删,中途失败不丢归档
+    aside = tarball + ".tar.gz"
+    os.rename(tarball, aside)
+    os.rename(os.path.join(tmp, "qq-provider"), os.path.join(bin_dir, "qq-provider"))
+    os.remove(aside)
+    os.rmdir(tmp)
+    log("bridge", "own", "info", "qq-provider unpacked")
+    return exe
 
 
 def _child_env() -> dict:
@@ -262,11 +293,27 @@ class Bridge:
             if self.provider_proc:  # 切换 provider:先停旧
                 self.provider_proc.terminate()
                 self.provider_proc = None
-            # qq-provider 是 Nuitka standalone 目录,可执行文件在 bin/qq-provider/qq-provider
-            binname = "qq-provider/qq-provider" if which == "qq" else "ncm-provider"
             self.provider_which = which
             self.provider.connected.clear()
-            self.provider_proc = await spawn("provider", BIN(binname), "--socket", self.provider.path)
+            try:
+                # qq-provider 是 Nuitka standalone 目录包,正式安装落的是 tar.gz → 自解包
+                binpath = await asyncio.to_thread(qq_exe) if which == "qq" else BIN("ncm-provider")
+                self.provider_proc = await spawn("provider", binpath, "--socket", self.provider.path)
+            except (OSError, tarfile.TarError) as e:
+                # 解包/拉起失败不裸炸(曾致 UI"点了没反应"):落日志 + 给 UI 报错
+                log("bridge", "own", "error", f"provider {which} spawn failed: {type(e).__name__}")
+                await decky.emit(
+                    "provider",
+                    {
+                        "ev": "provider",
+                        "type": "error",
+                        "data": {
+                            "code": "provider_start_failed",
+                            "message": "provider_start_failed",
+                        },
+                    },
+                )
+                return
             # 等 provider 连入后注入已存 credential(provider 无状态,不自存;bridge 是唯一真相源)
             try:
                 await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
