@@ -1,0 +1,20 @@
+[project]
+name = "qq-provider"
+version = "1.0.0-beta.2"
+description = "QQ 音乐 provider:QQMusicApi 作为库,包一层 UDS server"
+requires-python = ">=3.11"
+dependencies = [
+    "curl-cffi>=0.15.0",
+    "qqmusic-api-python",
+]
+
+[dependency-groups]
+dev = ["ruff"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/W 代码风格, F pyflakes, I import 排序, UP 语法升级, B bugbear
+select = ["E", "W", "F", "I", "UP", "B"]

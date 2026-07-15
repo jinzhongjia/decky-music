@@ -1,0 +1,12 @@
+# 官方 decky CLI 在 musl 容器里构建前端,让 pnpm 一并拉 rollup 的 musl 原生二进制
+# (否则容器内报 Cannot find module @rollup/rollup-linux-x64-musl)。
+packages:
+  - "."
+supportedArchitectures:
+  os:
+    - current
+  cpu:
+    - current
+  libc:
+    - glibc
+    - musl

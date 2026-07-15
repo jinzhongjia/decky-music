@@ -45,7 +45,8 @@ __pycache__/
 venv/
 
 # Python modules - Docker 构建时自动生成
-py_modules/
+py_modules/*
+!py_modules/*.py
 
 /.yalc
 yalc.lock
@@ -67,3 +68,11 @@ cli/*
 cli/decky
 
 .vscode/setting.json
+
+# Rust build output (player/, ncm-provider/ ...)
+target/
+
+# Nuitka build output (qq-provider/)
+build/
+# dev 模式标记(仅 deploy.sh 在 Deck 上创建,不入库、不进 release zip)
+dev_mode

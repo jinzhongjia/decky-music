@@ -1,16 +1,11 @@
 {
-  "name": "DeckyMusic",
-  "version": "0.8.0",
+  "name": "Decky Music",
   "author": "jinzhongjia",
   "flags": [],
   "api_version": 1,
   "publish": {
-    "tags": [
-      "music",
-      "audio",
-      "streaming"
-    ],
-    "description": "在 Steam Deck 上享受 QQ 音乐。支持扫码登录、搜索歌曲和音乐播放。",
-    "image": "https://y.qq.com/favicon.ico"
+    "tags": ["music", "qqmusic", "netease"],
+    "description": "在 Steam Deck 上播放 QQ 音乐 / 网易云音乐。业务逻辑与音频播放跑在插件沙盒外的独立进程。",
+    "image": ""
   }
 }

@@ -1,0 +1,17 @@
+[package]
+name = "ncm-provider"
+version = "1.0.0-beta.2"
+edition = "2021"
+
+[[bin]]
+name = "ncm-provider"
+path = "src/main.rs"
+
+[dependencies]
+# 网易云:作为库使用,我们在其上包一层 UDS server。不用它自带的 axum HTTP server。
+ncm-api-rs = { git = "https://github.com/SPlayer-Dev/ncm-api-rs" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] } # login_qr_create 只给 qrurl,自己渲染二维码
+base64 = "0.22"           # 二维码 SVG → base64 发给 UI

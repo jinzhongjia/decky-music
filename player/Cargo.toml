@@ -1,0 +1,18 @@
+[package]
+name = "player"
+version = "1.0.0-beta.2"
+edition = "2021"
+
+[[bin]]
+name = "player"
+path = "src/main.rs"
+
+[dependencies]
+# 拉流:纯 Rust TLS;blocking 用于把 HTTP 响应作为 std::io::Read 喂给 rodio。
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "webpki-roots", "blocking"] }
+# 解码 + 输出:内置 symphonia 解码 + cpal 输出;动态链 libasound
+rodio = "0.22"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+parking_lot = "0.12"

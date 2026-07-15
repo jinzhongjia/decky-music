@@ -4,20 +4,13 @@
     "module": "ESNext",
     "target": "ES2020",
     "jsx": "react-jsx",
-    "declaration": false,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "esModuleInterop": true,
     "noImplicitReturns": true,
-    "noImplicitThis": true,
-    "noImplicitAny": true,
     "strict": true,
-    "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true
+    "skipLibCheck": true
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist", "py_modules", "out"]
+  "include": ["src"]
 }

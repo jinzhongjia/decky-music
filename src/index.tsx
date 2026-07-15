@@ -1,106 +1,69 @@
-/**
- * Decky Music 插件主入口
- */
-
-import { PanelSection, PanelSectionRow, staticClasses, Spinner } from "@decky/ui";
 import { definePlugin, routerHook } from "@decky/api";
+import { staticClasses } from "@decky/ui";
 import { FaMusic } from "react-icons/fa";
 
-import { cleanupPlayer } from "./features/player";
-import { useAppLogicNew as useAppLogic } from "./hooks/useAppLogicNew";
-import { PlayerBar, ErrorBoundary } from "./components";
-import { Router } from "./navigation/Router";
-import { FullscreenPlayer } from "./pages";
-import { ROUTE_PATH, menuManager } from "./patches";
-import type { PageType } from "./types";
+import { Boundary } from "./Boundary";
+import { Page, ROUTE } from "./Page";
+import { QAM } from "./QAM";
+import { ALBUM_ROUTE, AlbumDetailPage } from "./screens/AlbumDetail";
+import { ARTIST_ROUTE, ArtistDetailPage } from "./screens/ArtistDetail";
+import { RADIO_ROUTE, RadioPage } from "./screens/Immersive";
+import { DETAIL_ROUTE, PlaylistDetailPage } from "./screens/PlaylistDetail";
+import { TOPLIST_ROUTE, ToplistDetailPage } from "./screens/ToplistDetail";
+import { disableMenuInjection, enableMenuInjection } from "./steamMenu";
 
-// 主内容组件
-function Content() {
-    const { state, player, nav, data } = useAppLogic();
-    const { currentPage, selectedPlaylist } = state;
-
-    const paddingBottom =
-        player.currentSong && currentPage !== "player" ? "70px" : "0";
-
-    const isLoading = currentPage === "loading";
-    return (
-        <div
-            className="decky-music-container"
-            style={{ paddingBottom }}
-        >
-            {isLoading ? (
-                <PanelSection title="Decky Music">
-                    <PanelSectionRow>
-                        <Spinner />
-                    </PanelSectionRow>
-                </PanelSection>
-            ) : (
-                <Router
-                    currentPage={currentPage as PageType}
-                    player={player}
-                    selectedPlaylist={selectedPlaylist}
-                    nav={nav}
-                    data={data}
-                />
-            )}
-
-            {/* 迷你播放器条 - 非全屏播放器页面且有歌曲时显示 */}
-            {player.currentSong && currentPage !== "player" && currentPage !== "login" && currentPage !== "loading" && (
-                <PlayerBar
-                    song={player.currentSong}
-                    isPlaying={player.isPlaying}
-                    loading={player.loading}
-                    onTogglePlay={player.togglePlay}
-                    onSeek={player.seek}
-                    onClick={nav.onGoToPlayer}
-                    onNext={player.playlist.length > 1 ? player.playNext : undefined}
-                    onPrev={player.playlist.length > 1 ? player.playPrev : undefined}
-                    playMode={player.playMode}
-                    onTogglePlayMode={player.cyclePlayMode}
-                />
-            )}
-        </div>
-    );
-}
-
-// 插件导出
 export default definePlugin(() => {
-    // TODO: 修复 full screen 的错误
-    // 注册全屏路由
-    routerHook.addRoute(ROUTE_PATH, FullscreenPlayer);
-    // 插件加载即注册菜单 patch，不依赖首次进入插件页面
-    menuManager.enable();
-
-    return {
-        name: "Decky Music",
-        titleView: (
-            <div className={staticClasses.Title}>
-                <FaMusic style={{ marginRight: "8px" }} />
-                Decky Music
-            </div>
-        ),
-        content: (
-            <ErrorBoundary>
-                <Content />
-            </ErrorBoundary>
-        ),
-        icon: <FaMusic />,
-        onDismount() {
-            // some clean
-            // 清理菜单 patch
-            menuManager.cleanup();
-
-            // 移除路由
-            routerHook.removeRoute(ROUTE_PATH);
-
-            // 清理播放器
-            cleanupPlayer();
-
-            // 移除全局样式
-            const styleEl = document.getElementById("decky-music-styles");
-            if (styleEl) {
-                styleEl.remove();
-            }
-        },
-    };
+  routerHook.addRoute(ROUTE, () => (
+    <Boundary>
+      <Page />
+    </Boundary>
+  ));
+  // 歌单详情独立路由:B = 原生返回上一路由(回 /music,焦点系统级恢复)
+  routerHook.addRoute(DETAIL_ROUTE, () => (
+    <Boundary>
+      <PlaylistDetailPage />
+    </Boundary>
+  ));
+  // 专辑/歌手详情独立路由(P6,与歌单详情同范式)
+  routerHook.addRoute(ALBUM_ROUTE, () => (
+    <Boundary>
+      <AlbumDetailPage />
+    </Boundary>
+  ));
+  routerHook.addRoute(ARTIST_ROUTE, () => (
+    <Boundary>
+      <ArtistDetailPage />
+    </Boundary>
+  ));
+  routerHook.addRoute(TOPLIST_ROUTE, () => (
+    <Boundary>
+      <ToplistDetailPage />
+    </Boundary>
+  ));
+  // QQ 智能电台沉浸页(猜你喜欢/雷达推荐共用)
+  routerHook.addRoute(RADIO_ROUTE, () => (
+    <Boundary>
+      <RadioPage />
+    </Boundary>
+  ));
+  enableMenuInjection(); // 左侧 Steam 菜单注入「音乐」入口(可选增强,失败不影响 QAM/账号页入口)
+  return {
+    name: "Decky Music",
+    titleView: <div className={staticClasses.Title}>{"Decky Music"}</div>,
+    icon: <FaMusic />,
+    content: (
+      <Boundary>
+        <QAM />
+      </Boundary>
+    ),
+    onDismount() {
+      disableMenuInjection();
+      routerHook.removeRoute(ROUTE);
+      routerHook.removeRoute(DETAIL_ROUTE);
+      routerHook.removeRoute(ALBUM_ROUTE);
+      routerHook.removeRoute(ARTIST_ROUTE);
+      routerHook.removeRoute(TOPLIST_ROUTE);
+      routerHook.removeRoute(RADIO_ROUTE);
+    },
+  };
 });

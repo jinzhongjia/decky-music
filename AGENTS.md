@@ -1,271 +1,225 @@
-# Project Memory
+# AGENTS.md
 
-**除非明确要求使用英文交流，否则所有的交流和文档均使用中文**。
+## Library
 
-LLM 约定：
+以下为使用的库:
 
-<AGNET-TODO> 表示需要 AGNET 进行补充的内容，AGNET 需要根据上下文进行合理的补充，确保内容完整且符合项目需求。
+- https://github.com/L-1124/QQMusicApi —— QQ 音乐 provider(Python 库)
+- https://github.com/SPlayer-Dev/ncm-api-rs —— 网易云 provider(Rust 库)
+- https://github.com/SteamDeckHomebrew/decky-loader —— 插件宿主 / API 来源
+- rodio + reqwest(rustls-tls)—— player 拉流/解码/输出
+- @decky/api + @decky/ui —— 前端
 
-## 调研类或者计划类任务处理
+## 架构速览
 
-保存到 `docs/` 目录下的 Markdown 文件中，命名格式为 `plan/search-<简短描述>.md`，内容包括：
-
-- 任务描述
-- 调研的结果或计划的具体步骤
-- 预期的结果或目标
-
-## 项目目的
-
-本项目是一个基于 Decky UI 的音乐下载插件，旨在为用户提供一个方便的界面来搜索和下载音乐。通过集成多个音乐提供者（如 QQ 音乐、网易云音乐等），用户可以轻松找到并下载他们喜欢的歌曲。
-
-## 项目使用的库
-
-### 前端（TypeScript / React）
-
-| 库 | 用途 |
-|---|---|
-| `@decky/api` | Decky Loader 插件 API，提供 `callable`（前后端 RPC 通信）和 `routerHook`（路由注册） |
-| `@decky/ui` | Decky Loader UI 组件库（`PanelSection`、`Spinner`、`Focusable` 等 Steam Deck 风格组件） |
-| `zustand` | 轻量级状态管理，用于 player / provider / auth / data / navigation 五个 Store |
-| `react-icons` | 图标库，提供 `FaMusic` 等图标 |
-| `tslib` | TypeScript 运行时辅助库 |
-
-开发依赖：
-
-| 库 | 用途 |
-|---|---|
-| `@decky/rollup` | Decky 插件专用 Rollup 打包配置 |
-| `rollup` | 前端模块打包工具 |
-| `typescript` | TypeScript 编译器（strict 模式） |
-| `eslint` + `@typescript-eslint/*` | 代码静态检查 |
-| `eslint-plugin-react` / `eslint-plugin-react-hooks` | React 规则检查 |
-| `prettier` | 代码格式化 |
-
-### 后端（Python 3.11）
-
-| 库 | 用途 |
-|---|---|
-| `qqmusic-api-python` | QQ 音乐 API 封装（来自 GitHub `L-1124/QQMusicApi` v0.4.1） |
-| `pymusiclibrary` | 网易云音乐 API 封装（来自 GitHub `2061360308/NeteaseCloudMusic_PythonSDK`） |
-| `qrcode[pil]` | 二维码生成（用于扫码登录） |
-| `requests` | HTTP 请求库（用于更新检查、文件下载等） |
-| `decky`（运行时注入） | Decky Loader 提供的插件运行时 SDK（日志、路径等） |
-
-开发依赖：
-
-| 库 | 用途 |
-|---|---|
-| `ruff` | Python linter 与 formatter |
-| `pyright`（通过 pyproject.toml 配置） | Python 静态类型检查 |
-| `uv` | Python 包管理器，用于开发环境依赖安装 |
-
-## 开发可用命令
-
-### 前端（pnpm）
-
-| 命令 | 说明 |
-|---|---|
-| `pnpm build` | 使用 Rollup 构建前端产物到 `dist/` |
-| `pnpm watch` | Rollup 监听模式，文件变更自动重新构建 |
-| `pnpm lint` | ESLint 检查 `src/` 下的 TypeScript 代码 |
-| `pnpm lint:fix` | ESLint 自动修复 |
-| `pnpm lint:py` | Ruff 检查 Python 代码 |
-| `pnpm lint:py:fix` | Ruff 自动修复并格式化 Python 代码 |
-| `pnpm typecheck` | TypeScript 类型检查（`tsc --noEmit`） |
-| `pnpm format` | Prettier 格式化 `src/` 下的代码 |
-| `pnpm format:check` | Prettier 格式检查（不修改文件） |
-| `pnpm test` | 运行类型检查（等同于 `pnpm typecheck`） |
-
-### 构建与部署（mise）
-
-| 命令 | 说明 |
-|---|---|
-| `mise run clean` | 清理构建产物（`out/`、`dist/`） |
-| `mise run build` | Docker 多阶段构建，输出打包产物到 `out/` |
-| `mise run deploy` | 通过 SSH + rsync 将插件同步到 Steam Deck 并重启 plugin_loader 服务 |
-| `mise run dev` | 一键构建 + 部署到 Steam Deck |
-| `mise run py-deps` | 安装 Python 开发依赖（`uv sync --all-extras`），用于本地 LSP 支持 |
-
-### Python（uv）
-
-| 命令 | 说明 |
-|---|---|
-| `uv sync --all-extras` | 安装全部 Python 依赖（含开发依赖），创建 `.venv` 虚拟环境 |
-
-## 项目目录架构
+UI 只跟 bridge 说话;bridge 是唯一常驻的真相源;provider / player 是插件沙盒外的独立二进制。
 
 ```
-.
-├── main.py                     # 插件后端入口，定义 Plugin 类，暴露前端可调用的 RPC 方法
-├── plugin.json                 # Decky Loader 插件元数据（名称、版本、标签）
-├── package.json                # 前端依赖与脚本定义
-├── pyproject.toml              # Python 项目配置（依赖、ruff、pyright）
-├── requirements.txt            # Python 生产依赖（Docker 构建用）
-├── Dockerfile                  # 多阶段 Docker 构建（Python 依赖 → 前端构建 → 打包）
-├── rollup.config.ts            # Rollup 打包配置
-├── tsconfig.json               # TypeScript 编译配置（strict 模式）
-├── eslint.config.ts            # ESLint 扁平配置
-├── .mise.toml                  # mise 任务定义（clean/build/deploy/dev）
-├── decky.pyi                   # Decky 运行时 Python 类型存根
-│
-├── backend/                    # Python 后端
-│   ├── __init__.py             # 统一导出后端模块
-│   ├── types.py                # 后端类型定义（TypedDict，与前端接口对齐）
-│   ├── config_manager.py       # 配置管理器（前端设置持久化、Provider 配置）
-│   ├── lyric_parser.py         # 歌词解析器（支持 LRC 和 QRC 格式）
-│   ├── update_checker.py       # 插件版本更新检查与下载
-│   ├── util.py                 # 工具函数（HTTP 请求、版本号处理、装饰器）
-│   ├── test_lyric_parser.py    # 歌词解析器单元测试
-│   └── providers/              # 音乐服务提供者
-│       ├── __init__.py         # 导出 Provider 相关类
-│       ├── base.py             # Provider 抽象基类，定义统一接口和能力枚举
-│       ├── manager.py          # Provider 管理器（注册、切换、fallback 匹配）
-│       ├── qqmusic.py          # QQ 音乐 Provider 实现
-│       ├── netease.py          # 网易云音乐 Provider 实现
-│       ├── netease_batch.py    # 网易云批量接口优化
-│       └── fallback_matcher.py # 跨 Provider 歌曲匹配（名称 + 歌手模糊匹配）
-│
-├── src/                        # TypeScript 前端
-│   ├── index.tsx               # 插件前端入口，注册 Decky 插件、路由和菜单 patch
-│   │
-│   ├── api/                    # 后端 RPC 调用封装
-│   │   └── index.ts            # 使用 @decky/api 的 callable 封装所有后端方法
-│   │
-│   ├── types/                  # 全局类型定义
-│   │   ├── index.ts            # 统一导出
-│   │   ├── api.ts              # API 响应类型（与后端 types.py 对齐）
-│   │   ├── player.ts           # 播放器相关类型（SongInfo、PlaylistInfo、ParsedLyric 等）
-│   │   ├── provider.ts         # Provider 相关类型（Capability、ProviderInfo）
-│   │   ├── navigation.ts       # 导航路由类型与常量
-│   │   └── decky-rollup.d.ts   # Decky Rollup 类型声明
-│   │
-│   ├── stores/                 # Zustand 状态管理
-│   │   ├── index.ts            # 统一导出
-│   │   ├── playerStore.ts      # 播放器状态（当前歌曲、播放列表、播放模式、音量）
-│   │   ├── providerStore.ts    # Provider 状态（当前 Provider、Provider 列表）
-│   │   ├── authStore.ts        # 认证状态（登录状态、二维码）
-│   │   ├── dataStore.ts        # 数据状态（推荐歌曲、热搜、歌单）
-│   │   └── navigationStore.ts  # 导航状态（当前页面、页面历史）
-│   │
-│   ├── features/               # 业务功能模块
-│   │   ├── index.ts            # 统一导出
-│   │   ├── auth/               # 认证功能（二维码登录流程）
-│   │   │   ├── index.ts
-│   │   │   └── hooks/useAuth.ts
-│   │   ├── data/               # 数据加载功能（推荐、热搜、歌单等数据获取）
-│   │   │   ├── index.ts
-│   │   │   └── services/       # dataLoaders.ts, imagePreloader.ts
-│   │   │   └── hooks/useDataManager.ts
-│   │   └── player/             # 播放器核心功能
-│   │       ├── index.ts
-│   │       ├── hooks/          # usePlayer.ts, useAudioTime.ts, usePlayerEffects.ts
-│   │       └── services/       # audioService.ts, lyricService.ts, playbackService.ts,
-│   │                           # queueService.ts, shuffleService.ts, persistenceService.ts
-│   │
-│   ├── components/             # UI 组件
-│   │   ├── index.ts            # 统一导出
-│   │   ├── common/             # 通用组件（BackButton, EmptyState, ErrorBoundary, LoadingSpinner, SafeImage）
-│   │   ├── layout/             # 布局组件（FocusableList, PlayAllButton）
-│   │   ├── player/             # 迷你播放器条（PlayerBar）
-│   │   ├── sidebar-player/     # 侧边栏播放器（含控制、封面、歌词、进度条、音量等子组件和 hooks）
-│   │   ├── song/               # 歌曲相关组件（SongItem, SongList, GuessLikeSection）
-│   │   ├── search/             # 搜索结果项组件
-│   │   └── settings/           # 设置页组件（AboutSection, QualitySelector, UpdateSection）
-│   │
-│   ├── pages/                  # 页面组件
-│   │   ├── index.ts            # 统一导出
-│   │   ├── sidebar/            # 侧边栏页面
-│   │   │   ├── HomePage.tsx        # 首页（推荐歌曲、猜你喜欢）
-│   │   │   ├── SearchPage.tsx      # 搜索页
-│   │   │   ├── PlayerPage.tsx      # 播放器页
-│   │   │   ├── LoginPage.tsx       # 登录页（二维码扫码）
-│   │   │   ├── PlaylistsPage.tsx   # 歌单列表页
-│   │   │   ├── PlaylistDetailPage.tsx # 歌单详情页
-│   │   │   ├── HistoryPage.tsx     # 播放历史页
-│   │   │   ├── SettingsPage.tsx    # 设置页
-│   │   │   └── ProviderSettingsPage.tsx # Provider 设置页
-│   │   └── fullscreen/         # 全屏播放器页面
-│   │       ├── PlayerPage.tsx      # 全屏播放器主页
-│   │       ├── GuessLikePage.tsx   # 猜你喜欢全屏页
-│   │       ├── KaraokeLyrics.tsx   # 卡拉 OK 歌词展示
-│   │       ├── LyricLine.tsx       # 歌词行组件
-│   │       ├── PlayerCover.tsx     # 全屏封面
-│   │       ├── PlayerMeta.tsx      # 歌曲元信息展示
-│   │       ├── PlayerProgress.tsx  # 全屏进度条
-│   │       ├── NavBar.tsx          # 全屏导航栏
-│   │       └── hooks/             # 全屏播放器 hooks
-│   │
-│   ├── navigation/             # 路由与导航
-│   │   ├── index.ts            # 统一导出
-│   │   ├── routes.ts           # 路由常量定义
-│   │   ├── Router.tsx          # 路由组件（根据当前页面渲染对应 Page）
-│   │   └── useNavigation.ts    # 导航 hook
-│   │
-│   ├── hooks/                  # 全局通用 hooks
-│   │   ├── useAppLogicNew.ts   # 应用主逻辑 hook（整合 player/nav/data）
-│   │   ├── useAutoLoadGuessLike.ts # 自动加载猜你喜欢
-│   │   ├── useDebounce.ts      # 防抖 hook
-│   │   ├── useMountedRef.ts    # 组件挂载状态引用
-│   │   ├── useProvider.ts      # Provider 相关逻辑
-│   │   ├── useQrStatusPolling.ts # 二维码状态轮询
-│   │   ├── useSearchHistory.ts # 搜索历史管理
-│   │   ├── useSteamInput.ts    # Steam Deck 输入适配
-│   │   └── useVirtualList.ts   # 虚拟列表（长列表性能优化）
-│   │
-│   ├── patches/                # Steam 客户端菜单 patch
-│   │   ├── index.ts
-│   │   └── menuPatch.tsx       # 注入快捷菜单项（全屏播放器入口）
-│   │
-│   └── utils/                  # 工具函数
-│       ├── boundedSet.ts       # 有界集合（限制大小的 Set）
-│       ├── format.ts           # 格式化工具（时间、文件大小等）
-│       ├── inputManager.ts     # 输入管理器
-│       ├── logger.ts           # 前端日志（转发到后端）
-│       ├── promise.ts          # Promise 工具函数
-│       └── styles.ts           # 样式工具
-│
-├── assets/                     # 静态资源（插件图标与 logo）
-├── docs/                       # 文档（调研计划、性能评审记录等）
-└── .github/                    # GitHub 配置（dependabot）
+UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
+                                              │  UDS + NDJSON,bridge 作 server
+                            ┌─────────────────┴─────────────────┐
+                      provider 进程                          player 进程
+                 qq: Python+Nuitka / ncm: Rust                 Rust
+                 出元数据·歌词·可播 URL                    拉流·解码·出声
 ```
 
-## commit 消息生成规范
+目录:
 
-**使用 `git diff` 生成符合 Conventional Commit 格式的提交消息，格式为 `type(scope): 简短描述` + 空行 + 多个带 `-` 的描述点。必须直接输出提交消息内容，不要包含任何 markdown 格式或额外解释。如果提供了提交历史，参考其风格保持一致。**
+- `main.py` —— 只剩对外接口 facade(`Plugin` 类,逐个转发给 bridge)
+- `py_modules/` —— bridge 实现(`bridge.py` 总线 + 进程管理 / `log.py` 日志);放这里才被 Decky 加进 sys.path 且被 CLI 打包
+- `src/` —— React UI:`index.tsx`(`definePlugin` 入口)/ `QAM.tsx`(QAM 面板)/ `Page.tsx`(大屏页,导出 `ROUTE`)/ `api.ts`(前端↔bridge 唯一接口层)/ `errors.ts`+`ErrorBanner.tsx`+`Boundary.tsx`(错误纵深)/ `Footer.tsx` / `i18n.ts`
+- `player/` —— Rust,`reqwest` + `rodio`
+- `ncm-provider/` —— Rust,依赖 ncm-api-rs
+- `qq-provider/` —— Python,依赖 qqmusic_api,Nuitka `--standalone` 打包
 
-默认使用中文!
-强制要求：commit message 不要带有任何和 LLM 相关的 Co-Authored-By
+## Coding rules
 
-## Readme 维护
+- 不要写过长的代码，例如单文件超过 500 行，函数超过 50 行。
+- 插件支持 i18n，支持语言为 中文 和 英文。
+- 开发完一部分后就提示用户提交代码，避免一次性提交过多代码。
 
-每个 src 下的目录都需要一个 README.md 文件，内容包括：
+## Dev environment
 
-- 目录介绍
-- 结构说明
-- 业务逻辑
-- 对外暴露的接口或者方法
-- 接口定义说明
-- 与其他目录之间依赖的关系
+- 部署目标:Steam Deck(SteamOS,gamescope 会话)。SSH/路径见 `scripts/deploy.sh`。
+- bridge 跑在 Decky 冻结的 CPython 里,**只能用 stdlib**,严禁第三方依赖(编译扩展会随 Decky 升级崩)。
+- 三个二进制通过 Decky `remote_binary`(`package.json`)在安装时下载,不进插件包。
+- **改了 player / provider 代码必须先重建二进制再部署**:`deploy.sh` 只搬运 `target/release/*`
+  和 `qq-provider/build/*.tar.gz` 里**已有**的产物,不自动重建。改了 Rust/Python 后先
+  `bash scripts/build-rust.sh -p <player|ncm-provider>` / `bash scripts/build-qq-provider.sh`
+  再 deploy,否则装的是旧二进制。只改前端则 deploy 会自己 `pnpm build`。
 
-每次更新 src 下目录的代码时，检查 README.md 是否需要更新，保持文档与代码一致。
+### Setup commands
 
-## 代码要求
+```bash
+pnpm install                    # 前端依赖
+pnpm build                      # 只构建前端 → dist/
+pnpm lint                       # 前端 lint:tsc --noEmit + prettier --check;pnpm format 自动格式化
+sudo ./cli/decky plugin build . # 官方 CLI 打包整个插件 → out/<name>.zip(需 Docker + sudo)
+bash scripts/deploy.sh          # 打包 + rsync 到 Steam Deck + 重启 plugin_loader
+# 覆盖目标机:DECK_HOST=deck@ip bash scripts/deploy.sh
+# 首次会自动下载官方 CLI 到 cli/decky(gitignore 已忽略)
 
-### 必须做
+cargo build --release -p player          # 各二进制单独构建(走 remote_binary,不进插件包)
+cargo build --release -p ncm-provider
+cargo fmt --all && cargo clippy --workspace   # Rust lint(clippy + rustfmt)
+bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
 
-1. **拆分文件**：当功能复杂时，主动拆分为多个文件
-2. **类型优先**：先定义类型，再实现逻辑
-3. **性能考虑**：在编写代码时考虑性能影响
-4. **可读性**：使用有意义的变量名和函数名，前端新手也可以轻松读懂代码
-5. **模块化**：提取可复用的逻辑为独立函数或 Hooks
-6. **简洁性**: 无用的代码无需保留
-7. **严格性**: 严格遵守上方的 Python 使用规范和 TypeScript 使用规范
-8. **接口统一**: 前后端接口设计要统一，确保数据结构一致
+(cd qq-provider && uv run ruff check .)   # qq-provider lint(ruff);--fix 自动修,ruff format 格式化
+```
 
-### 禁止做
+### 调试运行中的 Steam 前端(查 React 树 / webpack 模块)
 
-1. **超大文件**：不生成难以阅读的超大单个文件
-2. **使用 any**：避免使用 TypeScript 的 `any` 类型
-3. **硬编码**：不在代码中硬编码配置值或常量
-4. **过度注释**：不为显而易见的代码添加注释
-5. **忽视性能**：不忽视可能的性能问题
+Deck 上 Steam 开着 CEF 远程调试(8080)。查活动 UI 的 React 结构、定位 Valve 混淆过的组件/模块时可用:
+
+```bash
+ssh -N -L 8080:localhost:8080 deck@<ip> &          # 隧道(后台)
+curl -s localhost:8080/json | jq '.[].title'       # 列 target:SharedJSContext / MainMenu / QuickAccess …
+```
+
+用 Node(≥21 有全局 `WebSocket`)连 target 的 `webSocketDebuggerUrl`,`Runtime.enable` 后
+`Runtime.evaluate` 注入 JS。取 webpack 模块:`window[webpackChunk*].push([[Symbol()],{},r=>req=r])`
+拿到 require,遍历 `req.m`(factory 源码,可 grep 常量)或 `req(id)` 取实例。**只读排查用,别写进插件。**
+
+现成工具在 `scripts/cdp/`:`cdp.mjs`(CDP 客户端)+ `probe-mainmenu.js`(主菜单结构探针)+ README。
+
+### 防止 Deck 调试期间休眠
+
+Steam Deck 屏幕久无操作会自动休眠,SSH/CDP 调试(尤其等歌播完这类长验证)会被打断。
+调试前先挂一个 systemd 阻断器,结束后杀掉:
+
+```bash
+# 挂上(user systemd 单元,ssh 断开也存活;nohup & 会随 ssh 会话被清掉,别用)
+ssh "${DECK_HOST:-deck@192.168.0.18}" 'systemd-run --user --unit decky-music-nosleep --collect \
+  systemd-inhibit --what=idle:sleep --who=decky-music-dev --why="CDP debugging" sleep infinity'
+# 验证:systemd-inhibit --list --mode=block | grep decky
+# 收尾
+ssh "${DECK_HOST:-deck@192.168.0.18}" 'systemctl --user stop decky-music-nosleep'
+```
+
+Agent 注意:开始真机调试前主动挂上,调试结束(或会话收尾)记得解除,别让 Deck 常亮过夜。
+
+## Commit messages
+
+* 使用 Conventional Commits:`<type>(<scope>): <subject>`。
+* 提交信息使用中文。
+* 不带有任何 LLM 信息。
+- 如果修改多的话，代码提交根据代码的不同作用分为不同的 commit。
+
+## Testing rules
+
+- 每阶段有可观测验收,未过不进下一阶段。
+- player 出声是命门:真实 gamescope 会话里听到声音、`ldd` 只动态依赖 `libasound`。
+- 每个含 UI 阶段:注入错误/杀后端/畸形数据/断网,**Steam UI 不崩不冻**。
+
+### UI 实机截图与渲染图
+
+- 修改 `src/` 中任何会影响视觉、文案、布局或手柄焦点的 UI 代码后，必须在同一次变更中更新
+  `docs/ui-design/assets/device-screenshots/<provider>/` 下对应场景的 Steam Deck 设备原始截图；
+  共享 UI 变更需要同步更新 QQ / NCM 两端所有受影响截图。
+- 实机截图是当前 UI 效果的事实源；`docs/ui-design/assets/device-renders/` 是基于实机截图生成的
+  展示图，不能代替真机验收，也不能用历史设计图或旧渲染图冒充当前实现。
+- 图片文件名保持稳定，并由 Git LFS 追踪。新增场景时使用可读的稳定名称，避免把日期或随机后缀写进文件名。
+- 更新实机截图后，必须明确提示用户使用最新实机截图重新渲染对应的实机渲染图；重渲染完成前，
+  不得把旧渲染图描述为当前效果。
+- 获取新截图如需重新部署，必须先按本文 Agent behavior 规则征得用户同意；未获同意前不得伪造截图，
+  应明确说明截图更新被真机部署授权阻塞。
+
+## Logging rules
+
+统一日志系统,复用 Decky 自带的 `decky.logger`(写到 `DECKY_PLUGIN_LOG_DIR`)。bridge 是唯一落盘点。
+
+必须遵守：插件日志使用英文记录。日志信息中不得包含任何敏感信息，如密钥、密码、cookie 等。
+
+**两个维度的标签**(格式 `[{source}·{origin}] where: msg`):
+- `source`:`bridge` | `player` | `provider` —— 哪个进程。
+- `origin`:`own`(bridge 自身)| `socket`(子进程**预期**日志,结构化)| `stderr`(子进程**非预期**,如 panic/traceback)。
+
+**四个级别**:
+- `debug`:仅调试时看的细节(**只在 dev 模式输出**)。
+- `info`:流程上少量必要的关键信息(spawn、登录成功、拉流成功等)。
+- `warn`:非致命错误(song_url 无版权、stderr 捕获行等)。
+- `error`:致命错误(设备打不开、启动超时、登录异常等)。
+
+**dev / release**:靠插件目录有无 `dev_mode` 标记判定(`deploy.sh` 侧载时 `touch`,release 的 zip 不含)。
+dev → `logger.setLevel(DEBUG)`(debug 输出);release → `INFO`(debug 过滤,其余照常)。bridge 经 `_child_env`
+注入 `DECKY_MUSIC_DEBUG=1`,子进程据此 release 下不发 debug 事件省 IPC。
+
+**各组件的日志实现各自独立成文件**:
+- bridge:`py_modules/log.py` —— `log(source, origin, level, msg)` + `log_child_event` + `pump_stderr`。
+  (放 `py_modules/` 才能被 Decky 加进 sys.path 且被 CLI 打包。)子进程的 `{"ev":"log"}` 与
+  `{"ev":"error"}` 事件由 bridge 自动落日志,stderr 由 bridge 逐行捕获落 `warn`。
+- player(Rust):`player/src/logging.rs` —— `log_json(level, place, msg)` 发 `{"ev":"log",...}`;
+  音频线程用 `AudioEv::Log`。
+- provider(Python):`qq-provider/log.py` —— `make_log(out)` 返回 `log(level, where, msg)` 发 `{"ev":"log",...}`。
+- **子进程的所有诊断走 socket 结构化日志事件**;stderr 只留真正意外(panic/traceback)。
+
+**红线**:绝不记密钥类数据 —— 播放 URL(含限时 vkey)、cookie/credential 一律不进日志。
+
+### 如何获取日志(调试用)
+
+Deck 上落盘在 `~/homebrew/logs/Decky Music/`(目录名 = `plugin.json` 的 `name`,含空格),
+**每次 plugin_loader 重启生成一份** `YYYY-MM-DD HH.MM.SS.log`,最新一份 = 当前会话。
+行格式:`[时间][级别]: [source·origin] where: msg`。
+
+拉最新一份(`DECK_HOST` 默认见 `scripts/deploy.sh`):
+
+```bash
+ssh "${DECK_HOST:-deck@192.168.0.18}" \
+  'f=$(ls -t "$HOME/homebrew/logs/Decky Music/"*.log | head -1); tail -n 200 "$f"'
+```
+
+dev(侧载带 `dev_mode`)→ DEBUG 及以上都在;release → 只 INFO 及以上。
+
+## API 契约(前端 ↔ bridge)
+
+bridge 的对外接口 = `Plugin` 类的 `async` 方法(前端 `callable` 调用)+ `decky.emit` 事件(bridge → 前端)。
+前端对这些接口的**声明全部集中在 `src/api.ts`**,是唯一接口层:
+
+- RPC 用 `api.*`(`callable` 声明);事件用 `onPlayer` / `onLogin` 等带类型的订阅辅助(返回退订函数)。
+- 共享类型(`Provider` / `Song` / `PlayerEvent` / `LoginEvent` 等)也在 `src/api.ts`,组件从这里引。
+- **禁止**在组件里散落写 `callable(...)` 或裸 `addEventListener`。
+
+**绑定规范(必须遵守)**:bridge 与 `src/api.ts` 是**同一份契约的两端,必须一一对应、同步改动**。
+改 bridge 的 callable 方法(增删 / 改名 / 改参数或返回)或 emit 事件(改名 / 改字段)时,**同一次改动**里必须
+同步更新 `src/api.ts` 的声明与类型;反之亦然。不允许只改一端。
+
+## 协议 v1(bridge ↔ 子进程,UDS + NDJSON)
+
+bridge ↔ provider/player 走**协议 v1**(见 issue #31)。传输仍是 UDS + NDJSON、bridge 作 server、
+每条一行 JSON。四种消息:
+
+- Request(bridge→child):`{"id":N,"cmd":C,"args":{...}}`
+- Response(child→bridge):`{"id":N,"ok":true,"data":{...}}` 或 `{"id":N,"ok":false,"error":{"code","message"}}`
+- Event(child→bridge):`{"ev":D,"type":T,"data":{...}}`,D ∈ `player`/`login`/`provider`
+- Log(child→bridge):`{"ev":"log","level","where","msg"}`(独立顶层格式)
+
+**构造 / 解码集中在各自的 protocol 模块,业务代码不碰裸 JSON**:
+`py_modules/protocol.py`(bridge,typed decode + demux)、`qq-provider/protocol.py`、
+`ncm-provider/src/protocol.rs`、`player/src/protocol.rs`。改协议时四端 + `src/api.ts` 的
+`PlayerEvent`/`LoginEvent`/`ProviderEvent` 必须同步。协议模块配套单测(`tests/`、`qq-provider/tests/`、
+Rust `#[cfg(test)]`)。
+
+要点:
+- **request id**:bridge 递增生成,当前仍 FIFO 收发,id 只用于校验错配;并发/乱序 demux 留后续。
+- **错误码**:失败必带稳定 `error.code`(供前端 i18n),`message` 只作安全 fallback。第三方库原始错误
+  **默认不透 UI**;前端 `errorText(code)` 命中已知码 → 本地化,否则原样显示。
+- **红线延续**:`message` / 日志都不得含 URL(限时 token)/ cookie / credential。
+- 前端订阅事件先过 `isDomainEvent` 运行时 guard,畸形事件忽略不崩 UI。
+
+## Documentation rules
+
+- 代码里用 `ponytail:` 注释标记刻意的简化 / 延后项及其升级路径。
+
+## Release workflow
+
+- 打 tag → GitHub Release → `.github/workflows/release.yml` 用官方 Decky CLI 打包并上传 zip。
+- 三个二进制需另行构建、算 sha256、填回 `package.json` 的 `remote_binary`,并作为 Release asset 上传。
+
+## Agent behavior
+
+* 仅在明确要求时,才能 `git commit` 或 `git push`。
+* ./docs/DESIGN.md 里有详细的设计文档,请在开发前仔细阅读。
+* 如果有任何不清楚的地方,请在开发前提出问题,不要在开发中途才提出。
+* 根据需要更新我们的设计文档,并在 PR 中附上更新的内容。
+* 在重新部署前需要经过用户同意，严禁在未经用户同意的情况下重新部署。
+* 禁止将密钥或者密码等信息写入代码中，必须使用环境变量或者配置文件的方式进行管理。
