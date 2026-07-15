@@ -1,6 +1,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
+use rodio::Source;
 use serde_json::json;
 use tokio::sync::mpsc as tmpsc;
 
@@ -63,6 +64,31 @@ impl AudioEv {
 /// 播放中定期重报 pos,把漂移上限压到一个间隔内。
 const POS_ANCHOR_INTERVAL: Duration = Duration::from_secs(3);
 
+/// 淡入淡出:消除切歌/暂停的硬切爆音。起播淡入走 FadeIn 源适配器(采样级),
+/// 收尾淡出走音量斜坡(旧曲已在 sink 里,只能从外面拉音量)。
+const FADE_IN: Duration = Duration::from_millis(300);
+const FADE_OUT: Duration = Duration::from_millis(200);
+const FADE_STEPS: u32 = 20;
+
+/// 音量斜坡。在音频线程内小步阻塞,总时长 ≤ FADE_OUT(低于 250ms 命令轮询间隔,
+/// 后续命令最多晚这么点处理,听感无感知)。
+fn fade(sink: &rodio::Player, from: f32, to: f32, dur: Duration) {
+    for i in 1..=FADE_STEPS {
+        let t = i as f32 / FADE_STEPS as f32;
+        sink.set_volume(from + (to - from) * t);
+        std::thread::sleep(dur / FADE_STEPS);
+    }
+}
+
+/// 旧曲收尾:仍在出声则先淡出,再由调用方丢弃/暂停。
+fn fade_out_playing(sink: &Option<rodio::Player>, volume: f32) {
+    if let Some(s) = sink {
+        if !s.empty() && !s.is_paused() {
+            fade(s, volume, 0.0, FADE_OUT);
+        }
+    }
+}
+
 /// 拥有 OutputStream + Sink 的专用线程。用 recv_timeout 轮询:平时睡,到点醒来查是否播完。
 pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv>) {
     let device_sink = match rodio::DeviceSinkBuilder::open_default_sink() {
@@ -87,16 +113,20 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
     let mut active = false; // 是否有在播的曲子(用于判定 ended)
     let mut last_anchor = std::time::Instant::now(); // 上次位置锚点(Playing 事件)时刻
 
+    // 用户音量,线程内记账:新 sink 按它初始化(rodio 默认 1.0,不存则每次换歌音量跳回 100%),
+    // 淡入淡出斜坡也以它为顶。
+    let mut volume: f32 = 1.0;
+
     loop {
         match rx.recv_timeout(Duration::from_millis(250)) {
             Ok(AudioCmd::Load(stream)) => {
                 let stream_probe = stream.probe();
-                match rodio::Decoder::new(*stream).map(|d| {
-                    let s = rodio::Player::connect_new(device_sink.mixer());
-                    s.append(d);
-                    s
-                }) {
-                    Ok(s) => {
+                match rodio::Decoder::new(*stream) {
+                    Ok(d) => {
+                        fade_out_playing(&sink, volume); // 换歌不硬切
+                        let s = rodio::Player::connect_new(device_sink.mixer());
+                        s.set_volume(volume);
+                        s.append(d.fade_in(FADE_IN));
                         sink = Some(s);
                         probe = Some(stream_probe);
                         active = true;
@@ -113,7 +143,11 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
             }
             Ok(AudioCmd::Pause) => {
                 if let Some(s) = &sink {
+                    if !s.empty() && !s.is_paused() {
+                        fade(s, volume, 0.0, FADE_OUT);
+                    }
                     s.pause();
+                    s.set_volume(volume); // 斜坡拉到 0 后复位,resume 淡入再从 0 起
                     let _ = ev.send(AudioEv::Paused {
                         pos: s.get_pos().as_secs_f64(),
                     });
@@ -121,7 +155,9 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
             }
             Ok(AudioCmd::Resume) => {
                 if let Some(s) = &sink {
+                    s.set_volume(0.0);
                     s.play();
+                    fade(s, 0.0, volume, FADE_OUT);
                     last_anchor = std::time::Instant::now();
                     let _ = ev.send(AudioEv::Playing {
                         pos: s.get_pos().as_secs_f64(),
@@ -129,8 +165,9 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
                 }
             }
             Ok(AudioCmd::Volume(v)) => {
+                volume = v.clamp(0.0, 1.0);
                 if let Some(s) = &sink {
-                    s.set_volume(v.clamp(0.0, 1.0));
+                    s.set_volume(volume);
                 }
             }
             Ok(AudioCmd::Seek(sec)) => {
@@ -150,6 +187,7 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
                 }
             }
             Ok(AudioCmd::Stop) => {
+                fade_out_playing(&sink, volume);
                 sink = None;
                 probe = None;
                 active = false;
