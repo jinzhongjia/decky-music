@@ -12,6 +12,7 @@ const ERR_CODES: Record<string, string> = {
   no_playable: "playError",
   play_failed: "playError",
   provider_start_timeout: "errProviderStart",
+  provider_start_failed: "errProviderStart",
   // 首开分类:fetch_timeout = 慢网(等等再试),fetch_failed = 断网/连不上(查网络);
   // 中途断流也走 fetch_failed,同属网络异常
   fetch_timeout: "errNetSlow",

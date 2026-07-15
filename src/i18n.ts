@@ -82,7 +82,7 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     loading: "加载中…",
     back: "返回",
     errTimeout: "请求超时,请重试",
-    errProviderStart: "音乐源启动超时",
+    errProviderStart: "音乐源启动失败,请重试",
     errPlayback: "播放失败,请重试",
     errNetSlow: "网络缓慢,加载超时,请稍后重试",
     errNetwork: "网络异常,请检查网络连接",
