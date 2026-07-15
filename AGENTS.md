@@ -82,6 +82,22 @@ curl -s localhost:8080/json | jq '.[].title'       # 列 target:SharedJSContext 
 
 现成工具在 `scripts/cdp/`:`cdp.mjs`(CDP 客户端)+ `probe-mainmenu.js`(主菜单结构探针)+ README。
 
+### 防止 Deck 调试期间休眠
+
+Steam Deck 屏幕久无操作会自动休眠,SSH/CDP 调试(尤其等歌播完这类长验证)会被打断。
+调试前先挂一个 systemd 阻断器,结束后杀掉:
+
+```bash
+# 挂上(user systemd 单元,ssh 断开也存活;nohup & 会随 ssh 会话被清掉,别用)
+ssh "${DECK_HOST:-deck@192.168.0.18}" 'systemd-run --user --unit decky-music-nosleep --collect \
+  systemd-inhibit --what=idle:sleep --who=decky-music-dev --why="CDP debugging" sleep infinity'
+# 验证:systemd-inhibit --list --mode=block | grep decky
+# 收尾
+ssh "${DECK_HOST:-deck@192.168.0.18}" 'systemctl --user stop decky-music-nosleep'
+```
+
+Agent 注意:开始真机调试前主动挂上,调试结束(或会话收尾)记得解除,别让 Deck 常亮过夜。
+
 ## Commit messages
 
 * 使用 Conventional Commits:`<type>(<scope>): <subject>`。
