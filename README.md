@@ -1,6 +1,10 @@
 # Decky Music
 
 <p align="center">
+  <strong>简体中文</strong> · <a href="README_EN.md">English</a>
+</p>
+
+<p align="center">
   <img
     src="https://raw.githubusercontent.com/jinzhongjia/decky-music/95e06cf98bd7f56c817d16ed6fab53a24871e595/assets/decky_music_logo_small.png"
     alt="Decky Music"
