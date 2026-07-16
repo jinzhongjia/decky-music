@@ -2,7 +2,7 @@
 
 <p align="center">
   <img
-    src="https://raw.githubusercontent.com/jinzhongjia/decky-music/main/assets/decky_music_logo_small.png"
+    src="https://raw.githubusercontent.com/jinzhongjia/decky-music/95e06cf98bd7f56c817d16ed6fab53a24871e595/assets/decky_music_logo_small.png"
     alt="Decky Music"
     width="600"
   />
