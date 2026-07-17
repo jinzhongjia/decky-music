@@ -1,4 +1,5 @@
 import { ButtonItem, Navigation, PanelSection, PanelSectionRow } from "@decky/ui";
+import { toaster } from "@decky/api";
 import { useEffect, useState } from "react";
 
 import {
@@ -34,10 +35,17 @@ const S = {
   qr: null as string | null,
   status: "",
   primed: false,
+  cacheSize: null as number | null,
 };
 
 function loginStatusText(status: string): string {
   return t(("login" + status.charAt(0).toUpperCase() + status.slice(1)) as any) || status;
+}
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function QAM() {
@@ -53,6 +61,9 @@ export function QAM() {
   const setQr = (q: string | null) => ((S.qr = q), sq(q));
   const setStatus = (s: string) => ((S.status = s), ss(s));
   const setAccount = (a: Account | null) => ((S.account = a), sa(a));
+  const [cacheSize, ssz] = useState<number | null>(S.cacheSize);
+  const setCacheSize = (n: number | null) => ((S.cacheSize = n), ssz(n));
+  const [confirmData, setConfirmData] = useState(false);
 
   const showAccount = async () => {
     try {
@@ -145,153 +156,215 @@ export function QAM() {
     setView("pick");
   };
 
+  // 进入存储区可见的视图时刷新一次占用大小(stat 少数文件,开销小)
+  useEffect(() => {
+    if (view === "pick" || view === "account")
+      api
+        .getCacheSize()
+        .then(setCacheSize)
+        .catch(() => {});
+  }, [view]);
+
+  const doClearCache = async () => {
+    try {
+      setCacheSize(await api.clearCache());
+      toaster.toast({ title: t("music"), body: t("cacheCleared") });
+    } catch (e) {
+      reportError(e instanceof Error ? e.message : String(e), "qam");
+    }
+  };
+
+  // 两段式确认:首点变确认标签,~4s 未再点自动复原(@decky/ui 的 ConfirmModal 本项目被混淆不可导入)
+  const doClearData = async () => {
+    if (!confirmData) {
+      setConfirmData(true);
+      setTimeout(() => setConfirmData(false), 4000);
+      return;
+    }
+    setConfirmData(false);
+    try {
+      await api.clearData();
+    } catch (e) {
+      reportError(e instanceof Error ? e.message : String(e), "qam");
+      return;
+    }
+    setAccount(null);
+    setProvider(null);
+    setProviderSelected(false);
+    setView("pick");
+  };
+
   return (
-    <PanelSection title={t("music")}>
-      <ErrorBanner scope="qam" />
+    <>
+      <PanelSection title={t("music")}>
+        <ErrorBanner scope="qam" />
 
-      {view === "loading" && (
-        <PanelSectionRow>
-          <div style={{ opacity: 0.6, textAlign: "center" }}>{t("loading")}</div>
-        </PanelSectionRow>
-      )}
+        {view === "loading" && (
+          <PanelSectionRow>
+            <div style={{ opacity: 0.6, textAlign: "center" }}>{t("loading")}</div>
+          </PanelSectionRow>
+        )}
 
-      {view === "pick" && (
-        <>
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => pick("qq")}>
-              {t("qq")}
-            </ButtonItem>
-          </PanelSectionRow>
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => pick("ncm")}>
-              {t("ncm")}
-            </ButtonItem>
-          </PanelSectionRow>
-          {/* 从账号页「切换音乐源」进来才给返回;初次进入/登出后 account 为空,无处可回 */}
-          {account && (
+        {view === "pick" && (
+          <>
             <PanelSectionRow>
-              <ButtonItem layout="below" onClick={() => setView("account")}>
+              <ButtonItem layout="below" onClick={() => pick("qq")}>
+                {t("qq")}
+              </ButtonItem>
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={() => pick("ncm")}>
+                {t("ncm")}
+              </ButtonItem>
+            </PanelSectionRow>
+            {/* 从账号页「切换音乐源」进来才给返回;初次进入/登出后 account 为空,无处可回 */}
+            {account && (
+              <PanelSectionRow>
+                <ButtonItem layout="below" onClick={() => setView("account")}>
+                  {t("back")}
+                </ButtonItem>
+              </PanelSectionRow>
+            )}
+          </>
+        )}
+
+        {view === "qqmethod" && (
+          <>
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={() => startLogin("qq")}>
+                {t("qqLogin")}
+              </ButtonItem>
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={() => startLogin("wx")}>
+                {t("wxLogin")}
+              </ButtonItem>
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={() => setView("pick")}>
                 {t("back")}
               </ButtonItem>
             </PanelSectionRow>
-          )}
-        </>
-      )}
+          </>
+        )}
 
-      {view === "qqmethod" && (
-        <>
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => startLogin("qq")}>
-              {t("qqLogin")}
-            </ButtonItem>
-          </PanelSectionRow>
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => startLogin("wx")}>
-              {t("wxLogin")}
-            </ButtonItem>
-          </PanelSectionRow>
-          <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => setView("pick")}>
-              {t("back")}
-            </ButtonItem>
-          </PanelSectionRow>
-        </>
-      )}
-
-      {view === "qr" && (
-        <>
-          <PanelSectionRow>
-            <div style={{ textAlign: "center" }}>
-              {qr && (
-                <img
-                  src={qr}
-                  style={{
-                    width: 200,
-                    height: 200,
-                    background: "#fff",
-                    padding: 8,
-                    borderRadius: 8,
-                  }}
-                  alt="QR"
-                />
-              )}
-              <div style={{ marginTop: "0.5rem" }}>
-                {status ? loginStatusText(status) : t("loginQr")}
+        {view === "qr" && (
+          <>
+            <PanelSectionRow>
+              <div style={{ textAlign: "center" }}>
+                {qr && (
+                  <img
+                    src={qr}
+                    style={{
+                      width: 200,
+                      height: 200,
+                      background: "#fff",
+                      padding: 8,
+                      borderRadius: 8,
+                    }}
+                    alt="QR"
+                  />
+                )}
+                <div style={{ marginTop: "0.5rem" }}>
+                  {status ? loginStatusText(status) : t("loginQr")}
+                </div>
               </div>
-            </div>
-          </PanelSectionRow>
-          <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              onClick={() => setView(provider === "qq" ? "qqmethod" : "pick")}
-            >
-              {t("back")}
-            </ButtonItem>
-          </PanelSectionRow>
-        </>
-      )}
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                onClick={() => setView(provider === "qq" ? "qqmethod" : "pick")}
+              >
+                {t("back")}
+              </ButtonItem>
+            </PanelSectionRow>
+          </>
+        )}
 
-      {view === "account" && (
-        <>
-          <PanelSectionRow>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              {account?.avatar && (
-                <img
-                  src={account.avatar}
-                  style={{ width: 48, height: 48, borderRadius: "50%" }}
-                  alt=""
-                />
-              )}
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.25rem",
-                  alignItems: "flex-start",
+        {view === "account" && (
+          <>
+            <PanelSectionRow>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                {account?.avatar && (
+                  <img
+                    src={account.avatar}
+                    style={{ width: 48, height: 48, borderRadius: "50%" }}
+                    alt=""
+                  />
+                )}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.25rem",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <div>{account?.nickname || ""}</div>
+                  {account?.vip && (
+                    <span
+                      style={{
+                        fontSize: "0.75em",
+                        padding: "0.05rem 0.45rem",
+                        borderRadius: "0.6rem",
+                        color: "#3a2c00",
+                        background: "linear-gradient(90deg, #f6d365, #f0a020)",
+                      }}
+                    >
+                      {vipText(account.vip)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                onClick={() => {
+                  Navigation.Navigate(ROUTE); // 进大屏播放页
+                  Navigation.CloseSideMenus(); // 收起 QAM,露出大屏
                 }}
               >
-                <div>{account?.nickname || ""}</div>
-                {account?.vip && (
-                  <span
-                    style={{
-                      fontSize: "0.75em",
-                      padding: "0.05rem 0.45rem",
-                      borderRadius: "0.6rem",
-                      color: "#3a2c00",
-                      background: "linear-gradient(90deg, #f6d365, #f0a020)",
-                    }}
-                  >
-                    {vipText(account.vip)}
-                  </span>
-                )}
-              </div>
+                {t("openPlayer")}
+              </ButtonItem>
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={doLogout}>
+                {t("logout")}
+              </ButtonItem>
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={() => setView("pick")}>
+                {t("switchProvider")}
+              </ButtonItem>
+            </PanelSectionRow>
+          </>
+        )}
+
+        <Footer />
+      </PanelSection>
+      {(view === "pick" || view === "account") && (
+        <PanelSection title={t("storage")}>
+          <PanelSectionRow>
+            <div style={{ fontSize: "0.8em", opacity: 0.7 }}>
+              {t("cacheUsage")}: {cacheSize == null ? "…" : fmtBytes(cacheSize)}
             </div>
           </PanelSectionRow>
           <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              onClick={() => {
-                Navigation.Navigate(ROUTE); // 进大屏播放页
-                Navigation.CloseSideMenus(); // 收起 QAM,露出大屏
-              }}
-            >
-              {t("openPlayer")}
+            <ButtonItem layout="below" onClick={doClearCache}>
+              {t("clearCache")}
             </ButtonItem>
           </PanelSectionRow>
           <PanelSectionRow>
-            <ButtonItem layout="below" onClick={doLogout}>
-              {t("logout")}
+            <ButtonItem layout="below" onClick={doClearData}>
+              {confirmData ? t("clearDataConfirm") : t("clearData")}
             </ButtonItem>
           </PanelSectionRow>
           <PanelSectionRow>
-            <ButtonItem layout="below" onClick={() => setView("pick")}>
-              {t("switchProvider")}
-            </ButtonItem>
+            <div style={{ fontSize: "0.75em", opacity: 0.6 }}>{t("clearDataDesc")}</div>
           </PanelSectionRow>
-        </>
+        </PanelSection>
       )}
-
-      <Footer />
-    </PanelSection>
+    </>
   );
 }
