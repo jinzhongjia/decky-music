@@ -54,6 +54,8 @@ test("Chinese labels distinguish hot, new, and dislike-and-skip", () => {
   assert.equal(t("hotTag"), "热");
   assert.equal(t("newTag"), "新");
   assert.equal(t("trash"), "不喜欢并跳过");
+  assert.equal(t("clearData"), "清除数据");
+  assert.equal(t("cacheUsage"), "缓存占用");
 });
 
 test("English labels distinguish hot, new, and dislike-and-skip", () => {
@@ -62,4 +64,6 @@ test("English labels distinguish hot, new, and dislike-and-skip", () => {
   assert.equal(t("hotTag"), "Hot");
   assert.equal(t("newTag"), "New");
   assert.equal(t("trash"), "Dislike & skip");
+  assert.equal(t("clearData"), "Clear data");
+  assert.equal(t("cacheUsage"), "Cache used");
 });

@@ -98,6 +98,13 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     vipQqGreen: "绿钻",
     vipNcm: "黑胶VIP",
     vipAnnual: "(年费)",
+    storage: "存储",
+    cacheUsage: "缓存占用",
+    clearCache: "清理缓存",
+    cacheCleared: "缓存已清理",
+    clearData: "清除数据",
+    clearDataConfirm: "再按一次确认清除",
+    clearDataDesc: "登出所有账号并清空队列与偏好",
   },
   en: {
     music: "Music",
@@ -195,6 +202,13 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     vipQqGreen: "Green VIP",
     vipNcm: "Vinyl VIP",
     vipAnnual: " (Annual)",
+    storage: "Storage",
+    cacheUsage: "Cache used",
+    clearCache: "Clear cache",
+    cacheCleared: "Cache cleared",
+    clearData: "Clear data",
+    clearDataConfirm: "Press again to confirm",
+    clearDataDesc: "Logs out all accounts; clears queue & preferences",
   },
 };
 

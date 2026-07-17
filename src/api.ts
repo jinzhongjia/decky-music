@@ -177,6 +177,9 @@ export const api = {
   resume: callable<[], void>("resume"),
   seek: callable<[sec: number], void>("seek"),
   volume: callable<[val: number], void>("volume"),
+  clearCache: callable<[], number>("clear_cache"),
+  getCacheSize: callable<[], number>("get_cache_size"),
+  clearData: callable<[], void>("clear_data"),
 };
 
 // 队列项:id(+QQ media_mid)供 bridge 解析地址;名/歌手/封面/时长供 bridge 存为真相源、回灌 UI。
