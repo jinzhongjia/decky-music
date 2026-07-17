@@ -29,3 +29,45 @@ async def pump_stderr(source: str, stream):
         text = line.decode(errors="replace").rstrip()
         if text:
             log(source, "stderr", "warn", text)
+
+
+def dir_size(path: str) -> int:
+    """目录下直属普通文件字节数求和;目录不存在返回 0。日志目录是扁平的,不递归。"""
+    try:
+        return sum(
+            os.path.getsize(e.path)
+            for e in os.scandir(path)
+            if e.is_file(follow_symlinks=False)
+        )
+    except FileNotFoundError:
+        return 0
+
+
+def clear_log_dir(path: str) -> None:
+    """把目录下每个直属普通文件截断为 0(不删除)。目录不存在则无操作。
+
+    截断而非删除:decky.logger 的 FileHandler 以 append 模式持有当前日志,截断后下次写入从
+    0 续写(O_APPEND,无空洞);删除会让它继续写向已 unlink 的 inode,文件"消失"到下次轮转。
+    # ponytail: 假设 handler 为 append 模式(logging.FileHandler 默认如此);若 Decky 改用
+    # seek 定位的 handler,升级为按 decky.logger.handlers 逐个 flush+truncate(0)+seek(0)。
+    """
+    try:
+        entries = list(os.scandir(path))
+    except FileNotFoundError:
+        return
+    for e in entries:
+        if e.is_file(follow_symlinks=False):
+            with open(e.path, "w"):
+                pass
+
+
+def clear_logs() -> int:
+    """清空插件日志目录,返回清理后的剩余字节数(供 UI 回填)。"""
+    d = decky.DECKY_PLUGIN_LOG_DIR
+    clear_log_dir(d)
+    log("bridge", "own", "info", "logs cleared")  # 留一条确认痕迹
+    return dir_size(d)
+
+
+def log_dir_size() -> int:
+    return dir_size(decky.DECKY_PLUGIN_LOG_DIR)
