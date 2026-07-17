@@ -99,6 +99,7 @@ export function QAM() {
     api
       .getProvider()
       .then((st) => {
+        if (st.error) reportError(errorText(st.error), "qam"); // #38:provider 启动失败回灌兜底(emit 易丢)
         // 有 provider 且已登录 → 拉账号(showAccount 拉完再切 account);否则 → 选源
         if (st.provider && st.loggedIn) {
           setProvider(st.provider as Provider);

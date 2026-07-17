@@ -116,7 +116,7 @@ export type HotSearchResult = { ok: boolean; keywords: HotKeyword[]; error?: str
 export type LyricWord = { t_ms: number; dur_ms: number; text: string };
 export type LyricLine = { t_ms: number; text: string; tr?: string; words?: LyricWord[] };
 export type Lyric = { word_by_word: boolean; lines: LyricLine[] };
-export type ProviderState = { provider: Provider; loggedIn: boolean };
+export type ProviderState = { provider: Provider; loggedIn: boolean; error?: string | null };
 export type Account = {
   nickname: string;
   avatar: string;
