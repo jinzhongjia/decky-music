@@ -7,6 +7,7 @@ use tokio::sync::mpsc as tmpsc;
 
 use crate::audio::{audio_thread, AudioCmd, AudioEv};
 use crate::logging::{log_json, LogLevel};
+use crate::mpris;
 use crate::protocol::{self, ErrorCode};
 use crate::stream::{open_http_stream, OpenError};
 
@@ -33,9 +34,27 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
         }
     });
 
+    // MPRIS2:连 session bus 暴露 now-playing + 控制。失败降级 None(记 warn),绝不阻塞出声。
+    let mpris = mpris::start(out_tx.clone()).await;
+
     let ev_out = out_tx.clone();
+    let ev_mpris = mpris.clone();
     tokio::spawn(async move {
         while let Some(e) = ev_rx.recv().await {
+            if let Some(m) = &ev_mpris {
+                match &e {
+                    AudioEv::Playing { pos } => mpris::apply_playing(m, *pos).await,
+                    AudioEv::Paused { pos } => mpris::apply_paused(m, *pos).await,
+                    AudioEv::Ended | AudioEv::Error { .. } => mpris::apply_stopped(m).await,
+                    AudioEv::Seeked { pos } => mpris::apply_seeked(m, *pos).await,
+                    AudioEv::Volume { val } => mpris::apply_volume(m, *val as f64).await,
+                    AudioEv::Log { .. } => {}
+                }
+            }
+            // Seeked / Volume 仅供 MPRIS,不回传 bridge(bridge 已知或不关心)
+            if matches!(e, AudioEv::Seeked { .. } | AudioEv::Volume { .. }) {
+                continue;
+            }
             let _ = ev_out.send(e.to_ndjson());
         }
     });
@@ -66,6 +85,20 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
         // load 后台化:慢 CDN 打开(可 20s+)不阻塞命令循环,pause/next/新 load 即时处理
         if req.cmd == "load" {
             spawn_load(&load_gen, &cmd_tx, &out_tx, req);
+            continue;
+        }
+        // meta:更新 MPRIS 展示态,不碰音频线程(mpris 不可用时静默 ok)
+        if req.cmd == "meta" {
+            let resp = match protocol::parse_args::<protocol::MetaArgs>(&req) {
+                Ok(a) => {
+                    if let Some(m) = &mpris {
+                        mpris::apply_meta(m, a).await;
+                    }
+                    protocol::ok_empty(req.id)
+                }
+                Err(_) => protocol::err(req.id, ErrorCode::MissingField, "bad meta args"),
+            };
+            let _ = out_tx.send(resp);
             continue;
         }
         if req.cmd == "stop" {

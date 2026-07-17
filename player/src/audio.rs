@@ -37,6 +37,13 @@ pub(crate) enum AudioEv {
         place: &'static str,
         msg: String,
     },
+    // 仅供 MPRIS(不回传 bridge):seek 后的新位置 / 应用后的音量。socket.rs 的事件泵消费后不转发。
+    Seeked {
+        pos: f64,
+    },
+    Volume {
+        val: f32,
+    },
 }
 
 impl AudioEv {
@@ -56,6 +63,8 @@ impl AudioEv {
                 json!({"code": code.as_str(), "message": message}),
             ),
             AudioEv::Log { level, place, msg } => log_json(*level, place, msg),
+            // MPRIS-only:事件泵消费后 continue,不走 to_ndjson;给个空串保持 match 穷尽。
+            AudioEv::Seeked { .. } | AudioEv::Volume { .. } => String::new(),
         }
     }
 }
@@ -169,6 +178,7 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
                 if let Some(s) = &sink {
                     s.set_volume(volume);
                 }
+                let _ = ev.send(AudioEv::Volume { val: volume }); // 同步 MPRIS Volume 属性
             }
             Ok(AudioCmd::Seek(sec)) => {
                 if let Some(s) = &sink {
@@ -177,12 +187,14 @@ pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSen
                             code: ErrorCode::SeekFailed,
                             message: "seek failed".into(),
                         });
-                    } else if !s.is_paused() {
-                        // seek 后立刻重锚:其它 UI 面(非发起方)才能同步到新位置
-                        last_anchor = std::time::Instant::now();
-                        let _ = ev.send(AudioEv::Playing {
-                            pos: s.get_pos().as_secs_f64(),
-                        });
+                    } else {
+                        let pos = s.get_pos().as_secs_f64();
+                        let _ = ev.send(AudioEv::Seeked { pos }); // MPRIS Seeked 信号(暂停/播放都发)
+                        if !s.is_paused() {
+                            // seek 后立刻重锚:其它 UI 面(非发起方)才能同步到新位置
+                            last_anchor = std::time::Instant::now();
+                            let _ = ev.send(AudioEv::Playing { pos });
+                        }
                     }
                 }
             }

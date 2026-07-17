@@ -8,6 +8,7 @@
 
 mod audio;
 mod logging;
+mod mpris;
 mod protocol;
 mod socket;
 mod stream;

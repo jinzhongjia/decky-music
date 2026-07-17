@@ -16,3 +16,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-uti
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 parking_lot = "0.12"
+mpris-server = { version = "0.10.0", features = ["tokio"] }
