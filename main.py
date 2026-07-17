@@ -151,3 +151,12 @@ class Plugin:
 
     async def get_daily_songs(self) -> dict:
         return await self.bridge.get_daily_songs()
+
+    async def clear_cache(self) -> int:
+        return await self.bridge.clear_cache()
+
+    async def get_cache_size(self) -> int:
+        return await self.bridge.get_cache_size()
+
+    async def clear_data(self) -> None:
+        return await self.bridge.clear_data()

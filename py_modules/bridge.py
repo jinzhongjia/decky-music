@@ -13,7 +13,7 @@ import tarfile
 import decky
 import protocol
 
-from log import DEV, log, pump_stderr
+from log import DEV, clear_logs, log, log_dir_size, pump_stderr
 from playback import Playback
 
 RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
@@ -594,6 +594,37 @@ class Bridge:
 
     async def queue_clear(self):
         await self.playback.queue_clear()
+
+    async def clear_cache(self) -> int:
+        # 本机无独立缓存,"缓存"即日志目录;返回清理后剩余字节供 UI 回填
+        return clear_logs()
+
+    async def get_cache_size(self) -> int:
+        return log_dir_size()
+
+    async def clear_data(self) -> None:
+        """恢复出厂:登出当前源 → 停播清队列 → settings 归默认并落盘。
+        不碰 bin/(那是程序不是数据,删了不可恢复)。凭证/URL 不进日志(红线)。"""
+        which = self.settings.get("provider")
+        if which:
+            try:  # best-effort:drop provider 进程内存里的凭证
+                await self.provider.request("logout")
+                await self.provider.request("set_credential", {"cred": None})
+            except Exception as e:
+                log("bridge", "own", "warn", f"clear_data logout skipped: {type(e).__name__}")
+        try:  # 停 player + 清队列(会落盘,随后被覆盖);player 未连时 stop 会抛,不能挡住数据清除
+            await self.playback.queue_clear()
+        except Exception as e:
+            log("bridge", "own", "warn", f"clear_data queue_clear skipped: {type(e).__name__}")
+        self.liked_ids.clear()
+        self.settings = {"version": 1, "provider": None, "volume": 0.8, "play_mode": "list_loop"}
+        self.playback.set_play_mode("list_loop")
+        try:
+            await self.player.request("volume", {"val": 0.8})  # 同步 player 音量到默认
+        except Exception:
+            pass
+        save_settings(self.settings)
+        log("bridge", "own", "info", "user data cleared")
 
     async def next_track(self):
         await self.playback.next_track()
