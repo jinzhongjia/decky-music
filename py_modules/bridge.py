@@ -229,6 +229,7 @@ class Bridge:
         self.provider_proc: asyncio.subprocess.Process | None = None
         self.provider_which: str | None = None  # 当前已 spawn 的 provider
         self.provider_lock = asyncio.Lock()  # 串行化 _ensure_provider,保证幂等不重复 spawn
+        self.provider_error = None  # provider 启动失败 code,get_provider 回灌(emit 易在前端未连时丢,#38)
         self.playback = Playback(  # 播放 + 队列编排
             self.player,
             self.provider,
@@ -306,6 +307,7 @@ class Bridge:
                 if self.provider_proc:
                     self.provider_proc.terminate()
                     self.provider_proc = self.provider_which = None
+                self.provider_error = None
                 return
             alive = self.provider_proc is not None and self.provider_proc.returncode is None
             if self.provider_which == which and alive and self.provider.connected.is_set():
@@ -321,6 +323,7 @@ class Bridge:
                 self.provider_proc = await spawn("provider", binpath, "--socket", self.provider.path)
             except (OSError, tarfile.TarError) as e:
                 # 解包/拉起失败不裸炸(曾致 UI"点了没反应"):落日志 + 给 UI 报错
+                self.provider_error = "provider_start_failed"
                 log("bridge", "own", "error", f"provider {which} spawn failed: {type(e).__name__}")
                 await decky.emit(
                     "provider",
@@ -338,6 +341,7 @@ class Bridge:
             try:
                 await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
             except asyncio.TimeoutError:
+                self.provider_error = "provider_start_timeout"
                 log("bridge", "own", "error", f"provider {which} startup timeout")
                 await decky.emit(
                     "provider",
@@ -351,6 +355,7 @@ class Bridge:
                     },
                 )
                 return
+            self.provider_error = None  # connected 成功:provider 已起
             cred = (self.settings.get("accounts") or {}).get(which)
             if cred:
                 r = await self.provider.request("set_credential", {"cred": cred})
@@ -395,7 +400,7 @@ class Bridge:
         await self._ensure_provider(which)
         logged_in = bool((self.settings.get("accounts") or {}).get(which))
         log("bridge", "own", "debug", f"get_provider -> {which} loggedIn={logged_in}")
-        return {"provider": which, "loggedIn": logged_in}
+        return {"provider": which, "loggedIn": logged_in, "error": self.provider_error}
 
     async def login(self, login_type: str | None = None):
         await self.provider.request("login", {"type": login_type})

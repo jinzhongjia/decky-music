@@ -77,5 +77,44 @@ class TestPlayerSpawn(unittest.TestCase):
         self.assertFalse(self.b.player_failed)
 
 
+class _FakeProviderConn:
+    def __init__(self):
+        self.connected = asyncio.Event()
+        self.path = "/tmp/provider.sock"
+
+
+class TestProviderSpawn(unittest.TestCase):
+    """provider 缺二进制:_ensure_provider 兜住失败、记 provider_error,get_provider 回灌给 UI(#38 同款回灌)。"""
+
+    def setUp(self):
+        self.b = Bridge()
+        self.b.provider = _FakeProviderConn()
+        self.b.provider_proc = None
+        self.b.provider_which = None
+        self.b.provider_lock = asyncio.Lock()
+        self.b.provider_error = None
+        self.b.settings = {"provider": "ncm", "accounts": {}}
+        self._saved_emit = decky_stub.emit
+        self._saved_spawn = bridge_mod.spawn
+        self._saved_bin = bridge_mod.BIN
+        decky_stub.emit = _emit  # 丢弃 emit(测回灌,不测 emit)
+
+    def tearDown(self):
+        decky_stub.emit = self._saved_emit
+        bridge_mod.spawn = self._saved_spawn
+        bridge_mod.BIN = self._saved_bin
+
+    def test_spawn_fail_sets_error_and_get_provider_relays(self):
+        async def boom(*_a, **_k):
+            raise FileNotFoundError("bin/ncm-provider")
+
+        bridge_mod.spawn = boom
+        bridge_mod.BIN = lambda name: "/nonexistent/" + name
+        asyncio.run(self.b._ensure_provider("ncm"))
+        self.assertEqual(self.b.provider_error, "provider_start_failed")
+        st = asyncio.run(self.b.get_provider())  # 回灌:get_provider 内部重试仍失败,带回 error
+        self.assertEqual(st["error"], "provider_start_failed")
+
+
 if __name__ == "__main__":
     unittest.main()
