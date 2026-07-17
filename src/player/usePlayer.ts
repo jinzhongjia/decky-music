@@ -70,6 +70,7 @@ onPlayer((e) => {
 api
   .getPlayback()
   .then((s) => {
+    if (s.player_failed) reportError(errorText("player_start_failed")); // #38:启动失败回灌兜底(emit 易丢)
     if (typeof s.volume === "number") state.volume = s.volume; // 音量无事件,始终回灌
     if (gotEvent || !s.current) {
       notify();

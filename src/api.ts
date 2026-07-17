@@ -208,6 +208,7 @@ export type PlaybackState = {
   queue_mode: QueueMode; // radio 时 UI 隐藏上一首/队列等不适用控件
   radio_kind: string; // 当前电台种类("" = 非电台)
   volume?: number; // 0..1,bridge 持久化
+  player_failed?: boolean; // player 二进制启动失败(#38);挂载回灌兜底,不靠易丢的 emit
 };
 // 电台种类(provider radio_fetch 的 kind 参数)
 export type RadioKind = "qq_guess" | "qq_radar" | "ncm_fm";
