@@ -1,6 +1,6 @@
 {
   "name": "decky-music",
-  "version": "1.0.0-beta.3",
+  "version": "1.0.0-beta.4",
   "description": "Steam Deck 音乐插件(QQ音乐 + 网易云)",
   "type": "module",
   "packageManager": "pnpm@11.3.0",
@@ -16,8 +16,8 @@
   "remote_binary": [
     {
       "name": "player",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.2/player-linux-x64",
-      "sha256hash": "5f4cf7efcdedfe3b88f2a8ed69b535aebeb15e052b3c4bf2568b2ea5173ad21e"
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.4/player-linux-x64",
+      "sha256hash": "4adb450e4a5d7f6f8a37228c5dbdebd6b0eecf66abf3c62c4c09beedbd03f2ab"
     },
     {
       "name": "ncm-provider",
