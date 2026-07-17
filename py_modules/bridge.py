@@ -241,7 +241,7 @@ class Bridge:
         self.playback.restore(self.settings.get("queue"))
         await self.provider.listen()
         await self.player.listen()
-        self.player.on_event = self.playback.on_player_event
+        self.player.on_event = self._on_player_event
         self.provider.on_event = self._on_provider_event
         log("bridge", "own", "info", f"started (dev={DEV})")
         # player 常驻:启动时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
@@ -593,6 +593,7 @@ class Bridge:
         if self.playback.set_play_mode(mode):
             self.settings["play_mode"] = mode  # 播放模式归 bridge 持久化
             save_settings(self.settings)
+            await self.playback.push_current_meta()  # 同步 MPRIS LoopStatus/Shuffle
 
     async def pause(self):
         await self.player.request("pause")
@@ -640,6 +641,47 @@ class Bridge:
         if r.ok:
             return {"ok": True, "songs": r.data.get("songs", [])}
         return {"ok": False, "songs": [], "error": r.error.code if r.error else "provider_error"}
+
+    async def _on_player_event(self, ev: protocol.ChildEvent):
+        # MPRIS 控制意图(桌面媒体键 / 蓝牙耳机按键)与 UI callable 走同一套 bridge 方法 ——
+        # bridge 是唯一真相源(DESIGN §4),不在 player 本地执行,避免状态分叉。其余播放态事件
+        # 照旧交 playback 跟踪 + 转发 UI。
+        if ev.type == "control":
+            await self._handle_mpris_control(ev.data)
+            return
+        await self.playback.on_player_event(ev)
+
+    async def _handle_mpris_control(self, data: dict):
+        action = data.get("action")
+        if action == "next":
+            await self.next_track()
+        elif action == "prev":
+            await self.prev_track()
+        elif action == "pause":
+            await self.pause()
+        elif action == "play":
+            await self.resume()
+        elif action == "playpause":
+            if self.playback.playing:
+                await self.pause()
+            else:
+                await self.resume()
+        elif action == "stop":
+            await self.pause()  # ponytail: Stop 映射为暂停,媒体键不应清空队列
+        elif action == "seek":
+            v = data.get("value")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                await self.seek(float(v))
+        elif action == "volume":
+            v = data.get("value")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                await self.volume(max(0.0, min(1.0, float(v))))
+        elif action == "play_mode":
+            m = data.get("mode")
+            if isinstance(m, str):
+                await self.set_play_mode(m)
+        else:
+            log("bridge", "own", "warn", f"unknown mpris control action: {action}")
 
     async def _on_provider_event(self, ev: protocol.ChildEvent):
         # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI

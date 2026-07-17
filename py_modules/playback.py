@@ -145,6 +145,7 @@ class Playback:
             self.playing, self.pos, self.wall = False, 0.0, _now_ms()
             await self.player.request("stop")
             await self._emit("track", {"index": -1, "song": None})
+            await self._push_meta(None)  # 清空 MPRIS now-playing
             await self._queue_changed()
             return False
         # 首歌不可播(如真 VIP 歌)不打死整个电台:顺次尝试本批,系统性错误熔断
@@ -225,6 +226,7 @@ class Playback:
         self.playing, self.pos, self.wall = False, 0.0, _now_ms()
         await self.player.request("stop")
         await self._emit("track", {"index": -1, "song": None})
+        await self._push_meta(None)  # 清空 MPRIS now-playing
         await self._queue_changed()
 
     async def _queue_changed(self):
@@ -337,6 +339,7 @@ class Playback:
         log("bridge", "own", "info", f"queue -> {i + 1}/{len(self.queue)} (mode={self.mode if self.mode == 'radio' else self.play_mode})")
         # 告知 UI 当前曲(含展示信息,不依赖前端队列)
         await self._emit("track", {"index": i, "song": _public(item)})
+        await self._push_meta(_public(item))  # 同步 MPRIS now-playing
         return True
 
     async def _radio_next(self):
@@ -433,6 +436,36 @@ class Playback:
 
     async def _emit(self, typ: str, data: dict):
         await decky.emit("player", {"ev": "player", "type": typ, "data": data})
+
+    async def _push_meta(self, song: dict | None):
+        """把当前曲目 + 可否上下曲下发 player 的 MPRIS 层(桌面/蓝牙媒体控件展示与控制)。
+        song=None 表示无当前曲(停止/清空)。player.request 自带超时兜底,不会抛。"""
+        if song is None:
+            await self.player.request("meta", {"clear": True})
+            return
+        if self.mode == "radio":
+            can_next, can_prev = True, False  # 电台可续、无上一首
+        else:
+            n = len(self.queue)
+            can_next = can_prev = n > 0
+        await self.player.request(
+            "meta",
+            {
+                "title": song.get("name", ""),
+                "artist": song.get("singer", ""),
+                "art_url": song.get("cover", ""),
+                "length_ms": int(song.get("duration", 0) or 0) * 1000,
+                "track_id": str(song.get("id", "")),
+                "can_next": can_next,
+                "can_prev": can_prev,
+                "play_mode": self.play_mode,
+            },
+        )
+
+    async def push_current_meta(self):
+        """重推当前曲元数据(播放模式变更后同步 MPRIS 的 LoopStatus/Shuffle)。"""
+        cur = self.queue[self.index] if 0 <= self.index < len(self.queue) else None
+        await self._push_meta(_public(cur))
 
     async def on_player_event(self, ev):
         """player 域事件(protocol.ChildEvent)。跟踪播放态/进度 → 转发 → ended 自动切歌。"""
