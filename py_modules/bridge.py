@@ -245,12 +245,29 @@ class Bridge:
         self.provider.on_event = self._on_provider_event
         log("bridge", "own", "info", f"started (dev={DEV})")
         # player 常驻:启动时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
-        await spawn("player", BIN("player"), "--socket", self.player.path)
+        await self._spawn_player()
         # 预设了 provider 就在加载时后台预拉起(不阻塞启动),省去 UI 首次 get_provider 的
         # spawn+连接延迟,避免面板闪一下"选源"再跳账号态。
         if self.settings.get("provider"):
             asyncio.create_task(self._ensure_provider(self.settings["provider"]))
         asyncio.create_task(self._credential_refresh_loop())
+
+    async def _spawn_player(self):
+        """player 常驻,启动即拉起。缺二进制(remote_binary 下载失败)不裸炸 _main:
+        兜住 OSError + 给 UI 报 player_start_failed,否则整个后端起不来且 UI 无任何提示。
+        (provider 侧同款兜底见 _ensure_provider。)"""
+        try:
+            await spawn("player", BIN("player"), "--socket", self.player.path)
+        except OSError as e:
+            log("bridge", "own", "error", f"player spawn failed: {type(e).__name__}")
+            await decky.emit(
+                "player",
+                {
+                    "ev": "player",
+                    "type": "error",
+                    "data": {"code": "player_start_failed", "message": "player_start_failed"},
+                },
+            )
 
     async def _refresh_credential(self) -> bool:
         """重注入当前凭证触发 provider 侧过期检测/刷新(QQ musickey 有效期撑不过长会话;
