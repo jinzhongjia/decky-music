@@ -245,6 +245,7 @@ class Bridge:
         self.provider.on_event = self._on_provider_event
         log("bridge", "own", "info", f"started (dev={DEV})")
         # player 常驻:启动时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
+        self.player_failed = False  # 启动失败态,get_playback 回灌给 UI(emit 易在前端 WS 未连时丢,#38)
         await self._spawn_player()
         # 预设了 provider 就在加载时后台预拉起(不阻塞启动),省去 UI 首次 get_provider 的
         # spawn+连接延迟,避免面板闪一下"选源"再跳账号态。
@@ -258,7 +259,9 @@ class Bridge:
         (provider 侧同款兜底见 _ensure_provider。)"""
         try:
             await spawn("player", BIN("player"), "--socket", self.player.path)
+            self.player_failed = False
         except OSError as e:
+            self.player_failed = True
             log("bridge", "own", "error", f"player spawn failed: {type(e).__name__}")
             await decky.emit(
                 "player",
@@ -563,7 +566,11 @@ class Bridge:
 
     async def get_playback(self) -> dict:
         # 前端挂载回灌:bridge 是播放/队列真相源(见 playback.snapshot);音量归 bridge 持久化
-        return {**self.playback.snapshot(), "volume": self.settings.get("volume", 0.8)}
+        return {
+            **self.playback.snapshot(),
+            "volume": self.settings.get("volume", 0.8),
+            "player_failed": getattr(self, "player_failed", False),  # 启动失败回灌兜底(#38)
+        }
 
     async def get_queue(self) -> dict:
         return self.playback.snapshot_queue()

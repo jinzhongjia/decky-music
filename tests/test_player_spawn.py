@@ -65,6 +65,7 @@ class TestPlayerSpawn(unittest.TestCase):
         self.assertEqual(ev, "player")
         self.assertEqual(payload["type"], "error")
         self.assertEqual(payload["data"]["code"], "player_start_failed")
+        self.assertTrue(self.b.player_failed)  # 回灌兜底态:get_playback 据此让 UI 补显 banner(#38)
 
     def test_spawn_ok_no_error_event(self):
         async def ok(*_a, **_k):
@@ -73,6 +74,7 @@ class TestPlayerSpawn(unittest.TestCase):
         bridge_mod.spawn = ok
         asyncio.run(self.b._spawn_player())
         self.assertEqual(self.emitted, [])
+        self.assertFalse(self.b.player_failed)
 
 
 if __name__ == "__main__":
