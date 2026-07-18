@@ -1,6 +1,6 @@
 [project]
 name = "qq-provider"
-version = "1.0.0-beta.5"
+version = "1.0.0-beta.6"
 description = "QQ 音乐 provider:QQMusicApi 作为库,包一层 UDS server"
 requires-python = ">=3.11"
 dependencies = [

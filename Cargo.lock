@@ -1296,7 +1296,7 @@ dependencies = [
 
 [[package]]
 name = "ncm-provider"
-version = "1.0.0-beta.5"
+version = "1.0.0-beta.6"
 dependencies = [
  "base64",
  "ncm-api-rs",
@@ -1641,7 +1641,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "player"
-version = "1.0.0-beta.5"
+version = "1.0.0-beta.6"
 dependencies = [
  "mpris-server",
  "parking_lot",
