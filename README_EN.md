@@ -86,6 +86,19 @@ queue management, radio modes, and complete controller navigation.
 Decky's manual installer currently accepts only a ZIP URL. See the
 [official Decky documentation](https://wiki.deckbrew.xyz/en/user-guide/settings#manual-plugin-install).
 
+### China (CN) install
+
+If GitHub is slow or unreliable on your network, use the CN build — the plugin zip
+and all three dependency binaries are served from a Cloudflare mirror.
+
+1. In Decky's **Manual Plugin Install**, paste:
+   `https://dl.nvimer.org/decky_music/decky-music-cn.zip`
+2. After install it behaves exactly like the normal build; the three binaries are
+   downloaded and SHA-256 verified from the same mirror.
+
+> The CN build is functionally identical to the normal build — only the download
+> source differs (Cloudflare vs GitHub); the binaries are byte-for-byte the same.
+
 ## First Use
 
 1. Select **QQ Music** or **NetEase Cloud Music** from the Decky Music Quick Access Menu.

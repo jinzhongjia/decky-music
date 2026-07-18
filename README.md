@@ -82,6 +82,16 @@ Steam UI。
 Decky 当前的手动安装器只接受 ZIP 的 URL，详见
 [Decky 官方说明](https://wiki.deckbrew.xyz/en/user-guide/settings#manual-plugin-install)。
 
+### 国内(CN)安装
+
+国内网络访问 GitHub 较慢/不稳时，使用 CN 版：插件包与三个依赖二进制全部走 Cloudflare 镜像。
+
+1. 在 Decky 设置的 **Manual Plugin Install** 中，粘贴：
+   `https://dl.nvimer.org/decky_music/decky-music-cn.zip`
+2. 安装后与普通版完全一致；三个二进制会从同一镜像自动下载并按 SHA-256 校验。
+
+> CN 版与普通版功能相同，仅下载源不同（Cloudflare vs GitHub）；二进制字节一致。
+
 ## 首次使用
 
 1. 在 Decky Music 快捷菜单中选择 **QQ 音乐**或**网易云音乐**。

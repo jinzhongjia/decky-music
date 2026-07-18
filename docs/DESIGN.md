@@ -384,6 +384,19 @@ player 额外托管标准 **MPRIS2** D-Bus 服务(`org.mpris.MediaPlayer2` + `.P
 - 对外分发物是插件包 + 三个从 Release 拉取的二进制,各自带 hash 校验。
 - 若坚持"单一文件"分发,可另写 launcher 用 `include_bytes!` 嵌入 —— 但当前不需要,`remote_binary` 数组已够。
 
+### 8.1 双通道:普通版(GitHub)+ CN 版(Cloudflare R2)
+
+普通版依赖走 GitHub Release(现状不变)。CN 版把三个二进制与插件 zip 全部镜像到作者的
+Cloudflare R2(自定义域名 `dl.nvimer.org`),给国内用户更稳的下载。
+
+两个 zip 唯一差异 = `remote_binary[].url` 的主机名;二进制字节一致、sha256 不变。CN 版
+URL:`https://dl.nvimer.org/decky_music/<tag>/<filename>`,稳定安装入口
+`https://dl.nvimer.org/decky_music/decky-music-cn.zip`。
+
+CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/cn-package.sh` 换 URL
+重打 CN zip → 校验 → `scripts/release-cn.sh` 上传 R2 + GitHub 存档。设计细节见
+`docs/superpowers/specs/2026-07-18-cn-distribution-design.md`。
+
 ---
 
 ## 9. 当前实现索引

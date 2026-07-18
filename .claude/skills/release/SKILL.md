@@ -67,6 +67,9 @@ gh release download vX -p "Decky.Music.zip" -D <tmpdir> && cd <tmpdir> && unzip 
 - `package.json` 里版本 = X;`remote_binary` 三条 URL 指向预期 tag、指纹与本地构建一致
 - **无 `dev_mode` 文件**(有 = 日志级别错,zip 不该含它)
 - 本次发布的关键改动在包里(grep 一两个新符号)
+- **CN 版**:R2 上 `curl -fI https://dl.nvimer.org/decky_music/vX/<三个资产>` 与
+  `.../decky_music/decky-music-cn.zip` 均 200;解包 `Decky.Music.cn.zip`,其 `remote_binary`
+  三条 URL 以 `https://dl.nvimer.org/decky_music/vX/` 开头、sha256 与普通版逐一相等
 
 ## 6. 交付
 
@@ -79,6 +82,9 @@ scp ~/Downloads/Decky.Music.zip deck@192.168.0.18:/home/deck/Downloads/   # Deck
 
 提醒用户:Decky 开发者模式从 zip 安装;正式安装链路(remote_binary 下载 + sha256 校验 +
 qq-provider 首用自解包)只有走 zip 安装才被验证,侧载验不到。
+
+国内用户直接给稳定入口(无需 GitHub):Decky **Manual Plugin Install** 粘贴
+`https://dl.nvimer.org/decky_music/decky-music-cn.zip`。CN 版由 `release.yml` 自动产出并上传 R2。
 
 ## 已踩过的坑
 
