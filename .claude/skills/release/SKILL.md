@@ -51,7 +51,13 @@ git push && git tag vX && git push origin vX
 gh release create vX --prerelease --title "vX" --notes-file <notes.md> [assets...]
 ```
 
-发布说明按 `git log v旧..HEAD --oneline` 归类写:修复 / 体验 / 依赖 / 安装说明。
+发布说明走**极简风格**,只留两块:
+
+- **改动**:本版做了什么(从 `git log v旧..HEAD --oneline` 提炼要点,不逐条堆 commit)。
+- **安装**:普通版 → release 里 `Decky.Music.zip`;CN 版 → Decky **Manual Plugin Install** 粘
+  `https://dl.nvimer.org/decky_music/decky-music-cn.zip`。
+
+其余(体验 / 依赖 / 致谢 / 背景)一律不写。
 
 ## 5. CI 出包 + 抽验(必做)
 
@@ -92,3 +98,5 @@ qq-provider 首用自解包)只有走 zip 安装才被验证,侧载验不到。
 - `remote_binary` 下载**不解包**:qq-provider tar.gz 靠 bridge `qq_exe()` 首用自解(beta.2 事故)
 - `dist/` 可能被 sudo 跑的 decky CLI 写成 root 属主 → `pnpm build` EACCES,`chown` 回来
 - qq-provider 预检只跑目标测试模块,`unittest discover` 会撞联网登录用例挂死
+- CN zip 的 `mv` 别硬编码 `Decky.Music.zip`:decky CLI 产物名 = plugin.json 的 `name`(含空格 `Decky Music.zip`),
+  GitHub 只在上传资产时才把空格转点。用 `out/$(jq -r .name plugin.json).zip`(beta.7 CN 步首跑事故)
