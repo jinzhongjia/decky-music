@@ -45,3 +45,21 @@ jobs:
           asset_path: out/${{ steps.plugin_info.outputs.name }}.zip
           asset_name: ${{ steps.plugin_info.outputs.name }}.zip
           asset_content_type: application/zip
+
+      - name: Mirror binaries + build & upload CN zip to R2
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bash scripts/release-cn.sh
+
+      - name: Upload CN zip to release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: Decky.Music.cn.zip
+          asset_name: Decky.Music.cn.zip
+          asset_content_type: application/zip
