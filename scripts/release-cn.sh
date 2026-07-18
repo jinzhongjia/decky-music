@@ -31,7 +31,9 @@ cp package.json "$work/package.json.orig"
 scripts/cn-package.sh "$TAG" "$work/package.json.orig" > package.json
 sudo ./cli/decky plugin build .
 sudo chown -R "$(id -u):$(id -g)" out dist 2>/dev/null || true
-mv out/Decky.Music.zip "$work/Decky.Music.cn.zip"
+# decky CLI names the zip after plugin.json's name (which contains a space:
+# "Decky Music.zip"); GitHub only dots it on asset upload. Don't hardcode.
+mv "out/$(jq -r '.name' plugin.json).zip" "$work/Decky.Music.cn.zip"
 cp "$work/package.json.orig" package.json
 
 # 3. Verify the CN zip before publishing.
