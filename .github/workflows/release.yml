@@ -46,6 +46,20 @@ jobs:
           asset_name: ${{ steps.plugin_info.outputs.name }}.zip
           asset_content_type: application/zip
 
+      # Must run before the CN step: release-cn.sh rebuilds out/, so read the pristine normal zip here.
+      - name: Build full (self-contained) zip
+        run: bash scripts/full-package.sh
+
+      - name: Upload full zip to release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: Decky.Music.full.zip
+          asset_name: Decky.Music.full.zip
+          asset_content_type: application/zip
+
       - name: Mirror binaries + build & upload CN zip to R2
         env:
           TAG: ${{ github.event.release.tag_name }}
