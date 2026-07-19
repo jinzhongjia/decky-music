@@ -2,6 +2,7 @@
 // 电台卡 P5d(radio 队列模式)前置灰;歌单卡 A = 拉曲目整单入队开播。
 // ponytail: 歌单详情页 P5c 再上,届时歌单卡 A 改进详情。
 
+import { Focusable } from "@decky/ui";
 import { FaHeartbeat, FaSatelliteDish } from "react-icons/fa";
 
 import { api } from "../../api";
@@ -48,7 +49,8 @@ export function Recommend() {
       }}
     >
       <Section title={t("smartRadio")}>
-        <div style={{ display: "flex", gap: "0.75rem" }}>
+        {/* 并排大卡是横向焦点组:flow-children="row" 让十字键左右切换(默认会落进页面纵向流变成上下) */}
+        <Focusable flow-children="row" style={{ display: "flex", gap: "0.75rem" }}>
           <HeroCard
             title={t("guessYouLike")}
             subtitle={t("guessDesc")}
@@ -64,7 +66,7 @@ export function Recommend() {
             accent={QQ_GREEN}
             onActivate={() => openRadioPage("qq_radar", t("radarRec"))}
           />
-        </div>
+        </Focusable>
       </Section>
 
       {empty && <div style={{ color: theme.textDim }}>{t("unavailable")}</div>}
