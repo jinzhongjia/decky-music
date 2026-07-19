@@ -116,5 +116,29 @@ class TestProviderSpawn(unittest.TestCase):
         self.assertEqual(st["error"], "provider_start_failed")
 
 
+class TestSpawnChmod(unittest.TestCase):
+    """full-zip 装机:Decky extractall 落地丢执行位,spawn 前应补 +x 才能 exec。"""
+
+    def test_spawn_chmods_non_executable_binary(self):
+        import stat
+        import tempfile
+
+        d = tempfile.mkdtemp()
+        exe = os.path.join(d, "fake-bin")
+        with open(exe, "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(exe, 0o644)  # 模拟 extractall:无执行位
+        self.assertFalse(os.stat(exe).st_mode & stat.S_IXUSR)
+
+        async def run():
+            proc = await bridge_mod.spawn("test", exe)
+            await proc.wait()
+            return proc.returncode
+
+        rc = asyncio.run(run())
+        self.assertTrue(os.stat(exe).st_mode & stat.S_IXUSR)  # spawn 补了 +x
+        self.assertEqual(rc, 0)  # 且确实 exec 起来了
+
+
 if __name__ == "__main__":
     unittest.main()

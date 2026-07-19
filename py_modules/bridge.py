@@ -70,6 +70,12 @@ def _child_env() -> dict:
 
 async def spawn(source: str, *args: str) -> asyncio.subprocess.Process:
     log("bridge", "own", "info", f"spawn {source}: {' '.join(args)}")
+    # ponytail: full-zip 装机经 Decky extractall 落地会丢执行位;spawn 前补 +x 兜底。
+    # 幂等(remote_binary/侧载本就 +x),best-effort 不阻断 spawn。
+    try:
+        os.chmod(args[0], 0o755)
+    except OSError:
+        pass
     proc = await asyncio.create_subprocess_exec(
         *args,
         env=_child_env(),
