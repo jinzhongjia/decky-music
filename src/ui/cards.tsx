@@ -35,7 +35,9 @@ export function Grid({ cols, children }: { cols: number; children: ReactNode }) 
   );
 }
 
-// 大入口卡(智能电台/每日推荐):渐变底 + 标题/副题 + 右侧大图标
+// 大入口卡(智能电台/每日推荐):Steam 库风格 —— 近黑竖向渐变底 + 中性发丝边,
+// 品牌色只出现在右缘超大裁切水印图标与其辉光(遵守"品牌色只做点缀")。
+// 辉光固定半径且钉在右缘中点:卡片宽窄不同(QQ 半宽 / NCM 全宽)时光斑不随宽度跑位
 export function HeroCard({
   title,
   subtitle,
@@ -59,25 +61,39 @@ export function HeroCard({
       autoFocus={initialFocus}
       style={{
         flex: 1,
+        position: "relative",
+        overflow: "hidden",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "1rem 1.25rem",
+        flexDirection: "column",
+        justifyContent: "center",
+        padding: "1.1rem 1.25rem",
         borderRadius: theme.radius,
-        background: `linear-gradient(135deg, ${accent}26, ${accent}0d)`,
-        border: `1px solid ${accent}40`,
+        background: `radial-gradient(circle 240px at 100% 50%, ${accent}30, transparent), linear-gradient(180deg, #1d2129, #14161c)`,
+        border: "1px solid rgba(255,255,255,0.07)",
         opacity: disabled ? 0.45 : 1,
-        minHeight: 72,
+        minHeight: 92,
       }}
     >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ color: theme.text, fontWeight: 700, fontSize: "1.1em" }}>{title}</div>
-        <div style={{ color: theme.textDim, fontSize: "0.8em", marginTop: "0.2rem" }}>
+      <div
+        style={{
+          position: "absolute",
+          right: "-0.2em",
+          top: "50%",
+          transform: "translateY(-50%)",
+          fontSize: "4.6em",
+          lineHeight: 1,
+          color: accent,
+          opacity: 0.16,
+          pointerEvents: "none",
+        }}
+      >
+        {icon}
+      </div>
+      <div style={{ position: "relative", minWidth: 0, paddingRight: "3.5rem" }}>
+        <div style={{ color: theme.text, fontWeight: 700, fontSize: "1.15em" }}>{title}</div>
+        <div style={{ color: theme.textDim, fontSize: "0.8em", marginTop: "0.25rem" }}>
           {subtitle}
         </div>
-      </div>
-      <div style={{ color: accent, fontSize: "1.8em", flexShrink: 0, marginLeft: "1rem" }}>
-        {icon}
       </div>
     </Focusable>
   );

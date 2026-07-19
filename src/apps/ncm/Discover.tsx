@@ -1,6 +1,8 @@
-// NCM 发现页(P5b,效果图 ncm-ui/02):每日推荐大卡(日期数字)+ 推荐歌单网格。
+// NCM 发现页(P5b,效果图 ncm-ui/02):每日推荐大卡 + 推荐歌单网格。
 // 每日推荐需登录:未登录 A 触发后经 error code 提示去 QAM 扫码(errNotLoggedIn)。
 // ponytail: 歌单详情页 P5c 再上,歌单卡 A 先整单入队开播;Banner 后置 P6。
+
+import { FaCalendarDay } from "react-icons/fa";
 
 import { api, errorText } from "../../api";
 import { guard, reportError } from "../../errors";
@@ -55,7 +57,7 @@ export function Discover() {
           <HeroCard
             title={t("dailyRec")}
             subtitle={t("dailyDesc")}
-            icon={<span style={{ fontWeight: 800 }}>{new Date().getDate()}</span>}
+            icon={<FaCalendarDay />}
             accent={NCM_RED}
             onActivate={playDaily}
             initialFocus={initialFocus}
