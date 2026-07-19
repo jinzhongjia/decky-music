@@ -55,7 +55,8 @@ gh release create vX --prerelease --title "vX" --notes-file <notes.md> [assets..
 
 - **改动**:本版做了什么(从 `git log v旧..HEAD --oneline` 提炼要点,不逐条堆 commit)。
 - **安装**:普通版 → release 里 `Decky.Music.zip`;CN 版 → Decky **Manual Plugin Install** 粘
-  `https://dl.nvimer.org/decky_music/decky-music-cn.zip`。
+  `https://dl.nvimer.org/decky_music/decky-music-cn.zip`;full 版(GitHub/CN 依赖下载都不通时)→
+  release 里 `Decky.Music.full.zip`,自包含、安装零下载。
 
 其余(体验 / 依赖 / 致谢 / 背景)一律不写。
 
@@ -76,6 +77,9 @@ gh release download vX -p "Decky.Music.zip" -D <tmpdir> && cd <tmpdir> && unzip 
 - **CN 版**:R2 上 `curl -fI https://dl.nvimer.org/decky_music/vX/<三个资产>` 与
   `.../decky_music/decky-music-cn.zip` 均 200;解包 `Decky.Music.cn.zip`,其 `remote_binary`
   三条 URL 以 `https://dl.nvimer.org/decky_music/vX/` 开头、sha256 与普通版逐一相等
+- **full 版**:release 资产有 `Decky.Music.full.zip`;解包后 `package.json` **无 `remote_binary`**;
+  `bin/player`、`bin/ncm-provider`、`bin/qq-provider` 三个文件都在,且三者 sha256 与普通版
+  `remote_binary[].sha256hash` 逐一相等(证明内置的就是校验过的那份)
 
 ## 6. 交付
 
