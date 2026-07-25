@@ -80,5 +80,6 @@ dev_mode
 # superpowers 流程产物(spec/plan),不入库
 docs/superpowers/
 
-# release-cn.sh 本地运行时产出的 CN 包(构建产物)
+# release-cn.sh / full-package.sh 本地运行时产出的整包(构建产物,60MB+)
 Decky.Music.cn.zip
+Decky.Music.full.zip
