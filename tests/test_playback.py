@@ -455,55 +455,72 @@ def _capture_events(pb_coro):
 
 
 class UpstreamTimeoutConn:
-    """provider 的 song_url 恒报 upstream_timeout(单次上游请求超时,如打游戏抢带宽)。"""
+    """provider 的 song_url 前 fail_times 次报 upstream_timeout,之后成功。
+    记录每次被请求的歌曲 id —— 判「重试同一首」还是「顺延下一首」全靠它。"""
 
-    def __init__(self):
+    def __init__(self, fail_times=99):
         self.calls = []
+        self.asked = []
+        self.fail_times = fail_times
 
     async def request(self, cmd, args=None):
         self.calls.append(cmd)
         if cmd == "song_url":
-            err = types.SimpleNamespace(code="upstream_timeout", message="upstream_timeout")
-            return types.SimpleNamespace(ok=False, data={}, error=err)
+            self.asked.append((args or {}).get("id"))
+            if len(self.asked) <= self.fail_times:
+                err = types.SimpleNamespace(code="upstream_timeout", message="upstream_timeout")
+                return types.SimpleNamespace(ok=False, data={}, error=err)
+            return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
         return types.SimpleNamespace(ok=True, data={}, error=None)
 
 
-class TestUpstreamTimeoutSoftFuse(unittest.TestCase):
-    """upstream_timeout 是软熔断:一次抖动只跳过当前曲,连续两首才判链路故障。
+class TestUpstreamTimeoutRetriesSameSong(unittest.TestCase):
+    """上游瞬时超时必须原地重试同一首,不能顺延。
 
-    回归 2026-07-25 现场:打游戏时一次 curl Timeout 曾被当成通道级 timeout 立即硬熔断,
-    电台一首都不跳就弹错误横幅。
+    回归 2026-07-25/26 两次:先是被当成通道级 timeout 立即硬熔断(电台一首都不跳就停),
+    改软熔断后又变成静默跳过下一首 —— 用户视角是「歌无故消失」,比报错更费解。
+    正解是重试同一首:抖动就照常播出来,真故障就明确报错。
     """
 
-    def test_single_upstream_timeout_skips_to_next_song(self):
-        provider = UpstreamTimeoutConn()
-        pb = Playback(FakeConn(), provider)
-        pb.queue = [item(c) for c in "abcde"]
-        pb.index = 0
-        run(pb._on_ended())
-        # 硬熔断会停在 1 次;软熔断应当再试一首才放弃
-        self.assertEqual(provider.calls.count("song_url"), 2)
+    def setUp(self):
+        import playback as playback_mod
 
-    def test_upstream_timeout_does_not_scan_whole_queue(self):
-        """真断网时也不能逐首撞 15s —— 连续 2 次即止,不扫完 5 首。"""
+        self._old = playback_mod.UPSTREAM_RETRY_BACKOFF
+        playback_mod.UPSTREAM_RETRY_BACKOFF = 0  # 测试不真睡
+        self.addCleanup(setattr, playback_mod, "UPSTREAM_RETRY_BACKOFF", self._old)
+
+    def test_transient_timeout_plays_the_intended_song(self):
+        """只抖一次:重试后该放的还是原来那首,不跳过。"""
+        provider = UpstreamTimeoutConn(fail_times=1)
+        pb = Playback(FakeConn(), provider)
+        pb.queue = [item(c) for c in "abcde"]
+        pb.index = 0
+        run(pb._on_ended())
+        self.assertEqual(provider.asked, ["b", "b"])  # 同一首问了两次
+        self.assertEqual(pb.index, 1)  # 落在 b,没被跳到 c
+        self.assertTrue(pb.playing)
+
+    def test_persistent_timeout_never_skips_to_another_song(self):
+        """一直超时:重试也失败 → 熔断报错,绝不顺延到别的歌。"""
         provider = UpstreamTimeoutConn()
         pb = Playback(FakeConn(), provider)
         pb.queue = [item(c) for c in "abcde"]
         pb.index = 0
         run(pb._on_ended())
-        self.assertLess(provider.calls.count("song_url"), 5)
+        self.assertEqual(set(provider.asked), {"b"})  # 只碰过 b 这一首
+        self.assertEqual(len(provider.asked), 2)  # 首发 + 一次重试,不再多试
         self.assertFalse(pb.playing)
         self.assertEqual(pb.last_error, "upstream_timeout")
 
-    def test_radio_advance_survives_one_upstream_timeout(self):
-        """电台顺延同理:一次抖动不该打死整个电台。"""
+    def test_radio_advance_retries_then_reports(self):
         provider = UpstreamTimeoutConn()
         pb = Playback(FakeConn(), provider)
         pb.mode = "radio"
         pb.queue = [item(c) for c in "abcde"]
         pb.index = 0
         run(pb._radio_next())
-        self.assertEqual(provider.calls.count("song_url"), 2)
+        self.assertEqual(set(provider.asked), {"b"})
+        self.assertEqual(len(provider.asked), 2)
 
 
 class TestAutoAdvancePolish(unittest.TestCase):

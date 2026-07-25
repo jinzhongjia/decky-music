@@ -10,7 +10,7 @@ import { t } from "./i18n";
 const ERR_CODES: Record<string, string> = {
   timeout: "errTimeout",
   // 区分两种超时:timeout = 后端整体不响应;upstream_timeout = 音乐源单次请求超时
-  // (常见于打游戏抢带宽),后者只跳过当前曲,连续两首才判链路故障。
+  // (常见于打游戏抢带宽)。后者会先原地重试同一首,重试再失败才报到这里。
   upstream_timeout: "errUpstreamTimeout",
   no_playable: "playError",
   play_failed: "playError",

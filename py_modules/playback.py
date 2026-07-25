@@ -15,17 +15,22 @@ from log import log
 
 PLAY_MODES = ("list_loop", "single_loop", "shuffle")
 
-# 自动切歌熔断,分两档(见 _fuse_check):
-# 硬熔断 —— 一次即停。整条链路已不可用,顺延只会逐首撞超时把命令通道堵死几分钟。
-#   timeout       = bridge 30s 请求上限,子进程整体不响应
-#   fetch_timeout = player 首开慢网重试 ~21s/首
-# 软熔断 —— 连续 2 次才停。单发多半是瞬时抖动(打游戏抢带宽等)或单曲坏 URL,
-# 跳过下一首才是对的;连着两首都栽才按链路故障处理(上限 ~30s)。
-#   fetch_failed     = player 拉流打不开
-#   upstream_timeout = provider 单次上游请求超时
+# 自动切歌熔断,分两档(见 _fuse_check)。判据是「这次失败该不该归咎于这一首」:
+# 硬熔断 —— 一次即停,不顺延。整条链路已不可用,换哪首都一样;顺延只会逐首撞超时,
+# 还会让用户看到歌被无故跳过 —— 那比直接报错更费解。
+#   timeout          = bridge 30s 请求上限,子进程整体不响应
+#   fetch_timeout    = player 首开慢网重试 ~21s/首
+#   upstream_timeout = provider 单次上游请求超时。瞬时抖动已由 _play_index 原地重试
+#                      同一首消化掉(见 UPSTREAM_RETRY_BACKOFF),还能走到这里说明重试也栽了
+# 软熔断 —— 连续 2 次才停。fetch_failed 单发可能只是这一首的 URL 坏了,跳过是对的;
+# 连着两首都拉不开基本是网断了。
+#   fetch_failed = player 拉流打不开
 # 其余(如 no_playable,秒回的单曲性失败)照常跳过,不计数。
-FUSE_ERRORS = ("timeout", "fetch_timeout")
-SOFT_FUSE_ERRORS = ("fetch_failed", "upstream_timeout")
+FUSE_ERRORS = ("timeout", "fetch_timeout", "upstream_timeout")
+SOFT_FUSE_ERRORS = ("fetch_failed",)
+
+# 上游瞬时超时的原地重试退避:够让一次抖动过去,又不至于让切歌明显卡顿。
+UPSTREAM_RETRY_BACKOFF = 0.5
 
 
 def _now_ms() -> int:
@@ -314,6 +319,16 @@ class Playback:
                 r = await self.provider.request("song_url", args)
                 if gen != self._play_gen:
                     return None
+        if not r.ok and r.error and r.error.code == "upstream_timeout":
+            # 瞬时抖动(打游戏抢带宽等)不是这一首的问题,原地重试同一首 —— 顺延到下一首会让
+            # 用户看到歌无故消失,比报错更费解。重试仍失败则落到熔断,由调用方明确报错。
+            await asyncio.sleep(UPSTREAM_RETRY_BACKOFF)
+            if gen != self._play_gen:
+                return None
+            log("bridge", "own", "info", f"retry song_url after upstream timeout id={item.get('id', '')}")
+            r = await self.provider.request("song_url", args)
+            if gen != self._play_gen:
+                return None
         if not r.ok:
             self.last_error = r.error.code if r.error else "play_failed"
             message = r.error.message if r.error else "play_failed"
