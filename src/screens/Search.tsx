@@ -45,9 +45,11 @@ export function Search() {
         minHeight: 0,
       }}
     >
-      <Focusable style={{ flexShrink: 0 }}>
+      {/* 初始焦点必须走 Focusable 的 autoFocus(Valve 虚拟焦点树),不能用 TextField 的
+          focusOnMount —— 后者只给 DOM 焦点,虚拟焦点树里没人被选中,shell 根 Focusable 收不到
+          第一次 L1/R1(那一下被 Steam 拿去播种焦点),表现为"进搜索页要按两次才切 tab"。 */}
+      <Focusable style={{ flexShrink: 0 }} autoFocus={initialFocus}>
         <TextField
-          focusOnMount={initialFocus}
           value={kw}
           onChange={(e) => setKw(e.target.value)}
           {...({ placeholder: t("searchPlaceholder") } as object)}
