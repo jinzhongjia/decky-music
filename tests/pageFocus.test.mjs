@@ -40,6 +40,18 @@ test("a newly entered page may claim its initial focus", () => {
   });
 });
 
+// 二级页签(SecondaryTabs)进场不抢焦点:焦点该留在把用户带进来的那个控件上,
+// 直到用户自己按 L2/R2 或 A 选中页签。
+test("a tab row can start without claiming focus", () => {
+  assert.deepEqual(focus.createPageFocusState("fav", false), {
+    activeId: "fav",
+    allowInitialFocus: false,
+  });
+
+  const cycled = focus.cyclePage(focus.createPageFocusState("fav", false), [{ id: "fav" }], 1);
+  assert.strictEqual(cycled.allowInitialFocus, true);
+});
+
 test("user input cancels a pending asynchronous focus claim", () => {
   const initial = focus.createPageFocusState("recommend");
   const cancelled = focus.cancelInitialFocus(initial);

@@ -29,15 +29,21 @@ type AppShellProps = {
   tabs: AppTab[];
 };
 
-// tab 循环选择(AppShell L1/R1 与 SecondaryTabs L2/R2 共用):id 定位 + 循环步进
-export function useTabCycle<T extends { id: string }>(tabs: T[], initial?: string) {
-  const [active, setActive] = useState(initial ?? tabs[0].id);
-  const idx = Math.max(
-    0,
-    tabs.findIndex((tab) => tab.id === active)
-  );
-  const cycle = (d: number) => setActive(tabs[(idx + d + tabs.length) % tabs.length].id);
-  return { idx, cycle, setActive };
+// 页签循环选择 + 初始焦点(AppShell L1/R1 与 SecondaryTabs L2/R2 共用)。
+// 状态机是 pageFocus.ts 的纯函数(单测在 tests/pageFocus.test.mjs),这里只做 React 封装。
+export function useTabCycle<T extends { id: string }>(tabs: T[], initialFocus = true) {
+  const [state, setState] = useState(() => createPageFocusState(tabs[0].id, initialFocus));
+  return {
+    idx: Math.max(
+      0,
+      tabs.findIndex((tab) => tab.id === state.activeId)
+    ),
+    allowInitialFocus: state.allowInitialFocus,
+    cycle: (d: -1 | 1) => setState((s) => cyclePage(s, tabs, d)),
+    select: (id: string) => setState((s) => selectPage(s, id)),
+    // 用户产生了切页以外的输入 → 迟到的异步内容不再抢焦点
+    cancelInitialFocus: () => setState(cancelInitialFocus),
+  };
 }
 
 // 全局播放快捷键(Focusable 属性组):Start 盲操播放/暂停 + Y 队列浮层,无当前曲时
@@ -57,11 +63,7 @@ export function usePlaybackShortcuts() {
 }
 
 export function AppShell({ name, accent, tabs }: AppShellProps) {
-  const [pageFocus, setPageFocus] = useState(() => createPageFocusState(tabs[0].id));
-  const idx = Math.max(
-    0,
-    tabs.findIndex((tab) => tab.id === pageFocus.activeId)
-  );
+  const { idx, allowInitialFocus, cycle, select, cancelInitialFocus } = useTabCycle(tabs);
   const shortcuts = usePlaybackShortcuts();
 
   return (
@@ -77,13 +79,9 @@ export function AppShell({ name, accent, tabs }: AppShellProps) {
       onButtonDown={(evt) => {
         const detail = evt?.detail;
         if (!detail || detail.is_repeat) return;
-        if (detail.button === GamepadButton.BUMPER_LEFT) {
-          setPageFocus((state) => cyclePage(state, tabs, -1));
-        } else if (detail.button === GamepadButton.BUMPER_RIGHT) {
-          setPageFocus((state) => cyclePage(state, tabs, 1));
-        } else {
-          setPageFocus(cancelInitialFocus);
-        }
+        if (detail.button === GamepadButton.BUMPER_LEFT) cycle(-1);
+        else if (detail.button === GamepadButton.BUMPER_RIGHT) cycle(1);
+        else cancelInitialFocus();
       }}
       {...shortcuts}
     >
@@ -92,11 +90,11 @@ export function AppShell({ name, accent, tabs }: AppShellProps) {
         accent={accent}
         tabs={tabs}
         activeId={tabs[idx].id}
-        allowInitialFocus={pageFocus.allowInitialFocus}
-        onSelect={(id) => setPageFocus((state) => selectPage(state, id))}
+        allowInitialFocus={allowInitialFocus}
+        onSelect={select}
       />
       {/* 内容:全宽,页面自管滚动。页面主要控件仅在用户尚未移动焦点时取初始焦点。 */}
-      <PageAutoFocusContext.Provider value={pageFocus.allowInitialFocus}>
+      <PageAutoFocusContext.Provider value={allowInitialFocus}>
         <div style={{ flexGrow: 1, minHeight: 0, minWidth: 0, display: "flex" }}>
           {tabs[idx].content}
         </div>

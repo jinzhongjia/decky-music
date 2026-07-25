@@ -5,7 +5,36 @@ import { Focusable } from "@decky/ui";
 
 import { Song } from "../api";
 import { t } from "../i18n";
+import { playQueue } from "../player/usePlayer";
+import { openSongMenu } from "./songMenu";
 import { fmtTime, theme } from "./theme";
+
+// 歌曲列表容器样式:纵向滚动、行间距一致(资产/搜索列表与详情页共用)
+export const songListStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.4rem",
+  flexGrow: 1,
+  minHeight: 0,
+  overflowY: "auto",
+};
+
+/** 一列歌曲行:A = 以整列建队并定位该曲(QUEUE-BEHAVIOR §2),X = 入队菜单。
+ *  空/加载态由调用方渲染 —— 列表页居中、详情页贴顶,排版不同不强行统一。 */
+export function SongRows({ songs }: { songs: Song[] }) {
+  return (
+    <>
+      {songs.map((s, i) => (
+        <SongRow
+          key={`${s.mid}-${i}`}
+          song={s}
+          onClick={() => playQueue(songs, i)}
+          onMenu={() => openSongMenu(s)}
+        />
+      ))}
+    </>
+  );
+}
 
 export function SongRow({
   song,

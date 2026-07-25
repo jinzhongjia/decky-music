@@ -6,12 +6,10 @@ import { ReactNode } from "react";
 
 import { AlbumsResult, ArtistsResult, PlaylistsResult, SearchResult } from "../api";
 import { t } from "../i18n";
-import { playQueue } from "../player/usePlayer";
 import { openAlbumDetail } from "../screens/AlbumDetail";
 import { openArtistDetail } from "../screens/ArtistDetail";
 import { openPlaylistDetail } from "../screens/PlaylistDetail";
-import { SongRow } from "./SongRow";
-import { openSongMenu } from "./songMenu";
+import { SongRows, songListStyle } from "./SongRow";
 import { AlbumCard, ArtistCard, Grid, PlaylistCard } from "./cards";
 import { theme } from "./theme";
 import { nearBottom, unwrapList, usePaged } from "./useAsync";
@@ -29,25 +27,8 @@ export function SongListView({ fetch }: { fetch: (offset: number) => Promise<Sea
     return <div style={{ margin: "auto", color: theme.textDim }}>{t("noResults")}</div>;
   }
   return (
-    <Focusable
-      onScroll={(e) => nearBottom(e) && loadMore()}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.4rem",
-        flexGrow: 1,
-        minHeight: 0,
-        overflowY: "auto",
-      }}
-    >
-      {songs.map((s, i) => (
-        <SongRow
-          key={`${s.mid}-${i}`}
-          song={s}
-          onClick={() => playQueue(songs, i)}
-          onMenu={() => openSongMenu(s)}
-        />
-      ))}
+    <Focusable onScroll={(e) => nearBottom(e) && loadMore()} style={songListStyle}>
+      <SongRows songs={songs} />
     </Focusable>
   );
 }

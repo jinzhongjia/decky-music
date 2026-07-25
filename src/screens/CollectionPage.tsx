@@ -8,8 +8,7 @@ import { Song } from "../api";
 import { t } from "../i18n";
 import { playQueue } from "../player/usePlayer";
 import { usePlaybackShortcuts } from "../ui/AppShell";
-import { SongRow } from "../ui/SongRow";
-import { openSongMenu } from "../ui/songMenu";
+import { SongRows, songListStyle } from "../ui/SongRow";
 import { theme } from "../ui/theme";
 import { nearBottom } from "../ui/useAsync";
 
@@ -84,28 +83,14 @@ export function CollectionPage({
           {/* 曲目列表 */}
           <Focusable
             onScroll={loadMore ? (e) => nearBottom(e) && loadMore() : undefined}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.4rem",
-              flexGrow: 1,
-              minHeight: 0,
-              overflowY: "auto",
-            }}
+            style={songListStyle}
           >
             {songs === null ? (
               <div style={{ color: theme.textDim }}>{t("loading")}</div>
             ) : songs.length === 0 ? (
               <div style={{ color: theme.textDim }}>{t("noResults")}</div>
             ) : (
-              songs.map((s, i) => (
-                <SongRow
-                  key={`${s.mid}-${i}`}
-                  song={s}
-                  onClick={() => playQueue(songs, i)}
-                  onMenu={() => openSongMenu(s)}
-                />
-              ))
+              <SongRows songs={songs} />
             )}
           </Focusable>
         </>

@@ -106,29 +106,22 @@ hydrate();
 
 // ---- 动作 ----
 
-// Song → 队列项(bridge 存富信息作真相源);X 菜单入队也用
-export const toQueueItem = (s: Song): QueueItem => ({
-  id: s.mid,
-  media_mid: s.media_mid,
-  name: s.name,
-  singer: s.singer,
-  cover: s.cover,
-  duration: s.duration,
+// Song → 展示信息 / 队列项(后者多一个 media_mid,QQ 取播放地址用)。
+// bridge 存队列项的富信息作真相源;X 菜单入队也用 toQueueItem。
+const toTrack = ({ mid, name, singer, cover, duration }: Song): TrackInfo => ({
+  id: mid,
+  name,
+  singer,
+  cover,
+  duration,
 });
+export const toQueueItem = (s: Song): QueueItem => ({ ...toTrack(s), media_mid: s.media_mid });
 
 export function playQueue(songs: Song[], startIndex: number) {
   state.current = toTrack(songs[startIndex]); // 乐观更新,UI 即时反映
   notify();
   guard(() => api.playQueue(songs.map(toQueueItem), startIndex));
 }
-
-const toTrack = (s: Song): TrackInfo => ({
-  id: s.mid,
-  name: s.name,
-  singer: s.singer,
-  cover: s.cover,
-  duration: s.duration,
-});
 
 export const nextTrack = () => guard(() => api.nextTrack());
 export const prevTrack = () => guard(() => api.prevTrack());

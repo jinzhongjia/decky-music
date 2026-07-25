@@ -2,7 +2,7 @@
 // L2/R2 循环切换(顶层已占 L1/R1);Tab 胶囊可聚焦可 A 激活,D-pad 向下进内容区。
 
 import { Focusable, GamepadButton } from "@decky/ui";
-import { ReactNode, useState } from "react";
+import { ReactNode } from "react";
 
 import { Chip, useTabCycle } from "./AppShell";
 import { theme } from "./theme";
@@ -15,20 +15,16 @@ type SecondaryTabsProps = {
 };
 
 export function SecondaryTabs({ tabs, initialFocus = false }: SecondaryTabsProps) {
-  const { idx, cycle, setActive } = useTabCycle(tabs);
-  const [focusActiveTab, setFocusActiveTab] = useState(initialFocus);
+  // 与顶层页签同一状态机;二级页签默认不抢初始焦点(L2/R2 切换或 A 选中后才抢)
+  const { idx, allowInitialFocus, cycle, select } = useTabCycle(tabs, initialFocus);
 
-  const cycleAndFocus = (delta: number) => {
-    setFocusActiveTab(true);
-    cycle(delta);
-  };
   return (
     <Focusable
       onButtonDown={(evt) => {
         const detail = evt?.detail;
         if (!detail || detail.is_repeat) return;
-        if (detail.button === GamepadButton.TRIGGER_LEFT) cycleAndFocus(-1);
-        else if (detail.button === GamepadButton.TRIGGER_RIGHT) cycleAndFocus(1);
+        if (detail.button === GamepadButton.TRIGGER_LEFT) cycle(-1);
+        else if (detail.button === GamepadButton.TRIGGER_RIGHT) cycle(1);
       }}
       style={{
         display: "flex",
@@ -42,11 +38,8 @@ export function SecondaryTabs({ tabs, initialFocus = false }: SecondaryTabsProps
       <SecondaryTabRow
         tabs={tabs}
         activeId={tabs[idx].id}
-        autoFocusActive={focusActiveTab}
-        onSelect={(id) => {
-          setFocusActiveTab(true);
-          setActive(id);
-        }}
+        autoFocusActive={allowInitialFocus}
+        onSelect={select}
       />
       {/* key=当前 tab id:同类型内容组件(如两个 PlaylistGridView)切换时强制重挂,
           否则 React 复用实例、useEffect 不重跑,内容不刷新 */}
