@@ -1,6 +1,6 @@
 {
   "name": "decky-music",
-  "version": "1.0.0-beta.11",
+  "version": "1.0.0-beta.12",
   "description": "Steam Deck 音乐插件(QQ音乐 + 网易云)",
   "type": "module",
   "packageManager": "pnpm@11.3.0",
@@ -16,18 +16,18 @@
   "remote_binary": [
     {
       "name": "player",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.4/player-linux-x64",
-      "sha256hash": "4adb450e4a5d7f6f8a37228c5dbdebd6b0eecf66abf3c62c4c09beedbd03f2ab"
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.12/player-linux-x64",
+      "sha256hash": "177c643e867ae708d2ac01d0f053447f0583f76effa89e45739692abdab0dba5"
     },
     {
       "name": "ncm-provider",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.2/ncm-provider-linux-x64",
-      "sha256hash": "8e920cdd898353071391aa7f8b09413781ce8b4373ed3881e384cd29674c6fad"
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.12/ncm-provider-linux-x64",
+      "sha256hash": "a6e6d667c9f6dd1c80f74f0d8214c9d80800052868758963462deb139d551ec0"
     },
     {
       "name": "qq-provider",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.2/qq-provider-linux-x64.tar.gz",
-      "sha256hash": "b817cc0b01c332975d85a365e08fa65bb3e3f84db019fdacf401898820302e77"
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.12/qq-provider-linux-x64.tar.gz",
+      "sha256hash": "20ea52ce23835a83497c64215d3f35944859e3f464798e48996cdb537f7633c9"
     }
   ],
   "dependencies": {
