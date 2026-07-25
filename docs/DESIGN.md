@@ -121,7 +121,7 @@ Decky 只提供两种原语,足够:
 
 实现约束:
 
-- 构造 / 解码集中在协议模块:bridge `py_modules/protocol.py`,QQ `qq-provider/protocol.py`,NCM `ncm-provider/src/protocol.rs`,player `player/src/protocol.rs`。
+- 构造 / 解码集中在协议模块:bridge `py_modules/protocol.py`,QQ `qq-provider/protocol.py`;NCM 与 player 共用 `wire` crate(通用部分),各自的 `src/protocol.rs` 只留命令 args struct。
 - request id 由 bridge 递增生成。每条 `Conn` 支持多请求在途,bridge 用 `id -> Future` demux 响应并丢弃超时后的迟到响应;写 socket 只锁单帧原子性。provider/player 写回仍经单一 out queue 串行写帧。
 - 失败响应必须带稳定 `error.code`,前端 `src/api.ts` 本地化;`message` 只作安全 fallback。
 - 子进程诊断走 `Log Event`;stderr 只留 panic/traceback 等非预期输出。
@@ -411,8 +411,9 @@ CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/
 | `py_modules/playback.py` | 播放/普通队列真相源、自动切歌、`track`/`player` 事件转发 |
 | `src/api.ts` | 前端唯一接口层:callable 声明、事件类型、运行时 guard |
 | `qq-provider/protocol.py` | QQ provider 协议 v1 构造/解码 |
-| `ncm-provider/src/protocol.rs` | NCM provider 协议 v1 构造/解码 |
-| `player/src/protocol.rs` | player 协议 v1 构造/解码 |
+| `wire/src/lib.rs` | 协议 v1 Rust 侧共用:错误码 / 日志 / 请求解析 / 响应·事件构造 |
+| `ncm-provider/src/protocol.rs` | NCM provider 的命令 args struct |
+| `player/src/protocol.rs` | player 的命令 args struct |
 | `player/src/mpris.rs` | player 侧 MPRIS2 D-Bus 服务(now-playing 展示 + 控制上送 bridge;zbus 纯 Rust,§7.5) |
 
 跨层改动规则:

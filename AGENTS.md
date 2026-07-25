@@ -25,7 +25,9 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 
 目录:
 
-- `main.py` —— 只剩对外接口 facade(`Plugin` 类,逐个转发给 bridge)
+- `main.py` —— 只剩对外接口 facade:`CALLABLES` 白名单 + `__getattr__` 转发给 bridge
+  (Decky loader 按名 `getattr` 分发,不必逐个写同名方法;`tests/test_callables.py`
+  机械校验白名单 ↔ Bridge 方法 ↔ `src/api.ts` 三端一致)
 - `py_modules/` —— bridge 实现(`bridge.py` 总线 + 进程管理 / `log.py` 日志);放这里才被 Decky 加进 sys.path 且被 CLI 打包
 - `src/` —— React UI:`index.tsx`(`definePlugin` 入口)/ `QAM.tsx`(QAM 面板)/ `Page.tsx`(大屏页,导出 `ROUTE`)/ `api.ts`(前端↔bridge 唯一接口层)/ `errors.ts`+`ErrorBanner.tsx`+`Boundary.tsx`(错误纵深)/ `Footer.tsx` / `i18n.ts`
 - `player/` —— Rust,`reqwest` + `rodio`
@@ -122,12 +124,12 @@ Agent 注意:开始长时间真机调试前按 skill 挂防休眠阻断器,结�
 dev → `logger.setLevel(DEBUG)`(debug 输出);release → `INFO`(debug 过滤,其余照常)。bridge 经 `_child_env`
 注入 `DECKY_MUSIC_DEBUG=1`,子进程据此 release 下不发 debug 事件省 IPC。
 
-**各组件的日志实现各自独立成文件**:
+**各组件的日志实现**:
 - bridge:`py_modules/log.py` —— `log(source, origin, level, msg)` + `log_child_event` + `pump_stderr`。
   (放 `py_modules/` 才能被 Decky 加进 sys.path 且被 CLI 打包。)子进程的 `{"ev":"log"}` 与
   `{"ev":"error"}` 事件由 bridge 自动落日志,stderr 由 bridge 逐行捕获落 `warn`。
-- player(Rust):`player/src/logging.rs` —— `log_json(level, place, msg)` 发 `{"ev":"log",...}`;
-  音频线程用 `AudioEv::Log`。
+- player / ncm-provider(Rust):`wire` crate 的 `log_json(LogLevel, place, msg)` 发
+  `{"ev":"log",...}`;player 的音频线程用 `AudioEv::Log`。
 - provider(Python):`qq-provider/log.py` —— `make_log(out)` 返回 `log(level, where, msg)` 发 `{"ev":"log",...}`。
 - **子进程的所有诊断走 socket 结构化日志事件**;stderr 只留真正意外(panic/traceback)。
 
@@ -163,8 +165,10 @@ bridge ↔ provider/player 走**协议 v1**(见 issue #31)。传输仍是 UDS + 
 - Log(child→bridge):`{"ev":"log","level","where","msg"}`(独立顶层格式)
 
 **构造 / 解码集中在各自的 protocol 模块,业务代码不碰裸 JSON**:
-`py_modules/protocol.py`(bridge,typed decode + demux)、`qq-provider/protocol.py`、
-`ncm-provider/src/protocol.rs`、`player/src/protocol.rs`。改协议时四端 + `src/api.ts` 的
+`py_modules/protocol.py`(bridge,typed decode + demux)、`qq-provider/protocol.py`;
+Rust 两端共用 `wire` crate(错误码 `ErrorCode`、`LogLevel`、请求解析、响应/事件构造),
+`ncm-provider/src/protocol.rs` 与 `player/src/protocol.rs` 只留各自的命令 args struct。
+改协议时四端 + `src/api.ts` 的
 `PlayerEvent`/`LoginEvent`/`ProviderEvent` 必须同步。协议模块配套单测(`tests/`、`qq-provider/tests/`、
 Rust `#[cfg(test)]`)。
 
