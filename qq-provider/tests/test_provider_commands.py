@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import protocol  # noqa: E402
 from main import _run_request, handle  # noqa: E402
+from qq import account as account_mod  # noqa: E402
+from qq import library, search  # noqa: E402
 from qq.library import (  # noqa: E402
     NotLoggedIn,
     _as_bool,
@@ -96,59 +98,59 @@ class TestProviderArgValidation(unittest.TestCase):
 
 
 class TestProviderDispatch(unittest.IsolatedAsyncioTestCase):
-    async def test_invalid_search_songs_does_not_call_qq(self):
-        class QQ:
-            async def search_songs(self, *args, **kwargs):  # pragma: no cover - must not run
-                raise AssertionError("upstream called")
+    """dispatch 直接调域模块函数(main.handle 的 match 即唯一一层),故打桩打在模块上。"""
 
-        resp = await handle(QQ(), protocol.Request(1, "search_songs", {}), None, lambda *a: None)
+    def patch(self, module, name, fn):
+        original = getattr(module, name)
+        setattr(module, name, fn)
+        self.addCleanup(setattr, module, name, original)
+
+    async def test_invalid_search_songs_does_not_call_upstream(self):
+        async def boom(*_a, **_k):  # pragma: no cover - 必须不被调用
+            raise AssertionError("upstream called")
+
+        self.patch(search, "songs", boom)
+        req = protocol.Request(1, "search_songs", {})
+        resp = await handle(object(), req, None, lambda *a: None)
         self.assertEqual(resp["ok"], False)
         self.assertEqual(resp["error"]["code"], "invalid_request")
 
     async def test_dispatch_search_playlists_success_shape(self):
-        class QQ:
-            async def search_playlists(self, keyword, limit=20, offset=0):
-                self.seen = (keyword, limit, offset)
-                return [{"id": "1", "name": "List", "cover": "", "count": 0, "play_count": 0}]
+        seen = {}
+        entry = {"id": "1", "name": "List", "cover": "", "count": 0, "play_count": 0}
 
-        qq = QQ()
+        async def fake(q, keyword, limit=20, offset=0):
+            seen["args"] = (keyword, limit, offset)
+            return [entry]
+
+        self.patch(search, "playlists", fake)
         resp = await handle(
-            qq,
+            object(),
             protocol.Request(2, "search_playlists", {"keyword": "jay", "limit": 3, "offset": 6}),
             None,
             lambda *a: None,
         )
-        self.assertEqual(
-            resp,
-            protocol.ok(
-                2,
-                {
-                    "playlists": [
-                        {"id": "1", "name": "List", "cover": "", "count": 0, "play_count": 0}
-                    ]
-                },
-            ),
-        )
-        self.assertEqual(qq.seen, ("jay", 3, 6))
+        self.assertEqual(resp, protocol.ok(2, {"playlists": [entry]}))
+        self.assertEqual(seen["args"], ("jay", 3, 6))
 
     async def test_invalid_like_song_missing_on(self):
-        class QQ:
-            async def like_song(self, *args, **kwargs):  # pragma: no cover - must not run
-                raise AssertionError("upstream called")
+        async def boom(*_a, **_k):  # pragma: no cover - 必须不被调用
+            raise AssertionError("upstream called")
 
+        self.patch(library, "like_song", boom)
         resp = await handle(
-            QQ(), protocol.Request(3, "like_song", {"id": "123"}), None, lambda *a: None
+            object(), protocol.Request(3, "like_song", {"id": "123"}), None, lambda *a: None
         )
         self.assertEqual(resp["ok"], False)
         self.assertEqual(resp["error"]["code"], "invalid_request")
 
     async def test_invalid_created_playlists_bad_paging(self):
-        class QQ:
-            async def created_playlists(self, *args, **kwargs):  # pragma: no cover - must not run
-                raise AssertionError("upstream called")
+        async def boom(*_a, **_k):  # pragma: no cover - 必须不被调用
+            raise AssertionError("upstream called")
 
+        self.patch(library, "created_playlists", boom)
         resp = await handle(
-            QQ(),
+            object(),
             protocol.Request(4, "created_playlists", {"limit": True}),
             None,
             lambda *a: None,
@@ -157,13 +159,11 @@ class TestProviderDispatch(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp["error"]["code"], "invalid_request")
 
     async def test_dispatch_maps_not_logged_in(self):
-        class QQ:
-            async def user_assets(self):
-                raise NotLoggedIn()
+        async def unauthorized(_q):
+            raise NotLoggedIn()
 
-        resp = await handle(
-            QQ(), protocol.Request(5, "user_assets", {}), None, lambda *a: None
-        )
+        self.patch(library, "user_assets", unauthorized)
+        resp = await handle(object(), protocol.Request(5, "user_assets", {}), None, lambda *a: None)
         self.assertEqual(resp["ok"], False)
         self.assertEqual(resp["error"]["code"], "not_logged_in")
 
@@ -204,14 +204,18 @@ class TestProviderConcurrency(unittest.IsolatedAsyncioTestCase):
         release_slow = asyncio.Event()
         out = asyncio.Queue()
 
-        class QQ:
-            async def search(self, *_args):
-                slow_started.set()
-                await release_slow.wait()
-                return []
+        async def slow_search(*_args, **_kwargs):
+            slow_started.set()
+            await release_slow.wait()
+            return []
 
-            async def account(self):
-                return {"nickname": "ok"}
+        async def fast_account(_q):
+            return {"nickname": "ok"}
+
+        original = (search.songs, account_mod.get)
+        search.songs, account_mod.get = slow_search, fast_account
+        self.addCleanup(lambda: setattr(search, "songs", original[0]))
+        self.addCleanup(lambda: setattr(account_mod, "get", original[1]))
 
         def emit(*_args, **_kwargs):
             raise AssertionError("unexpected event")
@@ -219,11 +223,11 @@ class TestProviderConcurrency(unittest.IsolatedAsyncioTestCase):
         def log(*_args, **_kwargs):
             pass
 
-        qq = QQ()
+        qq = object()
         slow = asyncio.create_task(
             _run_request(
                 qq,
-                protocol.Request(1, "search", {"keyword": "slow"}),
+                protocol.Request(1, "search_songs", {"keyword": "slow"}),
                 emit,
                 log,
                 out,

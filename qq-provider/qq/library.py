@@ -81,7 +81,6 @@ async def user_assets(q) -> dict:
     )
     return {
         "fav_songs": int(getattr(fav, "total", 0) or 0),
-        "recent_songs": 0,
         "created_playlists": int(getattr(created, "total", 0) or 0),
         "fav_playlists": int(getattr(fav_lists, "total", 0) or 0),
     }
@@ -107,12 +106,6 @@ async def fav_songs(q, limit: int = 20, offset: int = 0) -> list[dict]:
         credential=cred,
     )
     return [_song_brief(s) for s in resp.songs[skip : skip + limit]]
-
-
-async def recent_songs(q, limit: int = 20, offset: int = 0) -> list[dict]:
-    _ = (q, limit, offset)
-    # ponytail: qqmusic_api exposes no safe recent-play method; wire it here if upstream adds one.
-    return []
 
 
 async def created_playlists(q, limit: int = 20, offset: int = 0) -> list[dict]:

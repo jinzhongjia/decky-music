@@ -15,7 +15,7 @@
 - **后端内容命令全量就绪**(provider 层 + bridge callable 两端已接):
   两端对齐的 `search_songs/search_playlists`、`user_assets`、`fav_songs`、
   `created_playlists/fav_playlists`、`like_song {id,on}`、`add_to_playlist`、
-  `artist_detail/album_detail`、`radio_fetch {kind}`;QQ 另有 `search_albums/search_artists/recent_songs`;
+  `artist_detail/album_detail`、`radio_fetch {kind}`;QQ 另有 `search_albums/search_artists`;
   NCM 另有 `search_hot/banner/cloud_songs/listen_rank/comments/comment_like/fm_trash`。
   边界校验统一返 `invalid_request`,limit 钳制 50,未登录预检返 `not_logged_in`。
 - **并发架构**:bridge Conn id demux + 事件顺序队列(修自然播完自死锁);播放意图代次
