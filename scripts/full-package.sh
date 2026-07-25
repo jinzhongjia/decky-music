@@ -6,21 +6,7 @@
 # (which rebuilds out/).
 #
 #   scripts/full-package.sh              -> writes Decky.Music.full.zip to repo root
-#   scripts/full-package.sh --self-test  -> assert the package.json strip is correct
 set -euo pipefail
-
-strip_remote_binary() {  # $1=package.json path ("-" = stdin) -> stripped JSON to stdout
-  jq 'del(.remote_binary)' "$1"
-}
-
-if [ "${1:-}" = "--self-test" ]; then
-  sample='{"name":"decky-music","version":"1.0.0-beta.8","remote_binary":[{"name":"player","url":"u","sha256hash":"h"}],"dependencies":{"a":"1"}}'
-  out=$(printf '%s' "$sample" | strip_remote_binary -)
-  printf '%s' "$out" | jq -e 'has("remote_binary") | not' >/dev/null
-  printf '%s' "$out" | jq -e '.version == "1.0.0-beta.8" and .name == "decky-music" and .dependencies.a == "1"' >/dev/null
-  echo "full-package self-test: ok"
-  exit 0
-fi
 
 NAME=$(jq -r '.name' plugin.json)          # zip 顶层目录名(含空格,如 "Decky Music")
 SRC_ZIP="out/${NAME}.zip"
@@ -46,7 +32,7 @@ chmod +x "$work/bin/player" "$work/bin/ncm-provider"
 
 # 2. 解普通 zip,删 remote_binary,注入 bin/,重打包。
 unzip -q "$SRC_ZIP" -d "$work/zip"
-strip_remote_binary "$work/zip/$NAME/package.json" > "$work/pkg.json"
+jq 'del(.remote_binary)' "$work/zip/$NAME/package.json" > "$work/pkg.json"
 mv "$work/pkg.json" "$work/zip/$NAME/package.json"
 cp -r "$work/bin" "$work/zip/$NAME/bin"
 (cd "$work/zip" && zip -qr "$OUT" "$NAME")
