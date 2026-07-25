@@ -54,11 +54,14 @@ EOF
 )
 
 # 传脚本上去用 sudo 跑;DECK_PASS 走 sudo -S 的 stdin(与脚本 stdin 不冲突)
-if [ -n "${DECK_PASS:-}" ]; then
-  echo "$REMOTE" | ssh "${DECK_HOST}" \
-    "cat > /tmp/dm-deploy.sh && echo '${DECK_PASS}' | sudo -S -p '' bash /tmp/dm-deploy.sh; rm -f /tmp/dm-deploy.sh"
-else
-  echo "$REMOTE" | ssh "${DECK_HOST}" \
-    "cat > /tmp/dm-deploy.sh && sudo bash /tmp/dm-deploy.sh; rm -f /tmp/dm-deploy.sh"
-fi
+SUDO="sudo"
+[ -n "${DECK_PASS:-}" ] && SUDO="echo '${DECK_PASS}' | sudo -S -p ''"
+
+# 远端失败必须让本地也失败。原先结尾是 `...; rm -f`,整条命令的退出码变成 rm 的 0,
+# sudo 要密码都能打印 "deployed"(实际什么都没装)。这里照样清理临时脚本,但透传真实状态。
+echo "$REMOTE" | ssh "${DECK_HOST}" \
+  "cat > /tmp/dm-deploy.sh && { $SUDO bash /tmp/dm-deploy.sh; s=\$?; rm -f /tmp/dm-deploy.sh; exit \$s; }" || {
+  echo "✗ 远端安装失败,插件未更新(deck 的 sudo 需要密码时导出 DECK_PASS=xxx)" >&2
+  exit 1
+}
 echo "→ deployed ${NAME}"
