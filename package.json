@@ -13,6 +13,12 @@
     "format": "prettier --write .",
     "lint": "tsc --noEmit && prettier --check ."
   },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@1": "^1.1.16",
+      "brace-expansion@2": "^2.1.2"
+    }
+  },
   "remote_binary": [
     {
       "name": "player",
