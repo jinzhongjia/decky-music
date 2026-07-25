@@ -10,3 +10,9 @@ supportedArchitectures:
   libc:
     - glibc
     - musl
+
+# brace-expansion 的 ReDoS(1.x / 2.x 各一条 GHSA)。两条都只经 @decky/rollup 进构建
+# 工具链、不进 dist/,钉住是为了让告警面板归零,免得真漏洞被噪音淹掉。
+overrides:
+  brace-expansion@1: ^1.1.16
+  brace-expansion@2: ^2.1.2
