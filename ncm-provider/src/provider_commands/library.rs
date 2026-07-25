@@ -16,7 +16,6 @@ pub(super) fn user_assets_data(uid: String, sub: &Value, fav_songs: usize) -> Va
         "listen_rank": 0,
         "created_playlists": sub["createdPlaylistCount"].as_i64().unwrap_or(0),
         "fav_playlists": sub["subPlaylistCount"].as_i64().unwrap_or(0),
-        "cloud": sub["cloudCount"].as_i64().unwrap_or(0),
     })
 }
 

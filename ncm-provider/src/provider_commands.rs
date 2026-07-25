@@ -186,7 +186,7 @@ mod tests {
         assert_eq!(string_arg(&json!({"id":"7"}), "id").unwrap(), "7");
         assert!(string_arg(&json!({"id":""}), "id").is_err());
         assert!(bool_arg(&json!({"on":"true"}), "on").is_err());
-        assert_eq!(bool_arg(&json!({"on":true}), "on").unwrap(), true);
+        assert!(bool_arg(&json!({"on":true}), "on").unwrap());
     }
 
     #[test]
@@ -221,7 +221,7 @@ mod tests {
             comments::comment_brief(
                 &json!({"commentId":4,"user":{"nickname":"u","avatarUrl":"av"},"content":"c","likedCount":5,"time":6})
             ),
-            json!({"id":"4","user":"u","avatar":"av","content":"c","likes":5,"time":"6"})
+            json!({"id":"4","user":"u","avatar":"av","content":"c","likes":5})
         );
         assert_eq!(
             search::hot_keyword(&json!({"searchWord":"k","iconType":1})),
@@ -249,7 +249,7 @@ mod tests {
                 &json!({"createdPlaylistCount":2,"subPlaylistCount":3,"cloudCount":4}),
                 9
             ),
-            json!({"uid":"42","fav_songs":9,"listen_rank":0,"created_playlists":2,"fav_playlists":3,"cloud":4})
+            json!({"uid":"42","fav_songs":9,"listen_rank":0,"created_playlists":2,"fav_playlists":3})
         );
     }
 

@@ -13,7 +13,6 @@ pub(super) fn comment_brief(v: &Value) -> Value {
         "avatar": v["user"]["avatarUrl"].as_str().unwrap_or(""),
         "content": v["content"].as_str().unwrap_or(""),
         "likes": v["likedCount"].as_i64().unwrap_or(0),
-        "time": id_string(&v["time"]),
     })
 }
 

@@ -82,11 +82,9 @@ export type UserAssets = {
   ok: boolean;
   error?: string;
   fav_songs?: number;
-  recent_songs?: number;
   listen_rank?: number;
   created_playlists?: number;
   fav_playlists?: number;
-  cloud?: number;
 };
 export type PlaylistsResult = { ok: boolean; playlists: Playlist[]; error?: string };
 // 榜单卡沿用 Playlist 形状(NCM 榜单即官方歌单;QQ 分类打平归一化)
@@ -105,7 +103,6 @@ export type Comment = {
   avatar: string;
   content: string;
   likes: number;
-  time: string;
 };
 export type CommentsResult = { ok: boolean; comments: Comment[]; error?: string };
 // 热搜词(P6;qq get_hotkey / ncm search_hot_detail 归一化):label hot|new|none
