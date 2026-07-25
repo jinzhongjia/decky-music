@@ -32,6 +32,11 @@ SOFT_FUSE_ERRORS = ("fetch_failed",)
 # 上游瞬时超时的原地重试退避:够让一次抖动过去,又不至于让切歌明显卡顿。
 UPSTREAM_RETRY_BACKOFF = 0.5
 
+# 会让 sink 真正死掉的 player 错误码 —— 只有这些才记「断流中断处」供 resume 接上。
+# 其余(seek_failed:try_seek 失败但 sink 照常出声;audio_* :重载也救不回来)一律不动
+# 播放状态,否则 bridge 会与实际出声脱节,之后 resume 白重载一遍还往回跳。
+STREAM_DEATH_ERRORS = ("fetch_failed", "fetch_timeout", "decode_failed")
+
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
@@ -518,17 +523,19 @@ class Playback:
         elif ev.type == "ended":
             self.playing = False
         elif ev.type == "error":
-            self.playing = False
-            # 流已死,sink 不可用:_loaded 置 False,让下次 resume() 落到冷启动重新加载,
-            # 而不是往一个死 sink 发 resume(表现为"按播放键没反应")。记下中断处以便接上。
-            self._resume_at = self.pos
-            self._loaded = False
-            log(
-                "bridge",
-                "own",
-                "warn",
-                f"player error: {ev.data.get('code', '')} at {self.pos:.1f}s (resume will continue from here)",
-            )
+            code = ev.data.get("code", "")
+            if code in STREAM_DEATH_ERRORS:
+                # 流真的死了(sink 放空且 probe 报错),再往它发 resume 是"按播放键没反应"。
+                # _loaded 置 False 让下次 resume() 冷启动重新加载,并记下中断处以便接上。
+                self.playing = False
+                self._resume_at = self.pos
+                self._loaded = False
+                log("bridge", "own", "warn", f"stream died at {self.pos:.1f}s ({code}), resume will continue from here")
+            else:
+                # 非致命错误(如 seek_failed:try_seek 失败但 sink 照常出声)。绝不能动
+                # _loaded/_resume_at —— 否则之后任何一次 resume 都会白重载一遍并往回跳,
+                # 而音频其实一直在往前走(真机实测踩到:seek_failed 后播到 222s,resume 却跳回 189s)。
+                log("bridge", "own", "warn", f"player error: {code} (non-fatal, playback untouched)")
         await decky.emit("player", {"ev": ev.ev, "type": ev.type, "data": ev.data})
         if ev.type == "ended":
             await self._on_ended()

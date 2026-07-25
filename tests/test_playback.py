@@ -549,14 +549,14 @@ class TestResumeAfterStreamDeath(unittest.TestCase):
     往一个已死的 sink 发 resume,表现为「按播放键没反应」,而 self.pos 从没被用过。
     """
 
-    def _died_at(self, player, pos=42.5):
+    def _died_at(self, player, pos=42.5, code="fetch_failed"):
         pb = Playback(player, FakeConn())
         pb.queue = [item(c) for c in "abc"]
         pb.index = 1
         pb._loaded = True
         pb.playing, pb.pos = True, pos
         run(pb.on_player_event(types.SimpleNamespace(
-            ev="player", type="error", data={"code": "fetch_failed", "message": "fetch_failed"})))
+            ev="player", type="error", data={"code": code, "message": code})))
         return pb
 
     def test_error_marks_unloaded_and_remembers_position(self):
@@ -590,6 +590,21 @@ class TestResumeAfterStreamDeath(unittest.TestCase):
         run(pb._play_index(2))
         self.assertEqual(pb._resume_at, 0.0)
         self.assertEqual(player.seeks, [])
+
+    def test_non_fatal_error_leaves_playback_state_alone(self):
+        """seek_failed 不杀 sink(audio.rs 里 try_seek 失败只发事件,照常出声)。
+        若照样记中断处,之后任何 resume 都会白重载并往回跳 —— 真机实测踩过:
+        seek_failed 后音频已播到 222s,resume 却跳回 189s。"""
+        player = SeekTrackingConn()
+        pb = self._died_at(player, pos=189.1, code="seek_failed")
+        self.assertTrue(pb._loaded)  # 流没死,别动
+        self.assertEqual(pb._resume_at, 0.0)
+        self.assertTrue(pb.playing)
+
+        run(pb.resume())
+        self.assertNotIn("load", player.calls)  # 不该重载
+        self.assertEqual(player.seeks, [])  # 更不该往回跳
+        self.assertIn("resume", player.calls)
 
     def test_queue_clear_clears_the_resume_point(self):
         player = SeekTrackingConn()
