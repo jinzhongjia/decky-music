@@ -69,6 +69,36 @@ window[Object.keys(window).find(k => k.startsWith("webpackChunk"))]
 // instantiate: req(id)
 ```
 
+## Calling a plugin's backend from a probe
+
+Use the loader's WS route in `shared` — side-effect free:
+
+```js
+// read and write bridge state without disturbing the running plugin
+await DeckyBackend.call("loader/call_plugin_method", "<Plugin Name>", "get_playback");
+await DeckyBackend.call("loader/call_plugin_method", "<Plugin Name>", "volume", 0.6);
+```
+
+**Never** reach for `window.__DECKY_SECRET_INTERNALS_..._deckyLoaderAPIInit.connect(2, "<Plugin
+Name>")` just to call a method. Every `connect()` does
+`pluginEventListeners.set(pluginName, new Map())` in decky-loader — it **overwrites the plugin's
+event-listener map**, so the real plugin frontend silently stops receiving its `decky.emit`
+events from that moment on. Symptoms look exactly like a product bug: progress text frozen,
+play/pause icon never flips, state stuck at whatever the last render had. Diagnosing that phantom
+costs more than the probe saved.
+
+If you do need `connect()` (e.g. simulating a frontend reload), hand ownership back afterwards
+with `await DeckyPluginLoader.importPlugin("<Plugin Name>")` — re-importing the bundle re-runs
+`@decky/api`, which calls `connect()` again — and don't call `connect()` after that point.
+
+`importPlugin` on its own is the cheap way to reproduce a **frontend-only reload** (what a Steam
+restart / desktop-mode round trip does to plugin frontends) without restarting `plugin_loader`,
+so module-level state and mount-time hydration re-run while the backend keeps running.
+
+**Is the UI actually live?** Sample a changing text (progress `m:ss / m:ss`, clock) twice a few
+seconds apart in the same probe. Frozen text = the tree isn't re-rendering; don't trust any
+single-shot DOM read as proof that state arrived.
+
 ## Driving the UI (hard-won rules)
 
 - **DOM clicks work for gamepad activation**: `el.dispatchEvent(new MouseEvent("click",
@@ -92,4 +122,6 @@ window[Object.keys(window).find(k => k.startsWith("webpackChunk"))]
 - `pkill -f "8080:localhost"` style cleanup can match your own shell's command line and kill
   it (zsh exit 144) — kill by PID instead.
 - The visible screen is `bp`, not `SharedJSContext` — screenshots of `shared` are blank.
+- After a Steam restart (desktop-mode round trip) the `bp` target gets a **new id** — re-resolve
+  targets instead of reusing an id, or you read a dead window.
 - Overlay targets (`qam`, `mainmenu`) only render while the overlay is open on-device.
