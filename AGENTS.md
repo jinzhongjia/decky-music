@@ -182,6 +182,8 @@ Rust `#[cfg(test)]`)。
   SOFT_FUSE_ERRORS 与 tests/test_playback.py 的 TestUpstreamTimeoutSoftFuse)。
 - **红线延续**:`message` / 日志都不得含 URL(限时 token)/ cookie / credential。
 - 前端订阅事件先过 `isDomainEvent` 运行时 guard,畸形事件忽略不崩 UI。
+- **播放错误双通道上报**:插件 UI 内的 `ErrorBanner` + Steam 系统 toast。播放出错时用户
+  多半不在插件界面(在玩游戏),只有横幅等于没提示。见 `src/player/usePlayer.ts`。
 
 ## Documentation rules
 

@@ -2,6 +2,7 @@
 // bridge 是真相源:current 来自 bridge(track 事件 / 挂载回灌 get_playback),不依赖前端队列,
 // 因此前端重载后仍能同步(修 "退出重进播放条空" 的 desync)。
 
+import { toaster } from "@decky/api";
 import { useEffect, useState } from "react";
 
 import {
@@ -40,6 +41,18 @@ const state: State = {
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
+// 系统通知节流:同一错误码 30s 内只弹一次。断网时每次自动切歌重试都会来一条 error 事件,
+// 不节流会连着刷屏。按 code 而非按消息:换了别的错误码说明是新情况,立刻弹。
+// 横幅不节流 —— 它是单个覆盖式槽位,本来就不会堆积。
+const TOAST_THROTTLE_MS = 30_000;
+let lastToast = { code: "", at: 0 };
+function toastError(code: string, body: string) {
+  const now = Date.now();
+  if (code === lastToast.code && now - lastToast.at < TOAST_THROTTLE_MS) return;
+  lastToast = { code, at: now };
+  toaster.toast({ title: t("music"), body });
+}
+
 // 只有 track 事件带曲目身份 —— 它到了才不必再用回灌快照的 current。
 // (曾用"收到任何事件"作判据:playing 位置锚点每 3s 一条,抢在回灌响应前到就把整份快照丢掉,
 //  留下 playing=true / current=null —— 有声无曲,而停播入口全都 gate 在 current 上,音乐关不掉。
@@ -65,7 +78,11 @@ onPlayer((e) => {
     state.queueMode = e.data.mode; // 电台/普通模式跟随 bridge 广播
   } else if (e.type === PlayerEv.Error) {
     state.playing = false;
-    reportError(errorText(e.data.code) || t("playError"));
+    const msg = errorText(e.data.code) || t("playError");
+    reportError(msg); // 插件 UI 内的横幅:可关闭、留得住,便于在页面里排查
+    // 播放错误多半发生在你没看着插件的时候(在玩游戏/在别的界面),横幅在那时等于没提示。
+    // 再发一条 Steam 系统通知,保证"歌停了却不知道为什么"不会再出现。
+    toastError(e.data.code, msg);
   }
   // 有声无曲兜底:播放态在动但 store 没当前曲(回灌失败/丢事件)→ 补拉一次,
   // 否则 UI 一直"没在播放"、连暂停入口都摸不到。下一条锚点最多 3s 后必再试。
