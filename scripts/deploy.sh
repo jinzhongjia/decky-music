@@ -25,6 +25,9 @@ fi
 # /tmp/decky 是 CLI 的临时构建目录,不自清会累积撑爆 /tmp(tmpfs),每次构建前清掉。
 sudo rm -rf out dist /tmp/decky
 sudo ./cli/decky plugin build .
+# 交还属主:CLI 以 root 产出 out/ 与 dist/,不还回来的话之后本机直接跑 pnpm build 会
+# EACCES(rollup 删不掉 root 的 dist/index.js.map)。同 release-cn.sh 的做法。
+sudo chown -R "$(id -u):$(id -g)" out dist 2>/dev/null || true
 ZIP=$(ls -t out/*.zip | head -1)
 
 # 传输:用无空格临时名,避开 rsync 远端空格路径的坑
