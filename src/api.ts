@@ -9,6 +9,9 @@ import { t } from "./i18n";
 // 非已知 code(= 库抛出的原始错误)原样显示,便于把真实错误暴露给用户。
 const ERR_CODES: Record<string, string> = {
   timeout: "errTimeout",
+  // 区分两种超时:timeout = 后端整体不响应;upstream_timeout = 音乐源单次请求超时
+  // (常见于打游戏抢带宽),后者只跳过当前曲,连续两首才判链路故障。
+  upstream_timeout: "errUpstreamTimeout",
   no_playable: "playError",
   play_failed: "playError",
   provider_start_timeout: "errProviderStart",

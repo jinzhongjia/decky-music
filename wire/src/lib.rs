@@ -20,7 +20,6 @@ pub enum ErrorCode {
     UnknownCmd,
     InvalidRequest,
     MissingField,
-    Timeout,
     // player
     FetchFailed,
     FetchTimeout,
@@ -30,6 +29,10 @@ pub enum ErrorCode {
     AudioThreadGone,
     Superseded,
     // provider
+    /// provider 单次上游请求超时。常是瞬时抖动(打游戏抢带宽等),不等于整条链路不可用,
+    /// 故与 bridge 自己产出的通道级 `timeout`(子进程整体不响应,30s 上限)分开:
+    /// 后者立即熔断,本码按连续 2 次才熔断。通道级 timeout 只由 bridge 产出,Rust 侧不发。
+    UpstreamTimeout,
     NoPlayable,
     ProviderError,
     NotLoggedIn,
@@ -195,6 +198,7 @@ mod tests {
             (ErrorCode::UnknownCmd, "unknown_cmd"),
             (ErrorCode::AudioDeviceFailed, "audio_device_failed"),
             (ErrorCode::NoPlayable, "no_playable"),
+            (ErrorCode::UpstreamTimeout, "upstream_timeout"),
             (ErrorCode::NotLoggedIn, "not_logged_in"),
         ] {
             let v: Value = serde_json::from_str(&err(1, code, "m")).unwrap();

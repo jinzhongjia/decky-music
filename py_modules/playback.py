@@ -15,11 +15,17 @@ from log import log
 
 PLAY_MODES = ("list_loop", "single_loop", "shuffle")
 
-# 自动切歌熔断:这些错误码意味着网络/后端系统性不可用(而非单曲问题),顺延只会
-# 逐首撞超时把命令通道堵死几分钟(timeout = bridge 30s 请求上限;fetch_timeout =
-# player 首开慢网重试 ~21s/首)。单曲性失败(no_playable 秒回)不在此列,照常跳过;
-# fetch_failed 单发可能只是单曲坏 URL,连续 2 次按断网熔断(见 _fuse_check)。
+# 自动切歌熔断,分两档(见 _fuse_check):
+# 硬熔断 —— 一次即停。整条链路已不可用,顺延只会逐首撞超时把命令通道堵死几分钟。
+#   timeout       = bridge 30s 请求上限,子进程整体不响应
+#   fetch_timeout = player 首开慢网重试 ~21s/首
+# 软熔断 —— 连续 2 次才停。单发多半是瞬时抖动(打游戏抢带宽等)或单曲坏 URL,
+# 跳过下一首才是对的;连着两首都栽才按链路故障处理(上限 ~30s)。
+#   fetch_failed     = player 拉流打不开
+#   upstream_timeout = provider 单次上游请求超时
+# 其余(如 no_playable,秒回的单曲性失败)照常跳过,不计数。
 FUSE_ERRORS = ("timeout", "fetch_timeout")
+SOFT_FUSE_ERRORS = ("fetch_failed", "upstream_timeout")
 
 
 def _now_ms() -> int:
@@ -273,12 +279,10 @@ class Playback:
         return (self.index + 1) % n
 
     def _fuse_check(self, net_fails: int) -> tuple[int, bool]:
-        """顺延熔断判据 → (新的连续 fetch_failed 计数, 是否熔断)。
-        FUSE_ERRORS 立即熔断;fetch_failed 连续 2 次按断网熔断(单发可能只是单曲坏 URL,
-        跳过是对的;连续两首都拉不开基本是网断了);其余(如 no_playable)清零继续跳。"""
+        """顺延熔断判据 → (新的连续软熔断计数, 是否熔断)。分档说明见 FUSE_ERRORS。"""
         if self.last_error in FUSE_ERRORS:
             return net_fails, True
-        if self.last_error == "fetch_failed":
+        if self.last_error in SOFT_FUSE_ERRORS:
             return net_fails + 1, net_fails + 1 >= 2
         return 0, False
 

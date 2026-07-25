@@ -454,6 +454,58 @@ def _capture_events(pb_coro):
     return events
 
 
+class UpstreamTimeoutConn:
+    """provider 的 song_url 恒报 upstream_timeout(单次上游请求超时,如打游戏抢带宽)。"""
+
+    def __init__(self):
+        self.calls = []
+
+    async def request(self, cmd, args=None):
+        self.calls.append(cmd)
+        if cmd == "song_url":
+            err = types.SimpleNamespace(code="upstream_timeout", message="upstream_timeout")
+            return types.SimpleNamespace(ok=False, data={}, error=err)
+        return types.SimpleNamespace(ok=True, data={}, error=None)
+
+
+class TestUpstreamTimeoutSoftFuse(unittest.TestCase):
+    """upstream_timeout 是软熔断:一次抖动只跳过当前曲,连续两首才判链路故障。
+
+    回归 2026-07-25 现场:打游戏时一次 curl Timeout 曾被当成通道级 timeout 立即硬熔断,
+    电台一首都不跳就弹错误横幅。
+    """
+
+    def test_single_upstream_timeout_skips_to_next_song(self):
+        provider = UpstreamTimeoutConn()
+        pb = Playback(FakeConn(), provider)
+        pb.queue = [item(c) for c in "abcde"]
+        pb.index = 0
+        run(pb._on_ended())
+        # 硬熔断会停在 1 次;软熔断应当再试一首才放弃
+        self.assertEqual(provider.calls.count("song_url"), 2)
+
+    def test_upstream_timeout_does_not_scan_whole_queue(self):
+        """真断网时也不能逐首撞 15s —— 连续 2 次即止,不扫完 5 首。"""
+        provider = UpstreamTimeoutConn()
+        pb = Playback(FakeConn(), provider)
+        pb.queue = [item(c) for c in "abcde"]
+        pb.index = 0
+        run(pb._on_ended())
+        self.assertLess(provider.calls.count("song_url"), 5)
+        self.assertFalse(pb.playing)
+        self.assertEqual(pb.last_error, "upstream_timeout")
+
+    def test_radio_advance_survives_one_upstream_timeout(self):
+        """电台顺延同理:一次抖动不该打死整个电台。"""
+        provider = UpstreamTimeoutConn()
+        pb = Playback(FakeConn(), provider)
+        pb.mode = "radio"
+        pb.queue = [item(c) for c in "abcde"]
+        pb.index = 0
+        run(pb._radio_next())
+        self.assertEqual(provider.calls.count("song_url"), 2)
+
+
 class TestAutoAdvancePolish(unittest.TestCase):
     def test_two_consecutive_fetch_failed_fuse(self):
         """断网:fetch_failed 连续 2 次熔断,不把整个队列扫一圈。"""

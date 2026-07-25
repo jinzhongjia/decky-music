@@ -176,6 +176,10 @@ Rust `#[cfg(test)]`)。
 - **request id**:bridge 递增生成,当前仍 FIFO 收发,id 只用于校验错配;并发/乱序 demux 留后续。
 - **错误码**:失败必带稳定 `error.code`(供前端 i18n),`message` 只作安全 fallback。第三方库原始错误
   **默认不透 UI**;前端 `errorText(code)` 命中已知码 → 本地化,否则原样显示。
+- **两种超时不可混用**:`timeout` 只由 bridge 产出,表示子进程整体不响应(30s 上限),
+  播放侧立即熔断;`upstream_timeout` 由 provider 产出,表示单次上游请求超时(打游戏抢带宽等
+  瞬时抖动),播放侧连续 2 次才熔断。混用会让一次抖动打死整个电台(见 playback 的 FUSE_ERRORS /
+  SOFT_FUSE_ERRORS 与 tests/test_playback.py 的 TestUpstreamTimeoutSoftFuse)。
 - **红线延续**:`message` / 日志都不得含 URL(限时 token)/ cookie / credential。
 - 前端订阅事件先过 `isDomainEvent` 运行时 guard,畸形事件忽略不崩 UI。
 

@@ -36,7 +36,7 @@ pub async fn daily_songs(state: &State, id: u64) -> String {
             json!({ "songs": map_arr(&r.body["data"]["dailySongs"], song_brief) }),
         ),
         Ok(Err(_)) => protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-        Err(_) => protocol::err(id, ErrorCode::Timeout, "timeout"),
+        Err(_) => protocol::err(id, ErrorCode::UpstreamTimeout, "upstream_timeout"),
     }
 }
 

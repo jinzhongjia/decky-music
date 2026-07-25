@@ -124,6 +124,8 @@ Decky 只提供两种原语,足够:
 - 构造 / 解码集中在协议模块:bridge `py_modules/protocol.py`,QQ `qq-provider/protocol.py`;NCM 与 player 共用 `wire` crate(通用部分),各自的 `src/protocol.rs` 只留命令 args struct。
 - request id 由 bridge 递增生成。每条 `Conn` 支持多请求在途,bridge 用 `id -> Future` demux 响应并丢弃超时后的迟到响应;写 socket 只锁单帧原子性。provider/player 写回仍经单一 out queue 串行写帧。
 - 失败响应必须带稳定 `error.code`,前端 `src/api.ts` 本地化;`message` 只作安全 fallback。
+- 超时分两级:`timeout`(bridge 通道级,子进程整体不响应)立即熔断;`upstream_timeout`
+  (provider 单次上游请求)连续 2 次才熔断 —— 单次抖动只跳过当前曲。
 - 子进程诊断走 `Log Event`;stderr 只留 panic/traceback 等非预期输出。
 
 > 关于 provider 包裹:ncm-api-rs 与 QQMusicApi **都作为库使用**,由我们各写一层 wrapper 暴露上述 NDJSON-over-UDS 协议(不用它们自带的 axum / FastAPI HTTP server)。两个 provider 因此协议一致,bridge 统一对待。

@@ -51,7 +51,7 @@ pub async fn song_url(state: &State, id: u64, song_id: &str, tx: &Out) -> String
                 _ => continue, // 该档无 URL → 降到下一档
             },
             Ok(Err(_)) => return protocol::err(id, ErrorCode::ProviderError, "provider_error"),
-            Err(_) => return protocol::err(id, ErrorCode::Timeout, "timeout"),
+            Err(_) => return protocol::err(id, ErrorCode::UpstreamTimeout, "upstream_timeout"),
         }
     }
     let _ = tx.send(log_json(

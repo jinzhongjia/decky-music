@@ -42,7 +42,11 @@ pub(crate) async fn call<F: Future<Output = Result<ApiResponse, NcmError>>>(
             ErrorCode::ProviderError,
             &format!("provider_error: {e}"),
         )),
-        Err(_) => Err(protocol::err(id, ErrorCode::Timeout, "timeout")),
+        Err(_) => Err(protocol::err(
+            id,
+            ErrorCode::UpstreamTimeout,
+            "upstream_timeout",
+        )),
     }
 }
 
