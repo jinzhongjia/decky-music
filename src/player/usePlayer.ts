@@ -40,11 +40,14 @@ const state: State = {
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
-let gotEvent = false; // 收到任何 player 事件后,不再用(可能更旧的)回灌快照覆盖
+// 只有 track 事件带曲目身份 —— 它到了才不必再用回灌快照的 current。
+// (曾用"收到任何事件"作判据:playing 位置锚点每 3s 一条,抢在回灌响应前到就把整份快照丢掉,
+//  留下 playing=true / current=null —— 有声无曲,而停播入口全都 gate 在 current 上,音乐关不掉。
+//  桌面模式往返最易触发:Steam 重启重载前端,而 bridge/player 还在放。)
+let gotTrack = false;
 
 // 单一订阅:所有 player 事件汇入 store(模块加载时装一次,整个插件生命周期有效)
 onPlayer((e) => {
-  gotEvent = true;
   if (e.type === PlayerEv.Playing) {
     state.playing = true;
     state.posSec = e.data.pos;
@@ -55,6 +58,7 @@ onPlayer((e) => {
   } else if (e.type === PlayerEv.Ended) {
     state.playing = false;
   } else if (e.type === PlayerEv.Track) {
+    gotTrack = true;
     state.current = e.data.song;
     if (!e.data.song) state.playing = false; // song=null:队列清空进入空态
   } else if (e.type === PlayerEv.Queue) {
@@ -63,28 +67,42 @@ onPlayer((e) => {
     state.playing = false;
     reportError(errorText(e.data.code) || t("playError"));
   }
+  // 有声无曲兜底:播放态在动但 store 没当前曲(回灌失败/丢事件)→ 补拉一次,
+  // 否则 UI 一直"没在播放"、连暂停入口都摸不到。下一条锚点最多 3s 后必再试。
+  if (!state.current && (e.type === PlayerEv.Playing || e.type === PlayerEv.Paused)) hydrate();
   notify();
 });
 
-// 挂载回灌:向 bridge 拉当前播放态(前端重载后 store 为空时补齐);若期间已来事件则不覆盖
-api
-  .getPlayback()
-  .then((s) => {
-    if (s.player_failed) reportError(errorText("player_start_failed")); // #38:启动失败回灌兜底(emit 易丢)
-    if (typeof s.volume === "number") state.volume = s.volume; // 音量无事件,始终回灌
-    if (gotEvent || !s.current) {
+// 挂载回灌:向 bridge 拉当前播放态(前端重载后 store 为空时补齐)。
+// 快照由 bridge 在响应时刻生成,不会比"响应前收到的事件"更旧(pos/playing 同源于同一批锚点),
+// 唯一例外是 track 已把新曲送到 → 那时只跳过 current 那一段。
+let hydrating = false;
+function hydrate() {
+  if (hydrating) return;
+  hydrating = true;
+  api
+    .getPlayback()
+    .then((s) => {
+      hydrating = false;
+      if (s.player_failed) reportError(errorText("player_start_failed")); // #38:启动失败回灌兜底(emit 易丢)
+      if (typeof s.volume === "number") state.volume = s.volume; // 音量无事件,始终回灌
+      if (gotTrack || !s.current) {
+        notify();
+        return;
+      }
+      state.current = s.current;
+      state.playing = s.playing;
+      state.posSec = s.pos;
+      state.wallMs = s.wall;
+      state.mode = s.mode;
+      state.queueMode = s.queue_mode ?? "normal";
       notify();
-      return;
-    }
-    state.current = s.current;
-    state.playing = s.playing;
-    state.posSec = s.pos;
-    state.wallMs = s.wall;
-    state.mode = s.mode;
-    state.queueMode = s.queue_mode ?? "normal";
-    notify();
-  })
-  .catch(() => {});
+    })
+    .catch(() => {
+      hydrating = false;
+    });
+}
+hydrate();
 
 // ---- 动作 ----
 
