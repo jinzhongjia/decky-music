@@ -57,11 +57,12 @@ class TestProviderMappers(unittest.TestCase):
             _playlist_brief(
                 SimpleNamespace(id=7, title="List", picurl="p", songnum=3, listennum=9)
             ),
-            {"id": "7", "name": "List", "cover": "p", "count": 3, "play_count": 9},
+            {"id": "7", "dirid": 0, "name": "List", "cover": "p", "count": 3, "play_count": 9},
         )
         self.assertEqual(
             _playlist_brief(SimpleNamespace(id=7, dirid=201, title="List", songnum=3)),
-            {"id": "201", "name": "List", "cover": "", "count": 3, "play_count": 0},
+            # id 取全局 tid(详情只认它),dirid 另存供 add_songs 收藏动作用
+            {"id": "7", "dirid": 201, "name": "List", "cover": "", "count": 3, "play_count": 0},
         )
         self.assertEqual(
             _album_brief(
