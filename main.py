@@ -1,10 +1,31 @@
 """bridge 接口层:Decky 调用的 Plugin 类,仅做转发。
 
 UI 只跟这里说话;真正的实现(UDS 连接、进程管理、provider 生命周期、命令编排)在
-py_modules/bridge.py。Plugin 的每个 async 方法即前端 callable,须与 src/api.ts 对应。
+py_modules/bridge.py。下面 CALLABLES 里的每个名字即一个前端 callable,须与 src/api.ts 对应
+(绑定规范见 AGENTS.md「API 契约」;tests/test_callables.py 机械校验两端一致)。
+
+转发靠 __getattr__ 而非逐个写同名方法:Decky loader 以 `getattr(plugin, method)(*args)`
+按名分发(见 decky-loader sandboxed_plugin.py),名字命中即可。CALLABLES 是白名单 ——
+Bridge 的其余公开方法(start / unload 等)不因此暴露成 RPC。
 """
 
 from bridge import Bridge
+
+# 前端可调用的 bridge 方法(= RPC 契约面)。增删这里必须同步改 src/api.ts。
+CALLABLES = frozenset(
+    """
+    set_provider get_provider login logout get_account
+    play_queue get_playback play_radio fm_trash like_current like_state
+    get_comments get_user_assets add_to_playlist
+    get_fav_songs get_listen_rank get_created_playlists get_fav_playlists
+    get_queue queue_play queue_insert_next queue_append queue_remove queue_clear
+    next_track prev_track set_play_mode pause resume seek volume
+    search_songs search_playlists search_albums search_artists search_hot
+    get_artist_detail get_album_detail get_lyric get_recommend
+    get_playlist_songs get_toplists get_toplist_songs get_discover get_daily_songs
+    clear_cache get_cache_size clear_data
+    """.split()
+)
 
 
 class Plugin:
@@ -15,148 +36,10 @@ class Plugin:
     async def _unload(self):
         await self.bridge.unload()
 
-    # ---- UI callable:全部转发给 bridge 实现 ----
-
-    async def set_provider(self, which: str | None):
-        return await self.bridge.set_provider(which)
-
-    async def get_provider(self) -> dict:
-        return await self.bridge.get_provider()
-
-    async def login(self, login_type: str | None = None):
-        return await self.bridge.login(login_type)
-
-    async def logout(self):
-        return await self.bridge.logout()
-
-    async def get_account(self) -> dict:
-        return await self.bridge.get_account()
-
-    async def play_queue(self, items: list, start_index: int = 0):
-        return await self.bridge.play_queue(items, start_index)
-
-    async def get_playback(self) -> dict:
-        return await self.bridge.get_playback()
-
-    async def play_radio(self, kind: str) -> dict:
-        return await self.bridge.play_radio(kind)
-
-    async def fm_trash(self):
-        return await self.bridge.fm_trash()
-
-    async def like_current(self, on: bool) -> dict:
-        return await self.bridge.like_current(on)
-
-    async def like_state(self) -> dict:
-        return await self.bridge.like_state()
-
-    async def get_comments(self, song_id: str) -> dict:
-        return await self.bridge.get_comments(song_id)
-
-    async def get_user_assets(self) -> dict:
-        return await self.bridge.get_user_assets()
-
-    async def add_to_playlist(self, playlist_id: str, song_id: str) -> dict:
-        return await self.bridge.add_to_playlist(playlist_id, song_id)
-
-    async def get_fav_songs(self, offset: int = 0) -> dict:
-        return await self.bridge.get_fav_songs(offset)
-
-    async def get_listen_rank(self, offset: int = 0) -> dict:
-        return await self.bridge.get_listen_rank(offset)
-
-    async def get_created_playlists(self, offset: int = 0) -> dict:
-        return await self.bridge.get_created_playlists(offset)
-
-    async def get_fav_playlists(self, offset: int = 0) -> dict:
-        return await self.bridge.get_fav_playlists(offset)
-
-    async def get_queue(self) -> dict:
-        return await self.bridge.get_queue()
-
-    async def queue_play(self, index: int):
-        return await self.bridge.queue_play(index)
-
-    async def queue_insert_next(self, item: dict):
-        return await self.bridge.queue_insert_next(item)
-
-    async def queue_append(self, item: dict):
-        return await self.bridge.queue_append(item)
-
-    async def queue_remove(self, index: int):
-        return await self.bridge.queue_remove(index)
-
-    async def queue_clear(self):
-        return await self.bridge.queue_clear()
-
-    async def next_track(self):
-        return await self.bridge.next_track()
-
-    async def prev_track(self):
-        return await self.bridge.prev_track()
-
-    async def set_play_mode(self, mode: str):
-        return await self.bridge.set_play_mode(mode)
-
-    async def pause(self):
-        return await self.bridge.pause()
-
-    async def resume(self):
-        return await self.bridge.resume()
-
-    async def seek(self, sec: float):
-        return await self.bridge.seek(sec)
-
-    async def volume(self, val: float):
-        return await self.bridge.volume(val)
-
-    async def search_songs(self, keyword: str, offset: int = 0) -> dict:
-        return await self.bridge.search_songs(keyword, offset)
-
-    async def search_playlists(self, keyword: str, offset: int = 0) -> dict:
-        return await self.bridge.search_playlists(keyword, offset)
-
-    async def search_albums(self, keyword: str, offset: int = 0) -> dict:
-        return await self.bridge.search_albums(keyword, offset)
-
-    async def search_artists(self, keyword: str, offset: int = 0) -> dict:
-        return await self.bridge.search_artists(keyword, offset)
-
-    async def get_artist_detail(self, artist_id: str) -> dict:
-        return await self.bridge.get_artist_detail(artist_id)
-
-    async def get_album_detail(self, album_id: str) -> dict:
-        return await self.bridge.get_album_detail(album_id)
-
-    async def search_hot(self) -> dict:
-        return await self.bridge.search_hot()
-
-    async def get_lyric(self, mid: str) -> dict:
-        return await self.bridge.get_lyric(mid)
-
-    async def get_recommend(self) -> dict:
-        return await self.bridge.get_recommend()
-
-    async def get_playlist_songs(self, playlist_id: str, offset: int = 0) -> dict:
-        return await self.bridge.get_playlist_songs(playlist_id, offset)
-
-    async def get_toplists(self) -> dict:
-        return await self.bridge.get_toplists()
-
-    async def get_toplist_songs(self, top_id: str, offset: int = 0) -> dict:
-        return await self.bridge.get_toplist_songs(top_id, offset)
-
-    async def get_discover(self) -> dict:
-        return await self.bridge.get_discover()
-
-    async def get_daily_songs(self) -> dict:
-        return await self.bridge.get_daily_songs()
-
-    async def clear_cache(self) -> int:
-        return await self.bridge.clear_cache()
-
-    async def get_cache_size(self) -> int:
-        return await self.bridge.get_cache_size()
-
-    async def clear_data(self) -> None:
-        return await self.bridge.clear_data()
+    def __getattr__(self, name: str):
+        # __getattr__ 只在常规查找失败时触发。白名单外一律 AttributeError:
+        # loader 探测的 _migration / _uninstall 照常 hasattr 为 False;"bridge" 也在白名单外,
+        # 故 _main 之前误访问会直接抛,不会经 self.bridge 自递归。
+        if name not in CALLABLES:
+            raise AttributeError(name)
+        return getattr(self.bridge, name)

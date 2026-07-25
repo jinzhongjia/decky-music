@@ -25,14 +25,14 @@ class TestBuild(unittest.TestCase):
 
 class TestDecodeResponse(unittest.TestCase):
     def test_success(self):
-        r = protocol.decode_response({"id": 1, "ok": True, "data": {"songs": []}})
+        r = protocol.decode_child_message({"id": 1, "ok": True, "data": {"songs": []}})
         self.assertIsInstance(r, protocol.ChildResponse)
         self.assertTrue(r.ok)
         self.assertEqual(r.data, {"songs": []})
         self.assertIsNone(r.error)
 
     def test_error(self):
-        r = protocol.decode_response(
+        r = protocol.decode_child_message(
             {"id": 6, "ok": False, "error": {"code": "no_playable", "message": "no_playable"}}
         )
         self.assertFalse(r.ok)
@@ -40,45 +40,45 @@ class TestDecodeResponse(unittest.TestCase):
 
     def test_missing_id(self):
         with self.assertRaises(protocol.ProtocolError):
-            protocol.decode_response({"ok": True, "data": {}})
+            protocol.decode_child_message({"ok": True, "data": {}})
 
     def test_bool_id_rejected(self):
         with self.assertRaises(protocol.ProtocolError):
-            protocol.decode_response({"id": True, "ok": True, "data": {}})
+            protocol.decode_child_message({"id": True, "ok": True, "data": {}})
 
     def test_non_bool_ok(self):
         with self.assertRaises(protocol.ProtocolError):
-            protocol.decode_response({"id": 1, "ok": "yes", "data": {}})
+            protocol.decode_child_message({"id": 1, "ok": "yes", "data": {}})
 
     def test_data_not_object(self):
         with self.assertRaises(protocol.ProtocolError):
-            protocol.decode_response({"id": 1, "ok": True, "data": []})
+            protocol.decode_child_message({"id": 1, "ok": True, "data": []})
 
     def test_error_missing_code(self):
         with self.assertRaises(protocol.ProtocolError):
-            protocol.decode_response({"id": 1, "ok": False, "error": {"message": "x"}})
+            protocol.decode_child_message({"id": 1, "ok": False, "error": {"message": "x"}})
 
 
 class TestDecodeEvent(unittest.TestCase):
     def test_domain_event(self):
-        e = protocol.decode_event(
+        e = protocol.decode_child_message(
             {"ev": "player", "type": "playing", "data": {"pos": 0, "wall_ms": 1}}
         )
         self.assertIsInstance(e, protocol.ChildEvent)
         self.assertEqual((e.ev, e.type), ("player", "playing"))
 
     def test_log_event(self):
-        e = protocol.decode_event({"ev": "log", "level": "info", "where": "audio", "msg": "ok"})
+        e = protocol.decode_child_message({"ev": "log", "level": "info", "where": "audio", "msg": "ok"})
         self.assertIsInstance(e, protocol.LogEvent)
         self.assertEqual(e.level, "info")
 
     def test_bad_log_level(self):
         with self.assertRaises(protocol.ProtocolError):
-            protocol.decode_event({"ev": "log", "level": "trace", "where": "", "msg": ""})
+            protocol.decode_child_message({"ev": "log", "level": "trace", "where": "", "msg": ""})
 
     def test_event_missing_type(self):
         with self.assertRaises(protocol.ProtocolError):
-            protocol.decode_event({"ev": "player", "data": {}})
+            protocol.decode_child_message({"ev": "player", "data": {}})
 
 
 class TestDemux(unittest.TestCase):

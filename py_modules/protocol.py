@@ -63,20 +63,6 @@ def decode_child_message(raw: object) -> ChildResponse | ChildEvent | LogEvent:
     return _decode_response(raw)
 
 
-def decode_response(raw: object) -> ChildResponse:
-    msg = decode_child_message(raw)
-    if not isinstance(msg, ChildResponse):
-        raise ProtocolError("expected a response")
-    return msg
-
-
-def decode_event(raw: object) -> ChildEvent | LogEvent:
-    msg = decode_child_message(raw)
-    if isinstance(msg, ChildResponse):
-        raise ProtocolError("expected an event")
-    return msg
-
-
 def _decode_response(raw: dict) -> ChildResponse:
     rid = raw.get("id")
     if not isinstance(rid, int) or isinstance(rid, bool):
