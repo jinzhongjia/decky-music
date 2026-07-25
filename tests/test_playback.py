@@ -523,6 +523,81 @@ class TestUpstreamTimeoutRetriesSameSong(unittest.TestCase):
         self.assertEqual(len(provider.asked), 2)
 
 
+class SeekTrackingConn:
+    """记录 load / seek / stop,并可让 seek 失败(模拟上游不支持 Range)。"""
+
+    def __init__(self, seek_ok=True):
+        self.calls = []
+        self.seeks = []
+        self.seek_ok = seek_ok
+
+    async def request(self, cmd, args=None):
+        self.calls.append(cmd)
+        if cmd == "seek":
+            self.seeks.append((args or {}).get("sec"))
+            if not self.seek_ok:
+                err = types.SimpleNamespace(code="seek_failed", message="seek_failed")
+                return types.SimpleNamespace(ok=False, data={}, error=err)
+        return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
+
+
+class TestResumeAfterStreamDeath(unittest.TestCase):
+    """流中途彻底死掉后,按播放键要从中断处接上,而不是没反应 / 从头重放。
+
+    stream.rs 已经会用 Range 从字节位置续传,但它退避重试 3 次仍无进展时会判死;
+    此前 bridge 收到 error 只把 playing 置 False,_loaded 仍是 True —— resume() 于是
+    往一个已死的 sink 发 resume,表现为「按播放键没反应」,而 self.pos 从没被用过。
+    """
+
+    def _died_at(self, player, pos=42.5):
+        pb = Playback(player, FakeConn())
+        pb.queue = [item(c) for c in "abc"]
+        pb.index = 1
+        pb._loaded = True
+        pb.playing, pb.pos = True, pos
+        run(pb.on_player_event(types.SimpleNamespace(
+            ev="player", type="error", data={"code": "fetch_failed", "message": "fetch_failed"})))
+        return pb
+
+    def test_error_marks_unloaded_and_remembers_position(self):
+        pb = self._died_at(SeekTrackingConn())
+        self.assertFalse(pb.playing)
+        self.assertFalse(pb._loaded)  # 否则 resume 会发给死 sink
+        self.assertEqual(pb._resume_at, 42.5)
+
+    def test_resume_reloads_and_seeks_back(self):
+        player = SeekTrackingConn()
+        pb = self._died_at(player)
+        run(pb.resume())
+        self.assertIn("load", player.calls)  # 重新加载,而不是裸发 resume
+        self.assertEqual(player.seeks, [42.5])  # 跳回中断处
+        self.assertEqual(pb.index, 1)  # 还是原来那首
+        self.assertAlmostEqual(pb.pos, 42.5)
+
+    def test_seek_failure_falls_back_to_start_not_error(self):
+        """上游不支持 Range 时 seek 会失败:降级从头播,不能让「按播放键」变成报错。"""
+        player = SeekTrackingConn(seek_ok=False)
+        pb = self._died_at(player)
+        run(pb.resume())
+        self.assertIn("load", player.calls)
+        self.assertTrue(pb.playing)  # 照样在播
+        self.assertEqual(pb.last_error, "")  # 不算失败
+
+    def test_new_song_clears_the_resume_point(self):
+        """换歌后 _resume_at 必须清零,否则下一首会莫名跳到中间。"""
+        player = SeekTrackingConn()
+        pb = self._died_at(player)
+        run(pb._play_index(2))
+        self.assertEqual(pb._resume_at, 0.0)
+        self.assertEqual(player.seeks, [])
+
+    def test_queue_clear_clears_the_resume_point(self):
+        player = SeekTrackingConn()
+        pb = self._died_at(player)
+        run(pb.queue_clear())
+        self.assertEqual(pb._resume_at, 0.0)
+
+
 class TestAutoAdvancePolish(unittest.TestCase):
     def test_two_consecutive_fetch_failed_fuse(self):
         """断网:fetch_failed 连续 2 次熔断,不把整个队列扫一圈。"""

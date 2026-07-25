@@ -183,6 +183,9 @@ Rust `#[cfg(test)]`)。
   tests/test_playback.py 的 TestUpstreamTimeoutRetriesSameSong(含两次回归的反证)。
 - **红线延续**:`message` / 日志都不得含 URL(限时 token)/ cookie / credential。
 - 前端订阅事件先过 `isDomainEvent` 运行时 guard,畸形事件忽略不崩 UI。
+- **断流后从中断处接上**:`stream.rs` 已按字节位置 Range 续传;它退避重试仍无进展而判死时,
+  bridge 收到 player error 会置 `_loaded=False` 并记下 `_resume_at`,下次 `resume()` 重新加载
+  并 seek 回中断处。seek 失败降级从头播,绝不让「按播放键」变成报错。
 - **播放错误双通道上报**:插件 UI 内的 `ErrorBanner` + Steam 系统 toast。播放出错时用户
   多半不在插件界面(在玩游戏),只有横幅等于没提示。见 `src/player/usePlayer.ts`。
 

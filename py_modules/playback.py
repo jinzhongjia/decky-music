@@ -71,6 +71,9 @@ class Playback:
         self.wall = 0  # 该位置对应墙钟(ms),UI 插值用
         self.last_error = ""  # 最近一次 _play_index 失败的错误码(自动切歌熔断判据)
         self._loaded = False  # 本次 player 进程内是否 load 成功过(restore 回灌不开播 → False)
+        # 断流中断处:player 报 error 后按播放键从这里接上,而不是从头重放。
+        # 换歌 / 清队列必须清零,否则下一首会莫名跳到中间。
+        self._resume_at = 0.0
         self._persist = persist  # bridge 注入的落盘回调 (items, index) -> None;None = 不持久化
         self._play_gen = 0  # 播放意图代次:新意图作废在途旧意图(最后一次操作赢,不排队)
 
@@ -131,10 +134,13 @@ class Playback:
             await self._play_index(self._advance_index())
 
     async def resume(self):
-        """继续播放。重启回灌后 player 是空的(restore 不自动开播),此时 resume 对 player
-        是空操作 —— 落到冷启动:加载当前曲。bridge 与 player 同生共死,_loaded 按进程生命周期算。"""
+        """继续播放。两种冷启动都落到重新加载当前曲:
+        - 重启回灌后 player 是空的(restore 不自动开播),此时 resume 对 player 是空操作;
+        - 播放中途流彻底死了(见 on_player_event 的 error 分支),sink 已不可用。
+        后者带 _resume_at,重新加载后跳回中断处,不从头重放。
+        bridge 与 player 同生共死,_loaded 按进程生命周期算。"""
         if not self._loaded and 0 <= self.index < len(self.queue):
-            await self._play_index(self.index)
+            await self._play_index(self.index, seek_to=self._resume_at)
             return
         await self.player.request("resume")
 
@@ -235,6 +241,7 @@ class Playback:
         self._exit_radio()
         self.queue, self.index = [], -1
         self.playing, self.pos, self.wall = False, 0.0, _now_ms()
+        self._resume_at = 0.0  # 队列都清空了,断流中断处不能留着
         await self.player.request("stop")
         await self._emit("track", {"index": -1, "song": None})
         await self._push_meta(None)  # 清空 MPRIS now-playing
@@ -297,13 +304,15 @@ class Playback:
         log("bridge", "own", "warn", f"{place}: give up advancing, last error {code}")
         await self._emit("error", {"code": code, "message": code})
 
-    async def _play_index(self, i: int, quiet: bool = False) -> bool | None:
+    async def _play_index(self, i: int, quiet: bool = False, seek_to: float = 0.0) -> bool | None:
         """播放队列第 i 首。True 成功 / False 失败 / None 被更新的播放意图取代(静默让位)。
         quiet=True(自动顺延用):失败不发 error 事件,由调用方放弃时统一报一次,避免跳过
-        多首不可播时 UI 连闪一串错误横幅。"""
+        多首不可播时 UI 连闪一串错误横幅。
+        seek_to>0(断流后接上用):load 成功后跳到该位置,失败则从头播(不报错)。"""
         self._play_gen += 1
         gen = self._play_gen
         self.index = i
+        self._resume_at = 0.0  # 新的播放意图:作废上一次的断流中断处
         item = self.queue[i]
         # 防御取值(宿主安全):畸形队列项走失败路径,绝不 KeyError 炸掉调用链
         args = {"id": item.get("id", ""), "media_mid": item.get("media_mid", "")}
@@ -353,6 +362,17 @@ class Playback:
         self.last_error = ""
         self._loaded = True
         self.playing, self.pos, self.wall = True, 0.0, _now_ms()  # playing 事件会再校准
+        if seek_to > 0:
+            # 断流后接上:跳回中断处。seek 失败(上游不支持 Range 等)只记日志、从头播 ——
+            # 这一步是锦上添花,不能因为它让"按播放键"变成报错。
+            sr = await self.player.request("seek", {"sec": seek_to})
+            if gen != self._play_gen:
+                return None
+            if sr.ok:
+                self.pos, self.wall = seek_to, _now_ms()
+            else:
+                code = sr.error.code if sr.error else "seek_failed"
+                log("bridge", "own", "warn", f"resume seek to {seek_to:.1f}s failed ({code}), from start")
         if self._persist and self.mode == "normal":
             self._persist(self.queue, self.index)  # index 变化落盘(结构没变,不发 queue 事件)
         log("bridge", "own", "info", f"queue -> {i + 1}/{len(self.queue)} (mode={self.mode if self.mode == 'radio' else self.play_mode})")
@@ -499,7 +519,16 @@ class Playback:
             self.playing = False
         elif ev.type == "error":
             self.playing = False
-            log("bridge", "own", "warn", f"player error: {ev.data.get('code', '')}")
+            # 流已死,sink 不可用:_loaded 置 False,让下次 resume() 落到冷启动重新加载,
+            # 而不是往一个死 sink 发 resume(表现为"按播放键没反应")。记下中断处以便接上。
+            self._resume_at = self.pos
+            self._loaded = False
+            log(
+                "bridge",
+                "own",
+                "warn",
+                f"player error: {ev.data.get('code', '')} at {self.pos:.1f}s (resume will continue from here)",
+            )
         await decky.emit("player", {"ev": ev.ev, "type": ev.type, "data": ev.data})
         if ev.type == "ended":
             await self._on_ended()
