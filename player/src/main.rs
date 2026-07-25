@@ -7,7 +7,6 @@
 //! 与 tokio 侧用 channel 通信。
 
 mod audio;
-mod logging;
 mod mpris;
 mod protocol;
 mod socket;

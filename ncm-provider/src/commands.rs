@@ -4,8 +4,8 @@
 use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
-use crate::logging::log_json;
 use crate::protocol::{self, ErrorCode};
+use crate::protocol::{log_json, LogLevel};
 use crate::provider_commands::{call, maybe_cookie};
 use crate::state::{with_timeout, Out, State};
 
@@ -55,7 +55,7 @@ pub async fn song_url(state: &State, id: u64, song_id: &str, tx: &Out) -> String
         }
     }
     let _ = tx.send(log_json(
-        "warn",
+        LogLevel::Warn,
         "song_url",
         &format!("no url id={song_id} (VIP/无版权)"),
     ));

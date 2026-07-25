@@ -8,8 +8,8 @@ use base64::Engine;
 use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
-use crate::logging::log_json;
 use crate::protocol;
+use crate::protocol::{log_json, LogLevel};
 use crate::state::{with_timeout, Out, State};
 
 /// 发一条 login 域事件(协议 v1:{ev:"login",type,data})。
@@ -79,8 +79,8 @@ pub async fn login_flow(state: Arc<State>, tx: Out) {
 }
 
 fn login_fail(tx: &Out, err: &str) {
-    let _ = tx.send(log_json("error", "login", err)); // 真实原因进日志
-                                                      // 对 UI 报 login error 事件(code=login_failed),前端提示可重试
+    let _ = tx.send(log_json(LogLevel::Error, "login", err)); // 真实原因进日志
+                                                              // 对 UI 报 login error 事件(code=login_failed),前端提示可重试
     emit(
         tx,
         "error",

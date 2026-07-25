@@ -15,15 +15,13 @@ use tokio::sync::mpsc;
 
 mod commands;
 mod content;
-mod logging;
 mod login;
 mod lyric;
 mod protocol;
 mod provider_commands;
 mod state;
 
-use logging::log_json;
-use protocol::ErrorCode;
+use protocol::{log_json, ErrorCode, LogLevel};
 use state::{Out, State};
 
 #[tokio::main]
@@ -59,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // 解析失败拿不到 id → 记录并丢弃
             Err(e) => {
                 let _ = out_tx.send(log_json(
-                    "warn",
+                    LogLevel::Warn,
                     "protocol",
                     &format!("bad request: {}", e.0),
                 ));
@@ -67,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
         if debug {
-            let _ = out_tx.send(log_json("debug", "cmd", &req.cmd));
+            let _ = out_tx.send(log_json(LogLevel::Debug, "cmd", &req.cmd));
         }
         match req.cmd.as_str() {
             "set_credential" => {
@@ -78,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let msg = if ck.is_some() { "injected" } else { "cleared" };
                 *state.cookie.lock().await = ck;
                 *state.uid.lock().await = None; // 凭证变化,uid 缓存作废
-                let _ = out_tx.send(log_json("info", "credential", msg));
+                let _ = out_tx.send(log_json(LogLevel::Info, "credential", msg));
                 let _ = out_tx.send(protocol::ok_empty(req.id));
             }
             "login" => {

@@ -6,9 +6,9 @@ use tokio::net::UnixStream;
 use tokio::sync::mpsc as tmpsc;
 
 use crate::audio::{audio_thread, AudioCmd, AudioEv};
-use crate::logging::{log_json, LogLevel};
 use crate::mpris;
 use crate::protocol::{self, ErrorCode};
+use crate::protocol::{log_json, LogLevel};
 use crate::stream::{open_http_stream, OpenError};
 
 pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {

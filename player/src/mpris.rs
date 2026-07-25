@@ -20,8 +20,8 @@ use parking_lot::Mutex;
 use serde_json::json;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::logging::{log_json, LogLevel};
 use crate::protocol;
+use crate::protocol::{log_json, LogLevel};
 use crate::util::epoch_ms;
 
 pub type MprisServer = Server<MprisImpl>;
@@ -36,7 +36,6 @@ struct MprisState {
     // 元数据(bridge meta 命令下发)
     title: String,
     artist: String,
-    album: String,
     art_url: String,
     track_id: String,
     can_next: bool,
@@ -54,7 +53,6 @@ impl MprisState {
             volume: 1.0,
             title: String::new(),
             artist: String::new(),
-            album: String::new(),
             art_url: String::new(),
             track_id: String::new(),
             can_next: false,
@@ -83,9 +81,6 @@ impl MprisState {
         }
         if !self.artist.is_empty() {
             b = b.artist([self.artist.clone()]);
-        }
-        if !self.album.is_empty() {
-            b = b.album(self.album.clone());
         }
         if !self.art_url.is_empty() {
             b = b.art_url(self.art_url.clone());
@@ -378,7 +373,6 @@ pub async fn apply_meta(srv: &MprisServer, m: protocol::MetaArgs) {
         if m.clear {
             s.title.clear();
             s.artist.clear();
-            s.album.clear();
             s.art_url.clear();
             s.track_id.clear();
             s.length_us = 0;
@@ -387,7 +381,6 @@ pub async fn apply_meta(srv: &MprisServer, m: protocol::MetaArgs) {
         } else {
             s.title = m.title;
             s.artist = m.artist;
-            s.album = m.album;
             s.art_url = m.art_url;
             s.track_id = m.track_id;
             s.length_us = (m.length_ms.max(0.0) * 1000.0) as i64;

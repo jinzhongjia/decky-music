@@ -5,13 +5,13 @@ use rodio::Source;
 use serde_json::json;
 use tokio::sync::mpsc as tmpsc;
 
-use crate::logging::{log_json, LogLevel};
 use crate::protocol::{self, ErrorCode};
-use crate::stream::{HttpStream, StreamProbe};
+use crate::protocol::{log_json, LogLevel};
+use crate::stream::{HttpRangeReader, StreamProbe};
 use crate::util::epoch_ms;
 
 pub(crate) enum AudioCmd {
-    Load(Box<HttpStream>),
+    Load(Box<HttpRangeReader>),
     Pause,
     Resume,
     Volume(f32),
@@ -57,11 +57,9 @@ impl AudioEv {
             ),
             AudioEv::Paused { pos } => protocol::event("player", "paused", json!({"pos": pos})),
             AudioEv::Ended => protocol::event("player", "ended", json!({})),
-            AudioEv::Error { code, message } => protocol::event(
-                "player",
-                "error",
-                json!({"code": code.as_str(), "message": message}),
-            ),
+            AudioEv::Error { code, message } => {
+                protocol::event("player", "error", json!({"code": code, "message": message}))
+            }
             AudioEv::Log { level, place, msg } => log_json(*level, place, msg),
             // MPRIS-only:事件泵消费后 continue,不走 to_ndjson;给个空串保持 match 穷尽。
             AudioEv::Seeked { .. } | AudioEv::Volume { .. } => String::new(),

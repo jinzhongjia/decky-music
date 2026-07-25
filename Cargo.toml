@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["player", "ncm-provider"]
+members = ["wire", "player", "ncm-provider"]
 
 [profile.release]
 strip = true
