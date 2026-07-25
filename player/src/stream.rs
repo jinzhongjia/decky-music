@@ -11,8 +11,6 @@ use reqwest::StatusCode;
 
 use crate::util::checked_seek;
 
-pub(crate) type HttpStream = HttpRangeReader;
-
 /// 首开失败的分类:慢网(握手/响应超时)与断网(DNS 失败/拒连)对用户是两种提示,
 /// 前者该等等再试,后者该去检查网络。
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -27,7 +25,7 @@ pub(crate) enum OpenError {
 const INITIAL_OPEN_ATTEMPTS: u32 = 2;
 const INITIAL_OPEN_BACKOFF: Duration = Duration::from_secs(1);
 
-pub(crate) async fn open_http_stream(url: String) -> Result<HttpStream, OpenError> {
+pub(crate) async fn open_http_stream(url: String) -> Result<HttpRangeReader, OpenError> {
     let mut last = OpenError::Network;
     for attempt in 0..INITIAL_OPEN_ATTEMPTS {
         if attempt > 0 {
@@ -488,7 +486,7 @@ mod tests {
     fn http_reader_falls_back_when_range_is_unsupported() {
         let target = (BUFFER_HIGH_WATER + BUFFER_CHUNK) as u64;
         let data: Vec<u8> = (0..=255).cycle().take(target as usize + 512).collect();
-        let (url, _starts) = http_server(data.clone(), false);
+        let (url, _starts) = http_server_impl(data.clone(), false, usize::MAX);
         let mut reader = HttpRangeReader::open_url(&url).unwrap();
 
         assert!(!reader.range_supported());
@@ -573,10 +571,6 @@ mod tests {
 
     fn range_server(data: Vec<u8>) -> (String, Receiver<u64>) {
         http_server_impl(data, true, usize::MAX)
-    }
-
-    fn http_server(data: Vec<u8>, supports_range: bool) -> (String, Receiver<u64>) {
-        http_server_impl(data, supports_range, usize::MAX)
     }
 
     /// 只服务一个请求(声明全量、发送 cap 字节)后关停监听:后续连接全部被拒,
