@@ -3,8 +3,7 @@
 // 用 loader/call_plugin_method,绝不 connect()(会抢走插件的事件监听表)。
 (async () => {
   const PLUGIN = "Decky Music";
-  const call = (m, ...a) =>
-    DeckyBackend.call("loader/call_plugin_method", PLUGIN, m, ...a);
+  const call = (m, ...a) => DeckyBackend.call("loader/call_plugin_method", PLUGIN, m, ...a);
 
   const readOnly = [
     "get_provider",
