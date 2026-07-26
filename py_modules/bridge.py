@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import tarfile
+import time
 
 import decky
 import protocol
@@ -19,6 +20,8 @@ from playback import Playback
 RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
 SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 REQUEST_TIMEOUT = 30  # 子进程响应上限(秒):song_url 最坏 ~20s;超时兜底防永久挂
+# 超过这个耗时的请求按 warn 记,好让 release 日志里也留下慢请求的痕迹
+SLOW_REQUEST_S = 2.0
 
 
 def BIN(name: str) -> str:
@@ -155,17 +158,30 @@ class Conn:
         rid = self._next_id
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self.pending[rid] = fut
+        t0 = time.monotonic()
         try:
             async with self._wlock:  # 写帧原子,防并发写乱行
                 self.writer.write((json.dumps(protocol.request(rid, cmd, args)) + "\n").encode())
                 await self.writer.drain()
-            return await asyncio.wait_for(fut, REQUEST_TIMEOUT)
+            resp = await asyncio.wait_for(fut, REQUEST_TIMEOUT)
+            self._log_timing(cmd, time.monotonic() - t0)
+            return resp
         except asyncio.TimeoutError:
             # provider/player 卡死或崩溃兜底:返回错误响应,不永久挂 UI(迟到响应经 pending 丢弃)
             log("bridge", "own", "error", f"{self.name} request timeout: {cmd}")
             return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
         finally:
             self.pending.pop(rid, None)
+
+    def _log_timing(self, cmd: str, secs: float):
+        """请求耗时。debug 记全部(仅 dev 可见);超过阈值升 warn —— release 只有 INFO 以上,
+        没这条的话用户报「插件变慢」时日志里一点线索都没有(见 issue #44 的排查)。
+        阈值 2s:正常命令 p95 在 0.4s 量级,2s 已经是肉眼可感的卡顿。"""
+        ms = secs * 1000
+        if secs >= SLOW_REQUEST_S:
+            log("bridge", "own", "warn", f"slow {self.name} request: {cmd} took {ms:.0f}ms")
+        else:
+            log("bridge", "own", "debug", f"{self.name} {cmd} {ms:.0f}ms")
 
     async def close(self):
         if self._ev_task:
