@@ -251,6 +251,63 @@ class TestTimeoutResetsClient(unittest.IsolatedAsyncioTestCase):
         self.assertIs(qq.client, old, "没超时就别重建,否则每次都白付握手成本")
 
 
+class TestCancelledErrorDoesNotEscape(unittest.IsolatedAsyncioTestCase):
+    """CancelledError 是 BaseException,except Exception 接不住(issue #44)。
+
+    放它逃逸的话这条请求永远没有响应,bridge 只能干等满 30s 拿到通道级 timeout —— 而那是
+    硬熔断,会让「上游超时原地重试同一首」彻底失效。但真取消(进程关停)必须照常传播。
+    """
+
+    async def _run_with(self, handler, qq=None):
+        out = asyncio.Queue()
+        qq = qq or QQ()
+        original, main_mod.handle = main_mod.handle, handler
+        try:
+            req = protocol.Request(1, "search_hot", {})
+            await main_mod._run_request(qq, req, None, lambda *a: None, out)
+        finally:
+            main_mod.handle = original
+        return out
+
+    async def test_leaked_cancel_still_answers_the_request(self):
+        """内层取消泄漏:必须回一条 upstream_timeout,不能让 bridge 干等到通道级 timeout。"""
+
+        async def leak(*_a, **_k):
+            raise asyncio.CancelledError()
+
+        qq = QQ()
+        old = qq.client
+        out = await self._run_with(leak, qq)
+        resp = out.get_nowait()
+        self.assertEqual(resp["error"]["code"], "upstream_timeout")
+        self.assertIsNot(qq.client, old, "取消也可能留下半死连接,应一并换掉")
+
+    async def test_real_task_cancellation_still_propagates(self):
+        """本任务真被取消(关停):不能吞,否则 asyncio 关停语义被破坏。"""
+        started = asyncio.Event()
+
+        async def hang(*_a, **_k):
+            started.set()
+            await asyncio.sleep(3600)
+
+        out = asyncio.Queue()
+        original, main_mod.handle = main_mod.handle, hang
+        try:
+            req = protocol.Request(1, "search_hot", {})
+            qq_new = QQ()
+            task = asyncio.create_task(
+                main_mod._run_request(qq_new, req, None, lambda *a: None, out)
+            )
+            await started.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+        finally:
+            main_mod.handle = original
+        self.assertTrue(out.empty(), "真取消时不该硬塞一条响应")
+        self.assertIsNotNone(qq_new)
+
+
 class TestProviderConcurrency(unittest.IsolatedAsyncioTestCase):
     async def test_fast_read_response_is_not_blocked_by_slow_read(self):
         slow_started = asyncio.Event()

@@ -93,6 +93,18 @@ async def _run_request(qq: QQ, req: protocol.Request, emit, log, out):
         log("warn", "cmd", f"{req.cmd} timed out after {UPSTREAM_TIMEOUT}s, resetting http client")
         qq.reset_client()
         resp = protocol.err(req.id, "upstream_timeout")
+    except asyncio.CancelledError:
+        # CancelledError 是 BaseException,下面的 except Exception 接不住它。若放它逃逸,
+        # 这条请求就永远没有响应 —— bridge 只能干等满 30s 拿到通道级 timeout,而那是硬熔断,
+        # 会让「上游超时原地重试同一首」整个失效。所以这里必须回一条响应。
+        # 但要分清两种取消:本任务真被取消(进程关停等)得照常传播,不能吞。
+        task = asyncio.current_task()
+        if task is not None and task.cancelling() > 0:
+            raise
+        # 走到这里 = 内层请求的取消泄漏了出来,按上游超时处理,并换掉可能已废的连接
+        log("warn", "cmd", f"{req.cmd} cancelled mid-flight, resetting http client")
+        qq.reset_client()
+        resp = protocol.err(req.id, "upstream_timeout")
     except Exception as e:
         # 上游库异常(断网 curl Timeout / NetworkError 等)只失败该命令,绝不崩进程。
         # Timeout 类异常 → upstream_timeout(单次上游请求超时,非 bridge 通道级);
