@@ -74,6 +74,22 @@ def _child_env() -> dict:
     return env
 
 
+def stop_child(proc, hard: bool = False):
+    """停掉子进程,已经退出的也安全。
+
+    asyncio 的 Process.terminate() 对已退出的进程抛 ProcessLookupError。子进程自己崩了
+    (或被判死杀掉)之后再切 provider 就会撞上,异常从 set_provider 冒出去,此后再也切不动,
+    只能重启 Steam。真机复现过。
+    hard=True 用 SIGKILL:判死的进程可能正卡在不响应的状态,别指望它体面退出。
+    """
+    if proc is None:
+        return
+    try:
+        proc.kill() if hard else proc.terminate()
+    except ProcessLookupError:
+        pass  # 已经没了 —— 正是想要的结果
+
+
 async def spawn(source: str, *args: str) -> asyncio.subprocess.Process:
     log("bridge", "own", "info", f"spawn {source}: {' '.join(args)}")
     # ponytail: full-zip 装机经 Decky extractall 落地会丢执行位;spawn 前补 +x 兜底。
@@ -101,6 +117,7 @@ class Conn:
         self.writer: asyncio.StreamWriter | None = None
         self.server: asyncio.AbstractServer | None = None
         self.on_event = None  # ChildEvent(player/login/provider)时回调
+        self.on_dead = None  # 通道级 timeout(= 子进程整体不响应)时回调,由 Bridge 装
         self.pending: dict[int, asyncio.Future] = {}  # 在途请求:id → Future(响应按 id demux)
         self.connected: asyncio.Event = asyncio.Event()  # 子进程连入后置位
         self._next_id = 0
@@ -131,6 +148,17 @@ class Conn:
     async def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.writer = writer
         self.connected.set()
+        try:
+            await self._read_loop(reader)
+        except (ConnectionResetError, OSError) as e:
+            # 子进程被 kill / 崩溃时读循环会直接抛。不接住的话异常冒到 asyncio 顶层
+            # (Unhandled exception in client_connected_cb),而连接状态还停在"已连上",
+            # 之后每次 set_provider 都失败,只能重启 Steam。真机上复现过。
+            log("bridge", "own", "warn", f"{self.name} connection lost: {type(e).__name__}")
+        finally:
+            self.disconnect()
+
+    async def _read_loop(self, reader: asyncio.StreamReader):
         # 单读循环 + 分流(协议 v1):log 事件直接落盘;domain 事件 → on_event;response → 队列。
         # 子进程在同一条连接上既回响应又推事件,必须在这里 demux,否则响应会被吞掉。
         while line := await reader.readline():  # \n 分帧,同 Decky localsocket.py
@@ -151,11 +179,26 @@ class Conn:
                 else:
                     log("bridge", "own", "warn", f"{self.name} drop stale response id={msg.id}")
 
+    def disconnect(self):
+        """连接断开:清干净状态,好让下一次 spawn 能重新连进来。
+
+        在途请求必须立刻收到失败 —— 不然它们要干等满 30s 才等到通道超时,而对面
+        进程已经没了,那 30s 纯属白等。
+        """
+        self.connected.clear()
+        self.writer = None
+        for fut in list(self.pending.values()):
+            if not fut.done():
+                fut.set_exception(ConnectionResetError(f"{self.name} gone"))
+        self.pending.clear()
+
     async def request(self, cmd: str, args: dict | None = None) -> protocol.ChildResponse:
         # 并发 demux(协议 v1 预留的升级):多请求可同时在途,响应按 id 匹配,
         # 一个挂着的慢请求(如慢 CDN 的 load)不再队头阻塞 pause/next 等其它命令。
         self._next_id += 1
         rid = self._next_id
+        if self.writer is None:  # 子进程已经没了(见 disconnect),别等满 30s 再说
+            return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self.pending[rid] = fut
         t0 = time.monotonic()
@@ -167,8 +210,16 @@ class Conn:
             self._log_timing(cmd, time.monotonic() - t0)
             return resp
         except asyncio.TimeoutError:
-            # provider/player 卡死或崩溃兜底:返回错误响应,不永久挂 UI(迟到响应经 pending 丢弃)
+            # 协议 v1 里通道级 timeout 的含义就是「子进程整体不响应」。观测两次它都不会
+            # 自己好转(issue #44 的 100% CPU 自旋:只有换进程能救),所以判死,让下一条
+            # 命令重开一个,而不是把后面每个操作都拖 30s。
             log("bridge", "own", "error", f"{self.name} request timeout: {cmd}")
+            if self.on_dead:
+                self.on_dead()
+            return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
+        except (ConnectionResetError, OSError):
+            # 等待期间子进程没了(disconnect 会把在途 future 全部置失败)
+            log("bridge", "own", "warn", f"{self.name} died mid-request: {cmd}")
             return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
         finally:
             self.pending.pop(rid, None)
@@ -269,6 +320,7 @@ class Bridge:
         await self.player.listen()
         self.player.on_event = self._on_player_event
         self.provider.on_event = self._on_provider_event
+        self.provider.on_dead = self._provider_unresponsive
         log("bridge", "own", "info", f"started (dev={DEV})")
         # player 常驻:启动时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
         self.player_failed = False  # 启动失败态,get_playback 回灌给 UI(emit 易在前端 WS 未连时丢,#38)
@@ -324,22 +376,36 @@ class Bridge:
             except Exception as e:
                 log("bridge", "own", "debug", f"credential refresh loop: {type(e).__name__}")
 
+    def _provider_unresponsive(self):
+        """provider 判死:直接杀掉,下一条命令会经 _ensure_provider 重开一个。
+
+        为什么非杀不可:通道级 timeout 意味着它整体没反应,而这种状态观测到两次都不会
+        自愈 —— issue #44 那次是 100% CPU 自旋在 niquests 的多路复用抽干循环里,连它
+        自己的 15s 上游超时都跑不了。不杀的话之后每个操作都得先赔 30s,直到用户重启 Steam。
+
+        SIGKILL 而非 SIGTERM:卡死的进程未必还能体面退出。杀完不立刻重开,是因为下一条
+        命令自然会走 _ensure_provider(connected 已被 disconnect 清掉),省一次无谓 spawn。
+        """
+        if self.provider_proc is None or self.provider_proc.returncode is not None:
+            return  # 已经在换了 / 已经没了:并发超时时这里会被连着调用好几次
+        log("bridge", "own", "warn", "provider unresponsive, killing it for respawn")
+        stop_child(self.provider_proc, hard=True)
+        self.provider_proc = None
+
     async def _ensure_provider(self, which: str | None):
         """幂等:确保 which("qq"/"ncm"/None)对应的 provider 进程在运行。
         同一时刻只有一个 provider;重复调用不重复 spawn(靠 provider_lock 串行化 + 存活检查)。"""
         async with self.provider_lock:
             if which is None:
-                if self.provider_proc:
-                    self.provider_proc.terminate()
-                    self.provider_proc = self.provider_which = None
+                stop_child(self.provider_proc)
+                self.provider_proc = self.provider_which = None
                 self.provider_error = None
                 return
             alive = self.provider_proc is not None and self.provider_proc.returncode is None
             if self.provider_which == which and alive and self.provider.connected.is_set():
                 return  # 已在运行同一 provider → 幂等返回,不重复 spawn
-            if self.provider_proc:  # 切换 provider:先停旧
-                self.provider_proc.terminate()
-                self.provider_proc = None
+            stop_child(self.provider_proc)  # 切换 provider / 顶掉判死的旧进程
+            self.provider_proc = None
             self.provider_which = which
             self.provider.connected.clear()
             try:
