@@ -16,7 +16,7 @@ CALLABLES = frozenset(
     """
     set_provider get_provider login logout get_account
     play_queue get_playback play_radio fm_trash like_current like_state
-    get_comments get_user_assets add_to_playlist
+    get_comments get_user_assets add_to_playlist fav_playlist
     get_fav_songs get_listen_rank get_created_playlists get_fav_playlists
     get_queue queue_play queue_insert_next queue_append queue_remove queue_clear
     next_track prev_track set_play_mode pause resume seek volume

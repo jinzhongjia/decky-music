@@ -202,6 +202,29 @@ pub async fn like_song(state: &State, id: u64, args: &Value) -> String {
     fetch(state.client.song_like(&q), id, |_| json!({})).await
 }
 
+/// 收藏 / 取消收藏歌单(/playlist/subscribe)。t=1 收藏、t=0 取消,库层按 t 选 path。
+/// 幂等:重复收藏上游不报错。
+pub async fn fav_playlist(state: &State, id: u64, args: &Value) -> String {
+    let Ok(playlist_id) = string_arg(args, "id") else {
+        return invalid(id);
+    };
+    let Ok(on) = bool_arg(args, "on") else {
+        return invalid(id);
+    };
+    let (_, cookie) = match current_uid(state, id).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let q = Query::new()
+        .cookie(&cookie)
+        .param("id", &playlist_id)
+        .param("t", if on { "1" } else { "0" });
+    match call(state.client.playlist_subscribe(&q), id).await {
+        Ok(_) => protocol::ok(id, json!({ "success": true })),
+        Err(e) => e,
+    }
+}
+
 pub async fn add_to_playlist(state: &State, id: u64, args: &Value) -> String {
     let Ok(playlist_id) = string_arg(args, "playlist_id") else {
         return invalid(id);

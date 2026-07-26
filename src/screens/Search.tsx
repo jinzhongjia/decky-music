@@ -69,7 +69,12 @@ export function Search() {
             {
               id: "playlists",
               title: t("catPlaylists"),
-              content: <PlaylistGridView fetch={(offset) => api.searchPlaylists(query, offset)} />,
+              content: (
+                <PlaylistGridView
+                  fetch={(offset) => api.searchPlaylists(query, offset)}
+                  favoritable
+                />
+              ),
             },
             {
               id: "albums",

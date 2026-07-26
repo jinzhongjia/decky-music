@@ -69,6 +69,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     remove: "移除",
     playNext: "下一首播放",
     addToQueue: "添加到队列末尾",
+    favPlaylist: "收藏歌单",
+    favPlaylistDone: "已收藏",
     favToPlaylist: "收藏到歌单",
     addedToPlaylist: "已收藏",
     moreActions: "更多操作",

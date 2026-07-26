@@ -11,6 +11,7 @@ import { t } from "../../i18n";
 import { playQueue } from "../../player/usePlayer";
 import { openRadioPage } from "../../screens/Immersive";
 import { openPlaylistDetail } from "../../screens/PlaylistDetail";
+import { openPlaylistMenu } from "../../ui/playlistMenu";
 import { usePageAutoFocus } from "../../ui/AppShell";
 import { ToplistSection } from "../../ui/ToplistSection";
 import { Grid, HeroCard, PlaylistCard, Section, SongCell } from "../../ui/cards";
@@ -76,7 +77,12 @@ export function Recommend() {
         <Section title={t("recPlaylists")}>
           <Grid cols={6}>
             {data.playlists.map((pl) => (
-              <PlaylistCard key={pl.id} pl={pl} onActivate={() => openPlaylistDetail(pl)} />
+              <PlaylistCard
+                key={pl.id}
+                pl={pl}
+                onActivate={() => openPlaylistDetail(pl)}
+                onMenu={() => openPlaylistMenu(pl)}
+              />
             ))}
           </Grid>
         </Section>

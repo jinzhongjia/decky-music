@@ -6,7 +6,7 @@ import { Focusable, NavEntryPositionPreferences } from "@decky/ui";
 import { ReactNode } from "react";
 
 import { Album, Artist, Playlist, Song } from "../api";
-import { fmtCount } from "../i18n";
+import { fmtCount, t } from "../i18n";
 import { theme } from "./theme";
 
 // 小节:小字灰标题 + 内容
@@ -99,10 +99,25 @@ export function HeroCard({
   );
 }
 
-// 歌单卡:方形封面 + 播放量角标 + 名称(两行截断)
-export function PlaylistCard({ pl, onActivate }: { pl: Playlist; onActivate: () => void }) {
+// 歌单卡:方形封面 + 播放量角标 + 名称(两行截断)。
+// onMenu 可选 —— 只有"能收藏"的歌单才传(榜单/自建/已收藏不传,见 ui/playlistMenu 注释);
+// 传了才出 X 提示,图例只显示当前真能执行的动作。
+export function PlaylistCard({
+  pl,
+  onActivate,
+  onMenu,
+}: {
+  pl: Playlist;
+  onActivate: () => void;
+  onMenu?: () => void;
+}) {
   return (
-    <Focusable onActivate={onActivate} style={{ borderRadius: theme.radius }}>
+    <Focusable
+      onActivate={onActivate}
+      onSecondaryButton={onMenu}
+      onSecondaryActionDescription={onMenu ? t("moreActions") : undefined}
+      style={{ borderRadius: theme.radius }}
+    >
       <div style={{ position: "relative" }}>
         <img
           src={pl.cover || undefined}

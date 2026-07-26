@@ -158,6 +158,10 @@ export const api = {
     [playlistId: string, songId: string],
     { ok: boolean; error?: string | null }
   >("add_to_playlist"),
+  // 收藏/取消收藏他人歌单(搜索/推荐/发现的歌单卡 X 菜单)。榜单与自建歌单不适用,见 bridge 注释。
+  favPlaylist: callable<[playlistId: string, on: boolean], { ok: boolean; error?: string | null }>(
+    "fav_playlist"
+  ),
   getComments: callable<[songId: string], CommentsResult>("get_comments"),
   getUserAssets: callable<[], UserAssets>("get_user_assets"),
   getFavSongs: callable<[offset: number], SearchResult>("get_fav_songs"),

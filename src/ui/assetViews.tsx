@@ -10,6 +10,7 @@ import { openAlbumDetail } from "../screens/AlbumDetail";
 import { openArtistDetail } from "../screens/ArtistDetail";
 import { openPlaylistDetail } from "../screens/PlaylistDetail";
 import { SongRows, songListStyle } from "./SongRow";
+import { openPlaylistMenu } from "./playlistMenu";
 import { AlbumCard, ArtistCard, Grid, PlaylistCard } from "./cards";
 import { theme } from "./theme";
 import { nearBottom, unwrapList, usePaged } from "./useAsync";
@@ -61,14 +62,21 @@ function GridView<T extends { id: string }>({
 
 export function PlaylistGridView({
   fetch,
+  favoritable = false, // 搜索结果=别人的歌单,可收藏;自建/已收藏的不给这个动作
 }: {
   fetch: (offset: number) => Promise<PlaylistsResult>;
+  favoritable?: boolean;
 }) {
   return (
     <GridView
       fetch={(offset) => unwrapList(fetch(offset), (r) => r.playlists)}
       renderCard={(pl, i) => (
-        <PlaylistCard key={`${pl.id}-${i}`} pl={pl} onActivate={() => openPlaylistDetail(pl)} />
+        <PlaylistCard
+          key={`${pl.id}-${i}`}
+          pl={pl}
+          onActivate={() => openPlaylistDetail(pl)}
+          onMenu={favoritable ? () => openPlaylistMenu(pl) : undefined}
+        />
       )}
     />
   );

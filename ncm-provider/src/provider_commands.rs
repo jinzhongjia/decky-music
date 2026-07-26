@@ -18,8 +18,8 @@ mod search;
 pub use comments::comments;
 pub use details::{album_detail, artist_detail};
 pub use library::{
-    add_to_playlist, created_playlists, fav_playlists, fav_songs, like_song, liked_ids,
-    listen_rank, user_assets,
+    add_to_playlist, created_playlists, fav_playlist, fav_playlists, fav_songs, like_song,
+    liked_ids, listen_rank, user_assets,
 };
 pub use radio::{fm_trash, radio_fetch};
 pub use search::{search_albums, search_artists, search_hot, search_playlists, search_songs};

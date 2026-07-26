@@ -144,6 +144,14 @@ async def add_to_playlist(q, playlist_id: int, song_id: str) -> bool:
     return await q.client.songlist.add_songs(playlist_id, [info], credential=cred)
 
 
+async def fav_playlist(q, playlist_id: int, on: bool) -> bool:
+    """收藏 / 取消收藏他人的公开歌单。playlist_id 是全局 tid(disstid),不是自建歌单的 dirid。
+    上游对「已收藏再收藏」返回成功,天然幂等。"""
+    cred = _credential(q)
+    fn = q.client.user.fav_songlist if on else q.client.user.unfav_songlist
+    return await fn(playlist_id, credential=cred)
+
+
 async def _song_info(q, song_id: str) -> tuple[int, int] | None:
     resp = await q.client.song.query_song([song_id])
     tracks = getattr(resp, "tracks", None) or []

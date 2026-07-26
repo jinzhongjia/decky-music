@@ -567,6 +567,18 @@ class Bridge:
         log("bridge", "own", "warn", f"add_to_playlist failed id={song_id}: {code} {detail}")
         return {"ok": False, "error": code}
 
+    async def fav_playlist(self, playlist_id: str, on: bool) -> dict:
+        # 收藏/取消收藏他人歌单。id 用全局 tid/pid(QQ 的 dirid 不认;榜单 id 也不是它,
+        # 故 UI 只在搜索/推荐/发现的歌单卡上给这个动作)。两端接口都幂等。
+        r = await self.provider.request("fav_playlist", {"id": playlist_id, "on": on})
+        if r.ok and bool(r.data.get("success", True)):
+            log("bridge", "own", "info", f"fav_playlist ok id={playlist_id} on={on}")
+            return {"ok": True}
+        code = (r.error.code if r.error else "provider_error") if not r.ok else "provider_error"
+        detail = r.error.message if (not r.ok and r.error) else ""
+        log("bridge", "own", "warn", f"fav_playlist failed id={playlist_id}: {code} {detail}")
+        return {"ok": False, "error": code}
+
     async def like_state(self) -> dict:
         # 当前曲红心态(会话级记忆);沉浸页换曲/重进时拉取点亮
         cur = self.playback.current_id()

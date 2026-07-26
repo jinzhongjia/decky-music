@@ -135,6 +135,7 @@ async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> Str
         "fav_playlists" => provider_commands::fav_playlists(&state, req.id, &req.args).await,
         "like_song" => provider_commands::like_song(&state, req.id, &req.args).await,
         "add_to_playlist" => provider_commands::add_to_playlist(&state, req.id, &req.args).await,
+        "fav_playlist" => provider_commands::fav_playlist(&state, req.id, &req.args).await,
         "artist_detail" => provider_commands::artist_detail(&state, req.id, &req.args).await,
         "album_detail" => provider_commands::album_detail(&state, req.id, &req.args).await,
         "radio_fetch" => provider_commands::radio_fetch(&state, req.id, &req.args).await,
