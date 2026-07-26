@@ -88,7 +88,10 @@ async def _run_request(qq: QQ, req: protocol.Request, emit, log, out):
     try:
         resp = await asyncio.wait_for(handle(qq, req, emit, log), UPSTREAM_TIMEOUT)
     except TimeoutError:
-        log("warn", "cmd", f"{req.cmd} timed out after {UPSTREAM_TIMEOUT}s")
+        # wait_for 取消了在途协程。别让下一条命令继续用同一条(可能已废的)连接 ——
+        # 真机上出现过一次超时后全线卡死到进程重启为止,见 issue #44。
+        log("warn", "cmd", f"{req.cmd} timed out after {UPSTREAM_TIMEOUT}s, resetting http client")
+        qq.reset_client()
         resp = protocol.err(req.id, "upstream_timeout")
     except Exception as e:
         # 上游库异常(断网 curl Timeout / NetworkError 等)只失败该命令,绝不崩进程。

@@ -8,10 +8,15 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import main as main_mod  # noqa: E402
 import protocol  # noqa: E402
 from main import _run_request, handle  # noqa: E402
+from qq import (  # noqa: E402
+    QQ,  # noqa: E402
+    library,
+    search,
+)
 from qq import account as account_mod  # noqa: E402
-from qq import library, search  # noqa: E402
 from qq.library import (  # noqa: E402
     NotLoggedIn,
     _as_bool,
@@ -196,6 +201,54 @@ class TestProviderLoginRequired(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(NotLoggedIn):
             await _like_song(q, "123", True)
+
+
+class TestTimeoutResetsClient(unittest.IsolatedAsyncioTestCase):
+    """上游超时后必须换掉 HTTP client(issue #44)。
+
+    真机上出现过一次 15s 超时之后,此后每条命令都撞满 15s,直到 provider 进程重启才恢复。
+    机制尚未查明(本地 client 坏掉 vs 上游把那条连接黑洞/限流),但两种情况换新连接都能自愈。
+    """
+
+    async def test_wait_for_timeout_swaps_the_client(self):
+        out = asyncio.Queue()
+        qq = QQ()
+        old = qq.client
+        old.credential = "CRED-SENTINEL"
+
+        async def hang(*_a, **_k):
+            await asyncio.sleep(3600)
+
+        original, main_mod.handle = main_mod.handle, hang
+        original_timeout, main_mod.UPSTREAM_TIMEOUT = main_mod.UPSTREAM_TIMEOUT, 0.05
+        try:
+            req = protocol.Request(1, "search_hot", {})
+            await main_mod._run_request(qq, req, None, lambda *a: None, out)
+        finally:
+            main_mod.handle = original
+            main_mod.UPSTREAM_TIMEOUT = original_timeout
+
+        resp = await out.get()
+        self.assertEqual(resp["error"]["code"], "upstream_timeout")
+        self.assertIsNot(qq.client, old, "超时后应换新 client,否则下条命令还走那条可能已废的连接")
+        self.assertEqual(qq.client.credential, "CRED-SENTINEL", "换 client 不能把登录态弄丢")
+
+    async def test_normal_path_keeps_the_same_client(self):
+        out = asyncio.Queue()
+        qq = QQ()
+        old = qq.client
+
+        async def ok(*_a, **_k):
+            return protocol.ok(1, {})
+
+        original, main_mod.handle = main_mod.handle, ok
+        try:
+            req = protocol.Request(1, "search_hot", {})
+            await main_mod._run_request(qq, req, None, lambda *a: None, out)
+        finally:
+            main_mod.handle = original
+        await out.get()
+        self.assertIs(qq.client, old, "没超时就别重建,否则每次都白付握手成本")
 
 
 class TestProviderConcurrency(unittest.IsolatedAsyncioTestCase):

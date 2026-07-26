@@ -23,6 +23,19 @@ class QQ:
     def set_credential(self, cred: dict | None):
         self.client.credential = Credential(**cred) if cred else Credential()
 
+    def reset_client(self):
+        """换一个全新的 HTTP client(保留 credential 与 guid)。
+
+        用在上游请求撞 15s 超时之后:那次超时靠 asyncio.wait_for 取消在途协程,而
+        qqmusic_api 的 AsyncSession 是 multiplexed=True —— 所有请求共用一条 HTTP/2 连接。
+        真机上出现过一次超时后此后每条命令都撞满 15s、直到进程重启才恢复(issue #44)。
+        具体是本地 client 坏了、还是上游把那条连接黑洞/限流了,尚未查明;但两种情况下
+        换一条新连接都能自愈,代价只是下一个请求要重做握手(约 2~3s)。
+        """
+        cred = self.client.credential
+        self.client = Client()
+        self.client.credential = cred
+
     async def logout(self):
         try:
             await self.client.login.logout(self.client.credential)
