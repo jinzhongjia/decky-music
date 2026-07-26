@@ -32,10 +32,29 @@ def _device_path(state_dir: str | None) -> str | None:
     return os.path.join(state_dir, DEVICE_FILE)
 
 
+def _no_multiplexing(client: Client) -> Client:
+    """关掉 HTTP/2 多路复用,返回同一个 client。
+
+    niquests 的 AsyncHTTPAdapter.send 里有这么一段(adapters.py:1936):连接被打饱和时
+    (`multiplexed and conn.is_saturated`)它原地 while 循环把待处理响应抽干。真机上
+    并发几条命令就能让这个循环出不来 —— 100% CPU 且**不回事件循环**,于是我们自己的
+    15s asyncio.wait_for 根本没机会触发,整个 provider 卡死到进程被杀为止。
+
+    这就是 issue #44 的真身。之前按「上游黑洞」结案是错的:那次没量 CPU。这回抓到了
+    ——709910 次 getpid / 20s、零网络系统调用,faulthandler 栈顶正是这个循环。
+
+    qqmusic_api 把 multiplexed=True 写死在 Client.__init__(没有构造开关),只能事后关。
+    关掉后 gather() 自动变成 no-op(async_session.py:1734),库那边的调用路径不用动。
+    ponytail: 改的是私有属性;upstream 哪天给了构造参数就换过去。
+    """
+    client._session.multiplexed = False
+    return client
+
+
 class QQ:
     def __init__(self, state_dir: str | None = None):
         self._device_path = _device_path(state_dir)
-        self.client = Client(device_path=self._device_path)
+        self.client = _no_multiplexing(Client(device_path=self._device_path))
         # 库内部结构变动时的兜底 guid(进程内稳定)。正常路径见 get_guid()。
         self._fallback_guid = uuid.uuid4().hex
         self.login_task: asyncio.Task | None = None  # 在跑的登录轮询;新登录来时顶掉
@@ -73,13 +92,11 @@ class QQ:
         """换一个全新的 HTTP client(保留 credential 与设备身份)。
 
         用在上游请求撞 15s 超时之后。注意必须沿用同一个 device_path —— 否则这次重建
-        就变成"换了台新设备",正好制造 issue #44 里怀疑的风控特征。
-
-        效果有限:根因调查(issue #44)已推翻"本地 client 被取消污染"的假设,上游封锁时
-        换新连接同样打不通。保留是因为它无害,且在连接级故障时能省掉一次 ConnectionError。
+        就变成"换了台新设备",正好制造风控特征。新 client 同样要关掉多路复用,
+        否则重建反而把 _no_multiplexing() 的效果洗掉。
         """
         cred = self.client.credential
-        self.client = Client(device_path=self._device_path)
+        self.client = _no_multiplexing(Client(device_path=self._device_path))
         self.client.credential = cred
 
     async def logout(self):
