@@ -106,10 +106,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> String {
     match req.cmd.as_str() {
         "song_url" => {
-            let song_id = protocol::parse_args::<protocol::IdArgs>(&req)
-                .map(|a| a.id)
-                .unwrap_or_default();
-            commands::song_url(&state, req.id, &song_id, &out_tx).await
+            let a = protocol::parse_args::<protocol::SongUrlArgs>(&req).unwrap_or(
+                protocol::SongUrlArgs {
+                    id: String::new(),
+                    quality: String::new(),
+                },
+            );
+            commands::song_url(&state, req.id, &a.id, &a.quality, &out_tx).await
         }
         "lyric" => {
             let song_id = protocol::parse_args::<protocol::IdArgs>(&req)

@@ -181,6 +181,9 @@ export const api = {
   resume: callable<[], void>("resume"),
   seek: callable<[sec: number], void>("seek"),
   volume: callable<[val: number], void>("volume"),
+  // 音质上限。set 返回实际生效值(非法值被 bridge 拒掉时用于回填),只对下一首生效。
+  getQuality: callable<[], Quality>("get_quality"),
+  setQuality: callable<[quality: Quality], Quality>("set_quality"),
   clearCache: callable<[], number>("clear_cache"),
   getCacheSize: callable<[], number>("get_cache_size"),
   clearData: callable<[], void>("clear_data"),
@@ -204,6 +207,10 @@ export type TrackInfo = {
   duration: number;
 };
 export type PlayMode = "list_loop" | "single_loop" | "shuffle";
+// 音质**上限**:provider 从这档往下逐档试,拿不到就降,保证无版权/非会员的歌仍能播。
+// 两端各自映射(QQ → F000/M800/M500 前缀,NCM → lossless/exhigh/standard level)。
+export type Quality = "standard" | "high" | "lossless";
+export const QUALITIES: Quality[] = ["standard", "high", "lossless"];
 // get_playback 快照:bridge 是播放真相源,前端挂载回灌
 export type PlaybackState = {
   current: TrackInfo | null;

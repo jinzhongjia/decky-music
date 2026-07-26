@@ -22,6 +22,10 @@ SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 REQUEST_TIMEOUT = 30  # 子进程响应上限(秒):song_url 最坏 ~20s;超时兜底防永久挂
 # 超过这个耗时的请求按 warn 记,好让 release 日志里也留下慢请求的痕迹
 SLOW_REQUEST_S = 2.0
+# 音质上限档位(两个 provider 各自映射到自家 level/前缀,见各自的 LADDER)。
+# 语义是"上限":provider 从这档往下逐档试,保证无版权/非会员的歌仍能播。
+QUALITIES = ("standard", "high", "lossless")
+DEFAULT_QUALITY = "high"  # = 改动前的固定上限,老用户升级后行为不变
 
 
 def BIN(name: str) -> str:
@@ -267,7 +271,13 @@ def load_settings() -> dict:
         with open(SETTINGS, encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return {"version": 1, "provider": None, "volume": 0.8, "play_mode": "list_loop"}
+        return {
+            "version": 1,
+            "provider": None,
+            "volume": 0.8,
+            "play_mode": "list_loop",
+            "quality": DEFAULT_QUALITY,
+        }
 
 
 def save_settings(data: dict):
@@ -313,6 +323,7 @@ class Bridge:
             persist=self._persist_queue,
             radio_fetcher=self._radio_fetch,
             auth_retry=self._refresh_credential,
+            quality=lambda: self.settings.get("quality", DEFAULT_QUALITY),
         )
         # 恢复上次的普通队列(只存了 id 类字段;不自动开播,见 QUEUE-BEHAVIOR §1.1)
         self.playback.restore(self.settings.get("queue"))
@@ -720,7 +731,13 @@ class Bridge:
         except Exception as e:
             log("bridge", "own", "warn", f"clear_data queue_clear skipped: {type(e).__name__}")
         self.liked_ids.clear()
-        self.settings = {"version": 1, "provider": None, "volume": 0.8, "play_mode": "list_loop"}
+        self.settings = {
+            "version": 1,
+            "provider": None,
+            "volume": 0.8,
+            "play_mode": "list_loop",
+            "quality": DEFAULT_QUALITY,
+        }
         self.playback.set_play_mode("list_loop")
         try:
             await self.player.request("volume", {"val": 0.8})  # 同步 player 音量到默认
@@ -740,6 +757,22 @@ class Bridge:
             self.settings["play_mode"] = mode  # 播放模式归 bridge 持久化
             save_settings(self.settings)
             await self.playback.push_current_meta()  # 同步 MPRIS LoopStatus/Shuffle
+
+    async def get_quality(self) -> str:
+        return self.settings.get("quality", DEFAULT_QUALITY)
+
+    async def set_quality(self, quality: str) -> str:
+        """设音质上限。只对**下一首**生效 —— 当前这首已经在放的流不重拉。
+
+        中途换流要么听到一声断,要么得 seek 回原位重新解码,在掌机上白烧一次 CPU 和电;
+        换首歌自然就生效了,不值得为此折腾。返回实际生效值供 UI 回填。
+        """
+        if quality not in QUALITIES:
+            return self.settings.get("quality", DEFAULT_QUALITY)
+        self.settings["quality"] = quality
+        save_settings(self.settings)
+        log("bridge", "own", "info", f"quality cap -> {quality}")
+        return quality
 
     async def pause(self):
         await self.player.request("pause")

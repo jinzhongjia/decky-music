@@ -86,7 +86,6 @@ async def main():
         track(_run_request(qq, req, emit, log, out))
 
 
-
 async def _run_request(qq: QQ, req: protocol.Request, emit, log, out):
     try:
         resp = await asyncio.wait_for(handle(qq, req, emit, log), UPSTREAM_TIMEOUT)
@@ -118,6 +117,7 @@ async def _run_request(qq: QQ, req: protocol.Request, emit, log, out):
         resp = protocol.err(req.id, code)
     await out.put(resp)
 
+
 async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
     args = req.args
     try:
@@ -146,10 +146,15 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
                 return protocol.ok(req.id, await account.get(qq))
             case "song_url":
                 song_id = args.get("id", "")
-                log("debug", "song_url", f"id={song_id}")
-                url = await playback.song_url(qq, song_id, args.get("media_mid", ""))
+                # 不能用 _as_str:它对缺失/空值抛 ValueError → invalid_request,
+                # 那会让「没带 quality 的 song_url」直接放不出歌。缺就用默认档。
+                want = args.get("quality") or playback.DEFAULT_QUALITY
+                log("debug", "song_url", f"id={song_id} want={want}")
+                url, got = await playback.song_url(qq, song_id, args.get("media_mid", ""), want)
                 if url:
-                    return protocol.ok(req.id, {"url": url})
+                    # 记下实际命中的档位:选了无损却降到 320k 时,没这条谁都查不出来
+                    log("debug", "song_url", f"id={song_id} want={want} got={got}")
+                    return protocol.ok(req.id, {"url": url, "quality": got})
                 log("warn", "song_url", f"no playable url id={song_id} (no rights / login / VIP)")
                 return protocol.err(req.id, "no_playable")
             case "search_songs":
@@ -205,7 +210,8 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
                 log("debug", "fav_playlist", f"id={args.get('id', '')} on={args.get('on')} -> {ok}")
                 return protocol.ok(req.id, {"success": ok})
             case "add_to_playlist":
-                ok = await library.add_to_playlist(qq,
+                ok = await library.add_to_playlist(
+                    qq,
                     _as_int(args, "playlist_id"),
                     _as_str(args, "song_id"),
                 )
@@ -216,7 +222,8 @@ async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
                 )
                 return protocol.ok(req.id, data)
             case "album_detail":
-                data = await details.album_detail(qq,
+                data = await details.album_detail(
+                    qq,
                     _as_str(args, "id"),
                     _limit(args, default=50),
                     _offset(args),

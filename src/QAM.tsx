@@ -1,4 +1,4 @@
-import { ButtonItem, Navigation, PanelSection, PanelSectionRow } from "@decky/ui";
+import { ButtonItem, DropdownItem, Navigation, PanelSection, PanelSectionRow } from "@decky/ui";
 import { toaster } from "@decky/api";
 import { useEffect, useState } from "react";
 
@@ -7,6 +7,8 @@ import {
   LoginStatus,
   LoginType,
   Provider,
+  QUALITIES,
+  Quality,
   api,
   errorText,
   onLogin,
@@ -36,6 +38,7 @@ const S = {
   status: "",
   primed: false,
   cacheSize: null as number | null,
+  quality: null as Quality | null,
 };
 
 function loginStatusText(status: string): string {
@@ -63,6 +66,8 @@ export function QAM() {
   const setAccount = (a: Account | null) => ((S.account = a), sa(a));
   const [cacheSize, ssz] = useState<number | null>(S.cacheSize);
   const setCacheSize = (n: number | null) => ((S.cacheSize = n), ssz(n));
+  const [quality, sqa] = useState<Quality | null>(S.quality);
+  const setQuality = (q: Quality | null) => ((S.quality = q), sqa(q));
   const [confirmData, setConfirmData] = useState(false);
 
   const showAccount = async () => {
@@ -158,11 +163,16 @@ export function QAM() {
 
   // 进入存储区可见的视图时刷新一次占用大小(stat 少数文件,开销小)
   useEffect(() => {
-    if (view === "pick" || view === "account")
+    if (view === "pick" || view === "account") {
       api
         .getCacheSize()
         .then(setCacheSize)
         .catch(() => {});
+      api
+        .getQuality()
+        .then(setQuality)
+        .catch(() => {});
+    }
   }, [view]);
 
   const doClearCache = async () => {
@@ -343,6 +353,23 @@ export function QAM() {
 
         <Footer />
       </PanelSection>
+      {(view === "pick" || view === "account") && (
+        <PanelSection title={t("quality")}>
+          <PanelSectionRow>
+            <DropdownItem
+              label={t("qualityCap")}
+              rgOptions={QUALITIES.map((q) => ({ data: q, label: t(`quality_${q}`) }))}
+              selectedOption={quality ?? "high"}
+              onChange={(o) =>
+                guard(async () => setQuality(await api.setQuality(o.data as Quality)))
+              }
+            />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <div style={{ fontSize: "0.75em", opacity: 0.6 }}>{t("qualityDesc")}</div>
+          </PanelSectionRow>
+        </PanelSection>
+      )}
       {(view === "pick" || view === "account") && (
         <PanelSection title={t("storage")}>
           <PanelSectionRow>

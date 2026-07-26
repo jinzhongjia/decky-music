@@ -64,9 +64,12 @@ class Playback:
         persist=None,
         radio_fetcher=None,
         auth_retry=None,
+        quality=None,
     ):
         self.player = player
         self.provider = provider
+        # 音质上限的读取器(bridge 的 settings 是真相源)。取不到就让 provider 用它自己的默认档。
+        self._quality = quality or (lambda: "")
         self.play_mode = play_mode if play_mode in PLAY_MODES else "list_loop"
         self.queue: list[dict] = []  # [{id, media_mid, name, singer, cover, duration}]
         self.index = -1
@@ -320,7 +323,11 @@ class Playback:
         self._resume_at = 0.0  # 新的播放意图:作废上一次的断流中断处
         item = self.queue[i]
         # 防御取值(宿主安全):畸形队列项走失败路径,绝不 KeyError 炸掉调用链
-        args = {"id": item.get("id", ""), "media_mid": item.get("media_mid", "")}
+        args = {
+            "id": item.get("id", ""),
+            "media_mid": item.get("media_mid", ""),
+            "quality": self._quality(),
+        }
         r = await self.provider.request("song_url", args)
         if gen != self._play_gen:
             return None  # 等待期间用户又切了歌:让位,不发事件不碰状态

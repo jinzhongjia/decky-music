@@ -20,6 +20,7 @@ CALLABLES = frozenset(
     get_fav_songs get_listen_rank get_created_playlists get_fav_playlists
     get_queue queue_play queue_insert_next queue_append queue_remove queue_clear
     next_track prev_track set_play_mode pause resume seek volume
+    get_quality set_quality
     search_songs search_playlists search_albums search_artists search_hot
     get_artist_detail get_album_detail get_lyric get_recommend
     get_playlist_songs get_toplists get_toplist_songs get_discover get_daily_songs

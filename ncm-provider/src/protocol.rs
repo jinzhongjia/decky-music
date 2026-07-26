@@ -19,6 +19,15 @@ pub struct IdArgs {
     pub id: String,
 }
 
+// song_url:{id, quality}。quality 缺失/无效时由 commands::ladder 退回默认档。
+#[derive(Debug, Deserialize)]
+pub struct SongUrlArgs {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub quality: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

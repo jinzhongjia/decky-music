@@ -37,17 +37,75 @@ pub(crate) fn song_brief(s: &Value) -> Value {
     })
 }
 
-// 音质降级顺序:先试高码率,拿不到(需 VIP/无该档)再降到 standard(128k,免费歌普遍可播)。
-const LEVELS: [&str; 2] = ["exhigh", "standard"];
+/// 音质阶梯:(档位名, 网易 level),从高到低。
+/// 只列 player 解得动的:lossless/exhigh/standard 分别是 FLAC / 320k MP3 / 128k MP3。
+/// 不上 hires/jymaster(母带)—— 多数账号拿不到,白赔一次往返;也不上 sky(环绕声,要 immerseType)。
+const LADDER: [(&str, &str); 3] = [
+    ("lossless", "lossless"),
+    ("high", "exhigh"),
+    ("standard", "standard"),
+];
+pub const DEFAULT_QUALITY: &str = "high";
 
-pub async fn song_url(state: &State, id: u64, song_id: &str, tx: &Out) -> String {
+/// 从所选上限往下的阶梯。上限之上的档不试;下面的档全部保留作兜底 ——
+/// 选了无损也必须能播无版权 / 非会员的歌,否则一开就有一半歌放不出来。
+fn ladder(quality: &str) -> &'static [(&'static str, &'static str)] {
+    let at = LADDER
+        .iter()
+        .position(|(name, _)| *name == quality)
+        .unwrap_or_else(|| {
+            LADDER
+                .iter()
+                .position(|(name, _)| *name == DEFAULT_QUALITY)
+                .unwrap_or(0)
+        });
+    &LADDER[at..]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(q: &str) -> Vec<&'static str> {
+        ladder(q).iter().map(|(n, _)| *n).collect()
+    }
+
+    /// 选的是上限:上限之上的档不试,下面的档全保留作兜底。
+    /// 末端必须是 standard —— 否则该档会有无版权/非会员的歌直接放不出来。
+    #[test]
+    fn ladder_is_a_cap_with_full_fallback() {
+        assert_eq!(names("standard"), ["standard"]);
+        assert_eq!(names("high"), ["high", "standard"]);
+        assert_eq!(names("lossless"), ["lossless", "high", "standard"]);
+        for (q, _) in LADDER {
+            assert_eq!(names(q).last(), Some(&"standard"), "quality={q}");
+        }
+    }
+
+    #[test]
+    fn bad_value_falls_back_to_default() {
+        for bad in ["", "hires", "jymaster", "sky", "EXHIGH"] {
+            assert_eq!(names(bad), names(DEFAULT_QUALITY), "bad={bad}");
+        }
+    }
+}
+
+pub async fn song_url(state: &State, id: u64, song_id: &str, quality: &str, tx: &Out) -> String {
     let base = maybe_cookie(Query::new().param("id", song_id), state.cookie().await);
-    for level in LEVELS {
+    for (name, level) in ladder(quality) {
         let q = base.clone().param("level", level);
         match with_timeout(state.client.song_url_v1(&q)).await {
             // 不记 URL(含限时 token)
             Ok(Ok(r)) => match r.body["data"][0]["url"].as_str() {
-                Some(url) if !url.is_empty() => return protocol::ok(id, json!({ "url": url })),
+                Some(url) if !url.is_empty() => {
+                    // 记下实际命中的档位:选了无损却降到 320k 时,没这条谁都查不出来
+                    let _ = tx.send(log_json(
+                        LogLevel::Debug,
+                        "song_url",
+                        &format!("id={song_id} want={quality} got={name}"),
+                    ));
+                    return protocol::ok(id, json!({ "url": url, "quality": name }));
+                }
                 _ => continue, // 该档无 URL → 降到下一档
             },
             Ok(Err(_)) => return protocol::err(id, ErrorCode::ProviderError, "provider_error"),
