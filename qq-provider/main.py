@@ -11,6 +11,7 @@ bridge 作 server,provider 启动后连入 `--socket <path>`。无状态:credent
 import argparse
 import asyncio
 import json
+import os
 
 import protocol
 from log import make_log  # 日志实现见 log.py
@@ -41,7 +42,9 @@ async def main():
     args = parser.parse_args()
 
     reader, writer = await asyncio.open_unix_connection(args.socket)
-    qq = QQ()
+    # 设备身份要跨进程持久化(见 qq/__init__.py 的 _device_path):bridge 经环境变量注入目录
+    qq = QQ(state_dir=os.environ.get("DECKY_MUSIC_STATE_DIR"))
+    await qq.ensure_device()  # 先把设备身份落盘,首个请求就用稳定身份
     out: asyncio.Queue = asyncio.Queue()  # 响应 + 事件汇到单写出,避免并发写乱帧
 
     async def pump():

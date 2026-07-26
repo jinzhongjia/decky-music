@@ -41,7 +41,7 @@ async def _vkey(q, filename: str, mid: str, cred) -> dict:
             "method": "UrlGetVkey",
             "param": {
                 "filename": [filename],
-                "guid": q.guid,
+                "guid": await q.get_guid(),
                 "songmid": [mid],
                 "songtype": [0],
             },
