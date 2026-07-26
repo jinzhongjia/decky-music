@@ -123,6 +123,8 @@ fn paged_query(args: &Value, type_id: &str) -> Result<Query, ()> {
         .param("offset", &offset))
 }
 
+/// `State::cookie()` 现在恒为 `Some`(未登录也带设备锚点,见 state.rs),这里的 `None`
+/// 分支只是保留签名不改 21 处调用点。
 pub(crate) fn maybe_cookie(mut q: Query, cookie: Option<String>) -> Query {
     if let Some(c) = cookie {
         q = q.cookie(&c);
@@ -131,9 +133,10 @@ pub(crate) fn maybe_cookie(mut q: Query, cookie: Option<String>) -> Query {
 }
 
 async fn current_uid(state: &State, id: u64) -> Result<(String, String), String> {
-    let Some(cookie) = state.cookie().await else {
+    if state.credential().await.is_none() {
         return Err(protocol::err(id, ErrorCode::NotLoggedIn, "not_logged_in"));
-    };
+    }
+    let cookie = state.cookie().await.unwrap_or_default();
     // uid 按会话缓存(set_credential 时清空):免去每个资产/电台命令先打一发 login_status
     if let Some(uid) = state.uid.lock().await.clone() {
         return Ok((uid, cookie));

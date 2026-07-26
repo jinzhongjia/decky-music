@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 
 mod commands;
 mod content;
+mod device;
 mod login;
 mod lyric;
 mod protocol;
@@ -31,7 +32,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (rd, mut wr) = stream.into_split();
     let mut lines = BufReader::new(rd).lines();
 
-    let state = Arc::new(State::new());
+    // 设备身份要跨进程持久化(见 device.rs):bridge 经环境变量注入目录
+    let state_dir = std::env::var("DECKY_MUSIC_STATE_DIR").ok();
+    let state = Arc::new(State::new(state_dir.as_deref()));
     let debug = std::env::var("DECKY_MUSIC_DEBUG").is_ok(); // release 下不发 debug
 
     // 单一写出:命令响应 + 事件汇到这里串行写回,避免并发写乱帧

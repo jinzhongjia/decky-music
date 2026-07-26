@@ -22,10 +22,10 @@ pub async fn discover(state: &State, id: u64) -> String {
 
 /// 每日推荐 30 首(需登录;无 cookie 直接返 not_logged_in,不打无谓请求)
 pub async fn daily_songs(state: &State, id: u64) -> String {
-    let Some(c) = state.cookie().await else {
+    if state.credential().await.is_none() {
         return protocol::err(id, ErrorCode::NotLoggedIn, "not_logged_in");
-    };
-    let q = Query::new().cookie(&c);
+    }
+    let q = maybe_cookie(Query::new(), state.cookie().await);
     match with_timeout(state.client.recommend_songs(&q)).await {
         // 301 = cookie 失效
         Ok(Ok(r)) if r.body["code"].as_i64() == Some(301) => {

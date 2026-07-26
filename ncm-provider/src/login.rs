@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 
 use crate::protocol;
 use crate::protocol::{log_json, LogLevel};
+use crate::provider_commands::maybe_cookie;
 use crate::state::{with_timeout, Out, State};
 
 /// 发一条 login 域事件(协议 v1:{ev:"login",type,data})。
@@ -18,8 +19,17 @@ pub fn emit(tx: &Out, typ: &str, data: Value) {
 }
 
 pub async fn login_flow(state: Arc<State>, tx: Out) {
+    // 登录三步也要带设备锚点:扫码登录正是网易把设备绑到账号上的时刻,
+    // 这里用一台随机设备、登录后换成另一台,本身就是矛盾特征(见 device.rs)。
+    let pins = state.device_pins();
     // 1. 取 unikey
-    let key = match with_timeout(state.client.login_qr_key(&Query::new())).await {
+    let key = match with_timeout(
+        state
+            .client
+            .login_qr_key(&maybe_cookie(Query::new(), pins.clone())),
+    )
+    .await
+    {
         Ok(Ok(r)) => r.body["unikey"].as_str().unwrap_or("").to_string(),
         Ok(Err(e)) => return login_fail(&tx, &e.to_string()),
         Err(_) => return login_fail(&tx, "qr_key timeout"),
@@ -31,7 +41,7 @@ pub async fn login_flow(state: Arc<State>, tx: Out) {
     let qrurl = match with_timeout(
         state
             .client
-            .login_qr_create(&Query::new().param("key", &key)),
+            .login_qr_create(&maybe_cookie(Query::new().param("key", &key), pins.clone())),
     )
     .await
     {
@@ -50,7 +60,7 @@ pub async fn login_flow(state: Arc<State>, tx: Out) {
         let r = match with_timeout(
             state
                 .client
-                .login_qr_check(&Query::new().param("key", &key)),
+                .login_qr_check(&maybe_cookie(Query::new().param("key", &key), pins.clone())),
         )
         .await
         {

@@ -63,9 +63,9 @@ pub async fn song_url(state: &State, id: u64, song_id: &str, tx: &Out) -> String
 }
 
 pub async fn logout(state: &State, id: u64) -> String {
-    if let Some(c) = state.cookie().await {
-        let _ = with_timeout(state.client.logout(&Query::new().cookie(&c))).await;
-        // 尽力而为
+    if state.credential().await.is_some() {
+        let q = maybe_cookie(Query::new(), state.cookie().await);
+        let _ = with_timeout(state.client.logout(&q)).await; // 尽力而为
     }
     *state.cookie.lock().await = None;
     protocol::ok_empty(id)
