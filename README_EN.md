@@ -27,8 +27,9 @@ Decky Music is a Decky Loader music plugin designed for Steam Deck Gaming Mode. 
 controller-first full-screen UI, while music service access, queue management, and audio output run
 in separate processes so network requests, decoding, or backend failures do not block the Steam UI.
 
-> The current version is **1.0.0-beta.2**. This is pre-release software; read the limitations below
-> before installing it.
+> The project is in the **1.0.0-beta** pre-release stage; see
+> [Releases](https://github.com/jinzhongjia/decky-music/releases) for the latest build. This is
+> pre-release software; read the limitations below before installing it.
 
 ## Device Screenshots
 
@@ -40,7 +41,8 @@ in separate processes so network requests, decoding, or backend failures do not 
 
 Building on dual-provider playback, QR-code login, personalized recommendations, personal libraries,
 and immersive playback, the current implementation adds categorized search, content detail pages,
-queue management, radio modes, and complete controller navigation.
+queue management, radio modes, quality selection, system media controls, and complete controller
+navigation.
 
 ### Provider Features
 
@@ -57,13 +59,29 @@ queue management, radio modes, and complete controller navigation.
 
 - **Complete playback controls:** background continuous playback, queue management, previous/next,
   pause/resume, seeking, volume, list loop, single-track loop, and shuffle.
-- **Favorites and queue actions:** like songs, add songs to created playlists, and open contextual
-  actions with the controller `X` button.
-- **Controller-first navigation:** complete focus navigation, `L1/R1` top-level tabs, `Y` for the
-  queue, and `Start` for global pause/resume. SteamOS Footer Legend shows the current button actions.
+- **Selectable quality:** Standard 128k / High 320k / Lossless caps with automatic step-down (tracks
+  without rights or requiring a subscription still play at a lower quality). Applies from the next
+  track.
+- **System media controls:** the player exposes an MPRIS2 D-Bus service, so Bluetooth headset buttons
+  and desktop media widgets control playback. Every external control action is routed back through
+  the bridge, so state never forks.
+- **Favorites and queue actions:** like songs, add songs to created playlists, follow other users'
+  playlists, and open contextual actions with the controller `X` button.
+- **Controller-first navigation:** complete focus navigation, `L1/R1` top-level tabs, `L2/R2`
+  secondary tabs, `Y` for the queue, and `Start` for global pause/resume. SteamOS Footer Legend shows
+  the current button actions.
+- **Entry points:** always available from the Decky Quick Access Menu; once a provider is selected, a
+  **Music** item is also injected into Steam's left main menu (an optional enhancement that silently
+  falls back to the quick menu if injection fails).
 - **Chinese and English UI:** automatically follows the Steam client language.
 - **Failure isolation:** the QQ/NetEase providers and player are separate processes. Network, data,
   or backend failures degrade to an in-plugin error state instead of taking down the Steam UI.
+  Playback errors surface both as an in-plugin banner and a Steam system toast, so you see them while
+  playing a game.
+- **Stream resume:** if the stream is cut off, the next press of play resumes from where it stopped;
+  it only falls back to restarting the track when seeking fails.
+- **Storage management:** the quick menu shows disk usage, clears it, and offers a one-tap data reset
+  (log out, clear the queue, restore default preferences).
 
 ## Installation
 
@@ -71,8 +89,9 @@ queue management, radio modes, and complete controller navigation.
 
 - A Steam Deck running SteamOS Gaming Mode.
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) installed.
-- Access to GitHub during installation and first launch. Decky downloads and verifies the player,
-  QQ provider, and NetEase provider binaries.
+- Access to the download source during installation — GitHub for the normal build, a Cloudflare
+  mirror for the CN build. Decky downloads and SHA-256 verifies the player, QQ provider, and NetEase
+  provider binaries. The offline "full" build bundles all three, so it downloads nothing.
 
 ### Install the Pre-release Manually
 
@@ -99,27 +118,39 @@ and all three dependency binaries are served from a Cloudflare mirror.
 > The CN build is functionally identical to the normal build — only the download
 > source differs (Cloudflare vs GitHub); the binaries are byte-for-byte the same.
 
+### Offline install (full build)
+
+When the network is restricted, or you would rather Decky not fetch binaries during installation,
+use `Decky.Music.full.zip`: all three binaries ship inside `bin/` and `remote_binary` is stripped
+from `package.json`, so installation performs zero downloads. Install it exactly like the normal
+build (paste that asset's URL into Manual Plugin Install). The trade-off is a larger download, and
+binaries that are not refreshed by Decky's remote verification — reinstall the whole zip to upgrade.
+
 ## First Use
 
 1. Select **QQ Music** or **NetEase Cloud Music** from the Decky Music Quick Access Menu.
 2. QQ Music requires QR-code login through Mobile QQ or WeChat, including for free tracks.
 3. Some free NetEase Cloud Music tracks play anonymously. Daily recommendations, personal assets,
    and membership quality tiers require QR-code login.
-4. Select **Open Player** to enter the `/music` full-screen page. Use `L1/R1` to switch pages, `A` to
-   select, `B` to go back, `X` for contextual actions, `Y` for the queue, and `Start` to pause or
-   resume playback.
+4. Select **Open Player** to enter the `/music` full-screen page. Use `L1/R1` to switch top-level
+   pages and `L2/R2` for secondary tabs, `A` to select, `B` to go back, `X` for contextual actions,
+   `Y` for the queue, and `Start` to pause or resume playback.
+5. The quality cap and storage cleanup also live in the quick menu (visible on the provider-picker
+   and account views).
 
 ## Known Limitations
 
-- Track availability depends on account rights, copyright, region, and service status. The project
-  does not provide proxies or region bypasses.
+- Whether a track plays, and which quality tier you get, depends on account rights, copyright,
+  region, and service status. The project does not provide proxies or region bypasses; selecting
+  Lossless does not guarantee every track has it.
 - Switching between QQ Music and NetEase Cloud Music stops playback and clears the queue because
   their track IDs are incompatible.
 - Radio content is not persisted across sessions. A normal queue is restored, but playback does not
   start automatically after a plugin restart.
+- There is no local audio cache; every play re-streams. "Clear cache" in the quick menu clears the
+  plugin logs.
 - This beta primarily targets Steam Deck/SteamOS `x86_64` Gaming Mode.
-- Search suggestions, recent-play history, cross-provider fallback, and preferred quality settings
-  are not currently available.
+- Search suggestions, recent-play history, and cross-provider fallback are not currently available.
 
 ## Architecture
 
@@ -130,19 +161,23 @@ graph LR
   BR <-->|UDS + NDJSON v1| NCM[NetEase provider<br/>Rust]
   BR <-->|UDS + NDJSON v1| PLAYER[player<br/>Rust]
   PLAYER -->|reqwest + rodio| AUDIO[ALSA / PipeWire]
+  PLAYER <-->|MPRIS2 D-Bus| MEDIA[System media widgets<br/>Bluetooth headset keys]
 ```
 
 - The UI communicates only with the bridge through `src/api.ts`; it never receives playback URLs or
   audio streams.
-- `main.py` is the Decky callable facade. `py_modules/bridge.py` manages state, persistence, events,
-  and child processes.
+- `main.py` is the Decky callable facade: a `CALLABLES` allowlist plus `__getattr__` forwarding to
+  the bridge. `py_modules/bridge.py` manages state, persistence, events, and child processes.
 - Only one provider runs at a time. The player stays in its own process and directly streams,
   decodes, and outputs audio through the system audio stack.
 - The bridge runs inside Decky's frozen CPython runtime, so it uses only the Python standard library.
 - The bridge and child processes use Unix domain sockets and NDJSON protocol v1 without opening a
-  local TCP port.
+  local TCP port; both Rust binaries share the `wire` crate for the protocol.
+- Only the player exposes MPRIS; external control actions are forwarded to the bridge, which remains
+  the single source of truth.
 - Decky downloads the three external programs through `remote_binary` and verifies them with the
-  SHA-256 hashes in `package.json`.
+  SHA-256 hashes in `package.json` (except for the full offline build, which ships them inside the
+  zip).
 
 See [`docs/DESIGN.md`](docs/DESIGN.md) for the full constraints, protocol, and technology decisions.
 
@@ -206,14 +241,15 @@ DECK_HOST=deck@<steam-deck-ip> bash scripts/deploy.sh
 | Path | Responsibility |
 | :--- | :--- |
 | `src/` | React UI, player screens, provider screens, and the only frontend API layer |
-| `main.py` | Decky `Plugin` facade that forwards callables one by one |
+| `main.py` | Decky `Plugin` facade: `CALLABLES` allowlist plus `__getattr__` forwarding to the bridge |
 | `py_modules/` | Standard-library-only bridge, playback queue, protocol, and logging code |
-| `player/` | Rust audio player for streaming, decoding, playback, and controls |
+| `player/` | Rust audio player for streaming, decoding, playback, controls, and MPRIS |
+| `wire/` | Rust implementation of bridge↔child protocol v1, shared by player and ncm-provider |
 | `ncm-provider/` | Rust NetEase Cloud Music provider built on `ncm-api-rs` |
 | `qq-provider/` | QQ Music provider built on `QQMusicApi` and packaged with Nuitka |
 | `tests/` | Bridge, protocol, settings, and frontend behavior tests |
 | `docs/` | Architecture, roadmap, queue semantics, provider capabilities, and UI specifications |
-| `scripts/` | SteamOS-compatible builds, device deployment, and CDP debugging tools |
+| `scripts/` | SteamOS-compatible builds, device deployment, and full / CN release packaging |
 
 ## Design and Development Documentation
 
@@ -222,7 +258,7 @@ DECK_HOST=deck@<steam-deck-ip> bash scripts/deploy.sh
 - [Playback queue semantics](docs/QUEUE-BEHAVIOR.md)
 - [Provider API capability matrix](docs/PROVIDER-APIS.md)
 - [Steam Deck UI specifications and device screenshots](docs/ui-design/README.md)
-- [Steam menu injection research](docs/STEAM-MENU-INJECT.md)
+- [Steam left-menu injection mechanism](docs/STEAM-MENU-INJECT.md)
 
 ## Contributing
 

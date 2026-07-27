@@ -27,7 +27,8 @@ Decky Music 是为 Steam Deck 游戏模式设计的 Decky Loader 音乐插件。
 界面；音乐服务访问、播放队列和音频输出运行在独立进程中，避免网络请求、解码或后端异常阻塞
 Steam UI。
 
-> 当前版本为 **1.0.0-beta.2**。这是预发布软件，安装前请阅读下方限制与说明。
+> 当前处于 **1.0.0-beta** 预发布阶段，最新版本见 [Releases](https://github.com/jinzhongjia/decky-music/releases)。
+> 这是预发布软件，安装前请阅读下方限制与说明。
 
 ## 实机界面
 
@@ -38,7 +39,7 @@ Steam UI。
 ## 功能特性
 
 在原有双平台、扫码登录、个性化推荐、我的音乐和沉浸播放基础上，当前实现补齐了分类搜索、
-内容详情、播放队列、电台与完整手柄交互。
+内容详情、播放队列、电台、音质选择、系统媒体控制与完整手柄交互。
 
 ### 双平台内容
 
@@ -55,12 +56,21 @@ Steam UI。
 
 - **完整播放控制**：后台连续播放、播放队列、上一首/下一首、暂停/继续、进度跳转、音量，
   支持列表循环、单曲循环和随机播放。
-- **收藏与队列操作**：红心歌曲、添加到自建歌单，以及手柄 `X` 键上下文菜单。
-- **手柄优先**：全程焦点导航，`L1/R1` 顶层切页、`Y` 播放队列、`Start` 全局暂停/继续，
-  并由 SteamOS Footer Legend 显示当前按键语义。
+- **音质可选**：标准 128k / 高品质 320k / 无损三档上限，按上限逐档降级（无版权或非会员的
+  歌曲仍以较低音质播放），切歌后生效。
+- **系统媒体控制**：player 暴露 MPRIS2 D-Bus 服务，蓝牙耳机按键与桌面媒体控件可直接控制
+  播放；所有控制动作统一回到 bridge 执行，不产生状态分叉。
+- **收藏与队列操作**：红心歌曲、添加到自建歌单、收藏他人歌单，以及手柄 `X` 键上下文菜单。
+- **手柄优先**：全程焦点导航，`L1/R1` 顶层切页、`L2/R2` 二级页签、`Y` 播放队列、
+  `Start` 全局暂停/继续，并由 SteamOS Footer Legend 显示当前按键语义。
+- **入口**：Decky 快捷菜单常驻；选定音乐源后，Steam 左侧主菜单也会注入「音乐」入口
+  （可选增强，注入失败自动退回快捷菜单入口）。
 - **中英双语**：根据 Steam 客户端语言自动切换中文或英文。
 - **故障隔离**：QQ/网易云 provider 与 player 均为独立进程；网络、数据或后端异常在插件内
-  降级为错误态，避免拖垮 Steam UI。
+  降级为错误态，避免拖垮 Steam UI。播放出错时同时给出插件内横幅与 Steam 系统通知
+  （玩游戏时也能看到）。
+- **断流续传**：流被掐断后，下次按播放键从中断位置接上，seek 失败才降级从头播。
+- **存储管理**：快捷菜单内可查看占用、清理，以及一键清除数据（登出、清空队列、偏好归默认）。
 
 ## 安装
 
@@ -68,7 +78,9 @@ Steam UI。
 
 - Steam Deck，运行 SteamOS 游戏模式。
 - 已安装 [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)。
-- 安装和首次启动时可访问 GitHub；Decky 会下载并校验 player、QQ provider 和网易云 provider。
+- 安装时可访问下载源：普通版走 GitHub、CN 版走 Cloudflare 镜像，Decky 会下载并按 SHA-256
+  校验 player、QQ provider 和网易云 provider 三个二进制。full 离线版已自带这三个二进制，
+  安装期间不再下载。
 
 ### 手动安装预发布版
 
@@ -92,21 +104,31 @@ Decky 当前的手动安装器只接受 ZIP 的 URL，详见
 
 > CN 版与普通版功能相同，仅下载源不同（Cloudflare vs GitHub）；二进制字节一致。
 
+### 离线安装（full 包）
+
+网络受限、或不希望 Decky 在安装时联网拉二进制时，用 `Decky.Music.full.zip`：三个二进制已
+打进 `bin/`，`remote_binary` 已从 `package.json` 剥离，安装过程零下载。装法与普通版相同
+（Manual Plugin Install 粘贴该资产的下载链接）。代价是包体更大，且二进制不随 Decky 的
+远端校验更新——升级时请整包重装。
+
 ## 首次使用
 
 1. 在 Decky Music 快捷菜单中选择 **QQ 音乐**或**网易云音乐**。
 2. QQ 音乐必须先用手机 QQ/微信扫码登录，免费歌曲也需要有效登录态。
 3. 网易云音乐的部分免费歌曲可匿名播放；每日推荐、私人资产、会员音质等功能需要扫码登录。
-4. 点击“打开播放器”进入 `/music` 大屏页面。使用 `L1/R1` 切换页面，`A` 选择，`B` 返回，
-   `X` 打开上下文操作，`Y` 打开队列，`Start` 暂停或继续播放。
+4. 点击“打开播放器”进入 `/music` 大屏页面。使用 `L1/R1` 切换顶层页面、`L2/R2` 切换二级页签，
+   `A` 选择，`B` 返回，`X` 打开上下文操作，`Y` 打开队列，`Start` 暂停或继续播放。
+5. 音质上限与存储清理也在快捷菜单里（选源页与账号页可见）。
 
 ## 已知限制
 
-- 歌曲是否可播取决于账号权益、版权、地区和服务端状态；项目不提供代理或地区绕过能力。
+- 歌曲是否可播、能拿到哪档音质，取决于账号权益、版权、地区和服务端状态；项目不提供代理或
+  地区绕过能力。设成无损也不保证每首都有无损。
 - 切换 QQ 音乐与网易云音乐会停止播放并清空当前队列，因为两端的歌曲 ID 不兼容。
 - 电台内容不会跨会话持久化；普通队列会恢复，但插件重启后不会自动开始播放。
+- 不做本地音频缓存，每次播放都重新拉流；快捷菜单里的「清理缓存」清的是插件日志。
 - 当前为 beta 版本，主要面向 Steam Deck/SteamOS `x86_64` 游戏模式。
-- 当前未提供搜索建议、最近播放历史、跨平台音源兜底或音质偏好设置。
+- 当前未提供搜索建议、最近播放历史与跨平台音源兜底。
 
 ## 架构
 
@@ -117,14 +139,19 @@ graph LR
   BR <-->|UDS + NDJSON v1| NCM[网易云 provider<br/>Rust]
   BR <-->|UDS + NDJSON v1| PLAYER[player<br/>Rust]
   PLAYER -->|reqwest + rodio| AUDIO[ALSA / PipeWire]
+  PLAYER <-->|MPRIS2 D-Bus| MEDIA[系统媒体控件<br/>蓝牙耳机按键]
 ```
 
 - UI 只通过 `src/api.ts` 与 bridge 通信，不接触播放 URL 或音频流。
-- `main.py` 是 Decky callable 门面；`py_modules/bridge.py` 管理状态、持久化、事件和子进程。
+- `main.py` 是 Decky callable 门面：`CALLABLES` 白名单 + `__getattr__` 转发给 bridge；
+  `py_modules/bridge.py` 管理状态、持久化、事件和子进程。
 - 同一时间只运行一个 provider；player 独立常驻，直接拉流、解码并输出到系统音频栈。
 - bridge 运行在 Decky 冻结的 CPython 中，因此只使用 Python 标准库。
-- bridge 与子进程使用 Unix domain socket 和 NDJSON 协议 v1，不开放本地 TCP 端口。
-- 三个外部程序通过 Decky `remote_binary` 下载，并由 `package.json` 中的 SHA-256 校验。
+- bridge 与子进程使用 Unix domain socket 和 NDJSON 协议 v1，不开放本地 TCP 端口；Rust 两端
+  共用 `wire` crate 实现协议。
+- MPRIS 只由 player 暴露；外部控制动作全部上送 bridge 处理，bridge 仍是唯一真相源。
+- 三个外部程序通过 Decky `remote_binary` 下载，并由 `package.json` 中的 SHA-256 校验
+  （full 离线包例外：二进制随包分发）。
 
 更完整的约束、协议和技术选型见 [`docs/DESIGN.md`](docs/DESIGN.md)。
 
@@ -186,14 +213,15 @@ player/provider；修改 `player/`、`ncm-provider/` 或 `qq-provider/` 后，�
 | 路径 | 职责 |
 | :--- | :--- |
 | `src/` | React UI、播放器页面、provider 页面和唯一前端 API 层 |
-| `main.py` | Decky `Plugin` facade，逐个转发 callable |
+| `main.py` | Decky `Plugin` facade：`CALLABLES` 白名单 + `__getattr__` 转发给 bridge |
 | `py_modules/` | bridge、播放队列、协议和日志实现，只使用 Python 标准库 |
-| `player/` | Rust 音频 player，负责流式拉取、解码、播放和控制 |
+| `player/` | Rust 音频 player，负责流式拉取、解码、播放、控制与 MPRIS |
+| `wire/` | bridge ↔ 子进程协议 v1 的 Rust 实现，player 与 ncm-provider 共用 |
 | `ncm-provider/` | 基于 `ncm-api-rs` 的网易云音乐 Rust provider |
 | `qq-provider/` | 基于 `QQMusicApi`、由 Nuitka 打包的 QQ 音乐 provider |
 | `tests/` | bridge、协议、设置和前端行为测试 |
 | `docs/` | 架构、路线图、队列语义、provider 能力和 UI 规格 |
-| `scripts/` | SteamOS 兼容构建、真机部署和 CDP 调试工具 |
+| `scripts/` | SteamOS 兼容构建、真机部署，以及 full / CN 发布打包 |
 
 ## 设计与开发文档
 
@@ -202,7 +230,7 @@ player/provider；修改 `player/`、`ncm-provider/` 或 `qq-provider/` 后，�
 - [播放队列语义](docs/QUEUE-BEHAVIOR.md)
 - [Provider API 能力对照](docs/PROVIDER-APIS.md)
 - [Steam Deck UI 规格与实机截图](docs/ui-design/README.md)
-- [Steam 菜单注入调研](docs/STEAM-MENU-INJECT.md)
+- [Steam 左侧菜单注入机制](docs/STEAM-MENU-INJECT.md)
 
 ## 贡献
 
