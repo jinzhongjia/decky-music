@@ -353,5 +353,6 @@ class TestProviderConcurrency(unittest.IsolatedAsyncioTestCase):
         release_slow.set()
         await asyncio.gather(slow, fast)
 
+
 if __name__ == "__main__":
     unittest.main()

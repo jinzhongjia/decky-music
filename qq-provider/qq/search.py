@@ -109,12 +109,7 @@ def _album_brief(a) -> dict:
 
 
 def _artist_brief(a) -> dict:
-    avatar = (
-        getattr(a, "pic", "")
-        or getattr(a, "singer_pic", "")
-        or getattr(a, "avatar", "")
-        or ""
-    )
+    avatar = getattr(a, "pic", "") or getattr(a, "singer_pic", "") or getattr(a, "avatar", "") or ""
     if not avatar and hasattr(a, "cover_url"):
         avatar = a.cover_url()
     return {

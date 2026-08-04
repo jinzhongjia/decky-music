@@ -5,6 +5,7 @@ from qq.search import _playlist_brief, _song_brief
 FAV_DIRID = 201
 MAX_LIMIT = 50
 
+
 class NotLoggedIn(Exception):
     """Local preflight: command needs a QQ credential before touching upstream."""
 
