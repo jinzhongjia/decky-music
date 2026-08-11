@@ -160,7 +160,7 @@ class Conn:
             # 之后每次 set_provider 都失败,只能重启 Steam。真机上复现过。
             log("bridge", "own", "warn", f"{self.name} connection lost: {type(e).__name__}")
         finally:
-            self.disconnect()
+            self.disconnect(writer)
 
     async def _read_loop(self, reader: asyncio.StreamReader):
         # 单读循环 + 分流(协议 v1):log 事件直接落盘;domain 事件 → on_event;response → 队列。
@@ -183,12 +183,21 @@ class Conn:
                 else:
                     log("bridge", "own", "warn", f"{self.name} drop stale response id={msg.id}")
 
-    def disconnect(self):
+    def disconnect(self, writer: asyncio.StreamWriter | None = None):
         """连接断开:清干净状态,好让下一次 spawn 能重新连进来。
 
         在途请求必须立刻收到失败 —— 不然它们要干等满 30s 才等到通道超时,而对面
         进程已经没了,那 30s 纯属白等。
+
+        `writer` = 发起断开的那条连接;省略表示无条件拆(close 走这条)。切 provider 时
+        新旧子进程共用同一个 sock,旧连接的 EOF 可能**晚于**新连接接入才到达 —— 那时
+        self.writer 已指向新连接,无条件拆会把刚连上的健康 provider 判死:它的在途
+        liked_ids 被塞 ConnectionResetError(日志里就是 "died mid-request"),watchdog
+        再白白换一个进程。ncm-provider 启动仅几毫秒,必中此窗口;qq-provider 启动慢反而
+        躲开了,所以过去只在切网易云时复现。故只有仍是自己那条连接时才拆。
         """
+        if writer is not None and self.writer is not writer:
+            return
         self.connected.clear()
         self.writer = None
         for fut in list(self.pending.values()):

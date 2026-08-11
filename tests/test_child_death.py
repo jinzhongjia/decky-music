@@ -125,6 +125,68 @@ class TestConnDeath(unittest.TestCase):
         self.assertEqual(called, [1])  # 判死回调必须被调到,否则不会重开进程
 
 
+class TestStaleDisconnect(unittest.TestCase):
+    """切 provider 时旧连接的 EOF 晚到,不得把刚连上的新 provider 判死。
+
+    真机复现(1.0.0 发布前):QQ→网易云 每次必现。新旧子进程共用同一个 provider.sock,
+    ncm-provider 启动仅几毫秒,先连上并发出 liked_ids;旧 qq 连接的 EOF 这才到达,
+    其 _read_loop 的 finally 无条件 disconnect(),把新连接的在途请求塞
+    ConnectionResetError → 日志 "died mid-request: liked_ids" → watchdog 白换一个进程,
+    每次切换白扔 2.5~3.5s 且红心种子首次拿不到。qq-provider 启动慢反而躲开了这个窗口。
+    """
+
+    def setUp(self):
+        self.conn = Conn("provider")
+        self._saved_log = bridge_mod.log
+        bridge_mod.log = lambda *_a, **_k: None
+
+    def tearDown(self):
+        bridge_mod.log = self._saved_log
+
+    def test_old_connection_eof_does_not_kill_new_one(self):
+        old_writer, new_writer = _FakeWriter(), _FakeWriter()
+
+        async def run():
+            self.conn.writer = old_writer  # 旧 provider 连着
+            self.conn.writer = new_writer  # 新 provider 接入(_accept 覆盖 writer)
+            self.conn.connected.set()
+
+            task = asyncio.create_task(self.conn.request("liked_ids"))
+            while not self.conn.pending:
+                await asyncio.sleep(0)
+
+            self.conn.disconnect(old_writer)  # 旧连接的 EOF 这才到达
+            await asyncio.sleep(0)
+
+            # 新连接必须毫发无伤:请求仍在途、writer 还在、connected 未被清
+            self.assertFalse(task.done(), "新 provider 的在途请求被旧连接的 EOF 误杀了")
+            self.assertIs(self.conn.writer, new_writer)
+            self.assertTrue(self.conn.connected.is_set())
+
+            # 真正属于自己那条断开时,才照常拆
+            self.conn.disconnect(new_writer)
+            resp = await asyncio.wait_for(task, 1)
+            self.assertFalse(resp.ok)
+            self.assertIsNone(self.conn.writer)
+
+        asyncio.run(run())
+
+    def test_owning_connection_still_tears_down(self):
+        w = _FakeWriter()
+        self.conn.writer = w
+        self.conn.connected.set()
+        self.conn.disconnect(w)
+        self.assertIsNone(self.conn.writer)
+        self.assertFalse(self.conn.connected.is_set())
+
+    def test_no_writer_argument_is_unconditional(self):
+        """省略 writer = 无条件拆(close 等内部路径依赖这个语义)。"""
+        self.conn.writer = _FakeWriter()
+        self.conn.connected.set()
+        self.conn.disconnect()
+        self.assertIsNone(self.conn.writer)
+
+
 class TestProviderRespawn(unittest.TestCase):
     def setUp(self):
         self.b = Bridge()
