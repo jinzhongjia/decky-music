@@ -25,7 +25,6 @@ docker run --rm -v "$PWD/qq-provider:/src" -w /src "$IMAGE" \
   --include-package=charset_normalizer \
   --include-package=jsonpath_ng \
   --include-package=paho \
-  --include-package=tarsio \
   main.py
 
 # 规整成顶层目录 qq-provider/ 便于分发与侧载(可执行文件为 qq-provider/qq-provider)
