@@ -353,7 +353,7 @@ class Playback:
         if not r.ok:
             self.last_error = r.error.code if r.error else "play_failed"
             message = r.error.message if r.error else "play_failed"
-            log("bridge", "own", "warn", f"song_url failed id={item['id']}: {self.last_error}")
+            log("bridge", "own", "warn", f"song_url failed id={item.get('id', '')}: {self.last_error}")
             if not quiet:
                 await self._emit("error", {"code": self.last_error, "message": message})
             return False
@@ -363,7 +363,7 @@ class Playback:
         if not pr.ok:
             # load 失败(拉流打不开/player 超时)也算失败:不发 track、不装作在播
             self.last_error = pr.error.code if pr.error else "play_failed"
-            log("bridge", "own", "warn", f"player load failed id={item['id']}: {self.last_error}")
+            log("bridge", "own", "warn", f"player load failed id={item.get('id', '')}: {self.last_error}")
             if not quiet:
                 await self._emit("error", {"code": self.last_error, "message": self.last_error})
             if self.last_error == "timeout":
