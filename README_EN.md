@@ -27,9 +27,9 @@ Decky Music is a Decky Loader music plugin designed for Steam Deck Gaming Mode. 
 controller-first full-screen UI, while music service access, queue management, and audio output run
 in separate processes so network requests, decoding, or backend failures do not block the Steam UI.
 
-> The project is in the **1.0.0-beta** pre-release stage; see
-> [Releases](https://github.com/jinzhongjia/decky-music/releases) for the latest build. This is
-> pre-release software; read the limitations below before installing it.
+> The current stable release is **1.0.0**; see
+> [Releases](https://github.com/jinzhongjia/decky-music/releases) for the latest build. Read the
+> prerequisites and known limitations below before installing it.
 
 ## Device Screenshots
 
@@ -93,10 +93,10 @@ navigation.
   mirror for the CN build. Decky downloads and SHA-256 verifies the player, QQ provider, and NetEase
   provider binaries. The offline "full" build bundles all three, so it downloads nothing.
 
-### Install the Pre-release Manually
+### Install Manually
 
 1. Open the project's [Releases](https://github.com/jinzhongjia/decky-music/releases) page and select
-   the latest `v1.0.0-beta*` pre-release.
+   the latest stable release.
 2. Copy the download URL of the `Decky.Music.zip` asset. Do not use GitHub's automatically generated
    `Source code` archives.
 3. Open **Manual Plugin Install** in Decky settings, paste the ZIP URL, and install it.
@@ -149,7 +149,8 @@ binaries that are not refreshed by Decky's remote verification — reinstall the
   start automatically after a plugin restart.
 - There is no local audio cache; every play re-streams. "Clear cache" in the quick menu clears the
   plugin logs.
-- This beta primarily targets Steam Deck/SteamOS `x86_64` Gaming Mode.
+- Steam Deck/SteamOS `x86_64` Gaming Mode only; other distributions and architectures are neither
+  adapted nor verified.
 - Search suggestions, recent-play history, and cross-provider fallback are not currently available.
 
 ## Architecture

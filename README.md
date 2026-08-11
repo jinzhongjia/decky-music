@@ -27,8 +27,8 @@ Decky Music 是为 Steam Deck 游戏模式设计的 Decky Loader 音乐插件。
 界面；音乐服务访问、播放队列和音频输出运行在独立进程中，避免网络请求、解码或后端异常阻塞
 Steam UI。
 
-> 当前处于 **1.0.0-beta** 预发布阶段，最新版本见 [Releases](https://github.com/jinzhongjia/decky-music/releases)。
-> 这是预发布软件，安装前请阅读下方限制与说明。
+> 当前稳定版为 **1.0.0**，最新版本见 [Releases](https://github.com/jinzhongjia/decky-music/releases)。
+> 安装前请阅读下方的前置条件与已知限制。
 
 ## 实机界面
 
@@ -82,10 +82,10 @@ Steam UI。
   校验 player、QQ provider 和网易云 provider 三个二进制。full 离线版已自带这三个二进制，
   安装期间不再下载。
 
-### 手动安装预发布版
+### 手动安装
 
 1. 打开项目的 [Releases](https://github.com/jinzhongjia/decky-music/releases) 页面，选择最新的
-   `v1.0.0-beta*` 预发布版本。
+   正式版本。
 2. 复制该版本中 `Decky.Music.zip` 资产的下载链接。不要使用 GitHub 自动生成的
    `Source code` 压缩包。
 3. 在 Decky 设置中找到 **Manual Plugin Install**，粘贴 ZIP 下载链接并安装。
@@ -127,7 +127,7 @@ Decky 当前的手动安装器只接受 ZIP 的 URL，详见
 - 切换 QQ 音乐与网易云音乐会停止播放并清空当前队列，因为两端的歌曲 ID 不兼容。
 - 电台内容不会跨会话持久化；普通队列会恢复，但插件重启后不会自动开始播放。
 - 不做本地音频缓存，每次播放都重新拉流；快捷菜单里的「清理缓存」清的是插件日志。
-- 当前为 beta 版本，主要面向 Steam Deck/SteamOS `x86_64` 游戏模式。
+- 仅面向 Steam Deck/SteamOS `x86_64` 游戏模式，其他发行版与架构未做适配与验证。
 - 当前未提供搜索建议、最近播放历史与跨平台音源兜底。
 
 ## 架构
