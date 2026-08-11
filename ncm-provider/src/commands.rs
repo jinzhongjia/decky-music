@@ -62,34 +62,6 @@ fn ladder(quality: &str) -> &'static [(&'static str, &'static str)] {
     &LADDER[at..]
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn names(q: &str) -> Vec<&'static str> {
-        ladder(q).iter().map(|(n, _)| *n).collect()
-    }
-
-    /// 选的是上限:上限之上的档不试,下面的档全保留作兜底。
-    /// 末端必须是 standard —— 否则该档会有无版权/非会员的歌直接放不出来。
-    #[test]
-    fn ladder_is_a_cap_with_full_fallback() {
-        assert_eq!(names("standard"), ["standard"]);
-        assert_eq!(names("high"), ["high", "standard"]);
-        assert_eq!(names("lossless"), ["lossless", "high", "standard"]);
-        for (q, _) in LADDER {
-            assert_eq!(names(q).last(), Some(&"standard"), "quality={q}");
-        }
-    }
-
-    #[test]
-    fn bad_value_falls_back_to_default() {
-        for bad in ["", "hires", "jymaster", "sky", "EXHIGH"] {
-            assert_eq!(names(bad), names(DEFAULT_QUALITY), "bad={bad}");
-        }
-    }
-}
-
 pub async fn song_url(state: &State, id: u64, song_id: &str, quality: &str, tx: &Out) -> String {
     let base = maybe_cookie(Query::new().param("id", song_id), state.cookie().await);
     for (name, level) in ladder(quality) {
@@ -155,4 +127,32 @@ pub async fn account(state: &State, id: u64) -> String {
             "vip": vip,
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(q: &str) -> Vec<&'static str> {
+        ladder(q).iter().map(|(n, _)| *n).collect()
+    }
+
+    /// 选的是上限:上限之上的档不试,下面的档全保留作兜底。
+    /// 末端必须是 standard —— 否则该档会有无版权/非会员的歌直接放不出来。
+    #[test]
+    fn ladder_is_a_cap_with_full_fallback() {
+        assert_eq!(names("standard"), ["standard"]);
+        assert_eq!(names("high"), ["high", "standard"]);
+        assert_eq!(names("lossless"), ["lossless", "high", "standard"]);
+        for (q, _) in LADDER {
+            assert_eq!(names(q).last(), Some(&"standard"), "quality={q}");
+        }
+    }
+
+    #[test]
+    fn bad_value_falls_back_to_default() {
+        for bad in ["", "hires", "jymaster", "sky", "EXHIGH"] {
+            assert_eq!(names(bad), names(DEFAULT_QUALITY), "bad={bad}");
+        }
+    }
 }
