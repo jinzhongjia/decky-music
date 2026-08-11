@@ -10,7 +10,8 @@ log content rules, commit rules) lives in the project's AGENTS.md and always win
 
 ## Target environment
 
-- SteamOS in a **gamescope session**, user `deck`, reachable over SSH (`DECK_HOST`, e.g. `deck@192.168.0.18`).
+- SteamOS in a **gamescope session**, user `deck`, reachable over SSH (`DECK_HOST=deck@<ip>` — no
+  default; a hardcoded one goes stale and silently targets the wrong host).
 - Decky Loader = `plugin_loader` systemd unit (root). Restart to reload plugins:
   `sudo systemctl restart plugin_loader`.
 - Homebrew tree: `~/homebrew/{plugins,logs,settings,data}/<plugin name>` — directory names use
@@ -33,7 +34,7 @@ log content rules, commit rules) lives in the project's AGENTS.md and always win
 ## Deploy loop (sideload)
 
 Sideload = build → rsync the plugin subset → restart `plugin_loader`. Keep it in a repo script
-(this repo: `scripts/deploy.sh`; override target with `DECK_HOST=deck@ip`). Two rules that bite:
+(this repo: `scripts/deploy.sh`; target is required: `DECK_HOST=deck@ip`). Two rules that bite:
 
 - Deploy scripts **copy prebuilt artifacts, they don't build**. Rebuild changed binaries first,
   or you ship stale ones.

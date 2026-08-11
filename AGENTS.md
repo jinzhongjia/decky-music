@@ -57,8 +57,8 @@ pnpm install                    # 前端依赖
 pnpm build                      # 只构建前端 → dist/
 pnpm lint                       # 前端 lint:tsc --noEmit + prettier --check;pnpm format 自动格式化
 sudo ./cli/decky plugin build . # 官方 CLI 打包整个插件 → out/<name>.zip(需 Docker + sudo)
-bash scripts/deploy.sh          # 打包 + rsync 到 Steam Deck + 重启 plugin_loader
-# 覆盖目标机:DECK_HOST=deck@ip bash scripts/deploy.sh
+DECK_HOST=deck@ip bash scripts/deploy.sh  # 打包 + rsync 到 Steam Deck + 重启 plugin_loader
+# DECK_HOST 必填、无默认值(见 issue #48);远端 sudo 要口令时另加 DECK_PASS=<口令>
 # 首次会自动下载官方 CLI 到 cli/decky(gitignore 已忽略)
 
 cargo build --release -p player          # 各二进制单独构建(走 remote_binary,不进插件包)
