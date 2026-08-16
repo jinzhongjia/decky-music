@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 # 用官方 Decky CLI 打包并部署到 Steam Deck(含侧载二进制到 bin/,开发期免发 Release)。
 # dev 与商店安装完全一致:磁盘目录 = plugin.json 的 name(即 zip 顶层目录),原样解压。
-# 覆盖默认:DECK_HOST=deck@1.2.3.4 bash scripts/deploy.sh
+# 必须指定目标机:DECK_HOST=deck@1.2.3.4 bash scripts/deploy.sh
 # deck 用户 sudo 若需密码:导出 DECK_PASS=xxx(否则假定已配 NOPASSWD)。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DECK_HOST="${DECK_HOST:-deck@192.168.0.18}"
+# 不设默认值(issue #48):真机地址是各人各不相同的本地配置,写死在仓库里只会过时 ——
+# 之前那个默认值指向一台早已不用的机器,不传 DECK_HOST 就静默连错主机,失败形态是连接
+# 超时,看不出根因是「脚本里的常量陈旧」。宁可直接报错要求显式指定。
+if [ -z "${DECK_HOST:-}" ]; then
+  echo "✗ 需要指定目标机:DECK_HOST=deck@<ip> bash scripts/deploy.sh" >&2
+  echo "  (可选:DECK_PASS=<口令> 用于远端 sudo;DECK_PLUGIN_PATH 覆盖插件目录)" >&2
+  exit 2
+fi
 DECK_PLUGIN_PATH="${DECK_PLUGIN_PATH:-/home/deck/homebrew/plugins}"
 # 显示名 = 磁盘目录名(与商店安装一致,可含空格)
 NAME=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync("plugin.json", "utf8")).name)')
