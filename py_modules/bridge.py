@@ -601,7 +601,21 @@ class Bridge:
 
     async def _list_cmd(self, cmd: str, key: str, limit: int = 50, extra: dict | None = None) -> dict:
         # 列表类命令统一形状:{ok, <key>: [...], error?}。首页 50 条(翻页 P6)
-        r = await self.provider.request(cmd, {"limit": limit, **(extra or {})})
+        args = {"limit": limit, **(extra or {})}
+        r = await self.provider.request(cmd, args)
+        # provider 进程没了(崩溃/被杀)时 writer 为 None,request 会立刻短路成 timeout。
+        # 浏览类命令自己不经 _ensure_provider,所以在用户回到 QAM / 重进页面(那时才有
+        # get_provider)之前,每次搜索翻页都报错 —— 看起来就是"插件坏了"。这里就地拉起
+        # 并重试一次,把它收敛成一次用户无感的重连。只在通道确实断了时重试:上游错误
+        # (无版权 / upstream_timeout 等)不该触发重开进程。
+        # 判断只在失败分支里做:成功路径不碰 self.settings —— 有测试用 Bridge.__new__()
+        # 构造、根本没跑过 start(),成功路径读 settings 会直接 AttributeError。
+        if not r.ok and getattr(self.provider, "writer", None) is None:
+            which = getattr(self, "settings", {}).get("provider")
+            if which:
+                log("bridge", "own", "info", f"{cmd}: provider gone, respawning")
+                await self._ensure_provider(which)
+                r = await self.provider.request(cmd, args)
         if r.ok:
             return {"ok": True, key: r.data.get(key, [])}
         code = r.error.code if r.error else "provider_error"
