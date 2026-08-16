@@ -27,7 +27,7 @@ Decky Music is a Decky Loader music plugin designed for Steam Deck Gaming Mode. 
 controller-first full-screen UI, while music service access, queue management, and audio output run
 in separate processes so network requests, decoding, or backend failures do not block the Steam UI.
 
-> The current stable release is **1.0.0**; see
+> Stable releases are available; see
 > [Releases](https://github.com/jinzhongjia/decky-music/releases) for the latest build. Read the
 > prerequisites and known limitations below before installing it.
 

@@ -27,7 +27,7 @@ Decky Music 是为 Steam Deck 游戏模式设计的 Decky Loader 音乐插件。
 界面；音乐服务访问、播放队列和音频输出运行在独立进程中，避免网络请求、解码或后端异常阻塞
 Steam UI。
 
-> 当前稳定版为 **1.0.0**，最新版本见 [Releases](https://github.com/jinzhongjia/decky-music/releases)。
+> 已发布稳定版，最新版本见 [Releases](https://github.com/jinzhongjia/decky-music/releases)。
 > 安装前请阅读下方的前置条件与已知限制。
 
 ## 实机界面
