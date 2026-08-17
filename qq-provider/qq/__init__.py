@@ -32,6 +32,21 @@ def _device_path(state_dir: str | None) -> str | None:
     return os.path.join(state_dir, DEVICE_FILE)
 
 
+def _device_store(client: Client):
+    """取库内部的设备身份存储;找不到返回 None,由调用方降级。
+
+    位置随上游内部结构挪过:0.7.1 在 `client._device_store`,0.7.2 挪进了
+    `client._context`(ApiContext 持有 DeviceManager)。库始终没给公开访问器,
+    只能这样找 —— 挪一次就静默 AttributeError,所以两处都试、并且允许失败。
+    ponytail: upstream 哪天给了公开访问器就换过去。
+    """
+    for holder in (client, getattr(client, "_context", None)):
+        store = getattr(holder, "_device_store", None)
+        if store is not None:
+            return store
+    return None
+
+
 def _no_multiplexing(client: Client) -> Client:
     """关掉 HTTP/2 多路复用,返回同一个 client。
 
@@ -67,7 +82,10 @@ class QQ:
         """
         if not self._device_path:
             return
-        await self.client._device_store.get_device()  # 不存在则生成并写盘
+        store = _device_store(self.client)
+        if store is None:
+            return  # 库改了内部结构:退回库自己的行为,不该拿设备加固挡住启动
+        await store.get_device()  # 不存在则生成并写盘
         try:
             os.chmod(self._device_path, 0o600)
         except OSError:
@@ -78,10 +96,11 @@ class QQ:
 
         必须与库自身请求用的是同一个(client.py 用 `guid=device.open_udid`)—— 同一个
         客户端在不同请求里报两个不同 guid,本身就是可疑特征。这里没有公开访问器,
-        只能走 _device_store;库改了内部结构也不能让歌放不出来,故加兜底。
+        只能走 _device_store(位置见 _device_store());库改了内部结构也不能让歌
+        放不出来,故加兜底。
         """
         try:
-            return (await self.client._device_store.get_device()).open_udid
+            return (await _device_store(self.client).get_device()).open_udid
         except Exception:
             return self._fallback_guid
 

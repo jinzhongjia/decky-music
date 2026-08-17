@@ -13,6 +13,13 @@ def _clean(s) -> str:
     return _TAG_RE.sub("", s or "")
 
 
+def _field(obj, name: str, default=None):
+    """同时吃 dict 和 pydantic 模型 —— 上游在两者之间翻来覆去(见 hot_keywords)。"""
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
 async def songs(q, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
     # 全程 search_by_type:首页曾走 general_search,与后续页排序源不同,翻页会轻微错位/重复
     page, num, skip = _page_args(limit, offset)
@@ -44,14 +51,20 @@ async def artists(q, keyword: str, limit: int = 20, offset: int = 0) -> list[dic
 
 
 async def hot_keywords(q, limit: int = 20) -> list[dict]:
-    """热搜词,归一化对齐 NCM search_hot 的 {keyword, label} 形状(label: hot|none)。"""
+    """热搜词,归一化对齐 NCM search_hot 的 {keyword, label} 形状(label: hot|none)。
+
+    上游返回形状变过:0.7.1 是裸 dict,0.7.2 起是 pydantic 模型
+    (HotkeyResponse / Hotkey)。原先写死 dict 的 .get(),升到 0.7.2 后整块热搜
+    直接抛 AttributeError。两种都吃,免得下次再翻形状又挂一次。
+    """
     resp = await q.client.search.get_hotkey()
-    keys = (resp or {}).get("vec_hotkey") or []
-    return [
-        {"keyword": k.get("query", ""), "label": "hot" if k.get("need_top") else "none"}
-        for k in keys[:limit]
-        if isinstance(k, dict) and k.get("query")
-    ]
+    keys = _field(resp, "vec_hotkey") or []
+    out = []
+    for k in keys[:limit]:
+        query = _field(k, "query") or ""
+        if query:
+            out.append({"keyword": query, "label": "hot" if _field(k, "need_top") else "none"})
+    return out
 
 
 def _page_args(limit: int, offset: int) -> tuple[int, int, int]:
