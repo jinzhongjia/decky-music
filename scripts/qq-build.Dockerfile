@@ -23,4 +23,4 @@ RUN cd /opt/_internal && tar xf static-libs-for-embedding-only.tar.xz
 RUN $PYBIN/pip install --no-cache-dir \
       nuitka==4.1.3 \
       curl_cffi==0.16.0 \
-      qqmusic-api-python==0.7.1
+      qqmusic-api-python==0.7.2
