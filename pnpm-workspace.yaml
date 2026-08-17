@@ -11,11 +11,15 @@ supportedArchitectures:
     - glibc
     - musl
 
-# brace-expansion 的 ReDoS(1.x / 2.x 各一条 GHSA)。两条都只经 @decky/rollup 进构建
+# brace-expansion 的 DoS 系列 GHSA(1.x / 2.x 各若干条)。都只经 @decky/rollup 进构建
 # 工具链、不进 dist/,钉住是为了让告警面板归零,免得真漏洞被噪音淹掉。
 # 注意:package.json 里的 pnpm.overrides 必须与此处保持同一份值。本地 pnpm 11 只读这里
 # (会警告 package.json 的 pnpm 字段被忽略),而官方构建容器是 pnpm 9.15.9,只读 package.json ——
 # 少写任何一边,该 pnpm 算出的 overrides 与锁文件不符,frozen install 直接拒绝(v1.0.0-beta.12 CI 事故)。
+#
+# 下限要跟着新通告抬:caret 允许升,但锁文件不刷新就一直停在旧版 —— 上一轮钉的
+# ^1.1.16 / ^2.1.2 就是这样在 CVE-2026-14257 绕过那两条通告出来后变成"钉住了漏洞版本"。
+# 改下限时记得 pnpm install 刷锁文件,再 pnpm audit 复核。
 overrides:
-  brace-expansion@1: ^1.1.16
-  brace-expansion@2: ^2.1.2
+  brace-expansion@1: ^1.1.18
+  brace-expansion@2: ^2.1.4
