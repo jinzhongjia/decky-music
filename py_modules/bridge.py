@@ -20,6 +20,9 @@ from playback import Playback
 RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
 SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 REQUEST_TIMEOUT = 30  # 子进程响应上限(秒):song_url 最坏 ~20s;超时兜底防永久挂
+# player spawn 后等它连入 UDS 的上限(秒)。真机实测约 10ms 量级,给足余量仍远小于
+# REQUEST_TIMEOUT —— 连不进来就放弃同步音量,不能让启动流程挂在这儿。
+PLAYER_CONNECT_TIMEOUT = 5
 # 超过这个耗时的请求按 warn 记,好让 release 日志里也留下慢请求的痕迹
 SLOW_REQUEST_S = 2.0
 # 音质上限档位(两个 provider 各自映射到自家 level/前缀,见各自的 LADDER)。
@@ -122,6 +125,8 @@ class Conn:
         self.server: asyncio.AbstractServer | None = None
         self.on_event = None  # ChildEvent(player/login/provider)时回调
         self.on_dead = None  # 通道级 timeout(= 子进程整体不响应)时回调,由 Bridge 装
+        self.on_missing = None  # 发请求时子进程不在:先把它拉起来再发(player 装;provider 走 _ensure_provider)
+        self.on_lost = None  # 连接真的断了(子进程崩溃/被杀)时回调,由 Bridge 装
         self.pending: dict[int, asyncio.Future] = {}  # 在途请求:id → Future(响应按 id demux)
         self.connected: asyncio.Event = asyncio.Event()  # 子进程连入后置位
         self._next_id = 0
@@ -204,12 +209,18 @@ class Conn:
             if not fut.done():
                 fut.set_exception(ConnectionResetError(f"{self.name} gone"))
         self.pending.clear()
+        if self.on_lost:
+            self.on_lost()
 
     async def request(self, cmd: str, args: dict | None = None) -> protocol.ChildResponse:
         # 并发 demux(协议 v1 预留的升级):多请求可同时在途,响应按 id 匹配,
         # 一个挂着的慢请求(如慢 CDN 的 load)不再队头阻塞 pause/next 等其它命令。
         self._next_id += 1
         rid = self._next_id
+        if self.writer is None and self.on_missing:
+            # 子进程不在了:先给它一次拉起的机会再发。player 走这条(它没有 provider 那样
+            # 的「每条命令前 _ensure_provider」入口),否则 player 崩一次就永久失声。
+            await self.on_missing()
         if self.writer is None:  # 子进程已经没了(见 disconnect),别等满 30s 再说
             return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
@@ -324,6 +335,8 @@ class Bridge:
         self.provider_proc: asyncio.subprocess.Process | None = None
         self.provider_which: str | None = None  # 当前已 spawn 的 provider
         self.provider_lock = asyncio.Lock()  # 串行化 _ensure_provider,保证幂等不重复 spawn
+        self.player_proc: asyncio.subprocess.Process | None = None
+        self.player_lock = asyncio.Lock()  # 串行化 _ensure_player,同上
         self.provider_error = None  # provider 启动失败 code,get_provider 回灌(emit 易在前端未连时丢,#38)
         self.playback = Playback(  # 播放 + 队列编排
             self.player,
@@ -341,22 +354,74 @@ class Bridge:
         self.player.on_event = self._on_player_event
         self.provider.on_event = self._on_provider_event
         self.provider.on_dead = self._provider_unresponsive
+        self.player.on_missing = self._ensure_player  # 崩了之后下一条命令把它拉回来
+        self.player.on_lost = self._player_connection_lost
         log("bridge", "own", "info", f"started (dev={DEV})")
         # player 常驻:启动时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
         self.player_failed = False  # 启动失败态,get_playback 回灌给 UI(emit 易在前端 WS 未连时丢,#38)
         await self._spawn_player()
+        await self._sync_player_volume()  # 否则 UI 滑块与实际输出对不上(见该方法注释)
         # 预设了 provider 就在加载时后台预拉起(不阻塞启动),省去 UI 首次 get_provider 的
         # spawn+连接延迟,避免面板闪一下"选源"再跳账号态。
         if self.settings.get("provider"):
             asyncio.create_task(self._ensure_provider(self.settings["provider"]))
         asyncio.create_task(self._credential_refresh_loop())
 
+    def _player_connection_lost(self):
+        """player 连接断了 = 进程崩了/被杀(正常路径下它与 bridge 同生共死)。
+
+        告诉 playback 记下中断处并把 _loaded 置 False,否则之后每次 resume 都只是朝一个
+        不存在的进程发命令 —— 表现为"按播放键没反应"。真正的重启不在这里做:下一条命令
+        会经 Conn.on_missing → _ensure_player 拉起,省一次无谓 spawn(同 provider 的做法)。
+        """
+        try:
+            self.playback.player_gone()
+        except Exception as e:  # 断连路径上绝不能再抛,否则冒到 asyncio 顶层
+            log("bridge", "own", "error", f"player_gone handler failed: {type(e).__name__}")
+
+    async def _ensure_player(self):
+        """幂等:确保 player 进程在跑且已连上。崩溃后由 Conn.on_missing 触发。
+
+        音量同步放在锁**外**:它要走 player.request,而 request 在 writer 为空时会回调
+        on_missing(就是本方法)—— 锁内同步等于自己等自己,asyncio.Lock 不可重入,直接死锁。
+        """
+        async with self.player_lock:
+            alive = self.player_proc is not None and self.player_proc.returncode is None
+            if alive and self.player.connected.is_set():
+                return  # 已经好了(并发命令会连着调这里)
+            stop_child(self.player_proc, hard=True)  # 可能是卡死而非退出,别指望体面退出
+            self.player_proc = None
+            self.player.connected.clear()
+            log("bridge", "own", "warn", "player gone, respawning")
+            await self._spawn_player()
+        await self._sync_player_volume()
+
+    async def _sync_player_volume(self):
+        """把 bridge 持久化的音量同步给刚起来的 player。
+
+        player 自己的默认是满音量(audio.rs 的 `let mut volume: f32 = 1.0`),而 bridge
+        只在用户拖动音量和 clear_data 时才下发 volume 命令 —— 启动路径上从来不发。于是
+        重启后 get_playback 把持久化值(如 0.4)回灌给 UI,滑块显示 40%,player 却在
+        100% 出声,MPRIS 的 Volume 属性也跟着偏;用户得手动动一下滑块才对上。
+
+        等连接就绪有上限:player 连不进来是它自己的问题,不该把启动流程挂在这儿。
+        """
+        if self.player_failed:
+            return
+        try:
+            await asyncio.wait_for(self.player.connected.wait(), PLAYER_CONNECT_TIMEOUT)
+        except asyncio.TimeoutError:
+            log("bridge", "own", "warn", "player not connected in time; volume left at its default")
+            return
+        vol = self.settings.get("volume", 0.8)
+        await self.player.request("volume", {"val": vol})
+
     async def _spawn_player(self):
         """player 常驻,启动即拉起。缺二进制(remote_binary 下载失败)不裸炸 _main:
         兜住 OSError + 给 UI 报 player_start_failed,否则整个后端起不来且 UI 无任何提示。
         (provider 侧同款兜底见 _ensure_provider。)"""
         try:
-            await spawn("player", BIN("player"), "--socket", self.player.path)
+            self.player_proc = await spawn("player", BIN("player"), "--socket", self.player.path)
             self.player_failed = False
         except OSError as e:
             self.player_failed = True
@@ -901,6 +966,9 @@ class Bridge:
 
     async def unload(self):
         log("bridge", "own", "info", "unload: closing subprocesses and sockets")
+        # 主动下线不是崩溃:摘掉自愈钩子,免得 close() 引发的断连被当成 player 猝死,
+        # 白记一次中断处、甚至在拆进程的路上又把它拉起来。
+        self.player.on_lost = self.player.on_missing = None
         if self.provider_proc:
             self.provider_proc.terminate()
         await self.provider.close()
