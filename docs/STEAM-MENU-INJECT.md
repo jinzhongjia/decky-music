@@ -13,7 +13,7 @@
 
 ## 菜单结构(CDP 实测,当前 SteamOS)
 
-用 steam-cdp skill(`.claude/skills/steam-cdp/`)连活动前端逆向出来的结构:
+用 steam-cdp skill(`.agents/skills/steam-cdp/`)连活动前端逆向出来的结构:
 
 - 菜单容器 fiber:`memoizedProps.navID === "MainNavMenuContainer"`(稳定锚点)。
 - 菜单项组件 = `Ae`,props:`{ route, label, icon, active:"if-within-route", onGamepadFocus }`,**可复用**。
@@ -92,11 +92,11 @@
 
 ## 复验 / 调试
 
-见 steam-cdp skill(`.claude/skills/steam-cdp/SKILL.md`)。核对结构:
+见 steam-cdp skill(`.agents/skills/steam-cdp/SKILL.md`)。核对结构:
 
 ```bash
 ssh -N -L 8080:localhost:8080 deck@<ip> &
-node .claude/skills/steam-cdp/scripts/cdp.mjs SharedJSContext .claude/skills/steam-cdp/scripts/probe-mainmenu.js
+node .agents/skills/steam-cdp/scripts/cdp.mjs SharedJSContext .agents/skills/steam-cdp/scripts/probe-mainmenu.js
 ```
 
 关注:`navID` 仍是 `MainNavMenuContainer`、菜单项组件仍有 `{route,label,icon,onGamepadFocus}`、

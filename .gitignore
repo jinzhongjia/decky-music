@@ -32,6 +32,9 @@ bower_components
 .DS_Store
 Thumbs.db
 
+# Reasonix local workspace metadata
+.reasonix/
+
 # Ignore built ts files
 dist/
 

@@ -78,7 +78,7 @@ Key targets: `SharedJSContext` (main JS context, no pixels), `QuickAccess`, `Mai
 **gamepad UI window** (title like "Steam Big Picture Mode" — the visible screen; screenshot this
 one). Connect a target's `webSocketDebuggerUrl` with Node ≥ 21 (global `WebSocket`), then
 `Runtime.enable` + `Runtime.evaluate`. The full toolkit (ready-made scripts + probe/driving
-recipes) is the **steam-cdp skill** — see `.claude/skills/steam-cdp/`.
+recipes) is the **steam-cdp skill** — see `.agents/skills/steam-cdp/`.
 
 What works, learned the hard way:
 
