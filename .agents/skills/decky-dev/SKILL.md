@@ -64,36 +64,23 @@ ssh "$DECK_HOST" 'systemd-inhibit --list --mode=block | grep decky'   # verify
 ssh "$DECK_HOST" 'systemctl --user stop decky-dev-nosleep'            # release
 ```
 
-## CDP: driving the running Steam UI
+## CDP: drive the running Steam UI
 
-Steam's CEF exposes remote debugging on **port 8080** (enabled in Decky environments). The tunnel
-outlives `plugin_loader` restarts — it belongs to Steam, open it once:
+Steam's CEF exposes remote debugging on **port 8080** in Decky environments. The tunnel belongs
+to Steam and survives `plugin_loader` restarts:
 
 ```bash
 ssh -N -L 8080:localhost:8080 "$DECK_HOST" &
 curl -s localhost:8080/json | jq '.[].title'
 ```
 
-Key targets: `SharedJSContext` (main JS context, no pixels), `QuickAccess`, `MainMenu`, and the
-**gamepad UI window** (title like "Steam Big Picture Mode" — the visible screen; screenshot this
-one). Connect a target's `webSocketDebuggerUrl` with Node ≥ 21 (global `WebSocket`), then
-`Runtime.enable` + `Runtime.evaluate`. The full toolkit (ready-made scripts + probe/driving
-recipes) is the **steam-cdp skill** — see `.agents/skills/steam-cdp/`.
+Use the **steam-cdp skill** at `.agents/skills/steam-cdp/` for target aliases, bundled drivers,
+probes, screenshots, and key input. The visible gamepad window is the screenshot target;
+`SharedJSContext` has no pixels and is for module/backend probes.
 
-What works, learned the hard way:
-
-- **DOM clicks drive gamepad UI**: `el.dispatchEvent(new MouseEvent("click", {bubbles: true}))`
-  triggers both `onClick` and Focusable `onActivate`. Match elements by text; UI labels may have
-  count badges appended, so match with `startsWith`, not equality.
-- **Navigation**: use the original Router in the gamepad UI window; `@decky/ui`'s focused-window
-  `Navigation` lands in the wrong window under CDP. Re-navigating to the current route does
-  **not** remount the page — reset state by clicking a tab/home first.
-- **Webpack probing** (find Valve's obfuscated modules):
-  `window[webpackChunk...].push([[Symbol()],{},r=>req=r])` to grab require, then grep factory
-  sources in `req.m` or instantiate with `req(id)`. Read-only diagnosis — never ship this.
-- **Screenshot-based assertions**: `Page.captureScreenshot` on the gamepad UI target, then read
-  the PNG. Verify playback/progress by timing two screenshots and comparing positions against
-  wall-clock; verify lists by scrolling through and asserting row count / dedup keys / layout.
+For UI verification, navigate to the route, exercise the actual flow, capture the visible window,
+and sample changing state twice when proving liveness or playback. Re-navigating to the current
+route does not remount it; reset through another tab/home first.
 
 ## The autonomous verification loop
 

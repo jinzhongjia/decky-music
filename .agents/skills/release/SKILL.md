@@ -44,21 +44,21 @@ git add -A && git commit -m "chore(release): vX ..."   # zip-only 在提交信�
 git push && git tag vX && git push origin vX
 ```
 
-## 4. GitHub Release(pre-release)
+## 4. GitHub Release
 
 ```bash
-# full:带三个二进制资产;zip-only:不带资产
-gh release create vX --prerelease --title "vX" --notes-file <notes.md> [assets...]
+# pre-release 加 --prerelease;full 上传三个二进制资产,zip-only 不带资产
+gh release create vX [--prerelease] --title "vX" --notes-file <notes.md> [assets...]
 ```
 
-发布说明走**极简风格**,只留两块:
+发布说明只保留:
 
-- **改动**:本版做了什么(从 `git log v旧..HEAD --oneline` 提炼要点,不逐条堆 commit)。
-- **安装**:普通版 → release 里 `Decky.Music.zip`;CN 版 → Decky **Manual Plugin Install** 粘
-  `https://dl.nvimer.org/decky_music/decky-music-cn.zip`;full 版(GitHub/CN 依赖下载都不通时)→
-  release 里 `Decky.Music.full.zip`,自包含、安装零下载。
+- **改动**:从 `git log v旧..HEAD --oneline` 提炼用户可感知的要点,不要逐条抄 commit。
+- **安装**:普通版用 `Decky.Music.zip`;CN 版通过 Decky **Manual Plugin Install** 安装
+  `https://dl.nvimer.org/decky_music/decky-music-cn.zip`;网络受限时用自包含的
+  `Decky.Music.full.zip`。
 
-其余(体验 / 依赖 / 致谢 / 背景)一律不写。
+不写体验、依赖、致谢或开发背景。
 
 ## 5. CI 出包 + 抽验(必做)
 
@@ -83,18 +83,18 @@ gh release download vX -p "Decky.Music.zip" -D <tmpdir> && cd <tmpdir> && unzip 
 
 ## 6. 交付
 
-用户常要求把 zip 放到下载目录以便真机安装:
+需要本地安装包时:
 
 ```bash
 gh release download vX -p "Decky.Music.zip" -D ~/Downloads --clobber
-scp ~/Downloads/Decky.Music.zip deck@192.168.0.18:/home/deck/Downloads/   # Deck 可达时
+scp ~/Downloads/Decky.Music.zip "$DECK_HOST":/home/deck/Downloads/
 ```
 
-提醒用户:Decky 开发者模式从 zip 安装;正式安装链路(remote_binary 下载 + sha256 校验 +
-qq-provider 首用自解包)只有走 zip 安装才被验证,侧载验不到。
+提醒用户从 Decky 开发者模式安装 zip。只有 zip 安装能覆盖 `remote_binary` 下载、sha256
+校验和 QQ provider 首次解包;侧载不能验证正式安装链路。
 
-国内用户直接给稳定入口(无需 GitHub):Decky **Manual Plugin Install** 粘贴
-`https://dl.nvimer.org/decky_music/decky-music-cn.zip`。CN 版由 `release.yml` 自动产出并上传 R2。
+国内用户使用稳定入口:
+`https://dl.nvimer.org/decky_music/decky-music-cn.zip`。CN 版由 `release.yml` 生成并上传 R2。
 
 ## 已踩过的坑
 

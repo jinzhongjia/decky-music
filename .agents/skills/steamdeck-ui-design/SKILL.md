@@ -5,7 +5,7 @@ description: Project-specific Steam Deck Game Mode UI rules for decky-music. Use
 
 # Steam Deck UI Design for decky-music
 
-Use this skill for decky-music UI work. It is adapted from `steamdeck-ui-design-skill.zip` and intentionally narrowed to this project.
+Use this project-specific skill for decky-music UI work.
 
 ## Project source of truth
 
@@ -17,16 +17,6 @@ Read these before changing UI behavior:
 - `docs/ui-design/specs/ncm-ui.md`: NCM provider page rules.
 - `docs/ROADMAP.md`: current P3+ implementation order.
 
-## Adjustments from the upstream skill
-
-The upstream archive contained broad 10-foot UI guidance. For this repo, apply these corrections:
-
-1. **No sidebars means no persistent sidebars inside `/music` content.** QAM itself is a SteamOS side panel and remains valid for provider selection, login, settings, and project links.
-2. **Footer Legend is system-rendered.** Do not draw a custom footer bar. Use `Focusable` action-description props; Steam renders icon style, layout, and the left `STEAM` item.
-3. **No bottom fixed MiniPlayer in the target P3 UI.** Soft keyboard resize pushes fixed bottom bars upward. Use the Tab status badge, `Start` blind play/pause, `Y` queue overlay, and Now Playing / radio pages for full controls.
-4. **View is reserved.** Do not bind `View` to multi-select or playback controls unless a real project need is validated. It is not part of the P3 required path.
-5. **Cross-domain examples are out of scope.** Video, reading, file-manager, and store patterns are not part of this project skill; use only the music-plugin rules below.
-
 ## Core layout contract
 
 - `/music` uses top horizontal provider Tabs and full-width content.
@@ -36,6 +26,9 @@ The upstream archive contained broad 10-foot UI guidance. For this repo, apply t
 - Put provider logo, top Tabs, `L1/R1` hints, and the current-track status badge in the content header row.
 - Personal asset pages use the Steam library pattern: second-level Tabs with counts plus full-width list/grid content.
 - Search pages must survive soft-keyboard resize without overlapping or fixed-bottom controls.
+- Do not add persistent sidebars inside `/music`.
+- Footer Legend is system-rendered through `Focusable` action descriptions; never draw a footer bar.
+- Do not add a fixed bottom MiniPlayer. Use the status badge, queue overlay, and Now Playing pages.
 
 ## Focus and gamepad contract
 

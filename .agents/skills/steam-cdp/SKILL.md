@@ -44,60 +44,38 @@ import it to build new drivers.
 
 ## Writing probes
 
-A probe is an IIFE evaluated in the target page that **returns a string**. Grab the React root:
+A probe is an IIFE evaluated in the target page. Return a JSON-serializable value instead of
+printing from inside the page. Reuse the bundled probes before writing another React-fiber walk.
+
+For read-only webpack inspection, capture the runtime require and search factory sources:
 
 ```js
-(() => {
-  let el, key;
-  for (const e of document.querySelectorAll("*")) {
-    const k = Object.keys(e).find((k) => k.startsWith("__reactFiber"));
-    if (k) { el = e; key = k; break; }
-  }
-  if (!el) return "no fiber";
-  let root = el[key];
-  while (root.return) root = root.return;
-  // walk root.child / root.sibling; match memoizedProps (e.g. navID anchors)
-})()
+window[Object.keys(window).find((k) => k.startsWith("webpackChunk"))].push([
+  [Symbol()],
+  {},
+  (r) => (req = r),
+]);
+// Object.entries(req.m).filter(([id, f]) => String(f).includes("SomeConstant"))
+// req(id)
 ```
 
-Webpack module extraction (find Valve's obfuscated modules — read-only!):
+## Calling a plugin backend
+
+Use the loader's WS route in `shared`:
 
 ```js
-window[Object.keys(window).find(k => k.startsWith("webpackChunk"))]
-  .push([[Symbol()], {}, r => (req = r)]);
-// grep factory sources: Object.entries(req.m).filter(([id, f]) => String(f).includes("SomeConstant"))
-// instantiate: req(id)
-```
-
-## Calling a plugin's backend from a probe
-
-Use the loader's WS route in `shared` — side-effect free:
-
-```js
-// read and write bridge state without disturbing the running plugin
 await DeckyBackend.call("loader/call_plugin_method", "<Plugin Name>", "get_playback");
 await DeckyBackend.call("loader/call_plugin_method", "<Plugin Name>", "volume", 0.6);
 ```
 
-**Never** reach for `window.__DECKY_SECRET_INTERNALS_..._deckyLoaderAPIInit.connect(2, "<Plugin
-Name>")` just to call a method. Every `connect()` does
-`pluginEventListeners.set(pluginName, new Map())` in decky-loader — it **overwrites the plugin's
-event-listener map**, so the real plugin frontend silently stops receiving its `decky.emit`
-events from that moment on. Symptoms look exactly like a product bug: progress text frozen,
-play/pause icon never flips, state stuck at whatever the last render had. Diagnosing that phantom
-costs more than the probe saved.
+Do not call `window.__DECKY_SECRET_INTERNALS_..._deckyLoaderAPIInit.connect(...)` for ordinary
+probes. Each call replaces that plugin's event-listener map, so its frontend silently stops
+receiving `decky.emit` events. If intentionally simulating a frontend reload, restore ownership
+with `await DeckyPluginLoader.importPlugin("<Plugin Name>")`; this reruns the frontend bundle while
+keeping the backend alive.
 
-If you do need `connect()` (e.g. simulating a frontend reload), hand ownership back afterwards
-with `await DeckyPluginLoader.importPlugin("<Plugin Name>")` — re-importing the bundle re-runs
-`@decky/api`, which calls `connect()` again — and don't call `connect()` after that point.
-
-`importPlugin` on its own is the cheap way to reproduce a **frontend-only reload** (what a Steam
-restart / desktop-mode round trip does to plugin frontends) without restarting `plugin_loader`,
-so module-level state and mount-time hydration re-run while the backend keeps running.
-
-**Is the UI actually live?** Sample a changing text (progress `m:ss / m:ss`, clock) twice a few
-seconds apart in the same probe. Frozen text = the tree isn't re-rendering; don't trust any
-single-shot DOM read as proof that state arrived.
+To prove the UI is live, sample changing text such as playback progress twice. A single DOM read
+only proves the current tree exists.
 
 ## Driving the UI (hard-won rules)
 
