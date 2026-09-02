@@ -11,7 +11,7 @@
 // 铁律:**绝不能崩 UI**。所有步骤 try/catch,任何异常都返回原始渲染;找不到就 no-op。
 // 这是可选增强 —— QAM / 账号页入口始终是 fallback。
 
-import { createElement } from "react";
+import { cloneElement, createElement } from "react";
 import { FaMusic } from "react-icons/fa";
 
 import { api } from "./api";
@@ -127,7 +127,7 @@ function injectItem(ieRet: any): void {
   const tmpl = arr.find(isItemEl);
   if (!tmpl) return;
   // React.cloneElement:保留原生菜单项组件与焦点/手柄行为,只改 route/label(i18n)/icon/key
-  const item = (window as any).SP_REACT.cloneElement(tmpl, {
+  const item = cloneElement(tmpl, {
     route: ROUTE,
     label: t("music"),
     key: ITEM_KEY,

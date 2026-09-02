@@ -78,6 +78,8 @@ Steam UI。
 
 - Steam Deck，运行 SteamOS 游戏模式。
 - 已安装 [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)。
+- Steam client `1784934043` 及更新版本需要 Decky Loader `v3.2.8-pre1` 或更高版本；`v3.2.6`
+  会在导入插件前崩溃，表现为 Decky 快捷菜单与左侧「音乐」入口同时消失。
 - 安装时可访问下载源：普通版走 GitHub、CN 版走 Cloudflare 镜像，Decky 会下载并按 SHA-256
   校验 player、QQ provider 和网易云 provider 三个二进制。full 离线版已自带这三个二进制，
   安装期间不再下载。
