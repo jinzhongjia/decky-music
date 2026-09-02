@@ -89,6 +89,9 @@ navigation.
 
 - A Steam Deck running SteamOS Gaming Mode.
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) installed.
+- Steam client `1784934043` and newer require Decky Loader `v3.2.8-pre1` or later. Decky `v3.2.6`
+  crashes before importing plugins, which removes both the Decky Quick Access tab and the left-side
+  **Music** entry.
 - Access to the download source during installation — GitHub for the normal build, a Cloudflare
   mirror for the CN build. Decky downloads and SHA-256 verifies the player, QQ provider, and NetEase
   provider binaries. The offline "full" build bundles all three, so it downloads nothing.

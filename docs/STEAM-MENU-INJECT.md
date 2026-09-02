@@ -75,6 +75,11 @@
   可接受(可选增强)。想更稳可缩短 retry 或抬高锚点(代价是更深的下钻)。
 - **Steam 更新脆弱点**:`navID` 串、`fe`/`Ie` 的 prop 签名、`Ae` 的 props 约定任一变化都会让注入
   静默失效(退回 fallback,不崩)。升级时用 steam-cdp skill 的 `probe-mainmenu.js` 重新核对。
+- **Decky 前端是前置条件**:注入逻辑只有在 Decky 成功导入插件后才会执行。Steam client
+  `1784934043` 将 `BFinishedInitStageOne` 改名为 `BFinishedInitBeforeLogin`;Decky `v3.2.6`
+  会在导入任何插件前崩溃,表现为 Decky QAM Tab 与「音乐」入口同时消失。新版 Steam 必须使用包含
+  官方修复的 Decky `v3.2.8-pre1` 或更高版本。此时不要误改 `fe`/`Ie` 签名；先在
+  SharedJSContext 控制台排除宿主初始化异常。
 
 ## 踩坑记录:定位插错(第 5 → 第 4)
 
