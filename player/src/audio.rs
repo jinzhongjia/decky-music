@@ -1,4 +1,5 @@
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
 use rodio::Source;
@@ -7,16 +8,26 @@ use tokio::sync::mpsc as tmpsc;
 
 use crate::protocol::{self, ErrorCode};
 use crate::protocol::{log_json, LogLevel};
-use crate::stream::{HttpRangeReader, StreamProbe};
+use crate::stream::HttpRangeReader;
 use crate::util::epoch_ms;
 
 pub(crate) enum AudioCmd {
-    Load(Box<HttpRangeReader>),
+    Load {
+        stream: Box<HttpRangeReader>,
+        generation: u64,
+    },
     Pause,
     Resume,
     Volume(f32),
     Seek(f64),
     Stop,
+    Finished {
+        generation: u64,
+        failure: Option<&'static str>,
+    },
+    Anchor {
+        generation: u64,
+    },
 }
 
 /// 上报给 bridge 的事件,序列化成 NDJSON(协议 v1 event / log 格式)。
@@ -72,10 +83,9 @@ impl AudioEv {
     }
 }
 
-/// 周期位置锚点间隔:音频欠载(缓冲停顿)时真实位置落后,UI 墙钟插值会悄悄跑偏;
-/// 播放中定期重报 pos,把漂移上限压到一个间隔内。
+/// 位置锚点附着在被音频设备实际消耗的 source 上。它不启动定时轮询，缓冲停摆和暂停时
+/// 不会产生假进度；bridge/UI 仍可用 wall_ms 在相邻锚点间插值。
 const POS_ANCHOR_INTERVAL: Duration = Duration::from_secs(3);
-const ACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const IDLE_PAUSE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 淡入淡出:消除切歌/暂停的硬切爆音。起播淡入走 FadeIn 源适配器(采样级),
@@ -87,8 +97,7 @@ const FADE_STEPS: u32 = 20;
 struct AudioState {
     device_sink: Option<rodio::MixerDeviceSink>,
     sink: Option<rodio::Player>,
-    probe: Option<StreamProbe>,
-    active: bool,
+    generation: u64,
     last_anchor: std::time::Instant,
     paused_since: Option<std::time::Instant>,
     volume: f32,
@@ -99,8 +108,7 @@ impl AudioState {
         Self {
             device_sink: None,
             sink: None,
-            probe: None,
-            active: false,
+            generation: 0,
             last_anchor: std::time::Instant::now(),
             paused_since: None,
             volume: 1.0,
@@ -108,8 +116,8 @@ impl AudioState {
     }
 }
 
-/// 音量斜坡。在音频线程内小步阻塞,总时长 ≤ FADE_OUT(低于 250ms 命令轮询间隔,
-/// 后续命令最多晚这么点处理,听感无感知)。
+/// 音量斜坡。在音频线程内小步阻塞,总时长 ≤ FADE_OUT;后续命令最多晚这么点处理,
+/// 听感无感知。
 fn fade(sink: &rodio::Player, from: f32, to: f32, dur: Duration) {
     for i in 1..=FADE_STEPS {
         let t = i as f32 / FADE_STEPS as f32;
@@ -150,9 +158,25 @@ fn ensure_device(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) -
     }
 }
 
+fn notify_finished(
+    done_once: &AtomicBool,
+    cmd_tx: &mpsc::Sender<AudioCmd>,
+    generation: u64,
+    failure: Option<&'static str>,
+) {
+    if !done_once.swap(true, Ordering::Relaxed) {
+        let _ = cmd_tx.send(AudioCmd::Finished {
+            generation,
+            failure,
+        });
+    }
+}
+
 fn load_stream(
     state: &mut AudioState,
     stream: HttpRangeReader,
+    generation: u64,
+    cmd_tx: &mpsc::Sender<AudioCmd>,
     ev: &tmpsc::UnboundedSender<AudioEv>,
 ) {
     if !ensure_device(state, ev) {
@@ -169,11 +193,22 @@ fn load_stream(
                     .expect("device sink initialized")
                     .mixer(),
             );
+            let anchor_tx = cmd_tx.clone();
+            let source = decoder
+                .fade_in(FADE_IN)
+                .periodic_access(POS_ANCHOR_INTERVAL, move |_| {
+                    let _ = anchor_tx.send(AudioCmd::Anchor { generation });
+                });
+            let done_tx = cmd_tx.clone();
+            let done_once = Arc::new(AtomicBool::new(false));
+            let done_flag = Arc::clone(&done_once);
             sink.set_volume(state.volume);
-            sink.append(decoder.fade_in(FADE_IN));
+            sink.append(source);
+            sink.append(rodio::source::EmptyCallback::new(Box::new(move || {
+                notify_finished(&done_flag, &done_tx, generation, probe.failure());
+            })));
             state.sink = Some(sink);
-            state.probe = Some(probe);
-            state.active = true;
+            state.generation = generation;
             state.last_anchor = std::time::Instant::now();
             state.paused_since = None;
             let _ = ev.send(AudioEv::Playing { pos: 0.0 });
@@ -246,18 +281,8 @@ fn seek(state: &mut AudioState, sec: f64, ev: &tmpsc::UnboundedSender<AudioEv>) 
 fn stop(state: &mut AudioState) {
     fade_out_playing(&state.sink, state.volume);
     state.sink = None;
-    state.probe = None;
     state.device_sink = None;
-    state.active = false;
     state.paused_since = None;
-}
-
-fn poll_timeout(state: &AudioState) -> Duration {
-    match state.paused_since {
-        Some(paused) => IDLE_PAUSE_TIMEOUT.saturating_sub(paused.elapsed()),
-        None if state.active => ACTIVE_POLL_INTERVAL,
-        None => Duration::from_secs(3600),
-    }
 }
 
 fn unload_idle_sink(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
@@ -269,54 +294,92 @@ fn unload_idle_sink(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>
     let _ = ev.send(AudioEv::Unloaded { pos });
 }
 
-fn poll_playback(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
-    if state
-        .paused_since
-        .is_some_and(|paused| paused.elapsed() >= IDLE_PAUSE_TIMEOUT)
-    {
-        unload_idle_sink(state, ev);
-        return;
+fn finish_stream(
+    state: &mut AudioState,
+    generation: u64,
+    failure: Option<&'static str>,
+    ev: &tmpsc::UnboundedSender<AudioEv>,
+) {
+    if state.generation != generation || state.sink.is_none() {
+        return; // stop/newer load invalidated this source before its completion callback ran
     }
-    if !state.active {
-        return;
-    }
-    let Some(sink) = &state.sink else {
-        return;
-    };
-    if sink.empty() {
-        state.active = false;
-        match state.probe.as_ref().and_then(StreamProbe::failure) {
-            Some(reason) => {
-                let _ = ev.send(AudioEv::Error {
-                    code: ErrorCode::FetchFailed,
-                    message: format!("stream died mid-play: {reason}"),
-                });
-            }
-            None => {
-                let _ = ev.send(AudioEv::Ended);
-            }
+    state.sink = None;
+    state.paused_since = None;
+    match failure {
+        Some(reason) => {
+            let _ = ev.send(AudioEv::Error {
+                code: ErrorCode::FetchFailed,
+                message: format!("stream died mid-play: {reason}"),
+            });
         }
-    } else if !sink.is_paused() && state.last_anchor.elapsed() >= POS_ANCHOR_INTERVAL {
-        state.last_anchor = std::time::Instant::now();
-        let _ = ev.send(AudioEv::Playing {
-            pos: sink.get_pos().as_secs_f64(),
-        });
+        None => {
+            let _ = ev.send(AudioEv::Ended);
+        }
     }
 }
 
-/// 拥有 OutputStream + Sink 的专用线程。暂停后不再 4Hz 轮询;30 秒后释放 PipeWire sink。
-pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv>) {
+fn send_anchor(state: &mut AudioState, generation: u64, ev: &tmpsc::UnboundedSender<AudioEv>) {
+    if state.generation != generation || state.last_anchor.elapsed() < POS_ANCHOR_INTERVAL {
+        return;
+    }
+    if let Some(sink) = &state.sink {
+        if !sink.is_paused() {
+            state.last_anchor = std::time::Instant::now();
+            let _ = ev.send(AudioEv::Playing {
+                pos: sink.get_pos().as_secs_f64(),
+            });
+        }
+    }
+}
+
+fn idle_timeout(state: &AudioState) -> Option<Duration> {
+    state
+        .paused_since
+        .map(|paused| IDLE_PAUSE_TIMEOUT.saturating_sub(paused.elapsed()))
+}
+
+fn handle_command(
+    state: &mut AudioState,
+    cmd: AudioCmd,
+    cmd_tx: &mpsc::Sender<AudioCmd>,
+    ev: &tmpsc::UnboundedSender<AudioEv>,
+) {
+    match cmd {
+        AudioCmd::Load { stream, generation } => {
+            load_stream(state, *stream, generation, cmd_tx, ev)
+        }
+        AudioCmd::Pause => pause(state, ev),
+        AudioCmd::Resume => resume(state, ev),
+        AudioCmd::Volume(value) => set_volume(state, value, ev),
+        AudioCmd::Seek(sec) => seek(state, sec, ev),
+        AudioCmd::Stop => stop(state),
+        AudioCmd::Finished {
+            generation,
+            failure,
+        } => finish_stream(state, generation, failure, ev),
+        AudioCmd::Anchor { generation } => send_anchor(state, generation, ev),
+    }
+}
+
+/// Dedicated audio owner. It blocks on commands while active; source callbacks report completion
+/// and position anchors. The only timeout is the one-shot 30s paused-sink release.
+pub(crate) fn audio_thread(
+    rx: mpsc::Receiver<AudioCmd>,
+    cmd_tx: mpsc::Sender<AudioCmd>,
+    ev: tmpsc::UnboundedSender<AudioEv>,
+) {
     let mut state = AudioState::new();
     loop {
-        match rx.recv_timeout(poll_timeout(&state)) {
-            Ok(AudioCmd::Load(stream)) => load_stream(&mut state, *stream, &ev),
-            Ok(AudioCmd::Pause) => pause(&mut state, &ev),
-            Ok(AudioCmd::Resume) => resume(&mut state, &ev),
-            Ok(AudioCmd::Volume(value)) => set_volume(&mut state, value, &ev),
-            Ok(AudioCmd::Seek(sec)) => seek(&mut state, sec, &ev),
-            Ok(AudioCmd::Stop) => stop(&mut state),
-            Err(mpsc::RecvTimeoutError::Timeout) => poll_playback(&mut state, &ev),
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        match idle_timeout(&state) {
+            Some(timeout) => match rx.recv_timeout(timeout) {
+                Ok(cmd) => handle_command(&mut state, cmd, &cmd_tx, &ev),
+                Err(mpsc::RecvTimeoutError::Timeout) => unload_idle_sink(&mut state, &ev),
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            },
+            None => match rx.recv() {
+                Ok(cmd) => handle_command(&mut state, cmd, &cmd_tx, &ev),
+                Err(_) => break,
+            },
         }
     }
 }
@@ -336,7 +399,33 @@ mod tests {
     }
 
     #[test]
-    fn idle_state_does_not_poll_at_active_cadence() {
-        assert_eq!(poll_timeout(&AudioState::new()), Duration::from_secs(3600));
+    fn only_paused_state_uses_a_deadline() {
+        assert_eq!(idle_timeout(&AudioState::new()), None);
+    }
+
+    #[test]
+    fn completion_callback_enqueues_once() {
+        let (tx, rx) = mpsc::channel();
+        let done = AtomicBool::new(false);
+
+        notify_finished(&done, &tx, 7, None);
+        notify_finished(&done, &tx, 7, None);
+
+        assert!(matches!(
+            rx.recv().unwrap(),
+            AudioCmd::Finished {
+                generation: 7,
+                failure: None
+            }
+        ));
+        assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn paused_state_has_one_release_deadline() {
+        let mut state = AudioState::new();
+        state.paused_since = Some(std::time::Instant::now() - IDLE_PAUSE_TIMEOUT);
+
+        assert_eq!(idle_timeout(&state), Some(Duration::ZERO));
     }
 }

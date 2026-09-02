@@ -17,10 +17,12 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
     let mut reader = BufReader::new(rd);
     let mut frame = Vec::new();
 
-    // 音频线程 + 两条 channel:cmd(tokio→audio,std mpsc)、event(audio→tokio,tokio mpsc)
+    // 音频线程 + 两条 channel:cmd(tokio→audio,std mpsc)、event(audio→tokio,tokio mpsc)。
+    // audio 侧保留 sender，rodio source 完成/消耗进度通过同一命令队列唤醒它。
     let (cmd_tx, cmd_rx) = mpsc::channel::<AudioCmd>();
     let (ev_tx, mut ev_rx) = tmpsc::unbounded_channel::<AudioEv>();
-    std::thread::spawn(move || audio_thread(cmd_rx, ev_tx));
+    let audio_cmd_tx = cmd_tx.clone();
+    std::thread::spawn(move || audio_thread(cmd_rx, audio_cmd_tx, ev_tx));
 
     // 单一写出:命令响应 + 事件都汇到这里串行写回,避免并发写乱帧
     let (out_tx, mut out_rx) = tmpsc::unbounded_channel::<String>();
@@ -136,7 +138,14 @@ fn spawn_load(
                         "stream opened without range"
                     };
                     let _ = out_tx.send(log_json(LogLevel::Info, "load", msg));
-                    send(&cmd_tx, AudioCmd::Load(Box::new(stream)), req.id)
+                    send(
+                        &cmd_tx,
+                        AudioCmd::Load {
+                            stream: Box::new(stream),
+                            generation: gen,
+                        },
+                        req.id,
+                    )
                 }
                 Ok(_) => {
                     let _ = out_tx.send(log_json(LogLevel::Warn, "load", "superseded, dropped"));

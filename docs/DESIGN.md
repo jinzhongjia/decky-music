@@ -537,12 +537,13 @@ music-plugin/
 | **缓存元数据/歌词,绝不缓存歌曲 URL** | 搜索/歌词/歌单可短缓存;播放 URL 每次现取 | ⚠️ 防坑非收益:NCM/QQ 播放 URL 是**限时签名**,缓存会过期→403 |
 | **watchdog 用信号不轮询** | 子进程退出用 SIGCHLD / asyncio child watcher,不 `poll()` 循环 | 轮询=周期性唤醒 CPU;信号=平时睡、真死才醒。同 §5.5 event-driven |
 | **大屏页代码分割懒加载** | `React.lazy` + `WithSuspense`,进路由才加载平板 UI | QAM 秒开;减小注入 Steam 的初始 JS 与内存(Decky 原生用法) |
-| **暂停久了释放音频 sink** | player pause 30s 后 drop sink;bridge 收到 `unloaded` 后将已载入状态置空 | PipeWire 节点不再常驻;恢复播放时 bridge 重载流并 seek 回中断位置(失败才从头播) |
+| **播放完成/位置锚点走 source 事件** | decoder EOF 的 `EmptyCallback` 和实际音频样本消耗的 `periodic_access` 写回音频命令队列 | 活跃 player 阻塞等待命令/事件，不再每 250ms 唤醒检查 `sink.empty()`；缓冲停摆也不产生假位置 |
+| **暂停久了释放音频 sink** | player 只在 pause 后等待一个 30s deadline，超时 drop sink；bridge 收到 `unloaded` 后将已载入状态置空 | PipeWire 节点不再常驻;恢复播放时 bridge 重载流并 seek 回中断位置(失败才从头播) |
 | **封面图缩略图 + 虚拟列表**(P3) | 请求 CDN 缩略图尺寸(如 `?param=200y200`,非原图);歌单只渲染视口内封面,离屏不请求;按 songId/URL 缓存 | 缩略图省 ~25× 纹理内存;`<img>` 直连 CDN(§6.3 方案 A),失败 `onError` 占位不崩溃 |
 
 ### 13.3 已内建(设计里已有,无需另做)
 
-client 端进度插值(§5.5)、全链路 event-driven 无轮询、前端零重计算(§6.5)、同一时刻单 provider 存活(§4)、ncm Rust ~5MB。
+client 端进度插值(§5.5)、全链路事件驱动(仅 pause 的一次性 30s deadline)、前端零重计算(§6.5)、同一时刻单 provider 存活(§4)、ncm Rust ~5MB。
 
 ---
 
