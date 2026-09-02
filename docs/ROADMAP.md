@@ -21,7 +21,8 @@
 - **并发架构**:bridge Conn id demux + 事件顺序队列(修自然播完自死锁);播放意图代次
   (最后一次操作赢);player load 后台化 + 代次守卫;双 provider 请求处理并发化。
 - **播放核心**:流式播放(HTTP Range + 有界预取 + 截断续传)、周期位置锚点(3s)、
-  普通/电台双队列模式、`get_playback` 回灌(含 queue_mode/radio_kind)、协议 v1。
+  暂停 30s 后释放 sink、恢复重载并 seek、普通/电台双队列模式、`get_playback` 回灌
+  (含 queue_mode/radio_kind)、协议 v1。
 - **健壮性**:QQ 凭证自动刷新、登录具体错误码、settings 0600 原子写、错误提示分域(page/qam)。
 - **超时契约**(改动需保持不等式):
   `curl 连接 10s(qq 库内) < provider 上游兜底 15s < bridge 请求 30s`;

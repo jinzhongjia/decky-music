@@ -45,6 +45,13 @@ const notify = () => listeners.forEach((l) => l());
 // 不节流会连着刷屏。按 code 而非按消息:换了别的错误码说明是新情况,立刻弹。
 // 横幅不节流 —— 它是单个覆盖式槽位,本来就不会堆积。
 const TOAST_THROTTLE_MS = 30_000;
+const VOLUME_DEBOUNCE_MS = 150;
+let volumeTimer: number | undefined;
+
+function flushVolume() {
+  volumeTimer = undefined;
+  void guard(() => api.volume(state.volume), "volume");
+}
 let lastToast = { code: "", at: 0 };
 function toastError(code: string, body: string) {
   const now = Date.now();
@@ -65,7 +72,7 @@ onPlayer((e) => {
     state.playing = true;
     state.posSec = e.data.pos;
     state.wallMs = e.data.wall_ms;
-  } else if (e.type === PlayerEv.Paused) {
+  } else if (e.type === PlayerEv.Paused || e.type === PlayerEv.Unloaded) {
     state.playing = false;
     state.posSec = e.data.pos;
   } else if (e.type === PlayerEv.Ended) {
@@ -154,7 +161,8 @@ export function seek(sec: number) {
 export function setVolume(val: number) {
   state.volume = Math.max(0, Math.min(1, val));
   notify();
-  guard(() => api.volume(state.volume));
+  clearTimeout(volumeTimer);
+  volumeTimer = setTimeout(flushVolume, VOLUME_DEBOUNCE_MS);
 }
 
 const MODES: PlayMode[] = ["list_loop", "single_loop", "shuffle"];

@@ -3,7 +3,8 @@
 // 网格容器统一 MAINTAIN_X(上下移动不错列)。
 
 import { Focusable, NavEntryPositionPreferences } from "@decky/ui";
-import { ReactNode } from "react";
+
+import { CSSProperties, ReactNode } from "react";
 
 import { Album, Artist, Playlist, Song } from "../api";
 import { fmtCount, t } from "../i18n";
@@ -20,7 +21,15 @@ export function Section({ title, children }: { title: string; children: ReactNod
 }
 
 // 网格容器:MAINTAIN_X。cols = 固定列数(配合取数条数凑整行,避免残行)
-export function Grid({ cols, children }: { cols: number; children: ReactNode }) {
+export function Grid({
+  cols,
+  children,
+  style,
+}: {
+  cols: number;
+  children: ReactNode;
+  style?: CSSProperties;
+}) {
   return (
     <Focusable
       navEntryPreferPosition={NavEntryPositionPreferences.MAINTAIN_X}
@@ -28,6 +37,7 @@ export function Grid({ cols, children }: { cols: number; children: ReactNode }) 
         display: "grid",
         gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
         gap: "0.75rem",
+        ...style,
       }}
     >
       {children}
@@ -121,6 +131,8 @@ export function PlaylistCard({
       <div style={{ position: "relative" }}>
         <img
           src={pl.cover || undefined}
+          loading="lazy"
+          decoding="async"
           style={{
             width: "100%",
             aspectRatio: "1",
@@ -181,6 +193,8 @@ export function SongCell({ song, onActivate }: { song: Song; onActivate: () => v
     >
       <img
         src={song.cover || undefined}
+        loading="lazy"
+        decoding="async"
         style={{
           width: 56,
           height: 56,
@@ -225,6 +239,8 @@ export function AlbumCard({ album, onActivate }: { album: Album; onActivate: () 
     <Focusable onActivate={onActivate} style={{ borderRadius: theme.radius }}>
       <img
         src={album.cover || undefined}
+        loading="lazy"
+        decoding="async"
         style={{
           width: "100%",
           aspectRatio: "1",
@@ -273,6 +289,8 @@ export function ArtistCard({ artist, onActivate }: { artist: Artist; onActivate:
     >
       <img
         src={artist.avatar || undefined}
+        loading="lazy"
+        decoding="async"
         style={{
           width: "100%",
           aspectRatio: "1",

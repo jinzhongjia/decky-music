@@ -527,6 +527,13 @@ class Playback:
         elif ev.type == "paused":
             self.playing = False
             self.pos = ev.data.get("pos", self.pos)
+        elif ev.type == "unloaded":
+            # 长暂停后 player 主动释放 PipeWire sink;下次 resume 重新取 URL + load + seek。
+            self.playing = False
+            self.pos = ev.data.get("pos", self.pos)
+            self._resume_at = self.pos
+            self._loaded = False
+            log("bridge", "own", "debug", f"paused sink released at {self.pos:.1f}s")
         elif ev.type == "ended":
             self.playing = False
         elif ev.type == "error":

@@ -243,5 +243,55 @@ class TestUnloadDetachesHooks(unittest.TestCase):
         self.assertIsNone(b.player.on_missing)
 
 
+
+class TestVolumePersistence(unittest.TestCase):
+    def test_volume_is_applied_immediately_but_persisted_once(self):
+        b = _bridge()
+        saved = []
+        original = bridge_mod.save_settings
+        bridge_mod.save_settings = lambda data: saved.append(data.copy())
+
+        async def check():
+            await b.volume(0.65)
+            self.assertEqual(b.player.sent, [("volume", {"val": 0.65})])
+            self.assertEqual(saved, [])
+            await b._flush_volume_persist()
+
+        try:
+            asyncio.run(check())
+        finally:
+            bridge_mod.save_settings = original
+        self.assertEqual(saved, [{"volume": 0.65}])
+
+
+class TestUnloadBackgroundTasks(unittest.TestCase):
+    def test_unload_cancels_bridge_owned_tasks(self):
+        b = _bridge()
+        b.provider = type("Conn", (), {"close": staticmethod(_emit)})()
+        b.player.close = _emit
+        b.provider_proc = None
+        cancelled = asyncio.Event()
+        original = bridge_mod.save_settings
+        bridge_mod.save_settings = lambda _data: None
+
+        async def linger():
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        async def check():
+            task = b._track_task(linger())
+            await asyncio.sleep(0)
+            await b.unload()
+            self.assertTrue(task.cancelled())
+            self.assertTrue(cancelled.is_set())
+
+        try:
+            asyncio.run(check())
+        finally:
+            bridge_mod.save_settings = original
+
 if __name__ == "__main__":
     unittest.main()

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 JsonObject = dict[str, Any]
+MAX_FRAME_BYTES = 1 << 20
 
 
 class ProtocolError(Exception):

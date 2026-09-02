@@ -82,6 +82,14 @@ class _FakeWriter:
         pass
 
 
+
+class _ResetWriter(_FakeWriter):
+    def close(self):
+        pass
+
+    async def wait_closed(self):
+        raise ConnectionResetError()
+
 class TestConnDeath(unittest.TestCase):
     def setUp(self):
         self.conn = Conn("provider")
@@ -123,6 +131,39 @@ class TestConnDeath(unittest.TestCase):
             bridge_mod.REQUEST_TIMEOUT = saved
         self.assertFalse(resp.ok)
         self.assertEqual(called, [1])  # 判死回调必须被调到,否则不会重开进程
+
+    def test_close_ignores_reset_writer(self):
+        self.conn.writer = _ResetWriter()
+        asyncio.run(self.conn.close())
+
+
+class TestConnFrameLimit(unittest.TestCase):
+    def setUp(self):
+        self.conn = Conn("provider")
+        self.conn.writer = _FakeWriter()
+        self.messages = []
+        self._saved_log = bridge_mod.log
+        bridge_mod.log = lambda *_args: self.messages.append(_args[-1])
+
+    def tearDown(self):
+        bridge_mod.log = self._saved_log
+
+    def test_rejects_oversized_outbound_request_without_waiting(self):
+        args = {"value": "x" * protocol.MAX_FRAME_BYTES}
+        response = asyncio.run(self.conn.request("search_songs", args))
+        self.assertFalse(response.ok)
+        self.assertEqual(response.error.code, "invalid_request")
+        self.assertEqual(self.conn.pending, {})
+
+    def test_rejects_oversized_child_frame_without_crashing_read_loop(self):
+        async def run():
+            reader = asyncio.StreamReader(limit=protocol.MAX_FRAME_BYTES)
+            reader.feed_data(b"x" * (protocol.MAX_FRAME_BYTES + 2) + b"\n")
+            reader.feed_eof()
+            await self.conn._read_loop(reader)
+
+        asyncio.run(run())
+        self.assertTrue(any("frame exceeded size limit" in message for message in self.messages))
 
 
 class TestStaleDisconnect(unittest.TestCase):

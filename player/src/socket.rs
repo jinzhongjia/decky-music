@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc as tmpsc;
 
@@ -14,7 +14,8 @@ use crate::stream::{open_http_stream, OpenError};
 pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
     let stream = UnixStream::connect(socket).await?;
     let (rd, mut wr) = stream.into_split();
-    let mut lines = BufReader::new(rd).lines();
+    let mut reader = BufReader::new(rd);
+    let mut frame = Vec::new();
 
     // 音频线程 + 两条 channel:cmd(tokio→audio,std mpsc)、event(audio→tokio,tokio mpsc)
     let (cmd_tx, cmd_rx) = mpsc::channel::<AudioCmd>();
@@ -25,6 +26,9 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
     let (out_tx, mut out_rx) = tmpsc::unbounded_channel::<String>();
     tokio::spawn(async move {
         while let Some(line) = out_rx.recv().await {
+            if line.len() > protocol::MAX_FRAME_BYTES {
+                break;
+            }
             if wr.write_all(line.as_bytes()).await.is_err()
                 || wr.write_all(b"\n").await.is_err()
                 || wr.flush().await.is_err()
@@ -45,7 +49,9 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
                 match &e {
                     AudioEv::Playing { pos } => mpris::apply_playing(m, *pos).await,
                     AudioEv::Paused { pos } => mpris::apply_paused(m, *pos).await,
-                    AudioEv::Ended | AudioEv::Error { .. } => mpris::apply_stopped(m).await,
+                    AudioEv::Ended | AudioEv::Unloaded { .. } | AudioEv::Error { .. } => {
+                        mpris::apply_stopped(m).await
+                    }
                     AudioEv::Seeked { pos } => mpris::apply_seeked(m, *pos).await,
                     AudioEv::Volume { val } => mpris::apply_volume(m, *val as f64).await,
                     AudioEv::Log { .. } => {}
@@ -65,8 +71,8 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
     // 迟到的旧 load 绝不夺播(修「UI 显示与实际播放不一致」)。
     let load_gen = Arc::new(AtomicU64::new(0));
 
-    // NDJSON:每条一行 {json}\n,UTF-8,单条 ≤ 1 MiB
-    while let Some(line) = lines.next_line().await? {
+    // NDJSON:每条一行 {json}\n,UTF-8,单条 ≤ 1 MiB。
+    while let Some(line) = protocol::read_frame(&mut reader, &mut frame).await? {
         let req = match protocol::parse_request(&line) {
             Ok(r) => r,
             // 解析失败拿不到 id → 记录并丢弃(协议 v1 规则)

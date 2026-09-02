@@ -27,6 +27,10 @@ pub(crate) enum AudioEv {
     Paused {
         pos: f64,
     },
+    /// Paused long enough that the player released the sink and must reload on resume.
+    Unloaded {
+        pos: f64,
+    },
     Ended,
     Error {
         code: ErrorCode,
@@ -56,6 +60,7 @@ impl AudioEv {
                 json!({"pos": pos, "wall_ms": epoch_ms()}),
             ),
             AudioEv::Paused { pos } => protocol::event("player", "paused", json!({"pos": pos})),
+            AudioEv::Unloaded { pos } => protocol::event("player", "unloaded", json!({"pos": pos})),
             AudioEv::Ended => protocol::event("player", "ended", json!({})),
             AudioEv::Error { code, message } => {
                 protocol::event("player", "error", json!({"code": code, "message": message}))
@@ -70,12 +75,38 @@ impl AudioEv {
 /// 周期位置锚点间隔:音频欠载(缓冲停顿)时真实位置落后,UI 墙钟插值会悄悄跑偏;
 /// 播放中定期重报 pos,把漂移上限压到一个间隔内。
 const POS_ANCHOR_INTERVAL: Duration = Duration::from_secs(3);
+const ACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const IDLE_PAUSE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 淡入淡出:消除切歌/暂停的硬切爆音。起播淡入走 FadeIn 源适配器(采样级),
 /// 收尾淡出走音量斜坡(旧曲已在 sink 里,只能从外面拉音量)。
 const FADE_IN: Duration = Duration::from_millis(300);
 const FADE_OUT: Duration = Duration::from_millis(200);
 const FADE_STEPS: u32 = 20;
+
+struct AudioState {
+    device_sink: Option<rodio::MixerDeviceSink>,
+    sink: Option<rodio::Player>,
+    probe: Option<StreamProbe>,
+    active: bool,
+    last_anchor: std::time::Instant,
+    paused_since: Option<std::time::Instant>,
+    volume: f32,
+}
+
+impl AudioState {
+    fn new() -> Self {
+        Self {
+            device_sink: None,
+            sink: None,
+            probe: None,
+            active: false,
+            last_anchor: std::time::Instant::now(),
+            paused_since: None,
+            volume: 1.0,
+        }
+    }
+}
 
 /// 音量斜坡。在音频线程内小步阻塞,总时长 ≤ FADE_OUT(低于 250ms 命令轮询间隔,
 /// 后续命令最多晚这么点处理,听感无感知)。
@@ -87,7 +118,6 @@ fn fade(sink: &rodio::Player, from: f32, to: f32, dur: Duration) {
     }
 }
 
-/// 旧曲收尾:仍在出声则先淡出,再由调用方丢弃/暂停。
 fn fade_out_playing(sink: &Option<rodio::Player>, volume: f32) {
     if let Some(s) = sink {
         if !s.empty() && !s.is_paused() {
@@ -96,142 +126,217 @@ fn fade_out_playing(sink: &Option<rodio::Player>, volume: f32) {
     }
 }
 
-/// 拥有 OutputStream + Sink 的专用线程。用 recv_timeout 轮询:平时睡,到点醒来查是否播完。
-pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv>) {
-    let device_sink = match rodio::DeviceSinkBuilder::open_default_sink() {
-        Ok(v) => v,
+fn ensure_device(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) -> bool {
+    if state.device_sink.is_some() {
+        return true;
+    }
+    match rodio::DeviceSinkBuilder::open_default_sink() {
+        Ok(device_sink) => {
+            state.device_sink = Some(device_sink);
+            let _ = ev.send(AudioEv::Log {
+                level: LogLevel::Info,
+                place: "audio",
+                msg: "default audio device opened".into(),
+            });
+            true
+        }
         Err(e) => {
             let _ = ev.send(AudioEv::Error {
                 code: ErrorCode::AudioDeviceFailed,
                 message: format!("open audio device: {e}"),
             });
-            return;
+            false
         }
+    }
+}
+
+fn load_stream(
+    state: &mut AudioState,
+    stream: HttpRangeReader,
+    ev: &tmpsc::UnboundedSender<AudioEv>,
+) {
+    if !ensure_device(state, ev) {
+        return;
+    }
+    let probe = stream.probe();
+    match rodio::Decoder::new(stream) {
+        Ok(decoder) => {
+            fade_out_playing(&state.sink, state.volume);
+            let sink = rodio::Player::connect_new(
+                state
+                    .device_sink
+                    .as_ref()
+                    .expect("device sink initialized")
+                    .mixer(),
+            );
+            sink.set_volume(state.volume);
+            sink.append(decoder.fade_in(FADE_IN));
+            state.sink = Some(sink);
+            state.probe = Some(probe);
+            state.active = true;
+            state.last_anchor = std::time::Instant::now();
+            state.paused_since = None;
+            let _ = ev.send(AudioEv::Playing { pos: 0.0 });
+        }
+        Err(e) => {
+            let _ = ev.send(AudioEv::Error {
+                code: ErrorCode::DecodeFailed,
+                message: format!("decode/play: {e}"),
+            });
+        }
+    }
+}
+
+fn pause(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
+    if let Some(sink) = &state.sink {
+        if !sink.empty() && !sink.is_paused() {
+            fade(sink, state.volume, 0.0, FADE_OUT);
+        }
+        sink.pause();
+        sink.set_volume(state.volume);
+        state.paused_since = Some(std::time::Instant::now());
+        let _ = ev.send(AudioEv::Paused {
+            pos: sink.get_pos().as_secs_f64(),
+        });
+    }
+}
+
+fn resume(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
+    if let Some(sink) = &state.sink {
+        sink.set_volume(0.0);
+        sink.play();
+        fade(sink, 0.0, state.volume, FADE_OUT);
+        state.last_anchor = std::time::Instant::now();
+        state.paused_since = None;
+        let _ = ev.send(AudioEv::Playing {
+            pos: sink.get_pos().as_secs_f64(),
+        });
+    }
+}
+
+fn set_volume(state: &mut AudioState, value: f32, ev: &tmpsc::UnboundedSender<AudioEv>) {
+    state.volume = value.clamp(0.0, 1.0);
+    if let Some(sink) = &state.sink {
+        sink.set_volume(state.volume);
+    }
+    let _ = ev.send(AudioEv::Volume { val: state.volume });
+}
+
+fn seek(state: &mut AudioState, sec: f64, ev: &tmpsc::UnboundedSender<AudioEv>) {
+    if let Some(sink) = &state.sink {
+        if sink
+            .try_seek(Duration::from_secs_f64(sec.max(0.0)))
+            .is_err()
+        {
+            let _ = ev.send(AudioEv::Error {
+                code: ErrorCode::SeekFailed,
+                message: "seek failed".into(),
+            });
+        } else {
+            let pos = sink.get_pos().as_secs_f64();
+            let _ = ev.send(AudioEv::Seeked { pos });
+            if !sink.is_paused() {
+                state.last_anchor = std::time::Instant::now();
+                let _ = ev.send(AudioEv::Playing { pos });
+            }
+        }
+    }
+}
+
+fn stop(state: &mut AudioState) {
+    fade_out_playing(&state.sink, state.volume);
+    state.sink = None;
+    state.probe = None;
+    state.device_sink = None;
+    state.active = false;
+    state.paused_since = None;
+}
+
+fn poll_timeout(state: &AudioState) -> Duration {
+    match state.paused_since {
+        Some(paused) => IDLE_PAUSE_TIMEOUT.saturating_sub(paused.elapsed()),
+        None if state.active => ACTIVE_POLL_INTERVAL,
+        None => Duration::from_secs(3600),
+    }
+}
+
+fn unload_idle_sink(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
+    let pos = state
+        .sink
+        .as_ref()
+        .map_or(0.0, |sink| sink.get_pos().as_secs_f64());
+    stop(state);
+    let _ = ev.send(AudioEv::Unloaded { pos });
+}
+
+fn poll_playback(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
+    if state
+        .paused_since
+        .is_some_and(|paused| paused.elapsed() >= IDLE_PAUSE_TIMEOUT)
+    {
+        unload_idle_sink(state, ev);
+        return;
+    }
+    if !state.active {
+        return;
+    }
+    let Some(sink) = &state.sink else {
+        return;
     };
-    let _ = ev.send(AudioEv::Log {
-        level: LogLevel::Info,
-        place: "audio",
-        msg: "default audio device opened".into(),
-    });
-    let mut sink: Option<rodio::Player> = None;
-    // 流状态探针:与 sink 同生命周期。rodio 解码器把流的 IO 错误静默吞成 EOF,
-    // sink 放空时必须回查流是否带错死亡,否则中途断流会被误报成 ended 提前切歌。
-    let mut probe: Option<StreamProbe> = None;
-    let mut active = false; // 是否有在播的曲子(用于判定 ended)
-    let mut last_anchor = std::time::Instant::now(); // 上次位置锚点(Playing 事件)时刻
+    if sink.empty() {
+        state.active = false;
+        match state.probe.as_ref().and_then(StreamProbe::failure) {
+            Some(reason) => {
+                let _ = ev.send(AudioEv::Error {
+                    code: ErrorCode::FetchFailed,
+                    message: format!("stream died mid-play: {reason}"),
+                });
+            }
+            None => {
+                let _ = ev.send(AudioEv::Ended);
+            }
+        }
+    } else if !sink.is_paused() && state.last_anchor.elapsed() >= POS_ANCHOR_INTERVAL {
+        state.last_anchor = std::time::Instant::now();
+        let _ = ev.send(AudioEv::Playing {
+            pos: sink.get_pos().as_secs_f64(),
+        });
+    }
+}
 
-    // 用户音量,线程内记账:新 sink 按它初始化(rodio 默认 1.0,不存则每次换歌音量跳回 100%),
-    // 淡入淡出斜坡也以它为顶。
-    let mut volume: f32 = 1.0;
-
+/// 拥有 OutputStream + Sink 的专用线程。暂停后不再 4Hz 轮询;30 秒后释放 PipeWire sink。
+pub(crate) fn audio_thread(rx: mpsc::Receiver<AudioCmd>, ev: tmpsc::UnboundedSender<AudioEv>) {
+    let mut state = AudioState::new();
     loop {
-        match rx.recv_timeout(Duration::from_millis(250)) {
-            Ok(AudioCmd::Load(stream)) => {
-                let stream_probe = stream.probe();
-                match rodio::Decoder::new(*stream) {
-                    Ok(d) => {
-                        fade_out_playing(&sink, volume); // 换歌不硬切
-                        let s = rodio::Player::connect_new(device_sink.mixer());
-                        s.set_volume(volume);
-                        s.append(d.fade_in(FADE_IN));
-                        sink = Some(s);
-                        probe = Some(stream_probe);
-                        active = true;
-                        last_anchor = std::time::Instant::now();
-                        let _ = ev.send(AudioEv::Playing { pos: 0.0 });
-                    }
-                    Err(e) => {
-                        let _ = ev.send(AudioEv::Error {
-                            code: ErrorCode::DecodeFailed,
-                            message: format!("decode/play: {e}"),
-                        });
-                    }
-                }
-            }
-            Ok(AudioCmd::Pause) => {
-                if let Some(s) = &sink {
-                    if !s.empty() && !s.is_paused() {
-                        fade(s, volume, 0.0, FADE_OUT);
-                    }
-                    s.pause();
-                    s.set_volume(volume); // 斜坡拉到 0 后复位,resume 淡入再从 0 起
-                    let _ = ev.send(AudioEv::Paused {
-                        pos: s.get_pos().as_secs_f64(),
-                    });
-                }
-            }
-            Ok(AudioCmd::Resume) => {
-                if let Some(s) = &sink {
-                    s.set_volume(0.0);
-                    s.play();
-                    fade(s, 0.0, volume, FADE_OUT);
-                    last_anchor = std::time::Instant::now();
-                    let _ = ev.send(AudioEv::Playing {
-                        pos: s.get_pos().as_secs_f64(),
-                    });
-                }
-            }
-            Ok(AudioCmd::Volume(v)) => {
-                volume = v.clamp(0.0, 1.0);
-                if let Some(s) = &sink {
-                    s.set_volume(volume);
-                }
-                let _ = ev.send(AudioEv::Volume { val: volume }); // 同步 MPRIS Volume 属性
-            }
-            Ok(AudioCmd::Seek(sec)) => {
-                if let Some(s) = &sink {
-                    if s.try_seek(Duration::from_secs_f64(sec.max(0.0))).is_err() {
-                        let _ = ev.send(AudioEv::Error {
-                            code: ErrorCode::SeekFailed,
-                            message: "seek failed".into(),
-                        });
-                    } else {
-                        let pos = s.get_pos().as_secs_f64();
-                        let _ = ev.send(AudioEv::Seeked { pos }); // MPRIS Seeked 信号(暂停/播放都发)
-                        if !s.is_paused() {
-                            // seek 后立刻重锚:其它 UI 面(非发起方)才能同步到新位置
-                            last_anchor = std::time::Instant::now();
-                            let _ = ev.send(AudioEv::Playing { pos });
-                        }
-                    }
-                }
-            }
-            Ok(AudioCmd::Stop) => {
-                fade_out_playing(&sink, volume);
-                sink = None;
-                probe = None;
-                active = false;
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                // 播完检测:曾在播 && sink 空了。先回查流死因 —— 解码器把 IO 错误
-                // 静默吞成 EOF,流带错死亡必须报 error(bridge 落日志 + UI 横幅),
-                // 报 ended 会被当"播完"自动切歌(即"没播完就下一曲"的根因)。
-                if active {
-                    if let Some(s) = &sink {
-                        if s.empty() {
-                            active = false;
-                            match probe.as_ref().and_then(StreamProbe::failure) {
-                                Some(reason) => {
-                                    let _ = ev.send(AudioEv::Error {
-                                        code: ErrorCode::FetchFailed,
-                                        message: format!("stream died mid-play: {reason}"),
-                                    });
-                                }
-                                None => {
-                                    let _ = ev.send(AudioEv::Ended);
-                                }
-                            }
-                        } else if !s.is_paused() && last_anchor.elapsed() >= POS_ANCHOR_INTERVAL {
-                            // 周期锚点:校准 UI 墙钟插值(缓冲停顿造成的漂移 ≤ 一个间隔)
-                            last_anchor = std::time::Instant::now();
-                            let _ = ev.send(AudioEv::Playing {
-                                pos: s.get_pos().as_secs_f64(),
-                            });
-                        }
-                    }
-                }
-            }
+        match rx.recv_timeout(poll_timeout(&state)) {
+            Ok(AudioCmd::Load(stream)) => load_stream(&mut state, *stream, &ev),
+            Ok(AudioCmd::Pause) => pause(&mut state, &ev),
+            Ok(AudioCmd::Resume) => resume(&mut state, &ev),
+            Ok(AudioCmd::Volume(value)) => set_volume(&mut state, value, &ev),
+            Ok(AudioCmd::Seek(sec)) => seek(&mut state, sec, &ev),
+            Ok(AudioCmd::Stop) => stop(&mut state),
+            Err(mpsc::RecvTimeoutError::Timeout) => poll_playback(&mut state, &ev),
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unloaded_event_carries_resume_position() {
+        let value: serde_json::Value =
+            serde_json::from_str(&AudioEv::Unloaded { pos: 42.5 }.to_ndjson()).unwrap();
+        assert_eq!(
+            value,
+            json!({"ev":"player","type":"unloaded","data":{"pos":42.5}})
+        );
+    }
+
+    #[test]
+    fn idle_state_does_not_poll_at_active_cadence() {
+        assert_eq!(poll_timeout(&AudioState::new()), Duration::from_secs(3600));
     }
 }
