@@ -139,7 +139,8 @@ fn ensure_device(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) -
         return true;
     }
     match rodio::DeviceSinkBuilder::open_default_sink() {
-        Ok(device_sink) => {
+        Ok(mut device_sink) => {
+            device_sink.log_on_drop(false);
             state.device_sink = Some(device_sink);
             let _ = ev.send(AudioEv::Log {
                 level: LogLevel::Info,

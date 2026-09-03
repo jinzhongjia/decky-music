@@ -398,7 +398,9 @@ class Bridge:
         会经 Conn.on_missing → _ensure_player 拉起,省一次无谓 spawn(同 provider 的做法)。
         """
         try:
-            self.playback.player_gone()
+            event = self.playback.player_gone()
+            if event is not None:
+                self._track_task(decky.emit("player", event))
         except Exception as e:  # 断连路径上绝不能再抛,否则冒到 asyncio 顶层
             log("bridge", "own", "error", f"player_gone handler failed: {type(e).__name__}")
 

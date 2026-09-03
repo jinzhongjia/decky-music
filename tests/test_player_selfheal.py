@@ -204,15 +204,16 @@ class TestPlaybackPlayerGone(unittest.TestCase):
         pb = Playback(_PlayerConn(), None, "list_loop")
         return pb
 
-    def test_records_resume_point_and_cools_loaded(self):
+    def test_records_resume_point_cools_loaded_and_notifies_ui(self):
         pb = self._pb()
         pb._loaded = True
         pb.playing = True
         pb.pos = 87.5
-        pb.player_gone()
+        event = pb.player_gone()
         self.assertFalse(pb._loaded)  # 否则 resume 只会朝不存在的进程发命令
         self.assertFalse(pb.playing)
         self.assertEqual(pb._resume_at, 87.5)
+        self.assertEqual(event, {"ev": "player", "type": "paused", "data": {"pos": 87.5}})
 
     def test_not_loaded_keeps_resume_point_untouched(self):
         """没在播就没有中断处可记,别把上一次的 _resume_at 覆盖成 0。"""
@@ -221,6 +222,30 @@ class TestPlaybackPlayerGone(unittest.TestCase):
         pb._resume_at = 42.0
         pb.player_gone()
         self.assertEqual(pb._resume_at, 42.0)
+
+
+class TestBridgePlayerLostNotification(unittest.TestCase):
+    def test_forwards_paused_event_to_ui(self):
+        b = _bridge()
+        event = {"ev": "player", "type": "paused", "data": {"pos": 87.5}}
+        b.playback = types.SimpleNamespace(player_gone=lambda: event)
+        tasks = []
+        b._track_task = tasks.append
+        emitted = []
+
+        async def emit(*args):
+            emitted.append(args)
+
+        old_emit = bridge_mod.decky.emit
+        bridge_mod.decky.emit = emit
+        try:
+            b._player_connection_lost()
+            self.assertEqual(len(tasks), 1)
+            asyncio.run(tasks[0])
+        finally:
+            bridge_mod.decky.emit = old_emit
+
+        self.assertEqual(emitted, [("player", event)])
 
 
 class TestUnloadDetachesHooks(unittest.TestCase):
