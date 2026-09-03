@@ -57,6 +57,7 @@ pub async fn read_frame<R: AsyncBufRead + Unpin>(
     reader: &mut R,
     frame: &mut Vec<u8>,
 ) -> Result<Option<String>, FrameReadError> {
+    frame.clear();
     let mut received = false;
     loop {
         let chunk = reader.fill_buf().await?;
@@ -311,6 +312,24 @@ mod tests {
         assert_eq!(
             read_frame(&mut reader, &mut frame).await.unwrap(),
             Some("x".repeat(MAX_FRAME_BYTES))
+        );
+    }
+
+    #[tokio::test]
+    async fn read_frame_reuses_the_buffer_for_sequential_messages() {
+        let (mut writer, reader) = tokio::io::duplex(64);
+        writer.write_all(b"{\"id\":1}\n{\"id\":2}\n").await.unwrap();
+        drop(writer);
+        let mut reader = BufReader::new(reader);
+        let mut frame = Vec::new();
+
+        assert_eq!(
+            read_frame(&mut reader, &mut frame).await.unwrap(),
+            Some("{\"id\":1}".into())
+        );
+        assert_eq!(
+            read_frame(&mut reader, &mut frame).await.unwrap(),
+            Some("{\"id\":2}".into())
         );
     }
 
