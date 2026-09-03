@@ -70,13 +70,16 @@ export function WindowedList<T>({
 
   return (
     <div ref={viewport.ref} onScroll={viewport.onScroll} style={style}>
-      <div style={{ height: range.before }} />
+      <div style={{ height: range.before, flexShrink: 0 }} />
       {items.slice(range.start, range.end).map((item, index) => (
-        <div key={range.start + index} style={{ height: itemHeight, overflow: "hidden" }}>
+        <div
+          key={range.start + index}
+          style={{ height: itemHeight, overflow: "hidden", flexShrink: 0 }}
+        >
           {renderItem(item, range.start + index)}
         </div>
       ))}
-      <div style={{ height: range.after }} />
+      <div style={{ height: range.after, flexShrink: 0 }} />
     </div>
   );
 }
