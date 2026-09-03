@@ -565,6 +565,26 @@ class TestResumeAfterStreamDeath(unittest.TestCase):
         self.assertFalse(pb._loaded)  # 否则 resume 会发给死 sink
         self.assertEqual(pb._resume_at, 42.5)
 
+
+    def test_idle_sink_release_reloads_and_seeks_on_resume(self):
+        """久暂停后 player 丢 sink 省电;bridge 必须把它视为可恢复冷启动。"""
+        player = SeekTrackingConn()
+        pb = Playback(player, FakeConn())
+        pb.queue = [item(c) for c in "abc"]
+        pb.index = 1
+        pb._loaded = True
+        pb.pos = 42.5
+        run(pb.on_player_event(types.SimpleNamespace(
+            ev="player", type="unloaded", data={"pos": 42.5})))
+
+        self.assertFalse(pb._loaded)
+        self.assertFalse(pb.playing)
+        self.assertEqual(pb._resume_at, 42.5)
+
+        run(pb.resume())
+        self.assertIn("load", player.calls)
+        self.assertEqual(player.seeks, [42.5])
+
     def test_resume_reloads_and_seeks_back(self):
         player = SeekTrackingConn()
         pb = self._died_at(player)

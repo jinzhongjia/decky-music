@@ -25,6 +25,7 @@ REQUEST_TIMEOUT = 30  # 子进程响应上限(秒):song_url 最坏 ~20s;超时�
 PLAYER_CONNECT_TIMEOUT = 5
 # 超过这个耗时的请求按 warn 记,好让 release 日志里也留下慢请求的痕迹
 SLOW_REQUEST_S = 2.0
+VOLUME_PERSIST_DELAY = 0.15
 # 音质上限档位(两个 provider 各自映射到自家 level/前缀,见各自的 LADDER)。
 # 语义是"上限":provider 从这档往下逐档试,保证无版权/非会员的歌仍能播。
 QUALITIES = ("standard", "high", "lossless")
@@ -139,7 +140,9 @@ class Conn:
             os.unlink(self.path)
         except FileNotFoundError:
             pass
-        self.server = await asyncio.start_unix_server(self._accept, self.path)
+        self.server = await asyncio.start_unix_server(
+            self._accept, self.path, limit=protocol.MAX_FRAME_BYTES
+        )
         self._ev_task = asyncio.create_task(self._pump_events())
 
     async def _pump_events(self):
@@ -170,23 +173,29 @@ class Conn:
     async def _read_loop(self, reader: asyncio.StreamReader):
         # 单读循环 + 分流(协议 v1):log 事件直接落盘;domain 事件 → on_event;response → 队列。
         # 子进程在同一条连接上既回响应又推事件,必须在这里 demux,否则响应会被吞掉。
-        while line := await reader.readline():  # \n 分帧,同 Decky localsocket.py
-            try:
-                msg = protocol.decode_child_message(json.loads(line))
-            except (json.JSONDecodeError, protocol.ProtocolError) as e:
-                log("bridge", "own", "warn", f"bad {self.name} message: {e}")
-                continue
-            if isinstance(msg, protocol.LogEvent):
-                where = msg.where
-                log(self.name, "socket", msg.level, f"{where}: {msg.msg}" if where else msg.msg)
-            elif isinstance(msg, protocol.ChildEvent):
-                self._events.put_nowait(msg)  # 入顺序队列,读循环不阻塞(见 _pump_events)
-            else:  # ChildResponse:按 id 匹配在途请求;无主(已超时放弃)的迟到响应丢弃
-                fut = self.pending.pop(msg.id, None)
-                if fut and not fut.done():
-                    fut.set_result(msg)
-                else:
-                    log("bridge", "own", "warn", f"{self.name} drop stale response id={msg.id}")
+        try:
+            while line := await reader.readline():  # \n 分帧,同 Decky localsocket.py
+                if len(line) > protocol.MAX_FRAME_BYTES + 1:
+                    log("bridge", "own", "warn", f"{self.name} frame exceeded size limit")
+                    return
+                try:
+                    msg = protocol.decode_child_message(json.loads(line))
+                except (json.JSONDecodeError, protocol.ProtocolError) as e:
+                    log("bridge", "own", "warn", f"bad {self.name} message: {e}")
+                    continue
+                if isinstance(msg, protocol.LogEvent):
+                    where = msg.where
+                    log(self.name, "socket", msg.level, f"{where}: {msg.msg}" if where else msg.msg)
+                elif isinstance(msg, protocol.ChildEvent):
+                    self._events.put_nowait(msg)  # 入顺序队列,读循环不阻塞(见 _pump_events)
+                else:  # ChildResponse:按 id 匹配在途请求;无主(已超时放弃)的迟到响应丢弃
+                    fut = self.pending.pop(msg.id, None)
+                    if fut and not fut.done():
+                        fut.set_result(msg)
+                    else:
+                        log("bridge", "own", "warn", f"{self.name} drop stale response id={msg.id}")
+        except ValueError:
+            log("bridge", "own", "warn", f"{self.name} frame exceeded size limit")
 
     def disconnect(self, writer: asyncio.StreamWriter | None = None):
         """连接断开:清干净状态,好让下一次 spawn 能重新连进来。
@@ -223,12 +232,17 @@ class Conn:
             await self.on_missing()
         if self.writer is None:  # 子进程已经没了(见 disconnect),别等满 30s 再说
             return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
+        payload = json.dumps(protocol.request(rid, cmd, args)).encode()
+        if len(payload) > protocol.MAX_FRAME_BYTES:
+            return protocol.ChildResponse(
+                rid, False, {}, protocol.ErrorBody("invalid_request", "frame too large")
+            )
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self.pending[rid] = fut
         t0 = time.monotonic()
         try:
             async with self._wlock:  # 写帧原子,防并发写乱行
-                self.writer.write((json.dumps(protocol.request(rid, cmd, args)) + "\n").encode())
+                self.writer.write(payload + b"\n")
                 await self.writer.drain()
             resp = await asyncio.wait_for(fut, REQUEST_TIMEOUT)
             self._log_timing(cmd, time.monotonic() - t0)
@@ -259,12 +273,19 @@ class Conn:
             log("bridge", "own", "debug", f"{self.name} {cmd} {ms:.0f}ms")
 
     async def close(self):
-        if self._ev_task:
-            self._ev_task.cancel()
+        task = self._ev_task
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
         if self.writer:
             self.writer.close()
+            try:
+                await self.writer.wait_closed()
+            except (ConnectionResetError, OSError):
+                pass
         if self.server:
             self.server.close()
+            await self.server.wait_closed()
 
 
 def _songs_to_items(songs) -> list[dict]:
@@ -327,6 +348,8 @@ class Bridge:
         # 红心记忆:启动/登录后由 _kick_seed_liked 从服务器种全量,like 动作增量维护;
         # 切 provider 清空(两家 id 体系不通用)。
         self.liked_ids: set[str] = set()
+        self._tasks: set[asyncio.Task] = set()
+        self._volume_persist_task: asyncio.Task | None = None
 
     async def start(self):
         self.settings = load_settings()
@@ -364,8 +387,8 @@ class Bridge:
         # 预设了 provider 就在加载时后台预拉起(不阻塞启动),省去 UI 首次 get_provider 的
         # spawn+连接延迟,避免面板闪一下"选源"再跳账号态。
         if self.settings.get("provider"):
-            asyncio.create_task(self._ensure_provider(self.settings["provider"]))
-        asyncio.create_task(self._credential_refresh_loop())
+            self._track_task(self._ensure_provider(self.settings["provider"]))
+        self._track_task(self._credential_refresh_loop())
 
     def _player_connection_lost(self):
         """player 连接断了 = 进程崩了/被杀(正常路径下它与 bridge 同生共死)。
@@ -375,7 +398,9 @@ class Bridge:
         会经 Conn.on_missing → _ensure_player 拉起,省一次无谓 spawn(同 provider 的做法)。
         """
         try:
-            self.playback.player_gone()
+            event = self.playback.player_gone()
+            if event is not None:
+                self._track_task(decky.emit("player", event))
         except Exception as e:  # 断连路径上绝不能再抛,否则冒到 asyncio 顶层
             log("bridge", "own", "error", f"player_gone handler failed: {type(e).__name__}")
 
@@ -559,7 +584,48 @@ class Bridge:
             except Exception as e:
                 log("bridge", "own", "debug", f"liked seed failed: {e}")
 
-        asyncio.create_task(seed())
+        self._track_task(seed())
+
+    def _track_task(self, coro) -> asyncio.Task:
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
+
+    def _schedule_volume_persist(self):
+        task = self._volume_persist_task
+        if task and not task.done():
+            task.cancel()
+        self._volume_persist_task = self._track_task(self._persist_volume_later())
+
+    async def _persist_volume_later(self):
+        try:
+            await asyncio.sleep(VOLUME_PERSIST_DELAY)
+            save_settings(self.settings)
+        finally:
+            if self._volume_persist_task is asyncio.current_task():
+                self._volume_persist_task = None
+
+    async def _flush_volume_persist(self):
+        task = self._volume_persist_task
+        if task is None:
+            return
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            save_settings(self.settings)
+        self._volume_persist_task = None
+
+    async def _stop_process(self, proc):
+        stop_child(proc)
+        if proc is None or proc.returncode is not None or not hasattr(proc, "wait"):
+            return
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=2)
+        except asyncio.TimeoutError:
+            log("bridge", "own", "warn", "child did not stop gracefully, killing")
+            stop_child(proc, hard=True)
+            await proc.wait()
 
     async def set_provider(self, which: str | None):
         if self.settings.get("provider") != which:
@@ -872,8 +938,8 @@ class Bridge:
         await self.player.request("seek", {"sec": sec})
 
     async def volume(self, val: float):
-        self.settings["volume"] = val  # 音量 bridge 持久化 + 直接下发 player
-        save_settings(self.settings)
+        self.settings["volume"] = val  # UI/MPRIS 立即读到目标值;落盘合并避免重复原子写
+        self._schedule_volume_persist()
         await self.player.request("volume", {"val": val})
 
     async def get_lyric(self, mid: str) -> dict:
@@ -969,7 +1035,13 @@ class Bridge:
         # 主动下线不是崩溃:摘掉自愈钩子,免得 close() 引发的断连被当成 player 猝死,
         # 白记一次中断处、甚至在拆进程的路上又把它拉起来。
         self.player.on_lost = self.player.on_missing = None
-        if self.provider_proc:
-            self.provider_proc.terminate()
+        await self._flush_volume_persist()
+        tasks = list(self._tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._tasks.clear()
+        await self._stop_process(self.provider_proc)
+        await self._stop_process(self.player_proc)
         await self.provider.close()
         await self.player.close()

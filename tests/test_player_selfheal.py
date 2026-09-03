@@ -204,15 +204,16 @@ class TestPlaybackPlayerGone(unittest.TestCase):
         pb = Playback(_PlayerConn(), None, "list_loop")
         return pb
 
-    def test_records_resume_point_and_cools_loaded(self):
+    def test_records_resume_point_cools_loaded_and_notifies_ui(self):
         pb = self._pb()
         pb._loaded = True
         pb.playing = True
         pb.pos = 87.5
-        pb.player_gone()
+        event = pb.player_gone()
         self.assertFalse(pb._loaded)  # 否则 resume 只会朝不存在的进程发命令
         self.assertFalse(pb.playing)
         self.assertEqual(pb._resume_at, 87.5)
+        self.assertEqual(event, {"ev": "player", "type": "paused", "data": {"pos": 87.5}})
 
     def test_not_loaded_keeps_resume_point_untouched(self):
         """没在播就没有中断处可记,别把上一次的 _resume_at 覆盖成 0。"""
@@ -221,6 +222,30 @@ class TestPlaybackPlayerGone(unittest.TestCase):
         pb._resume_at = 42.0
         pb.player_gone()
         self.assertEqual(pb._resume_at, 42.0)
+
+
+class TestBridgePlayerLostNotification(unittest.TestCase):
+    def test_forwards_paused_event_to_ui(self):
+        b = _bridge()
+        event = {"ev": "player", "type": "paused", "data": {"pos": 87.5}}
+        b.playback = types.SimpleNamespace(player_gone=lambda: event)
+        tasks = []
+        b._track_task = tasks.append
+        emitted = []
+
+        async def emit(*args):
+            emitted.append(args)
+
+        old_emit = bridge_mod.decky.emit
+        bridge_mod.decky.emit = emit
+        try:
+            b._player_connection_lost()
+            self.assertEqual(len(tasks), 1)
+            asyncio.run(tasks[0])
+        finally:
+            bridge_mod.decky.emit = old_emit
+
+        self.assertEqual(emitted, [("player", event)])
 
 
 class TestUnloadDetachesHooks(unittest.TestCase):
@@ -242,6 +267,56 @@ class TestUnloadDetachesHooks(unittest.TestCase):
         self.assertIsNone(b.player.on_lost)
         self.assertIsNone(b.player.on_missing)
 
+
+
+class TestVolumePersistence(unittest.TestCase):
+    def test_volume_is_applied_immediately_but_persisted_once(self):
+        b = _bridge()
+        saved = []
+        original = bridge_mod.save_settings
+        bridge_mod.save_settings = lambda data: saved.append(data.copy())
+
+        async def check():
+            await b.volume(0.65)
+            self.assertEqual(b.player.sent, [("volume", {"val": 0.65})])
+            self.assertEqual(saved, [])
+            await b._flush_volume_persist()
+
+        try:
+            asyncio.run(check())
+        finally:
+            bridge_mod.save_settings = original
+        self.assertEqual(saved, [{"volume": 0.65}])
+
+
+class TestUnloadBackgroundTasks(unittest.TestCase):
+    def test_unload_cancels_bridge_owned_tasks(self):
+        b = _bridge()
+        b.provider = type("Conn", (), {"close": staticmethod(_emit)})()
+        b.player.close = _emit
+        b.provider_proc = None
+        cancelled = asyncio.Event()
+        original = bridge_mod.save_settings
+        bridge_mod.save_settings = lambda _data: None
+
+        async def linger():
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        async def check():
+            task = b._track_task(linger())
+            await asyncio.sleep(0)
+            await b.unload()
+            self.assertTrue(task.cancelled())
+            self.assertTrue(cancelled.is_set())
+
+        try:
+            asyncio.run(check())
+        finally:
+            bridge_mod.save_settings = original
 
 if __name__ == "__main__":
     unittest.main()

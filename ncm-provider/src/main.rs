@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc;
 
@@ -30,7 +30,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = arg("--socket").expect("--socket <path> required");
     let stream = UnixStream::connect(&socket).await?;
     let (rd, mut wr) = stream.into_split();
-    let mut lines = BufReader::new(rd).lines();
+    let mut reader = BufReader::new(rd);
+    let mut frame = Vec::new();
 
     // 设备身份要跨进程持久化(见 device.rs):bridge 经环境变量注入目录
     let state_dir = std::env::var("DECKY_MUSIC_STATE_DIR").ok();
@@ -41,6 +42,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
     tokio::spawn(async move {
         while let Some(line) = out_rx.recv().await {
+            if line.len() > protocol::MAX_FRAME_BYTES {
+                break;
+            }
             if wr.write_all(line.as_bytes()).await.is_err()
                 || wr.write_all(b"\n").await.is_err()
                 || wr.flush().await.is_err()
@@ -53,8 +57,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 在跑的登录轮询;新登录来时 abort 掉,避免双循环并发 emit。
     let mut login_handle: Option<tokio::task::JoinHandle<()>> = None;
 
-    // NDJSON:每条一行 {json}\n(协议 v1)。命令处理后台化,慢上游不堵读循环。
-    while let Some(line) = lines.next_line().await? {
+    // NDJSON:每条一行 {json}\n(协议 v1),单条 ≤ 1 MiB。命令处理后台化,慢上游不堵读循环。
+    while let Some(line) = protocol::read_frame(&mut reader, &mut frame).await? {
         let req = match protocol::parse_request(&line) {
             Ok(r) => r,
             // 解析失败拿不到 id → 记录并丢弃

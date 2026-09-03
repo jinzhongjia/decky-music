@@ -9,6 +9,7 @@ from typing import Any
 
 JsonObject = dict[str, Any]
 _LOG_LEVELS = {"debug", "info", "warn", "error"}
+MAX_FRAME_BYTES = 1 << 20
 
 
 class ProtocolError(Exception):

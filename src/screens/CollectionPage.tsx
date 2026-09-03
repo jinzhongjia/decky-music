@@ -10,7 +10,7 @@ import { playQueue } from "../player/usePlayer";
 import { usePlaybackShortcuts } from "../ui/AppShell";
 import { SongRows, songListStyle } from "../ui/SongRow";
 import { theme } from "../ui/theme";
-import { nearBottom } from "../ui/useAsync";
+import { WindowedList } from "../ui/Windowed";
 
 export function CollectionPage({
   cover,
@@ -81,18 +81,21 @@ export function CollectionPage({
           </div>
 
           {/* 曲目列表 */}
-          <Focusable
-            onScroll={loadMore ? (e) => nearBottom(e) && loadMore() : undefined}
-            style={songListStyle}
-          >
-            {songs === null ? (
-              <div style={{ color: theme.textDim }}>{t("loading")}</div>
-            ) : songs.length === 0 ? (
-              <div style={{ color: theme.textDim }}>{t("noResults")}</div>
-            ) : (
-              <SongRows songs={songs} />
-            )}
-          </Focusable>
+          {songs === null ? (
+            <div style={{ color: theme.textDim }}>{t("loading")}</div>
+          ) : songs.length === 0 ? (
+            <div style={{ color: theme.textDim }}>{t("noResults")}</div>
+          ) : (
+            <WindowedList
+              items={songs}
+              itemHeight={72}
+              onNearBottom={loadMore}
+              renderItem={(song, index) => (
+                <SongRows songs={[song]} queue={songs} startIndex={index} />
+              )}
+              style={songListStyle}
+            />
+          )}
         </>
       )}
     </Focusable>

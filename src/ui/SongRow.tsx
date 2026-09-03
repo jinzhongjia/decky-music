@@ -21,14 +21,22 @@ export const songListStyle: React.CSSProperties = {
 
 /** 一列歌曲行:A = 以整列建队并定位该曲(QUEUE-BEHAVIOR §2),X = 入队菜单。
  *  空/加载态由调用方渲染 —— 列表页居中、详情页贴顶,排版不同不强行统一。 */
-export function SongRows({ songs }: { songs: Song[] }) {
+export function SongRows({
+  songs,
+  queue = songs,
+  startIndex = 0,
+}: {
+  songs: Song[];
+  queue?: Song[];
+  startIndex?: number;
+}) {
   return (
     <>
       {songs.map((s, i) => (
         <SongRow
-          key={`${s.mid}-${i}`}
+          key={`${s.mid}-${startIndex + i}`}
           song={s}
-          onClick={() => playQueue(songs, i)}
+          onClick={() => playQueue(queue, startIndex + i)}
           onMenu={() => openSongMenu(s)}
         />
       ))}
@@ -60,6 +68,8 @@ export function SongRow({
     >
       <img
         src={song.cover || undefined}
+        loading="lazy"
+        decoding="async"
         style={{
           width: 48,
           height: 48,

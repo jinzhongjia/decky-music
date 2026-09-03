@@ -527,6 +527,13 @@ class Playback:
         elif ev.type == "paused":
             self.playing = False
             self.pos = ev.data.get("pos", self.pos)
+        elif ev.type == "unloaded":
+            # 长暂停后 player 主动释放 PipeWire sink;下次 resume 重新取 URL + load + seek。
+            self.playing = False
+            self.pos = ev.data.get("pos", self.pos)
+            self._resume_at = self.pos
+            self._loaded = False
+            log("bridge", "own", "debug", f"paused sink released at {self.pos:.1f}s")
         elif ev.type == "ended":
             self.playing = False
         elif ev.type == "error":
@@ -548,20 +555,19 @@ class Playback:
             await self._on_ended()
 
     def player_gone(self):
-        """player 进程没了(崩溃 / 被 kill),而不是流死了。
+        """记录 player 猝死，并返回给 UI 的 paused 事件。
 
-        进程猝死连 error 事件都发不出来,STREAM_DEATH_ERRORS 那条路走不到 —— 只能由
-        bridge 在连接断开时告诉我们。处理同断流:_loaded 置 False 让下次 resume() 冷启动
-        重新加载,_resume_at 记下中断处以便接上,而不是从头重放。
+        进程猝死连 error 事件都发不出来，STREAM_DEATH_ERRORS 那条路走不到 —— 只能由
+        bridge 在连接断开时告诉我们。处理同断流：_loaded 置 False 让下次 resume() 冷启动
+        重新加载，_resume_at 记下中断处以便接上，而不是从头重放。
 
-        不动 queue/index:曲目没变,换的只是放它的那个进程。
-        原先这里什么都不做,因为假设"bridge 与 player 同生共死"(见 resume() 注释);
-        player 单独崩掉时该假设不成立,_loaded 停在 True → 之后每次 resume 都只发
-        resume 命令给一个已经不存在的进程,表现为"按播放键永远没反应"。
+        不动 queue/index：曲目没变，换的只是放它的那个进程。返回 paused 事件让前端切到
+        可恢复的播放按钮；否则 UI 会停在“正在播放”，下一次按键只会再发 pause。
         """
         if not self._loaded:
-            return  # 没在播 / 已经冷掉:没有中断处可记,别把 _resume_at 覆盖成 0
+            return None  # 没在播 / 已经冷掉：没有中断处可记，别把 _resume_at 覆盖成 0
         self.playing = False
         self._resume_at = self.pos
         self._loaded = False
         log("bridge", "own", "warn", f"player gone at {self.pos:.1f}s, resume will continue from here")
+        return {"ev": "player", "type": "paused", "data": {"pos": self.pos}}

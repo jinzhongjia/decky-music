@@ -5,12 +5,88 @@
 //! 各二进制自己的命令 args struct 留在各自的 `protocol` 模块里(它把本 crate 整个再导出),
 //! 业务代码照旧写 `protocol::ok(...)` / `protocol::ErrorCode::X`,不碰裸 JSON。
 
+use std::error::Error;
+use std::{fmt, io};
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
 #[derive(Debug)]
 pub struct ProtocolError(pub String);
+
+/// UDS + NDJSON frame payload ceiling. The newline delimiter is not counted.
+pub const MAX_FRAME_BYTES: usize = 1 << 20;
+
+#[derive(Debug)]
+pub enum FrameReadError {
+    Io(io::Error),
+    TooLarge,
+    InvalidUtf8,
+}
+
+impl fmt::Display for FrameReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(error) => write!(f, "frame I/O error: {error}"),
+            Self::TooLarge => write!(f, "frame exceeds {MAX_FRAME_BYTES} byte limit"),
+            Self::InvalidUtf8 => write!(f, "frame is not UTF-8"),
+        }
+    }
+}
+
+impl Error for FrameReadError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Io(error) => Some(error),
+            Self::TooLarge | Self::InvalidUtf8 => None,
+        }
+    }
+}
+
+impl From<io::Error> for FrameReadError {
+    fn from(error: io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+/// Read one bounded NDJSON frame. An EOF after a nonempty final frame is accepted for parity with
+/// `asyncio.StreamReader.readline`; callers close the connection on malformed/oversized frames.
+pub async fn read_frame<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+    frame: &mut Vec<u8>,
+) -> Result<Option<String>, FrameReadError> {
+    frame.clear();
+    let mut received = false;
+    loop {
+        let chunk = reader.fill_buf().await?;
+        if chunk.is_empty() {
+            break;
+        }
+        let take = chunk
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(chunk.len(), |index| index + 1);
+        let ended = chunk[take - 1] == b'\n';
+        if frame.len() + take > MAX_FRAME_BYTES + usize::from(ended) {
+            return Err(FrameReadError::TooLarge);
+        }
+        received = true;
+        frame.extend_from_slice(&chunk[..take]);
+        reader.consume(take);
+        if ended {
+            frame.pop();
+            break;
+        }
+    }
+    if !received {
+        return Ok(None);
+    }
+    String::from_utf8(frame.clone())
+        .map(Some)
+        .map_err(|_| FrameReadError::InvalidUtf8)
+}
 
 /// 稳定错误码(两端并集)。序列化即 wire 上的 error.code,前端据此 i18n。
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -139,6 +215,7 @@ fn err_static(id: u64) -> String {
 mod tests {
     use super::*;
     use serde_json::Value;
+    use tokio::io::{AsyncWriteExt, BufReader};
 
     #[derive(Debug, Deserialize)]
     struct LoadArgs {
@@ -219,5 +296,57 @@ mod tests {
             v,
             json!({"ev":"log","level":"warn","where":"a\"b","msg":"m\nsg"})
         );
+    }
+
+    #[tokio::test]
+    async fn read_frame_accepts_a_max_sized_payload() {
+        let (mut writer, reader) = tokio::io::duplex(MAX_FRAME_BYTES + 1);
+        writer
+            .write_all(&vec![b'x'; MAX_FRAME_BYTES])
+            .await
+            .unwrap();
+        drop(writer);
+        let mut reader = BufReader::new(reader);
+        let mut frame = Vec::new();
+
+        assert_eq!(
+            read_frame(&mut reader, &mut frame).await.unwrap(),
+            Some("x".repeat(MAX_FRAME_BYTES))
+        );
+    }
+
+    #[tokio::test]
+    async fn read_frame_reuses_the_buffer_for_sequential_messages() {
+        let (mut writer, reader) = tokio::io::duplex(64);
+        writer.write_all(b"{\"id\":1}\n{\"id\":2}\n").await.unwrap();
+        drop(writer);
+        let mut reader = BufReader::new(reader);
+        let mut frame = Vec::new();
+
+        assert_eq!(
+            read_frame(&mut reader, &mut frame).await.unwrap(),
+            Some("{\"id\":1}".into())
+        );
+        assert_eq!(
+            read_frame(&mut reader, &mut frame).await.unwrap(),
+            Some("{\"id\":2}".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn read_frame_rejects_an_oversized_payload() {
+        let (mut writer, reader) = tokio::io::duplex(MAX_FRAME_BYTES + 2);
+        writer
+            .write_all(&vec![b'x'; MAX_FRAME_BYTES + 1])
+            .await
+            .unwrap();
+        drop(writer);
+        let mut reader = BufReader::new(reader);
+        let mut frame = Vec::new();
+
+        assert!(matches!(
+            read_frame(&mut reader, &mut frame).await,
+            Err(FrameReadError::TooLarge)
+        ));
     }
 }

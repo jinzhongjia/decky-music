@@ -106,8 +106,7 @@ Decky 只提供两种原语,足够:
 
 传输帧仍然**照抄 Decky 自己的内部传输**(`backend/decky_loader/localplatform/localsocket.py`):
 
-- **换行分隔 JSON(NDJSON)**:每条消息一行 `{json}\n`,UTF-8。
-- 单条上限 **1 MiB**(与 Decky `BUFFER_LIMIT = 2**20` 对齐)。
+- **换行分隔 JSON(NDJSON)**:每条消息一行 `{json}\n`,UTF-8。编码后的 JSON 不得超过 **1 MiB**(与 Decky `BUFFER_LIMIT = 2**20` 对齐)。
 
 协议当前只保留 **v1**。四种消息:
 
@@ -127,6 +126,7 @@ Decky 只提供两种原语,足够:
 - 超时分两级:`timeout`(bridge 通道级,子进程整体不响应)立即熔断;`upstream_timeout`
   (provider 单次上游请求)连续 2 次才熔断 —— 单次抖动只跳过当前曲。
 - 子进程诊断走 `Log Event`;stderr 只留 panic/traceback 等非预期输出。
+- 每端在 JSON 解码前以字节数强制 1 MiB 上限:超限入站帧立即断开,bridge 拒绝超限 request(`invalid_request`),子进程停止向该连接写入。不得为诊断把原始帧写日志。
 
 > 关于 provider 包裹:ncm-api-rs 与 QQMusicApi **都作为库使用**,由我们各写一层 wrapper 暴露上述 NDJSON-over-UDS 协议(不用它们自带的 axum / FastAPI HTTP server)。两个 provider 因此协议一致,bridge 统一对待。
 
@@ -537,12 +537,13 @@ music-plugin/
 | **缓存元数据/歌词,绝不缓存歌曲 URL** | 搜索/歌词/歌单可短缓存;播放 URL 每次现取 | ⚠️ 防坑非收益:NCM/QQ 播放 URL 是**限时签名**,缓存会过期→403 |
 | **watchdog 用信号不轮询** | 子进程退出用 SIGCHLD / asyncio child watcher,不 `poll()` 循环 | 轮询=周期性唤醒 CPU;信号=平时睡、真死才醒。同 §5.5 event-driven |
 | **大屏页代码分割懒加载** | `React.lazy` + `WithSuspense`,进路由才加载平板 UI | QAM 秒开;减小注入 Steam 的初始 JS 与内存(Decky 原生用法) |
-| **暂停久了释放音频 sink** | pause 超时(如 30s)drop sink,PipeWire 挂起节点省电 | 一个计时器 + drop;再播放重新开 |
+| **播放完成/位置锚点走 source 事件** | decoder EOF 的 `EmptyCallback` 和实际音频样本消耗的 `periodic_access` 写回音频命令队列 | 活跃 player 阻塞等待命令/事件，不再每 250ms 唤醒检查 `sink.empty()`；缓冲停摆也不产生假位置 |
+| **暂停久了释放音频 sink / player 崩溃** | player 只在 pause 后等待一个 30s deadline，超时 drop sink；bridge 收到 `unloaded` 或 player 连接断开后将已载入状态置空，并向 UI 发 `paused` | PipeWire 节点不再常驻；恢复播放按需重拉 player，重载流并 seek 回中断位置（失败才从头播）；UI 不会停在“正在播放”而把下一次按键误作 pause |
 | **封面图缩略图 + 虚拟列表**(P3) | 请求 CDN 缩略图尺寸(如 `?param=200y200`,非原图);歌单只渲染视口内封面,离屏不请求;按 songId/URL 缓存 | 缩略图省 ~25× 纹理内存;`<img>` 直连 CDN(§6.3 方案 A),失败 `onError` 占位不崩溃 |
 
 ### 13.3 已内建(设计里已有,无需另做)
 
-client 端进度插值(§5.5)、全链路 event-driven 无轮询、前端零重计算(§6.5)、同一时刻单 provider 存活(§4)、ncm Rust ~5MB。
+client 端进度插值(§5.5)、全链路事件驱动(仅 pause 的一次性 30s deadline)、前端零重计算(§6.5)、同一时刻单 provider 存活(§4)、ncm Rust ~5MB。
 
 ---
 

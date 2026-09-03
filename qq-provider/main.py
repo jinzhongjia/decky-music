@@ -41,7 +41,9 @@ async def main():
     parser.add_argument("--socket", required=True)
     args = parser.parse_args()
 
-    reader, writer = await asyncio.open_unix_connection(args.socket)
+    reader, writer = await asyncio.open_unix_connection(
+        args.socket, limit=protocol.MAX_FRAME_BYTES
+    )
     # 设备身份要跨进程持久化(见 qq/__init__.py 的 _device_path):bridge 经环境变量注入目录
     qq = QQ(state_dir=os.environ.get("DECKY_MUSIC_STATE_DIR"))
     await qq.ensure_device()  # 先把设备身份落盘,首个请求就用稳定身份
@@ -49,8 +51,13 @@ async def main():
 
     async def pump():
         while True:
-            line = await out.get()
-            writer.write((json.dumps(line, ensure_ascii=False) + "\n").encode())
+            message = await out.get()
+            frame = json.dumps(message, ensure_ascii=False).encode()
+            if len(frame) > protocol.MAX_FRAME_BYTES:
+                writer.close()
+                await writer.wait_closed()
+                return
+            writer.write(frame + b"\n")
             await writer.drain()
 
     def emit(typ: str, **data):
@@ -67,23 +74,29 @@ async def main():
         in_flight.add(task)
         task.add_done_callback(in_flight.discard)
 
-    # NDJSON:每条一行 {json}\n,UTF-8(协议 v1)。命令处理后台化,慢上游不堵读循环。
-    while line := await reader.readline():
-        try:
-            raw = json.loads(line)
-        except json.JSONDecodeError:
-            log("warn", "protocol", "bad json frame")
-            continue
-        try:
-            req = protocol.decode_request(raw)
-        except protocol.ProtocolError as e:
-            rid = raw.get("id") if isinstance(raw, dict) else None
-            if isinstance(rid, int) and not isinstance(rid, bool):
-                await out.put(protocol.err(rid, "invalid_request", str(e)))
-            else:
-                log("warn", "protocol", f"bad request: {e}")
-            continue
-        track(_run_request(qq, req, emit, log, out))
+    # NDJSON:每条一行 {json}\n,UTF-8(协议 v1),单条 ≤ 1 MiB。命令处理后台化,慢上游不堵读循环。
+    try:
+        while line := await reader.readline():
+            if len(line) > protocol.MAX_FRAME_BYTES + 1:
+                log("warn", "protocol", "frame exceeded size limit")
+                break
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                log("warn", "protocol", "bad json frame")
+                continue
+            try:
+                req = protocol.decode_request(raw)
+            except protocol.ProtocolError as e:
+                rid = raw.get("id") if isinstance(raw, dict) else None
+                if isinstance(rid, int) and not isinstance(rid, bool):
+                    await out.put(protocol.err(rid, "invalid_request", str(e)))
+                else:
+                    log("warn", "protocol", f"bad request: {e}")
+                continue
+            track(_run_request(qq, req, emit, log, out))
+    except ValueError:
+        log("warn", "protocol", "frame exceeded size limit")
 
 
 async def _run_request(qq: QQ, req: protocol.Request, emit, log, out):

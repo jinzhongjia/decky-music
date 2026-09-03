@@ -236,6 +236,7 @@ export type QueueState = { mode: QueueMode; index: number; items: TrackInfo[] };
 export const PlayerEv = {
   Playing: "playing",
   Paused: "paused",
+  Unloaded: "unloaded", // player 释放久暂停的 PipeWire sink;bridge 会在下次 resume 重新 load + seek
   Ended: "ended",
   Error: "error",
   Track: "track", // bridge 合成:当前播放曲变更(自动切歌/next/prev),data.index 指向队列位置
@@ -258,6 +259,7 @@ export type LoginStatus = (typeof LoginStatus)[keyof typeof LoginStatus];
 export type PlayerEvent =
   | { ev: "player"; type: "playing"; data: { pos: number; wall_ms: number } }
   | { ev: "player"; type: "paused"; data: { pos: number } }
+  | { ev: "player"; type: "unloaded"; data: { pos: number } }
   | { ev: "player"; type: "ended"; data: Record<string, never> }
   | { ev: "player"; type: "error"; data: { code: string; message: string } }
   // song=null:队列清空进入空态
