@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <strong>在 Steam Deck 游戏模式中享受 QQ 音乐与网易云音乐。</strong>
+  <strong>在 SteamOS 游戏模式中享受 QQ 音乐与网易云音乐。</strong>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <a href="docs/ui-design/README.md">UI 设计与完整实机截图</a>
 </p>
 
-Decky Music 是为 Steam Deck 游戏模式设计的 Decky Loader 音乐插件。前端采用手柄优先的大屏
+Decky Music 面向 SteamOS 游戏模式，不以 Steam Deck 品牌为运行条件。前端采用手柄优先的大屏
 界面；音乐服务访问、播放队列和音频输出运行在独立进程中，避免网络请求、解码或后端异常阻塞
 Steam UI。
 
@@ -76,7 +76,8 @@ Steam UI。
 
 ### 前置条件
 
-- Steam Deck，运行 SteamOS 游戏模式。
+- `x86_64` 设备，运行 SteamOS 游戏模式；需要用户会话中的 PipeWire、ALSA 兼容层和 `libasound.so.2`。
+- 当前二进制要求 glibc **2.39 或更高**。这是 ABI 最低要求，不代表所有满足要求的设备均已验证。
 - 已安装 [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)。
 - Steam client `1784934043` 及更新版本需要 Decky Loader `v3.2.8-pre1` 或更高版本；`v3.2.6`
   会在导入插件前崩溃，表现为 Decky 快捷菜单与左侧「音乐」入口同时消失。
@@ -129,7 +130,8 @@ Decky 当前的手动安装器只接受 ZIP 的 URL，详见
 - 切换 QQ 音乐与网易云音乐会停止播放并清空当前队列，因为两端的歌曲 ID 不兼容。
 - 电台内容不会跨会话持久化；普通队列会恢复，但插件重启后不会自动开始播放。
 - 不做本地音频缓存，每次播放都重新拉流；快捷菜单里的「清理缓存」清的是插件日志。
-- 仅面向 Steam Deck/SteamOS `x86_64` 游戏模式，其他发行版与架构未做适配与验证。
+- 通用 SteamOS 是适配目标；已有真机验收记录来自 Steam Deck，**非 Deck SteamOS 设备尚未真机验证**。
+  ARM、桌面模式及 Bazzite/ChimeraOS 等其他发行版不包含在当前已验证范围内。
 - 当前未提供搜索建议、最近播放历史与跨平台音源兜底。
 
 ## 架构
@@ -201,14 +203,30 @@ bash scripts/build-qq-provider.sh
 
 产物分别位于 `target/release/` 和 `qq-provider/build/qq-provider.tar.gz`。
 
+构建镜像固定到 digest，构建脚本自动运行 `scripts/check-binaries.py`：检查 x86-64 ELF、
+glibc 需求不超过 2.39，以及 Rust 可执行文件的动态依赖；QQ standalone 包内的 ELF 也必须通过。
+此检查只能证明二进制 ABI 边界，不能代替音频、手柄、屏幕缩放和睡眠恢复的真机验收。
+
 ### 部署到开发机
 
 ```bash
-DECK_HOST=deck@<steam-deck-ip> bash scripts/deploy.sh
+DECK_HOST=<user>@<steamos-ip> bash scripts/deploy.sh
 ```
 
 `scripts/deploy.sh` 会构建前端、打包插件、复制已有二进制并重启 `plugin_loader`。它**不会重新构建**
 player/provider；修改 `player/`、`ncm-provider/` 或 `qq-provider/` 后，必须先运行上面的对应构建命令。
+
+`DECK_HOST` 必填，SSH 登录用户不必名为 `deck`。脚本在构建前从远端 `plugin_loader` 服务配置
+发现实际插件目录；无法可靠发现时停止，不猜测 `/home/deck`。可用
+`DECK_PLUGIN_PATH=/absolute/path/to/plugins` 显式指定，目录仍须通过安全检查。
+写权限按服务的 `UNPRIVILEGED_USER` 配置（或可唯一对应的用户 home）设置，不使用 SSH 登录用户。
+目录覆盖不能替代账号解析；使用间接环境文件或无法确定账号时，需要先明确服务的非特权用户配置。
+侧载前须备齐三个预构建二进制；脚本会先检查 ABI，再开始打包。
+远端 sudo 如需口令，通过环境变量 `DECK_PASS` 提供，勿写入脚本或仓库。
+
+兼容性验收须分别记录：实际用户名/UID 与安装目录、SteamOS/Steam/Decky 版本、内置与外接音频、
+睡眠唤醒、屏幕比例/缩放和控制器操作。现有 Steam Deck 回归不等于非 Deck 设备已验收；
+后者目前因缺少设备而待验证。
 
 ## 目录
 

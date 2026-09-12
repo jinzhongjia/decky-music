@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <strong>Enjoy QQ Music and NetEase Cloud Music in Steam Deck Gaming Mode.</strong>
+  <strong>Enjoy QQ Music and NetEase Cloud Music in SteamOS Gaming Mode.</strong>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <a href="docs/ui-design/README.md">UI Design and Device Screenshots</a>
 </p>
 
-Decky Music is a Decky Loader music plugin designed for Steam Deck Gaming Mode. It provides a
+Decky Music targets SteamOS Gaming Mode without requiring Steam Deck hardware. It provides a
 controller-first full-screen UI, while music service access, queue management, and audio output run
 in separate processes so network requests, decoding, or backend failures do not block the Steam UI.
 
@@ -87,7 +87,10 @@ navigation.
 
 ### Requirements
 
-- A Steam Deck running SteamOS Gaming Mode.
+- An `x86_64` device running SteamOS Gaming Mode, with a user-session PipeWire server, ALSA
+  compatibility layer, and `libasound.so.2`.
+- Current binaries require glibc **2.39 or newer**. This is an ABI requirement, not a claim that
+  every device meeting it has been verified.
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader) installed.
 - Steam client `1784934043` and newer require Decky Loader `v3.2.8-pre1` or later. Decky `v3.2.6`
   crashes before importing plugins, which removes both the Decky Quick Access tab and the left-side
@@ -152,8 +155,10 @@ binaries that are not refreshed by Decky's remote verification — reinstall the
   start automatically after a plugin restart.
 - There is no local audio cache; every play re-streams. "Clear cache" in the quick menu clears the
   plugin logs.
-- Steam Deck/SteamOS `x86_64` Gaming Mode only; other distributions and architectures are neither
-  adapted nor verified.
+- General SteamOS compatibility is the target; existing device verification records are from
+  Steam Deck. **Non-Deck SteamOS hardware has not yet been verified on-device.**
+  ARM, Desktop Mode, and other distributions such as Bazzite/ChimeraOS are outside the currently
+  verified scope.
 - Search suggestions, recent-play history, and cross-provider fallback are not currently available.
 
 ## Architecture
@@ -230,15 +235,35 @@ bash scripts/build-qq-provider.sh
 
 Artifacts are written to `target/release/` and `qq-provider/build/qq-provider.tar.gz`.
 
-### Deploy to a Development Deck
+Build images are pinned by digest. The build scripts automatically run `scripts/check-binaries.py`
+to check x86-64 ELF files, glibc requirements no newer than 2.39, and the Rust executables' dynamic
+dependencies. ELF files bundled inside the QQ standalone package must pass too.
+These checks establish ABI boundaries, not on-device audio, controller, scaling, or suspend/resume compatibility.
+
+### Deploy to a SteamOS Development Device
 
 ```bash
-DECK_HOST=deck@<steam-deck-ip> bash scripts/deploy.sh
+DECK_HOST=<user>@<steamos-ip> bash scripts/deploy.sh
 ```
 
 `scripts/deploy.sh` builds the frontend, packages the plugin, copies existing binaries, and restarts
 `plugin_loader`. It **does not rebuild** the player or providers. After changing `player/`,
 `ncm-provider/`, or `qq-provider/`, run the corresponding build command above before deploying.
+
+`DECK_HOST` is required; the SSH login does not have to be named `deck`. Before building, the script
+discovers the installed plugins directory from the remote `plugin_loader` service configuration.
+If it cannot reliably discover it, it stops rather than guessing `/home/deck`. Override with
+`DECK_PLUGIN_PATH=/absolute/path/to/plugins` if needed; safety checks still apply.
+Writable directories belong to the service's `UNPRIVILEGED_USER` (or the uniquely matching user home),
+not the SSH login. A directory override does not override account resolution: indirect environment
+files or an ambiguous account require explicit, literal service configuration first.
+All three prebuilt binaries must be present; ABI checks run before packaging.
+If remote sudo needs a password, provide it through the `DECK_PASS` environment variable, never in scripts or the repository.
+
+Record compatibility checks separately: actual user/UID and install path, SteamOS/Steam/Decky versions,
+built-in and external audio, suspend/resume, display aspect ratio/scaling, and controller navigation.
+Steam Deck regression results do not verify non-Deck devices; those checks remain pending because
+no such device is currently available.
 
 ## Project Structure
 

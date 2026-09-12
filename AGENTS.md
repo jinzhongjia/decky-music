@@ -42,13 +42,18 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 
 ## Dev environment
 
-- 部署目标:Steam Deck(SteamOS,gamescope 会话)。SSH/路径见 `scripts/deploy.sh`。
+- 适配目标:通用 `x86_64` SteamOS 游戏模式(gamescope + Decky Loader),不限定 Steam Deck 品牌或 `deck` 用户。
+  已有真机验收记录来自 Steam Deck;非 Deck 设备因暂缺硬件仍待验收,不得据本地检查宣称已验证。
+  SSH/目录发现与显式覆盖见 `scripts/deploy.sh`。
 - bridge 跑在 Decky 冻结的 CPython 里,**只能用 stdlib**,严禁第三方依赖(编译扩展会随 Decky 升级崩)。
 - 三个二进制通过 Decky `remote_binary`(`package.json`)在安装时下载,不进插件包。
 - **改了 player / provider 代码必须先重建二进制再部署**:`deploy.sh` 只搬运 `target/release/*`
   和 `qq-provider/build/*.tar.gz` 里**已有**的产物,不自动重建。改了 Rust/Python 后先
   `bash scripts/build-rust.sh -p <player|ncm-provider>` / `bash scripts/build-qq-provider.sh`
   再 deploy,否则装的是旧二进制。只改前端则 deploy 会自己 `pnpm build`。
+- 构建镜像按 digest 固定,产物经 `scripts/check-binaries.py` 检查 x86-64/glibc ≤ 2.39
+  及 Rust 动态依赖;QQ standalone 内 ELF 一并检查。实际运行至少需要 glibc 2.39,
+  这只是 ABI 边界,不代替音频/控制器/屏幕缩放/睡眠恢复的真机验收。
 
 ### Setup commands
 
@@ -57,7 +62,7 @@ pnpm install                    # 前端依赖
 pnpm build                      # 只构建前端 → dist/
 pnpm lint                       # 前端 lint:tsc --noEmit + prettier --check;pnpm format 自动格式化
 sudo ./cli/decky plugin build . # 官方 CLI 打包整个插件 → out/<name>.zip(需 Docker + sudo)
-DECK_HOST=deck@ip bash scripts/deploy.sh  # 打包 + rsync 到 Steam Deck + 重启 plugin_loader
+DECK_HOST=user@ip bash scripts/deploy.sh  # 打包 + rsync 到 SteamOS 设备 + 重启 plugin_loader
 # DECK_HOST 必填、无默认值(见 issue #48);远端 sudo 要口令时另加 DECK_PASS=<口令>
 # 首次会自动下载官方 CLI 到 cli/decky(gitignore 已忽略)
 

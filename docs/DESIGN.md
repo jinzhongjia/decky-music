@@ -1,7 +1,9 @@
-# Steam Deck 音乐插件设计方案
+# SteamOS 音乐插件设计方案
 
-> 目标:为 Steam Deck 的 Decky Loader 写一个插件,集成 **QQ 音乐** 与 **网易云音乐** 的播放支持。
+> 目标:为通用 SteamOS 游戏模式的 Decky Loader 写一个插件,集成 **QQ 音乐** 与 **网易云音乐** 的播放支持,不限定 Steam Deck 品牌。
 > 核心思想:**插件本体只做 UI + 通信桥,真正的业务逻辑与音频播放作为独立进程运行在 Decky 沙盒之外**,以换取稳定性与不受 Decky 构建环境约束。
+> 兼容范围:x86-64、glibc ≥ 2.39、用户会话 PipeWire + ALSA 兼容层。已有真机记录来自 Steam Deck;
+> 非 Deck SteamOS 设备尚缺硬件验收,不能将下文历史 Deck 验证记录推广为所有设备已通过。
 
 ---
 
@@ -10,7 +12,7 @@
 Decky 插件的后端**不是**独立进程,而是被 loader 用 `multiprocessing.Process` fork 出来的子进程:
 
 - 执行时复用 **Decky 自己 PyInstaller 打包的冻结 Python 解释器**(`backend/pyinstaller.spec`),不是系统 Python,也不是插件自带的 venv。
-- 启动即 `setuid/setgid` 降权到 `deck` 用户(`backend/decky_loader/plugin/sandboxed_plugin.py:65-66`),除非 `plugin.json` 的 `flags` 含 `root`。
+- 启动时按 Decky 配置的非特权用户降权,除非 `plugin.json` 的 `flags` 含 `root`。插件不要求用户名为 `deck` 或 UID 为 1000。
 - 只能通过 `sys.path.append(.../py_modules)` 加载**纯 Python** 模块(`sandboxed_plugin.py:84`)。
 
 **推论:任何带编译扩展的库都不能直接进插件后端。**
@@ -328,7 +330,8 @@ Steam Deck 无鼠标,**每个可交互元素必须可被手柄焦点树导航**,
 
 ### 7.3 player — Rust,rodio + reqwest
 
-> 约束澄清:SteamOS 是完整 Arch-based DE,**核心音频栈(PipeWire + pulse/alsa 兼容层、`libasound`)保证存在**;要防的是**冷门/非常规动态库**缺失。因此放弃"musl 全静态 + 纯 Rust PA 协议"的重方案,走懒路。
+> 音频前提:目标 SteamOS 会话必须提供 PipeWire、ALSA 兼容层与 `libasound`。采用默认设备输出,
+> 不按设备品牌或声卡型号选择硬件;实际出声、音频设备切换和睡眠恢复仍须逐设备验收。
 
 ```mermaid
 graph LR
@@ -341,7 +344,16 @@ graph LR
 - **拉流**:`reqwest`,只开 `rustls-tls`,不碰 OpenSSL。
 - **解码+输出**:`rodio`(内置 `symphonia` 解码 + `cpal` 输出),一个 crate 搞定解码/播放/seek/音量。核心逻辑约 30 行。
 - **构建目标**:`x86_64-unknown-linux-gnu`(默认)。**不用 musl。**
-- **依赖形态**:所有 Rust crate 静态进二进制,**唯一动态依赖是 SteamOS 保证存在的 `libasound.so`** → 经 `pipewire-alsa` 兼容层 → PipeWire,自动走系统混音/音量。
+- **依赖形态**:除系统基线(`libc`/`libm`/`libgcc_s`/动态加载器)外,player 只动态依赖
+  `libasound.so.2` → ALSA 兼容层 → 用户 PipeWire,走系统混音/音量,不依赖 C OpenSSL 或 libpulse。
+- **可重复的兼容边界**:构建基础镜像固定 digest;`scripts/check-binaries.py` 检查产物的 x86-64
+  架构、glibc 符号版本上限 2.39 和 Rust 动态依赖。QQ 包内 ELF 同样检查。镜像或依赖升级
+  后仍须过检查,不得因构建机较新而静默提高运行门槛。
+- **会话环境**:`py_modules/session_env.py` 保留绝对路径、有效 UID 所有且权限 0700 的
+  `XDG_RUNTIME_DIR`;无效时查找 `/run/user/<effective-uid>`,仍不可用则移除错误值。
+  不创建假 runtime、不使用其他用户会话、不改写 D-Bus 等其他继承设置。
+- **部署目录**:安装路径由 Decky 配置决定,运行时使用 `DECKY_PLUGIN_*`;侧载先从远端
+  `plugin_loader` 配置发现插件目录,无法可靠发现则要求显式 `DECK_PLUGIN_PATH`,不猜 `/home/deck`。
 
 被否方案记录:
 
@@ -430,12 +442,16 @@ CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/
 
 1. **【最高】player 在 gamescope 会话下能否出声。**
    - 确认 `rodio` 能开 ALSA 默认设备并路由到 PipeWire。
-   - 确认 bridge spawn player(降权 `deck` 用户,uid 1000)时 `XDG_RUNTIME_DIR=/run/user/1000` 等环境变量传对,音频会话能接上。
+   - 确认 bridge 以实际 Decky 非特权用户启动 player,`XDG_RUNTIME_DIR` 指向该用户有效会话;
+     非 `deck` 用户、非 1000 UID 和自定义安装目录不得改变播放与设置隔离语义。
    - **这是整个播放链路的命门,应第一个做 spike。**
    - **探测记录(2026-07-04,桌面模式零代码探测):** `libasound.so.2` 位于 `/usr/lib/`、动态可用;`speaker-test`(ALSA 路,等同 rodio 的 cpal→libasound→pipewire-alsa 链)以 **48000Hz / S16_LE / 2ch** 正常出声;`pw-play` 亦正常。→ **libasound 路 + 默认格式协商已验证通过**,命门的架构风险基本消除。
    - **构建记录(2026-07-04):** player P0 二进制在官方 `holo-toolchain-rust`(+`pkgconf`/`alsa-lib`)镜像内构建,glibc 随 SteamOS。`readelf -d` 确认 NEEDED 仅 `libasound.so.2` + 系统基线(`libgcc_s`/`libm`/`libc`),**无 `libssl`/`libcrypto`**(rustls 生效)—— 满足"ldd 只动态依赖 libasound"验收。
    - **播放记录(2026-07-04,桌面模式实测):** 二进制 scp 到 Deck,`ldd` 全部解析、无 GLIBC 缺失;`player --play <mp3>` 拉流成功 → `OutputStream::try_default()` 开默认设备无错 → symphonia 解码 → **实际听到声音**、播完 `exit 0`。→ **待验证项② rodio/cpal 格式协商已通过(桌面模式)**。
    - **游戏模式验证(2026-07-04,整链实测):** 插件部署上 Deck,bridge 以 uid 1000(deck)+ 注入 `XDG_RUNTIME_DIR=/run/user/1000` spawn player,UDS 连接建立。游戏模式(gamescope 会话)下经 UI「测试播放」→ bridge `play_url` → player `load` **出声正常,暂停/继续可用**。→ **命门彻底关闭:整条 UI→bridge→player 在真机游戏模式跑通。**
+   - **通用 SteamOS 待验收**:以上是历史 Steam Deck 记录,不是当前所有设备的支持证明。非 Deck
+     设备暂缺硬件,后续须记录系统/Steam/Decky 版本、用户名/UID、安装路径、屏幕比例/缩放、
+     外接控制器、默认音频与设备切换、睡眠唤醒、故障后宿主存活。Steam Deck 回归与该矩阵分开记录。
 2. **子进程崩溃恢复。** bridge 仍需 watchdog:监听子进程退出,自动重启并 `emit` 通知 UI;当前进程管理已集中在 `py_modules/bridge.py`,后续在该处补齐。
 3. **NDJSON 乱序并发。** 已完成:bridge `Conn` 支持 request-id demux;QQ/NCM provider 命令处理后台化,慢上游不堵读循环;player `load` 后台化,慢 CDN 不堵控制命令。请求语义按 id 匹配响应,互不等待。
 4. **二进制执行位。** `remote_binary` 下载后确认 `bin/` 下文件有 `+x`;缺失则 bridge 里 `os.chmod`。
