@@ -35,6 +35,9 @@ jobs:
         run: |
           PLUGIN_NAME=$(jq -r '.name' plugin.json)
           echo "name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
+      # Must run before the CN step: release-cn.sh rebuilds out/, so read the pristine normal zip here.
+      - name: Build full (self-contained) zip
+        run: bash scripts/full-package.sh
 
       - name: Upload artifact to release
         uses: actions/upload-release-asset@v1
@@ -45,10 +48,6 @@ jobs:
           asset_path: out/${{ steps.plugin_info.outputs.name }}.zip
           asset_name: ${{ steps.plugin_info.outputs.name }}.zip
           asset_content_type: application/zip
-
-      # Must run before the CN step: release-cn.sh rebuilds out/, so read the pristine normal zip here.
-      - name: Build full (self-contained) zip
-        run: bash scripts/full-package.sh
 
       - name: Upload full zip to release
         uses: actions/upload-release-asset@v1

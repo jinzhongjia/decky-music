@@ -1,6 +1,6 @@
 # manylinux_2_28:glibc 2.28 < SteamOS,编译产物前向兼容;自带 gcc + 多版本 python。
 # Nuitka 编译的启动器/libpython 链接构建环境 glibc,故必须在旧 glibc 里构建。
-FROM quay.io/pypa/manylinux_2_28_x86_64
+FROM quay.io/pypa/manylinux_2_28_x86_64@sha256:0536c364004fa2a3c5041120b6fe35d84fc5bfe31f04c6a6304f13eac4a67b63
 ENV PYBIN=/opt/python/cp311-cp311/bin
 RUN dnf install -y patchelf && dnf clean all
 # Nuitka standalone 需要静态 libpython(manylinux 默认只放归档,解开即可)

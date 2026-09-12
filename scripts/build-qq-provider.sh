@@ -30,5 +30,7 @@ docker run --rm -v "$PWD/qq-provider:/src" -w /src "$IMAGE" \
 # 规整成顶层目录 qq-provider/ 便于分发与侧载(可执行文件为 qq-provider/qq-provider)
 rm -rf qq-provider/build/qq-provider
 mv qq-provider/build/main.dist qq-provider/build/qq-provider
+python3 scripts/check-binaries.py qq-provider/build/qq-provider
 tar -czf qq-provider/build/qq-provider.tar.gz -C qq-provider/build qq-provider
+python3 scripts/check-binaries.py qq-provider/build/qq-provider.tar.gz
 echo "→ qq-provider/build/qq-provider.tar.gz"

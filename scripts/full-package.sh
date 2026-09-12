@@ -27,6 +27,7 @@ while IFS=$'\t' read -r bname url want; do
   curl -fL --retry 3 -o "$dest" "$url"
   got="$(sha256sum "$dest" | cut -d' ' -f1)"
   [ "$got" = "$want" ] || { echo "sha256 mismatch: $bname ($got != $want)"; exit 1; }
+  python3 scripts/check-binaries.py "$dest"
 done < <(jq -r '.remote_binary[] | "\(.name)\t\(.url)\t\(.sha256hash)"' package.json)
 chmod +x "$work/bin/player" "$work/bin/ncm-provider"
 

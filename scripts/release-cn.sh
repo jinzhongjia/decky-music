@@ -25,6 +25,7 @@ while IFS=$'\t' read -r url want; do
   curl -fL --retry 3 -o "$work/$file" "$url"
   got="$(sha256sum "$work/$file" | cut -d' ' -f1)"
   [ "$got" = "$want" ] || { echo "sha256 mismatch: $file ($got != $want)"; exit 1; }
+  python3 scripts/check-binaries.py "$work/$file"
   put "$work/$file" "decky_music/$TAG/$file"
 done < <(jq -r '.remote_binary[] | "\(.url)\t\(.sha256hash)"' package.json)
 
