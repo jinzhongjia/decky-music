@@ -16,6 +16,7 @@ import protocol
 
 from log import DEV, clear_logs, log, log_dir_size, pump_stderr
 from playback import Playback
+from session_env import audio_environment
 
 RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
 SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
@@ -70,10 +71,8 @@ def qq_exe() -> str:
 
 
 def _child_env() -> dict:
-    # 子进程音频命门:player 走 libasound→pipewire-alsa,需 XDG_RUNTIME_DIR 指向用户 runtime
-    # 才能连上 PipeWire 会话(游戏模式尤其)。Decky 若已设则保留,否则按 uid 兜底。
-    env = dict(os.environ)
-    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    # 保留有效的用户音频会话,否则按实际有效 UID 查找;不假定 deck/1000。
+    env = audio_environment()
     # provider 持久化自己的设备身份用(qq 的伪造安卓机档案)。不持久化的话每次重启
     # 都是一台新设备,同账号同 IP 冒出大量新设备正是风控特征,见 issue #44。
     env["DECKY_MUSIC_STATE_DIR"] = decky.DECKY_PLUGIN_SETTINGS_DIR
