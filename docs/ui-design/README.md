@@ -1,6 +1,6 @@
 # 大屏 UI 设计调研
 
-这些材料来自 `decky-music-design-package 2/` 的最新整理版，现在作为项目内 P3+ 大屏 UI 的设计依据。长期维护只看 `specs/` 下的三份规格文档；PNG 渲染图保留在 `assets/` 作为视觉参考，并通过 Git LFS 管理。
+这里汇集早期 `decky-music-design-package 2/` 设计参考与后续实机留档。长期维护以 `specs/` 为设计契约；当前界面效果以明确标注本轮重拍的设备截图为准。`assets/` 中的历史截图、设计图和旧渲染图不能直接代表当前实现，PNG 通过 Git LFS 管理。
 
 ## 2026-07-08 更新要点
 
@@ -9,19 +9,33 @@
 3. **底部图例归系统渲染**：插件可通过 `Focusable` 的 `actionDescriptionMap` / `onOKActionDescription` 改文案，但白圈图标、排列、位置和左侧 `STEAM` 菜单项由系统控制。
 4. **我的音乐页采用官方库范式**：废弃 PC/平板式左侧栏；个人资产使用全宽二级 Tab 行 + 全宽内容区。
 
-## 当前实现的实机素材
+## 实机素材与更新状态
 
-以下目录记录当前代码的真实 UI，均由 `.gitattributes` 配置为 Git LFS 素材：
+这里同时保存历史截图与新截图，**不能因为文件在 `device-screenshots/` 下就认定它与当前代码一致**。
+用户已指出部分旧图过时；未在下面明确列为本轮重拍的场景，只作历史留档，尚未逐场景重新核验。
+所有 PNG 均由 `.gitattributes` 配置为 Git LFS 素材。
 
 | 目录 | 内容 | 定位 |
 | :--- | :--- | :--- |
-| `assets/device-screenshots/qq/` | 16 张 QQ 音乐 Steam Deck 设备原始截图 | 当前 QQ UI 的视觉事实源 |
-| `assets/device-screenshots/ncm/` | 18 张网易云音乐 Steam Deck 设备原始截图 | 当前 NCM UI 的视觉事实源 |
-| `assets/device-renders/qq/` | 首页、搜索、我的音乐、电台、正在播放共 5 张实机渲染图 | 基于实机截图制作的展示素材 |
-| `assets/device-renders/ncm/` | 首页、搜索、我的、电台、正在播放共 5 张实机渲染图 | 基于实机截图制作的展示素材 |
+| `assets/device-screenshots/qq/` | QQ 音乐设备原始截图 | 本轮更新状态见下表，其余为历史留档 |
+| `assets/device-screenshots/ncm/` | 网易云音乐设备原始截图 | 本轮更新状态见下表，其余为历史留档 |
+| `assets/device-renders/qq/` | QQ 实机展示图 | 旧渲染素材，不能代表本轮队列效果 |
+| `assets/device-renders/ncm/` | NCM 实机展示图 | 旧渲染素材，不能代表本轮队列效果 |
 
 实机截图覆盖首页/榜单、搜索及四分类、歌单/专辑/歌手详情、个人资产、电台与正在播放。
 文件名按稳定场景编号维护；更新 UI 后直接替换受影响场景，不创建带日期或随机后缀的副本。
+
+### 本轮重拍：队列浮层（2026-09-13）
+
+下列四张来自本轮实际部署后的 Steam Deck / SteamOS 3.8.16，原始 CEF 捕获为 1281×801 PNG，
+未做缩放、合成或渲染包装。仅这些场景已在本轮核对当前实现：
+
+| 场景 | QQ | NCM |
+| :--- | :--- | :--- |
+| 普通队列：当前曲与焦点分离 | [原图](assets/device-screenshots/qq/19-queue-normal.png) | [原图](assets/device-screenshots/ncm/19-queue-normal.png) |
+| 电台：只读当前曲与次级退出 | [原图](assets/device-screenshots/qq/20-queue-radio.png) | [原图](assets/device-screenshots/ncm/20-queue-radio.png) |
+
+对应展示图尚未重渲染。需要使用以上最新原图重新制作队列场景的实机渲染图，不复用旧图冒充新效果。
 
 同步顺序：
 
