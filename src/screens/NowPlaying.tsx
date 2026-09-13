@@ -7,7 +7,7 @@
 //   - 歌词跟随用「对歌词容器 ref 直接设 scrollTop」,绝不碰外层容器。
 
 import { DialogButton, Focusable, GamepadButton } from "@decky/ui";
-import { useEffect, useRef, useState } from "react";
+import { RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useAsync } from "../ui/useAsync";
 import {
@@ -249,36 +249,45 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
   );
 }
 
-function LyricView({ lyric, posMs }: { lyric: Lyric | null; posMs: number }) {
-  const lines = lyric?.lines ?? [];
+function useLyricPosition(lyric: Lyric | null, posMs: number) {
   const boxRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
-  const manualUntil = useRef(0); // 手动滚动静默期截止时刻(墙钟 ms)
-
-  // 当前行 = 最后一条 t_ms ≤ 当前位置的行
+  const manualUntil = useRef(0);
+  const positionedLyric = useRef<Lyric | null>(null);
+  const lines = lyric?.lines ?? [];
   let active = -1;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].t_ms <= posMs) active = i;
     else break;
   }
 
-  // 只滚歌词容器自身(setState scrollTop),不用 scrollIntoView(会滚外层 Valve 容器拽走封面);
-  // 手动滚动静默期内不抢滚,超时自动恢复跟随
-  useEffect(() => {
-    if (Date.now() < manualUntil.current) return;
+  useLayoutEffect(() => {
+    if (!lyric?.lines.length) {
+      positionedLyric.current = null;
+      return;
+    }
     const box = boxRef.current;
     const line = activeRef.current;
-    if (box && line) {
-      box.scrollTo({
-        top: line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2,
-        behavior: "smooth",
-      });
+    if (!box || !line || box.clientHeight === 0 || Date.now() < manualUntil.current) return;
+    const top = line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2;
+    if (positionedLyric.current !== lyric) {
+      // 当前歌词首次就绪:在绘制前直接就位。占位态/无当前行不消耗首次定位。
+      box.scrollTop = top;
+      positionedLyric.current = lyric;
+    } else {
+      // 只有已显示歌词的正常换句才平滑跟随;不滚动外层 Steam 页面。
+      box.scrollTo({ top, behavior: "smooth" });
     }
-  }, [active]);
+  }, [lyric, active]);
 
-  const empty = !lyric || lines.length === 0;
+  return { boxRef, activeRef, manualUntil, active };
+}
+
+function LyricView({ lyric, posMs }: { lyric: Lyric | null; posMs: number }) {
+  const { boxRef, activeRef, manualUntil, active } = useLyricPosition(lyric, posMs);
+  const lines = lyric?.lines ?? [];
+  const empty = lines.length === 0;
   return (
-    // Focusable 承接 D-pad:上下手动滚歌词(允许 repeat 连滚),4s 无操作恢复自动跟随
     <Focusable
       onButtonDown={(evt) => {
         const b = evt?.detail?.button;
@@ -287,47 +296,69 @@ function LyricView({ lyric, posMs }: { lyric: Lyric | null; posMs: number }) {
         boxRef.current?.scrollBy({ top: b === GamepadButton.DIR_UP ? -110 : 110 });
       }}
       ref={boxRef as never}
+      aria-label={t("lyrics")}
       style={{
         flexGrow: 1,
         minWidth: 0,
         height: "100%",
         overflowY: "auto",
-        position: "relative", // 让 line.offsetTop 相对本容器,scrollTop 计算才对
+        scrollBehavior: "auto",
+        position: "relative",
         display: empty ? "flex" : "block",
       }}
     >
       {!lyric ? (
         <div style={{ margin: "auto", color: theme.textDim }}>{t("loading")}</div>
-      ) : lines.length === 0 ? (
+      ) : empty ? (
         <div style={{ margin: "auto", color: theme.textDim }}>{t("noLyric")}</div>
       ) : (
-        lines.map((ln, i) => (
-          <div
+        lines.map((line, i) => (
+          <LyricRow
             key={i}
-            ref={i === active ? activeRef : undefined}
-            style={{
-              textAlign: "center",
-              padding: "0.5rem 0",
-              fontSize: i === active ? "1.15em" : "1em",
-              fontWeight: i === active ? 600 : 400,
-              transition: "font-size 0.2s",
-            }}
-          >
-            <LineText
-              line={ln}
-              active={i === active}
-              wordByWord={lyric.word_by_word}
-              posMs={posMs}
-            />
-            {ln.tr && (
-              <div style={{ fontSize: "0.8em", color: theme.textDim, marginTop: "0.15rem" }}>
-                {ln.tr}
-              </div>
-            )}
-          </div>
+            line={line}
+            active={i === active}
+            activeRef={activeRef}
+            wordByWord={lyric.word_by_word}
+            posMs={posMs}
+          />
         ))
       )}
     </Focusable>
+  );
+}
+
+function LyricRow({
+  line,
+  active,
+  activeRef,
+  wordByWord,
+  posMs,
+}: {
+  line: LyricLine;
+  active: boolean;
+  activeRef: RefObject<HTMLDivElement>;
+  wordByWord: boolean;
+  posMs: number;
+}) {
+  return (
+    <div
+      ref={active ? activeRef : undefined}
+      aria-current={active ? "true" : undefined}
+      style={{
+        textAlign: "center",
+        padding: "0.5rem 0",
+        fontSize: active ? "1.15em" : "1em",
+        fontWeight: active ? 600 : 400,
+        transition: "font-size 0.2s",
+      }}
+    >
+      <LineText line={line} active={active} wordByWord={wordByWord} posMs={posMs} />
+      {line.tr && (
+        <div style={{ fontSize: "0.8em", color: theme.textDim, marginTop: "0.15rem" }}>
+          {line.tr}
+        </div>
+      )}
+    </div>
   );
 }
 
