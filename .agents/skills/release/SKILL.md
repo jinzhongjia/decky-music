@@ -1,11 +1,13 @@
 ---
 name: release
-description: 发布 decky-music 新版本(pre-release 或正式)。当用户说"发版 / 发布新版本 / pre-release / 发 beta"时使用。覆盖版本号、二进制构建、remote_binary 指纹、tag、GitHub Release、CI 出包与 zip 抽验的完整流程。
+description: 发布 decky-music 新版本(pre-release 或正式)。当用户说"发版 / 发布新版本 / pre-release / 发 beta"时使用。覆盖版本号、二进制构建、remote_binary 指纹、tag、GitHub Release、CI 出包、zip 抽验，以及正式发布后向 Steam Deck 下载目录交付普通/full/CN 三个安装包的完整流程。
 ---
 
 # Release 流程
 
 发布前置条件(缺一不发):工作树干净、改动已推送、真机 deploy-verify 已过。
+
+发布完成标准:所有发布均须 GitHub Release / CI 成功、三个安装包抽验通过；正式版还必须将三个包传入 Steam Deck 的下载目录并通过远端 SHA-256 校验。只完成上传 GitHub 不算正式版完整交付。预发布版默认不要求设备交付，用户明确要求时才执行。
 
 ## 0. 判定发布类型
 
@@ -81,19 +83,53 @@ gh release download vX -p "Decky.Music.zip" -D <tmpdir> && cd <tmpdir> && unzip 
   `bin/player`、`bin/ncm-provider`、`bin/qq-provider` 三个文件都在,且三者 sha256 与普通版
   `remote_binary[].sha256hash` 逐一相等(证明内置的就是校验过的那份)
 
-## 6. 交付
+## 6. 每次正式发布后强制交付三个包到 Steam Deck
 
-需要本地安装包时:
+**仅正式版每次都必须执行**，包括 full / zip-only 两种发布类型。
+正式发版请求默认包含这一步，不再等待用户另行要求下载安装包。
+**pre-release / beta 默认不自动传到设备**；用户明确要求时，再按下述步骤交付。
+
+1. 等本次 tag 的 CI 成功、步骤 5 抽验通过后，从该 tag 的 GitHub Release 获取以下三个资产。
+   步骤 5 已下载并验证过的本次产物可直接复用；禁止拿旧 `out/` 包或 `latest` 资产充数。
+2. 复用本轮已确认的 SSH 目标与认证环境，`DECK_HOST` 不设硬编码默认值。通过
+   `ssh -- "$DECK_HOST" xdg-user-dir DOWNLOAD` 查询设备实际下载目录；不要写死
+   `/home/deck/Downloads`。查询失败、路径为空或目录无法确认时先解决，不能误放进 home 或插件目录。
+3. 使用带版本号的文件名交付，保留设备上其他版本。若同名文件已存在，先核对内容；
+   相同则复用，不同则停止确认，不静默覆盖。
+
+| GitHub Release 资产 | Deck 下载目录内的文件名（TAG = 本次真实 tag，如 v1.0.6） |
+| :--- | :--- |
+| `Decky.Music.zip` | `Decky.Music.${TAG}.zip` |
+| `Decky.Music.full.zip` | `Decky.Music.${TAG}.full.zip` |
+| `Decky.Music.cn.zip` | `Decky.Music.${TAG}.cn.zip` |
+
+下载与传输示例（先设置本次 `TAG`、本地临时目录 `work`、已确认的 `DECK_HOST` 和 `DECK_DOWNLOAD_DIR`）：
 
 ```bash
-gh release download vX -p "Decky.Music.zip" -D ~/Downloads --clobber
-scp ~/Downloads/Decky.Music.zip "$DECK_HOST":/home/deck/Downloads/
+gh release download "$TAG" \
+  -p "Decky.Music.zip" -p "Decky.Music.full.zip" -p "Decky.Music.cn.zip" -D "$work"
+mv "$work/Decky.Music.zip" "$work/Decky.Music.${TAG}.zip"
+mv "$work/Decky.Music.full.zip" "$work/Decky.Music.${TAG}.full.zip"
+mv "$work/Decky.Music.cn.zip" "$work/Decky.Music.${TAG}.cn.zip"
+rsync -av --protect-args \
+  "$work/Decky.Music.${TAG}.zip" \
+  "$work/Decky.Music.${TAG}.full.zip" \
+  "$work/Decky.Music.${TAG}.cn.zip" \
+  "${DECK_HOST}:${DECK_DOWNLOAD_DIR}/"
 ```
 
-提醒用户从 Decky 开发者模式安装 zip。只有 zip 安装能覆盖 `remote_binary` 下载、sha256
-校验和 QQ provider 首次解包;侧载不能验证正式安装链路。
+4. 对设备上的三个实际文件分别计算 SHA-256，与本地已验证的发布产物逐一比较，
+   同时核对文件大小。不能仅凭 rsync/scp 返回成功或目录里有同名文件就算通过。
+5. 回复三个包的实际完整路径、版本和校验结果；清理本轮临时文件、SSH 会话，
+   若开启过防休眠则解除。口令只用于认证，不写进代码、skill 或日志。
 
-国内用户使用稳定入口:
+**阻塞处理**：需要设备交付时，若设备不在线或认证缺失，明确报告“GitHub 已发布，Deck 三包交付未完成”及缺失条件，
+待用户补齐后继续；不得静默跳过或把整次正式发布描述为已全部完成。
+
+**仅交付文件，不自动安装、不重启 `plugin_loader`，也不删除下载目录里的旧版本。**
+只有实际安装才能覆盖安装器下载、sha256 校验和 QQ provider 首次解包；文件交付和侧载都不能冒充安装验收。
+
+国内用户仍可使用稳定入口：
 `https://dl.nvimer.org/decky_music/decky-music-cn.zip`。CN 版由 `release.yml` 生成并上传 R2。
 
 ## 已踩过的坑
