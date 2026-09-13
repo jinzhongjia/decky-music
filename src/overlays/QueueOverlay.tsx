@@ -1,216 +1,210 @@
-// Y 键播放队列浮层(P4)。用原生 showModal + ModalRoot:焦点圈定、B 关闭、关闭恢复焦点全由系统管。
-// 数据:打开时拉 getQueue;订阅 queue/track 事件实时刷新(跳播/移除/清空立即反映)。
-// radio 分支(只显示当前曲 + 退出电台)P5d 启用;当前只有 normal。
-// ponytail: 右侧抽屉样式(效果图)后续调,先用 ModalRoot 默认面板保证焦点正确性。
+import { Focusable, ModalRoot, showModal } from "@decky/ui";
+import { ReactNode, useEffect, useState } from "react";
+import { FaTimes } from "react-icons/fa";
 
-import { DialogButton, Focusable, ModalRoot, showModal } from "@decky/ui";
-import { useEffect, useState } from "react";
-
-import { PlayerEv, QueueState, TrackInfo, api, onPlayer } from "../api";
+import { PlayerEv, QueueState, api, onPlayer } from "../api";
 import { guard } from "../errors";
 import { t } from "../i18n";
-import { fmtTime, theme } from "../ui/theme";
+import { usePlayer } from "../player/usePlayer";
+import { QueueList, QueueTrack } from "./QueueList";
+import { queueStyles } from "./queueStyles";
 
 export function openQueueOverlay() {
-  showModal(<QueueModal />);
+  showModal(<QueueModal />, undefined, { bNeverPopOut: true, strTitle: t("queueTitle") });
 }
 
-// 长队列渲染窗口:当前曲前后各 WINDOW 条(宿主安全:不一次塞几百节点)
-const WINDOW = 50;
+function isQueue(value: unknown): value is QueueState {
+  if (!value || typeof value !== "object") return false;
+  const q = value as QueueState;
+  return (
+    (q.mode === "normal" || q.mode === "radio") &&
+    Array.isArray(q.items) &&
+    Number.isInteger(q.index) &&
+    q.index >= -1 &&
+    q.index < q.items.length &&
+    q.items.every(
+      (item) =>
+        item &&
+        typeof item.id === "string" &&
+        typeof item.name === "string" &&
+        typeof item.singer === "string" &&
+        typeof item.cover === "string" &&
+        Number.isFinite(item.duration) &&
+        item.duration >= 0
+    )
+  );
+}
 
-function QueueModal({ closeModal }: { closeModal?: () => void }) {
-  const [q, setQ] = useState<QueueState | null>(null);
-
+function useQueueSnapshot() {
+  const [queue, setQueue] = useState<QueueState | null>(null);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
-    const refresh = () =>
+    let sequence = 0;
+    const refresh = () => {
+      const request = ++sequence;
       api
         .getQueue()
-        .then((s) => alive && setQ(s))
-        .catch(() => {});
+        .then((value) => {
+          if (!alive || request !== sequence) return;
+          if (!isQueue(value)) throw new Error("Invalid queue snapshot");
+          setQueue(value);
+          setError(false);
+        })
+        .catch(() => {
+          if (alive && request === sequence) {
+            setQueue(null);
+            setError(true);
+          }
+        });
+    };
     refresh();
-    const off = onPlayer((e) => {
-      if (e.type === PlayerEv.Queue || e.type === PlayerEv.Track) refresh();
+    const off = onPlayer((event) => {
+      if (event.type === PlayerEv.Queue || event.type === PlayerEv.Track) refresh();
     });
     return () => {
       alive = false;
       off();
     };
-  }, []);
-
-  const items = q?.items ?? [];
-  const index = q?.index ?? -1;
-  const lo = Math.max(0, index - WINDOW);
-  const hi = Math.min(items.length, index + WINDOW + 1);
-
-  // 电台模式:不展示未来曲目(保持电台未知感),只显示当前曲 + 退出入口(QUEUE-BEHAVIOR §4)
-  if (q?.mode === "radio") {
-    const cur = items[0];
-    return (
-      <ModalRoot closeModal={closeModal} onCancel={closeModal}>
-        <div style={{ width: "min(560px, 92vw)" }}>
-          <div style={{ color: theme.text, fontWeight: 700, fontSize: "1.1em" }}>
-            {t("listeningRadio")}
-          </div>
-          {cur && (
-            <div style={{ marginTop: "0.75rem" }}>
-              <QueueRow item={cur} current onPlay={() => {}} onRemove={() => {}} />
-            </div>
-          )}
-          <DialogButton
-            style={{ marginTop: "1rem", width: "100%" }}
-            onClick={() => guard(() => api.queueClear())}
-          >
-            {t("exitRadio")}
-          </DialogButton>
-        </div>
-      </ModalRoot>
-    );
-  }
-
-  const ellipsisRow = (
-    <div style={{ color: theme.textDim, textAlign: "center", fontSize: "0.8em" }}>⋯</div>
-  );
-  return (
-    <ModalRoot closeModal={closeModal} onCancel={closeModal}>
-      <div style={{ width: "min(560px, 92vw)" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            marginBottom: "0.75rem",
-            gap: "1rem",
-          }}
-        >
-          <span style={{ color: theme.text, fontWeight: 700, fontSize: "1.1em" }}>
-            {t("queueTitle")}
-            {items.length > 0 && (
-              <span
-                style={{
-                  color: theme.textDim,
-                  fontWeight: 400,
-                  fontSize: "0.8em",
-                  marginLeft: "0.6em",
-                }}
-              >
-                {index + 1} / {items.length}
-              </span>
-            )}
-          </span>
-          {items.length > 0 && (
-            <DialogButton
-              style={{ minWidth: 0, width: "auto", padding: "0.35em 1.2em", flexShrink: 0 }}
-              onClick={() => guard(() => api.queueClear())}
-            >
-              {t("clearQueue")}
-            </DialogButton>
-          )}
-        </div>
-
-        {items.length === 0 ? (
-          <div style={{ color: theme.textDim, textAlign: "center", padding: "2.5rem 0" }}>
-            {t("queueEmpty")}
-          </div>
-        ) : (
-          <Focusable
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.2rem",
-              maxHeight: 380,
-              overflowY: "auto",
-            }}
-          >
-            {lo > 0 && ellipsisRow}
-            {items.slice(lo, hi).map((it, k) => {
-              const i = lo + k;
-              return (
-                <QueueRow
-                  key={`${it.id}-${i}`}
-                  item={it}
-                  current={i === index}
-                  onPlay={() => guard(() => api.queuePlay(i))}
-                  onRemove={() => guard(() => api.queueRemove(i))}
-                />
-              );
-            })}
-            {hi < items.length && ellipsisRow}
-          </Focusable>
-        )}
-      </div>
-    </ModalRoot>
-  );
+  }, [attempt]);
+  return {
+    queue,
+    error,
+    retry: () => {
+      setError(false);
+      setAttempt((n) => n + 1);
+    },
+  };
 }
 
-// 队列行:当前曲 Steam 蓝左侧指示条 + 高亮;A 跳播,X 移除(图例随焦点显示)
-function QueueRow({
-  item,
-  current,
-  onPlay,
-  onRemove,
+function QueueAction({
+  children,
+  label,
+  action,
+  close = false,
+  initial = false,
 }: {
-  item: TrackInfo;
-  current: boolean;
-  onPlay: () => void;
-  onRemove: () => void;
+  children: ReactNode;
+  label: string;
+  action: () => void;
+  close?: boolean;
+  initial?: boolean;
 }) {
   return (
     <Focusable
-      onActivate={onPlay}
-      onSecondaryButton={onRemove}
-      onSecondaryActionDescription={t("remove")}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "0.75rem",
-        padding: "0.45rem 0.6rem",
-        borderLeft: current ? `3px solid ${theme.accent}` : "3px solid transparent",
-        background: current ? theme.listHighlight : "transparent",
-        borderRadius: theme.radius,
-      }}
+      className={`dm-queue-action${close ? " dm-queue-close" : ""}`}
+      noFocusRing
+      focusClassName="dm-queue-focus"
+      aria-label={label}
+      onActivate={action}
+      onOKActionDescription={label}
+      preferredFocus={initial}
+      {...(initial ? { autoFocus: true } : {})}
     >
-      <img
-        src={item.cover || undefined}
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: 2,
-          objectFit: "cover",
-          background: "#333",
-          flexShrink: 0,
-        }}
-        alt=""
-      />
-      <div style={{ flexGrow: 1, minWidth: 0 }}>
-        <div
-          style={{
-            color: current ? theme.accent : theme.text,
-            fontSize: "0.95em",
-            overflow: "hidden",
-            whiteSpace: "nowrap",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {item.name || item.id}
-        </div>
-        {item.singer && (
-          <div
-            style={{
-              color: theme.textDim,
-              fontSize: "0.8em",
-              overflow: "hidden",
-              whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {item.singer}
+      {children}
+    </Focusable>
+  );
+}
+
+function QueueHeader({ queue, close }: { queue: QueueState | null; close?: () => void }) {
+  const radio = queue?.mode === "radio";
+  return (
+    <div className="dm-queue-header">
+      <h2 id="dm-queue-title" className="dm-queue-title">
+        {t(radio ? "listeningRadio" : "queueTitle")}
+        {!radio && !!queue?.items.length && (
+          <span className="dm-queue-count">
+            {queue.items.length} {t("songsUnit")}
+          </span>
+        )}
+      </h2>
+      {!radio && !!queue?.items.length && (
+        <QueueAction label={t("clearQueue")} action={() => guard(() => api.queueClear())}>
+          {t("clearQueue")}
+        </QueueAction>
+      )}
+      <QueueAction
+        key={queue?.items.length ? "populated" : "empty"}
+        label={t("back")}
+        close
+        initial={radio || !queue?.items.length}
+        action={() => close?.()}
+      >
+        <FaTimes aria-hidden />
+      </QueueAction>
+    </div>
+  );
+}
+
+function RadioQueue({ queue, close }: { queue: QueueState; close?: () => void }) {
+  const item = queue.items[0];
+  return (
+    <>
+      <div className="dm-queue-radio">
+        <div className="dm-queue-label">{t("queueCurrentTrack")}</div>
+        {item && (
+          <div className="dm-queue-radio-track">
+            <QueueTrack item={item} />
           </div>
         )}
+        <p className="dm-queue-description">{t("queueRadioDescription")}</p>
       </div>
-      <div style={{ color: theme.textDim, fontSize: "0.8em", flexShrink: 0 }}>
-        {item.duration > 0 ? fmtTime(item.duration) : ""}
+      <div className="dm-queue-secondary">
+        <QueueAction
+          label={t("exitRadio")}
+          action={() =>
+            guard(async () => {
+              await api.queueClear();
+              close?.();
+            })
+          }
+        >
+          {t("exitRadio")}
+        </QueueAction>
       </div>
-    </Focusable>
+    </>
+  );
+}
+
+function QueueModal({ closeModal }: { closeModal?: () => void }) {
+  const { queue, error, retry } = useQueueSnapshot();
+  const { playing } = usePlayer();
+  return (
+    <ModalRoot
+      closeModal={closeModal}
+      onCancel={closeModal}
+      bOKDisabled
+      bHideCloseIcon
+      className="dm-queue-dialog"
+      modalClassName="dm-queue-modal"
+      aria-labelledby="dm-queue-title"
+    >
+      <style>{queueStyles}</style>
+      <Focusable
+        className="dm-queue-shell"
+        flow-children="column"
+        onCancelButton={closeModal}
+        onCancelActionDescription={t("back")}
+      >
+        <QueueHeader queue={queue} close={closeModal} />
+        {!queue ? (
+          <div className="dm-queue-message">
+            {t(error ? "queueUnavailable" : "loading")}
+            {error && (
+              <QueueAction label={t("queueRetry")} action={retry}>
+                {t("queueRetry")}
+              </QueueAction>
+            )}
+          </div>
+        ) : queue.mode === "radio" ? (
+          <RadioQueue queue={queue} close={closeModal} />
+        ) : queue.items.length ? (
+          <QueueList items={queue.items} index={queue.index} playing={playing} />
+        ) : (
+          <div className="dm-queue-message">{t("queueEmpty")}</div>
+        )}
+      </Focusable>
+    </ModalRoot>
   );
 }
