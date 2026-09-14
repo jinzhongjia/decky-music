@@ -8,13 +8,13 @@ from tests.playback_support import FakeConn
 from bridge import Bridge
 from ipc import Conn
 from playback import Playback
-import settings
+import music_settings
 
 
 class TestRpcValidation(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.bridge = Bridge()
-        self.bridge.settings = settings.normalize_settings({"provider": "qq", "volume": 0.3})
+        self.bridge.settings = music_settings.normalize_settings({"provider": "qq", "volume": 0.3})
         self.bridge.provider = FakeConn()
         self.bridge.player = Conn("player")
         self.bridge.player.on_missing = AsyncMock()
@@ -22,7 +22,7 @@ class TestRpcValidation(unittest.IsolatedAsyncioTestCase):
         self.bridge.playback.restore({"items": [{"id": "saved"}], "index": 0})
         self.bridge._ensure_provider = AsyncMock()
         self.bridge._schedule_volume_persist = Mock()
-        self.saved = patch.object(settings, "save_settings").start()
+        self.saved = patch.object(music_settings, "save_settings").start()
         self.addCleanup(patch.stopall)
 
     async def test_illegal_provider_leaves_source_queue_and_spawn_untouched(self):

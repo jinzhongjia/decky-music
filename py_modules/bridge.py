@@ -1,7 +1,7 @@
 """Decky bridge facade composing IPC, supervision and RPC responsibilities."""
 
 import asyncio
-import settings
+import music_settings
 from ipc import Conn
 from log import DEV, clear_logs, log, log_dir_size
 from playback import Playback
@@ -22,7 +22,7 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
         self._provider_change_gen = 0
 
     async def start(self):
-        self.settings = settings.load_settings()
+        self.settings = music_settings.load_settings()
         self.provider = Conn("provider")
         self.player = Conn("player")
         self.provider_proc: asyncio.subprocess.Process | None = None
@@ -40,7 +40,7 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
             persist=self._persist_queue,
             radio_fetcher=self._radio_fetch,
             auth_retry=self._refresh_credential,
-            quality=lambda: self.settings.get("quality", settings.DEFAULT_QUALITY),
+            quality=lambda: self.settings.get("quality", music_settings.DEFAULT_QUALITY),
         )
         # 恢复上次的普通队列(只存了 id 类字段;不自动开播,见 QUEUE-BEHAVIOR §1.1)
         self.playback.restore(self.settings.get("queue"))
@@ -78,7 +78,7 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
     async def _persist_volume_later(self):
         try:
             await asyncio.sleep(VOLUME_PERSIST_DELAY)
-            settings.save_settings(self.settings)
+            music_settings.save_settings(self.settings)
         finally:
             if self._volume_persist_task is asyncio.current_task():
                 self._volume_persist_task = None
@@ -90,15 +90,15 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
         if not task.done():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
-            settings.save_settings(self.settings)
+            music_settings.save_settings(self.settings)
         self._volume_persist_task = None
 
     def _persist_queue(self, items: list, index: int):
         # 队列落盘:id 类字段 + 展示字段(恢复后浮层/徽章直接是真名字真封面),
         # 白名单键,绝不存解析出的播放 URL(限时 vkey)
-        self.settings["queue"] = settings.normalize_queue({"items": items, "index": index})
+        self.settings["queue"] = music_settings.normalize_queue({"items": items, "index": index})
         self.settings["queue_mode"] = "normal"
-        settings.save_settings(self.settings)
+        music_settings.save_settings(self.settings)
 
     async def clear_cache(self) -> int:
         # 本机无独立缓存,"缓存"即日志目录;返回清理后剩余字节供 UI 回填
@@ -130,14 +130,14 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
             "provider": None,
             "volume": 0.8,
             "play_mode": "list_loop",
-            "quality": settings.DEFAULT_QUALITY,
+            "quality": music_settings.DEFAULT_QUALITY,
         }
         self.playback.set_play_mode("list_loop")
         try:
             await self.player.request("volume", {"val": 0.8})  # 同步 player 音量到默认
         except Exception:
             pass
-        settings.save_settings(self.settings)
+        music_settings.save_settings(self.settings)
         log("bridge", "own", "info", "user data cleared")
 
     async def unload(self):

@@ -7,7 +7,7 @@ import types
 import unittest
 from tests.playback_support import FakeConn, item, run
 from bridge import Bridge
-import settings
+import music_settings
 from playback import Playback
 
 
@@ -130,13 +130,15 @@ class TestQueueEdit(unittest.TestCase):
             async def ensure_provider(which):
                 ensured.append(which)
 
-            old_save_settings = settings.save_settings
-            settings.save_settings = lambda settings: saved.append(("settings", dict(settings)))
+            old_save_settings = music_settings.save_settings
+            music_settings.save_settings = lambda settings: saved.append(
+                ("settings", dict(settings))
+            )
             br._ensure_provider = ensure_provider
             try:
                 await br.set_provider("ncm")
             finally:
-                settings.save_settings = old_save_settings
+                music_settings.save_settings = old_save_settings
 
             self.assertEqual(ensured, ["ncm"])
             self.assertEqual(

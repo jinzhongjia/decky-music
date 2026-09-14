@@ -26,7 +26,7 @@ async def _emit(*_a, **_k):
 decky_stub.emit = _emit
 sys.modules.setdefault("decky", decky_stub)
 
-import settings
+import music_settings
 
 
 def mode(path: str) -> int:
@@ -36,11 +36,11 @@ def mode(path: str) -> int:
 class TestSaveSettingsPermissions(unittest.TestCase):
     def test_tmp_and_final_files_are_private_under_open_umask(self):
         old_umask = os.umask(0o000)
-        old_settings = settings.SETTINGS
+        old_settings = music_settings.SETTINGS
         old_replace = os.replace
         try:
             with tempfile.TemporaryDirectory() as d:
-                settings.SETTINGS = os.path.join(d, "settings.json")
+                music_settings.SETTINGS = os.path.join(d, "settings.json")
                 seen = {}
 
                 def checking_replace(src, dst):
@@ -48,35 +48,35 @@ class TestSaveSettingsPermissions(unittest.TestCase):
                     old_replace(src, dst)
 
                 os.replace = checking_replace
-                settings.save_settings({"accounts": {"qq": {"cookie": "placeholder"}}})
+                music_settings.save_settings({"accounts": {"qq": {"cookie": "placeholder"}}})
 
                 self.assertEqual(seen["tmp_mode"], 0o600)
-                self.assertEqual(mode(settings.SETTINGS), 0o600)
-                with open(settings.SETTINGS, encoding="utf-8") as f:
+                self.assertEqual(mode(music_settings.SETTINGS), 0o600)
+                with open(music_settings.SETTINGS, encoding="utf-8") as f:
                     self.assertEqual(json.load(f)["accounts"]["qq"]["cookie"], "placeholder")
         finally:
             os.replace = old_replace
-            settings.SETTINGS = old_settings
+            music_settings.SETTINGS = old_settings
             os.umask(old_umask)
 
     def test_tmp_file_is_removed_when_replace_fails(self):
-        old_settings = settings.SETTINGS
+        old_settings = music_settings.SETTINGS
         old_replace = os.replace
         try:
             with tempfile.TemporaryDirectory() as d:
-                settings.SETTINGS = os.path.join(d, "settings.json")
-                tmp = settings.SETTINGS + ".tmp"
+                music_settings.SETTINGS = os.path.join(d, "settings.json")
+                tmp = music_settings.SETTINGS + ".tmp"
 
                 def failing_replace(_src, _dst):
                     raise OSError("replace failed")
 
                 os.replace = failing_replace
                 with self.assertRaises(OSError):
-                    settings.save_settings({"version": 1})
+                    music_settings.save_settings({"version": 1})
                 self.assertFalse(os.path.exists(tmp))
         finally:
             os.replace = old_replace
-            settings.SETTINGS = old_settings
+            music_settings.SETTINGS = old_settings
 
 
 class TestSettingsNormalization(unittest.TestCase):
@@ -90,7 +90,7 @@ class TestSettingsNormalization(unittest.TestCase):
         ]
         for value in malformed:
             with self.subTest(value=value):
-                normalized = settings.normalize_settings(value)
+                normalized = music_settings.normalize_settings(value)
                 pb = Playback(None, None, normalized["play_mode"])
                 pb.restore(normalized["queue"])
                 self.assertIsNone(normalized["provider"])
@@ -120,11 +120,11 @@ class TestSettingsNormalization(unittest.TestCase):
         secret_url = "https://example.invalid/audio?token=synthetic-private-token"
         with tempfile.TemporaryDirectory() as directory:
             target = os.path.join(directory, "settings.json")
-            with patch.object(settings, "SETTINGS", target):
+            with patch.object(music_settings, "SETTINGS", target):
                 with open(target + ".tmp", "w"):
                     pass
                 os.chmod(target + ".tmp", 0o666)
-                settings.save_settings(
+                music_settings.save_settings(
                     {
                         "version": 1,
                         "provider": "qq",
@@ -138,11 +138,11 @@ class TestSettingsNormalization(unittest.TestCase):
                 self.assertNotIn(secret_url, text)
                 self.assertEqual(mode(target), 0o600)
                 self.assertEqual(
-                    settings.load_settings()["accounts"]["qq"]["cookie"], "synthetic-cookie"
+                    music_settings.load_settings()["accounts"]["qq"]["cookie"], "synthetic-cookie"
                 )
 
     def test_modes_and_numeric_metadata_are_normalized_without_losing_valid_fields(self):
-        data = settings.normalize_settings(
+        data = music_settings.normalize_settings(
             {
                 "version": 1,
                 "provider": "ncm",
@@ -168,8 +168,8 @@ class TestSettingsNormalization(unittest.TestCase):
             target = os.path.join(directory, "settings.json")
             with open(target, "w") as stream:
                 stream.write('{"cookie": "synthetic-secret"')
-            with patch.object(settings, "SETTINGS", target):
-                self.assertEqual(settings.load_settings()["accounts"], {})
+            with patch.object(music_settings, "SETTINGS", target):
+                self.assertEqual(music_settings.load_settings()["accounts"], {})
 
 
 if __name__ == "__main__":

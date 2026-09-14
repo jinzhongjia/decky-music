@@ -30,7 +30,7 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 - `main.py` —— 只剩对外接口 facade:`CALLABLES` 白名单 + `__getattr__` 转发给 bridge
   (Decky loader 按名 `getattr` 分发,不必逐个写同名方法;`tests/test_callables.py`
   机械校验白名单 ↔ Bridge 方法 ↔ `src/api.ts` 三端一致)
-- `py_modules/` —— bridge 实现:`bridge.py` 生命周期门面、`ipc.py` 连接与事件代次、`settings.py` 归一化与私有持久化、`child_process.py`/`supervision.py` 进程监督、`provider_rpc.py`/`playback_rpc.py` RPC、`playback*.py` 播放/队列/电台、`diagnostics.py`/`log.py` 安全诊断。放这里才被 Decky 加进 sys.path 且被 CLI 打包。
+- `py_modules/` —— bridge 实现:`bridge.py` 生命周期门面、`ipc.py` 连接与事件代次、`music_settings.py` 归一化与私有持久化、`child_process.py`/`supervision.py` 进程监督、`provider_rpc.py`/`playback_rpc.py` RPC、`playback*.py` 播放/队列/电台、`diagnostics.py`/`log.py` 安全诊断。配置模块避免使用宿主占用的 `settings` 名称；所有模块放这里才被 Decky 加进 sys.path 且被 CLI 打包。
 - `src/` —— React UI:`index.tsx`(`definePlugin` 入口)/ `QAM.tsx`(QAM 面板)/ `Page.tsx`(大屏页,导出 `ROUTE`)/ `api.ts`(前端↔bridge 唯一接口层)/ `errors.ts`+`ErrorBanner.tsx`+`Boundary.tsx`(错误纵深)/ `Footer.tsx` / `i18n.ts`
 - `player/` —— Rust,`reqwest` + `rodio`
 - `ncm-provider/` —— Rust,依赖 ncm-api-rs

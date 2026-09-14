@@ -1,7 +1,7 @@
 """Normal queue restoration and edits, preserving playback intent guards."""
 
 import asyncio
-from settings import normalize_queue, queue_item
+from music_settings import normalize_queue, queue_item
 from playback_state import public_item, now_ms
 
 

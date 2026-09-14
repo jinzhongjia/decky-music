@@ -1,6 +1,6 @@
 """Provider song metadata to playback queue items."""
 
-from settings import queue_item
+from music_settings import queue_item
 
 
 def songs_to_items(songs) -> list[dict]:

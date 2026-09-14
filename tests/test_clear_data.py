@@ -27,7 +27,7 @@ sys.modules.setdefault("decky", decky_stub)
 
 from bridge import Bridge
 import ipc
-import settings
+import music_settings
 
 
 class _FakeConn(ipc.Conn):
@@ -54,17 +54,17 @@ class TestClearData(unittest.TestCase):
         saved = []
         playback.events = events
         b = _make_bridge(playback)
-        old_save = settings.save_settings
+        old_save = music_settings.save_settings
 
         def fake_save(data):
             events.append("save")
             saved.append(dict(data))
 
-        settings.save_settings = fake_save
+        music_settings.save_settings = fake_save
         try:
             asyncio.run(b.clear_data())
         finally:
-            settings.save_settings = old_save
+            music_settings.save_settings = old_save
         return b, events, saved
 
     def test_resets_and_persists_defaults_after_queue_clear(self):

@@ -9,7 +9,7 @@ from tests.playback_support import FakeConn
 from bridge import Bridge
 import ipc
 import protocol
-import settings
+import music_settings
 
 
 class TestProviderChangeIntent(unittest.IsolatedAsyncioTestCase):
@@ -32,7 +32,7 @@ class TestProviderChangeIntent(unittest.IsolatedAsyncioTestCase):
         self.bridge.playback = types.SimpleNamespace(queue_clear=clear)
         self.bridge._ensure_provider = ensure
         self.bridge._kick_seed_liked = lambda: None
-        persistence = patch.object(settings, "save_settings")
+        persistence = patch.object(music_settings, "save_settings")
         persistence.start()
         self.addCleanup(persistence.stop)
 

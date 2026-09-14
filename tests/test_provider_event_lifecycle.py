@@ -17,7 +17,7 @@ import ipc
 import log
 import protocol
 import provider_rpc
-import settings
+import music_settings
 import supervision
 
 
@@ -93,7 +93,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
             (ipc, "RUNTIME", self.temp.name),
             (child_process, "spawn", spawn),
             (child_process, "qq_exe", lambda: "/fabricated/qq-provider"),
-            (settings, "save_settings", lambda data: self.saved.append(copy.deepcopy(data))),
+            (music_settings, "save_settings", lambda data: self.saved.append(copy.deepcopy(data))),
             (ipc, "log", lambda *args: self.logs.append(args)),
             (provider_rpc, "log", lambda *args: self.logs.append(args)),
             (supervision, "log", lambda *args: self.logs.append(args)),

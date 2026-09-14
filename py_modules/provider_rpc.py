@@ -3,7 +3,7 @@
 import asyncio
 import decky
 import protocol
-import settings
+import music_settings
 from ipc import ConnectionOrigin
 from log import log
 from diagnostics import safe_code, safe_command, safe_event
@@ -27,7 +27,7 @@ class ProviderRPC:
         new_cred = r.data.get("refreshed") if r.ok else None
         if new_cred:
             self.settings.setdefault("accounts", {})[which] = new_cred
-            settings.save_settings(self.settings)
+            music_settings.save_settings(self.settings)
             log("bridge", "own", "info", f"{which} credential refreshed mid-session, persisted")
             return True
         return False
@@ -67,7 +67,7 @@ class ProviderRPC:
         self._track_task(seed())
 
     async def set_provider(self, which: str | None):
-        settings.require_provider(which)
+        music_settings.require_provider(which)
         self._provider_change_gen += 1
         gen = self._provider_change_gen
         if self.settings.get("provider") != which:
@@ -78,7 +78,7 @@ class ProviderRPC:
             return
         # Only the latest source intent may establish a new provider lifetime.
         self.settings["provider"] = which
-        settings.save_settings(self.settings)
+        music_settings.save_settings(self.settings)
         await self._ensure_provider(which)
 
     async def get_provider(self) -> dict:
@@ -102,7 +102,7 @@ class ProviderRPC:
         if not self.provider.is_current(origin):
             return
         (self.settings.get("accounts") or {}).pop(which, None)
-        settings.save_settings(self.settings)
+        music_settings.save_settings(self.settings)
         await self.provider.request("set_credential", {"cred": None})
         if not self.provider.is_current(origin):
             return
@@ -345,7 +345,7 @@ class ProviderRPC:
         if ev.ev == "login" and ev.type == "done":
             which = origin.provider
             self.settings.setdefault("accounts", {})[which] = ev.data.get("cred")
-            settings.save_settings(self.settings)
+            music_settings.save_settings(self.settings)
             log("bridge", "own", "info", f"{which} login success, credential persisted")
             self._kick_seed_liked()
             await decky.emit("login", {"ev": "login", "type": "done", "data": {}})

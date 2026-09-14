@@ -71,9 +71,7 @@ class TestAudioEnvironment(unittest.TestCase):
                     self.subTest(path=invalid),
                     patch.dict(os.environ, {"XDG_RUNTIME_DIR": invalid}, clear=True),
                 ):
-                    self.assertNotEqual(
-                        audio_environment().get("XDG_RUNTIME_DIR"), invalid
-                    )
+                    self.assertNotEqual(audio_environment().get("XDG_RUNTIME_DIR"), invalid)
 
 
 if __name__ == "__main__":

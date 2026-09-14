@@ -1,7 +1,7 @@
 """Playback callable and MPRIS control boundary."""
 
 import protocol
-import settings
+import music_settings
 from ipc import ConnectionOrigin
 from log import log
 
@@ -45,11 +45,11 @@ class PlaybackRPC:
     async def set_play_mode(self, mode: str):
         if self.playback.set_play_mode(mode):
             self.settings["play_mode"] = mode  # 播放模式归 bridge 持久化
-            settings.save_settings(self.settings)
+            music_settings.save_settings(self.settings)
             await self.playback.push_current_meta()  # 同步 MPRIS LoopStatus/Shuffle
 
     async def get_quality(self) -> str:
-        return self.settings.get("quality", settings.DEFAULT_QUALITY)
+        return self.settings.get("quality", music_settings.DEFAULT_QUALITY)
 
     async def set_quality(self, quality: str) -> str:
         """设音质上限。只对**下一首**生效 —— 当前这首已经在放的流不重拉。
@@ -57,10 +57,10 @@ class PlaybackRPC:
         中途换流要么听到一声断,要么得 seek 回原位重新解码,在掌机上白烧一次 CPU 和电;
         换首歌自然就生效了,不值得为此折腾。返回实际生效值供 UI 回填。
         """
-        if quality not in settings.QUALITIES:
-            return self.settings.get("quality", settings.DEFAULT_QUALITY)
+        if quality not in music_settings.QUALITIES:
+            return self.settings.get("quality", music_settings.DEFAULT_QUALITY)
         self.settings["quality"] = quality
-        settings.save_settings(self.settings)
+        music_settings.save_settings(self.settings)
         log("bridge", "own", "info", f"quality cap -> {quality}")
         return quality
 
@@ -71,12 +71,12 @@ class PlaybackRPC:
         await self.playback.resume()  # 回灌后冷启动由 playback 判定(空 player 的 resume 是空操作)
 
     async def seek(self, sec: float):
-        if not settings.finite_number(sec, maximum=settings.MAX_SEEK_SECONDS):
+        if not music_settings.finite_number(sec, maximum=music_settings.MAX_SEEK_SECONDS):
             raise ValueError("invalid_request")
         await self.player.request("seek", {"sec": sec})
 
     async def volume(self, val: float):
-        if not settings.finite_number(val, maximum=1):
+        if not music_settings.finite_number(val, maximum=1):
             raise ValueError("invalid_request")
         self.settings["volume"] = val  # UI/MPRIS 立即读到目标值;落盘合并避免重复原子写
         self._schedule_volume_persist()
@@ -112,11 +112,11 @@ class PlaybackRPC:
             await self.pause()  # ponytail: Stop 映射为暂停,媒体键不应清空队列
         elif action == "seek":
             v = data.get("value")
-            if settings.finite_number(v, maximum=settings.MAX_SEEK_SECONDS):
+            if music_settings.finite_number(v, maximum=music_settings.MAX_SEEK_SECONDS):
                 await self.seek(v)
         elif action == "volume":
             v = data.get("value")
-            if settings.finite_number(v, maximum=1):
+            if music_settings.finite_number(v, maximum=1):
                 await self.volume(v)
         elif action == "play_mode":
             m = data.get("mode")

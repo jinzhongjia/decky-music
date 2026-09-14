@@ -39,7 +39,7 @@ decky_stub = sys.modules["decky"]
 
 import decky
 import child_process
-import settings
+import music_settings
 import supervision
 import protocol  # noqa: E402
 from bridge import Bridge
@@ -279,8 +279,8 @@ class TestVolumePersistence(unittest.TestCase):
     def test_volume_is_applied_immediately_but_persisted_once(self):
         b = _bridge()
         saved = []
-        original = settings.save_settings
-        settings.save_settings = lambda data: saved.append(data.copy())
+        original = music_settings.save_settings
+        music_settings.save_settings = lambda data: saved.append(data.copy())
 
         async def check():
             await b.volume(0.65)
@@ -291,7 +291,7 @@ class TestVolumePersistence(unittest.TestCase):
         try:
             asyncio.run(check())
         finally:
-            settings.save_settings = original
+            music_settings.save_settings = original
         self.assertEqual(saved, [{"volume": 0.65}])
 
 
@@ -305,8 +305,8 @@ class TestUnloadBackgroundTasks(unittest.TestCase):
         b.player.close = _emit
         b.provider_proc = None
         cancelled = asyncio.Event()
-        original = settings.save_settings
-        settings.save_settings = lambda _data: None
+        original = music_settings.save_settings
+        music_settings.save_settings = lambda _data: None
 
         async def linger():
             try:
@@ -325,7 +325,7 @@ class TestUnloadBackgroundTasks(unittest.TestCase):
         try:
             asyncio.run(check())
         finally:
-            settings.save_settings = original
+            music_settings.save_settings = original
 
 
 if __name__ == "__main__":

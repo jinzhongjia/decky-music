@@ -5,7 +5,7 @@ import random
 import decky
 from log import log
 from diagnostics import safe_code, safe_event
-from settings import PLAY_MODES
+from music_settings import PLAY_MODES
 from playback_state import public_item, now_ms
 from playback_queue import PlaybackQueue
 from playback_radio import PlaybackRadio

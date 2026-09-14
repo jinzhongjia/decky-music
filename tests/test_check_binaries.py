@@ -28,10 +28,7 @@ def readelf_output(
             f"  Machine:                           {machine}",
             "  Type:                              DYN (Position-Independent Executable file)",
             "  Entry point address:               0x1000",
-            *(
-                f"  0x0000000000000001 (NEEDED) Shared library: [{name}]"
-                for name in needed
-            ),
+            *(f"  0x0000000000000001 (NEEDED) Shared library: [{name}]" for name in needed),
             "Version needs section '.gnu.version_r' contains 1 entry:",
             f"  0x0010: Name: {version} Flags: none Version: 2",
         ]
@@ -42,9 +39,7 @@ class TestElfRequirements(unittest.TestCase):
     def test_glibc_numeric_ceiling_and_named_abi(self):
         self.assertEqual(checker.inspect_output(readelf_output("GLIBC_2.9")), (2, 9))
         self.assertEqual(checker.inspect_output(readelf_output()), (2, 39))
-        self.assertEqual(
-            checker.inspect_output(readelf_output("GLIBC_ABI_DT_RELR")), (2, 36)
-        )
+        self.assertEqual(checker.inspect_output(readelf_output("GLIBC_ABI_DT_RELR")), (2, 36))
         for version in ("GLIBC_2.40", "GLIBC_ABI_FUTURE", "GLIBC_PRIVATE"):
             with self.subTest(version=version), self.assertRaises(checker.CheckError):
                 checker.inspect_output(readelf_output(version))
@@ -54,9 +49,7 @@ class TestElfRequirements(unittest.TestCase):
             "Version definition section '.gnu.version_d' contains 1 entry:\n"
             "  0x001c: Rev: 1 Flags: none Index: 2 Cnt: 1 Name: GLIBC_9.99\n"
         )
-        self.assertEqual(
-            checker.inspect_output(definitions + readelf_output()), (2, 39)
-        )
+        self.assertEqual(checker.inspect_output(definitions + readelf_output()), (2, 39))
 
     def test_rejects_foreign_architecture(self):
         with self.assertRaises(checker.CheckError):
@@ -64,9 +57,7 @@ class TestElfRequirements(unittest.TestCase):
 
     def test_main_requires_entry_point(self):
         with self.assertRaises(checker.CheckError):
-            checker.inspect_output(
-                readelf_output().replace("0x1000", "0x0"), "qq-provider"
-            )
+            checker.inspect_output(readelf_output().replace("0x1000", "0x0"), "qq-provider")
 
     def test_player_and_ncm_dynamic_dependency_boundaries(self):
         self.assertEqual(
@@ -146,9 +137,7 @@ class TestPackageGate(unittest.TestCase):
         self.assertEqual(status, 1)
 
     def test_release_filenames_keep_dependency_policy(self):
-        result = subprocess.CompletedProcess(
-            [], 0, readelf_output(needed=("libssl.so.3",)), ""
-        )
+        result = subprocess.CompletedProcess([], 0, readelf_output(needed=("libssl.so.3",)), "")
         for name in ("player-linux-x64", "ncm-provider-linux-x64"):
             with (
                 self.subTest(name=name),

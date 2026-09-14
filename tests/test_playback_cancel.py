@@ -27,7 +27,7 @@ sys.modules.setdefault("decky", decky_stub)
 
 import decky
 import ipc
-import settings
+import music_settings
 import protocol  # noqa: E402
 from bridge import Bridge
 from ipc import Conn  # noqa: E402
@@ -236,7 +236,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
                 br._ensure_provider = ensure
                 released = self.provider.hold("old")
                 old = await self.started()
-                with patch.object(settings, "save_settings"):
+                with patch.object(music_settings, "save_settings"):
                     await br.set_provider(target)
                 before = list(self.wire.frames)
                 released.set_result(None)
@@ -478,7 +478,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
 
         br._ensure_provider = ensure
         self.wire.held.add("stop")
-        with patch.object(settings, "save_settings"):
+        with patch.object(music_settings, "save_settings"):
             switching = asyncio.create_task(br.set_provider("ncm"))
             frame = await self.wire.command("stop")
             self.wire.held.clear()

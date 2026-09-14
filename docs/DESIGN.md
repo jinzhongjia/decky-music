@@ -445,7 +445,7 @@ CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/
 | `main.py` | Decky `Plugin` 门面,只把 callable 转发给 bridge |
 | [`py_modules/bridge.py`](../py_modules/bridge.py) | 生命周期门面与任务/持久化回调，组合监督与 RPC 职责 |
 | [`py_modules/ipc.py`](../py_modules/ipc.py) | `Conn` 并发 demux、来源代次、事件顺序消费及连接清理 |
-| [`py_modules/settings.py`](../py_modules/settings.py) | 配置归一化、队列白名单、原子写与 0600 权限 |
+| [`py_modules/music_settings.py`](../py_modules/music_settings.py) | 配置归一化、队列白名单、原子写与 0600 权限；使用专用名称避免与冻结宿主的 `settings` 冲突 |
 | [`child_process.py`](../py_modules/child_process.py) / [`supervision.py`](../py_modules/supervision.py) | 环境、二进制解包与启动、子进程自愈、凭证启动注入 |
 | [`provider_rpc.py`](../py_modules/provider_rpc.py) / [`playback_rpc.py`](../py_modules/playback_rpc.py) | 内容/账号与播放控制的外部 callable，保持唯一契约 |
 | [`py_modules/protocol.py`](../py_modules/protocol.py) | 协议 v1 request 构造、response/event/log 严格解码与消息分类;不管理在途请求 |

@@ -2,7 +2,7 @@
 
 import asyncio
 from log import log
-from settings import queue_item
+from music_settings import queue_item
 
 
 class PlaybackRadio:

@@ -4,7 +4,7 @@ import asyncio
 import tarfile
 import decky
 import child_process
-import settings
+import music_settings
 from ipc import ConnectionOrigin
 from log import log
 
@@ -105,7 +105,7 @@ class Supervision:
 
     async def _ensure_provider(self, which: str | None):
         """Serialize spawn; both listener and bootstrap belong to one source lifetime."""
-        settings.require_provider(which)
+        music_settings.require_provider(which)
         async with self.provider_lock:
             if which != self.settings.get("provider"):
                 return
@@ -179,7 +179,7 @@ class Supervision:
             new_cred = r.data.get("refreshed") if r.ok else None
             if new_cred:
                 self.settings.setdefault("accounts", {})[which] = new_cred
-                settings.save_settings(self.settings)
+                music_settings.save_settings(self.settings)
                 log("bridge", "own", "info", f"{which} credential auto-refreshed, persisted")
             self._kick_seed_liked()
 

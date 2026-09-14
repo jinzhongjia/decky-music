@@ -11,11 +11,7 @@ def _private_runtime(path: str, uid: int) -> bool:
         info = os.stat(path)
     except (OSError, ValueError):
         return False
-    return (
-        stat.S_ISDIR(info.st_mode)
-        and info.st_uid == uid
-        and stat.S_IMODE(info.st_mode) == 0o700
-    )
+    return stat.S_ISDIR(info.st_mode) and info.st_uid == uid and stat.S_IMODE(info.st_mode) == 0o700
 
 
 def audio_environment() -> dict[str, str]:
