@@ -577,6 +577,7 @@ music-plugin/
 | **大屏页代码分割懒加载** | `React.lazy` + `WithSuspense`,进路由才加载平板 UI | QAM 秒开;减小注入 Steam 的初始 JS 与内存(Decky 原生用法) |
 | **播放完成/位置锚点走 source 事件** | decoder EOF 的 `EmptyCallback` 和实际音频样本消耗的 `periodic_access` 写回音频命令队列 | 活跃 player 阻塞等待命令/事件，不再每 250ms 唤醒检查 `sink.empty()`；缓冲停摆也不产生假位置 |
 | **暂停久了释放音频 sink / player 崩溃** | player 只在 pause 后等待一个 30s deadline，超时 drop sink；bridge 收到 `unloaded` 或 player 连接断开后将已载入状态置空，并向 UI 发 `paused` | PipeWire 节点不再常驻；恢复播放按需重拉 player，重载流并 seek 回中断位置（失败才从头播）；UI 不会停在“正在播放”而把下一次按键误作 pause |
+| **读停摆正确报错（#58）** | 在缓冲空且 30 秒等待耗尽后，锁内重查数据/错误/EOF，再记录失败、推进流代次并唤醒读写等待者 | failure probe 保持可见，迟到 HTTP 数据不能复活失败流；音频上报 `fetch_failed` 而非 `ended`，bridge 保留断点恢复。未在此处解决 #64 的阻塞 HTTP 读取取消与任务数量上限 |
 | **封面图缩略图 + 虚拟列表**(P3) | 请求 CDN 缩略图尺寸(如 `?param=200y200`,非原图);歌单只渲染视口内封面,离屏不请求;按 songId/URL 缓存 | 缩略图省 ~25× 纹理内存;`<img>` 直连 CDN(§6.3 方案 A),失败 `onError` 占位不崩溃 |
 
 ### 13.3 已内建(设计里已有,无需另做)

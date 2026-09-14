@@ -64,6 +64,13 @@ bridge 必须处理 player 的 `ended` 事件以决定下一首。协议 v1 事�
   player 用同一代次锁保护后台 load 的检查及音频入队，与 stop/new load 的代次更新互斥；不跨 HTTP await 持锁。
 - **迟到事件**：空队列不能被旧 playing/paused/unloaded/ended 或流死亡事件复活；有效非空队列的流错误仍须进入恢复路径。
 
+### 3.2 读停摆不是正常结束
+
+流尚未读完、缓冲为空且持续等不到数据时，player 在原有 30 秒读等待上限内判定停摆。
+锁内重新检查最终补货、已有错误和 EOF 后才记录失败，并失效旧 producer 的结果；正常 EOF 仍先排空缓冲。
+音频层通过 failure probe 发 `fetch_failed`，不发 `ended`，因此不会自动跳到下一首。
+bridge 保留当前曲与 `_resume_at`，`resume()` 重载后尝试 seek 回断点，seek 失败才按既有规则从头播放。
+
 ## 4. UI 队列浮层
 
 普通大屏页面按 `Y` 打开队列浮层。QQ 智能电台、NCM 私人 FM 等专属沉浸页可按各自 UI 规格覆盖 `Y` 键，队列入口改由页面按钮或不展示未来队列。
