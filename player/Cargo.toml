@@ -8,11 +8,11 @@ name = "player"
 path = "src/main.rs"
 
 [dependencies]
-# 拉流:纯 Rust TLS;blocking 用于把 HTTP 响应作为 std::io::Read 喂给 rodio。
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "webpki-roots", "blocking"] }
+# 拉流:纯 Rust TLS;异步 HTTP producer 向有界缓冲供数,供 rodio 同步 Read/Seek。
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "webpki-roots"] }
 # 解码 + 输出:内置 symphonia 解码 + cpal 输出;动态链 libasound
 rodio = "0.22"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
 wire = { path = "../wire" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

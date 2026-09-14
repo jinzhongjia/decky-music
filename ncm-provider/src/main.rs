@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 
 mod commands;
 mod content;
+mod deadline;
 mod device;
 mod login;
 mod lyric;
@@ -26,26 +27,52 @@ use protocol::{log_json, ErrorCode, LogLevel};
 use state::{Out, State};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let socket = arg("--socket").expect("--socket <path> required");
+async fn main() {
+    if run().await.is_err() {
+        eprintln!("provider transport failed");
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let socket = arg("--socket").ok_or("socket argument required")?;
     let stream = UnixStream::connect(&socket).await?;
-    let (rd, mut wr) = stream.into_split();
+    let (rd, wr) = stream.into_split();
     let mut reader = BufReader::new(rd);
     let mut frame = Vec::new();
-
-    // 设备身份要跨进程持久化(见 device.rs):bridge 经环境变量注入目录
     let state_dir = std::env::var("DECKY_MUSIC_STATE_DIR").ok();
     let state = Arc::new(State::new(state_dir.as_deref()));
-    let debug = std::env::var("DECKY_MUSIC_DEBUG").is_ok(); // release 下不发 debug
-
-    // 单一写出:命令响应 + 事件汇到这里串行写回,避免并发写乱帧
-    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
-    tokio::spawn(async move {
-        while let Some(line) = out_rx.recv().await {
-            if line.len() > protocol::MAX_FRAME_BYTES {
-                break;
+    let debug = std::env::var("DECKY_MUSIC_DEBUG").is_ok();
+    let out = writer(wr);
+    let mut login_handle = None;
+    while let Some(line) = protocol::read_frame(&mut reader, &mut frame).await? {
+        match protocol::parse_request(&line) {
+            Ok(req) => {
+                if debug {
+                    let _ = out.send(log_json(LogLevel::Debug, "cmd", "request received"));
+                }
+                receive(&state, &out, req, &mut login_handle);
             }
-            if wr.write_all(line.as_bytes()).await.is_err()
+            Err(_) => {
+                let _ = out.send(log_json(
+                    LogLevel::Warn,
+                    "protocol",
+                    "invalid request frame",
+                ));
+            }
+        }
+    }
+    if let Some(handle) = login_handle {
+        handle.abort();
+    }
+    Ok(())
+}
+
+fn writer(mut wr: tokio::net::unix::OwnedWriteHalf) -> Out {
+    let (out, mut messages) = mpsc::unbounded_channel::<String>();
+    tokio::spawn(async move {
+        while let Some(line) = messages.recv().await {
+            if line.len() > protocol::MAX_FRAME_BYTES
+                || wr.write_all(line.as_bytes()).await.is_err()
                 || wr.write_all(b"\n").await.is_err()
                 || wr.flush().await.is_err()
             {
@@ -53,58 +80,74 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    out
+}
 
-    // 在跑的登录轮询;新登录来时 abort 掉,避免双循环并发 emit。
-    let mut login_handle: Option<tokio::task::JoinHandle<()>> = None;
-
-    // NDJSON:每条一行 {json}\n(协议 v1),单条 ≤ 1 MiB。命令处理后台化,慢上游不堵读循环。
-    while let Some(line) = protocol::read_frame(&mut reader, &mut frame).await? {
-        let req = match protocol::parse_request(&line) {
-            Ok(r) => r,
-            // 解析失败拿不到 id → 记录并丢弃
-            Err(e) => {
-                let _ = out_tx.send(log_json(
-                    LogLevel::Warn,
-                    "protocol",
-                    &format!("bad request: {}", e.0),
-                ));
-                continue;
+fn receive(
+    state: &Arc<State>,
+    out: &Out,
+    req: protocol::Request,
+    login_handle: &mut Option<tokio::task::JoinHandle<()>>,
+) {
+    match req.cmd.as_str() {
+        "set_credential" => {
+            let cred = protocol::parse_args::<protocol::SetCredentialArgs>(&req)
+                .map(|a| a.cred)
+                .unwrap_or(Value::Null);
+            let cookie = cred["cookie"].as_str().map(String::from);
+            let message = if cookie.is_some() {
+                "injected"
+            } else {
+                "cleared"
+            };
+            if let Some(handle) = login_handle.take() {
+                handle.abort();
             }
-        };
-        if debug {
-            let _ = out_tx.send(log_json(LogLevel::Debug, "cmd", &req.cmd));
+            state.replace_credential(cookie, None);
+            let _ = out.send(log_json(LogLevel::Info, "credential", message));
+            let _ = out.send(protocol::ok_empty(req.id));
         }
-        match req.cmd.as_str() {
-            "set_credential" => {
-                let cred = protocol::parse_args::<protocol::SetCredentialArgs>(&req)
-                    .map(|a| a.cred)
-                    .unwrap_or(Value::Null);
-                let ck = cred["cookie"].as_str().map(String::from);
-                let msg = if ck.is_some() { "injected" } else { "cleared" };
-                *state.cookie.lock().await = ck;
-                *state.uid.lock().await = None; // 凭证变化,uid 缓存作废
-                let _ = out_tx.send(log_json(LogLevel::Info, "credential", msg));
-                let _ = out_tx.send(protocol::ok_empty(req.id));
+        "login" => {
+            if let Some(handle) = login_handle.take() {
+                handle.abort();
             }
-            "login" => {
-                // 长流程:后台跑,QR 与状态经 login 事件上报;命令本身即刻返 ok
-                if let Some(h) = login_handle.take() {
-                    h.abort(); // 顶掉上一个未结束的登录轮询
+            let (state, out) = (state.clone(), out.clone());
+            let session = state.live_session();
+            let _ = out.send(protocol::ok_empty(req.id));
+            *login_handle = Some(tokio::spawn(login::login_flow(state, out, session)));
+        }
+        _ => {
+            if req.cmd == "logout" {
+                if let Some(handle) = login_handle.take() {
+                    handle.abort();
                 }
-                let (st, tx) = (state.clone(), out_tx.clone());
-                login_handle = Some(tokio::spawn(async move { login::login_flow(st, tx).await }));
-                let _ = out_tx.send(protocol::ok_empty(req.id));
             }
-            _ => {
-                let (st, tx) = (Arc::clone(&state), out_tx.clone());
-                tokio::spawn(async move {
-                    let resp = dispatch(st, tx.clone(), req).await;
-                    let _ = tx.send(resp);
-                });
-            }
+            let (state, out) = (state.clone(), out.clone());
+            let end = tokio::time::Instant::now() + deadline::COMMAND_TIMEOUT;
+            let session = state.live_session();
+            let (id, logout) = (req.id, req.cmd == "logout");
+            tokio::spawn(async move {
+                let response = execute(state.clone(), out.clone(), req, session.clone(), end).await;
+                state.publish_response((!logout).then_some(&session), &out, id, response);
+            });
         }
     }
-    Ok(())
+}
+
+async fn execute(
+    state: Arc<State>,
+    out: Out,
+    req: protocol::Request,
+    session: Arc<state::Session>,
+    end: tokio::time::Instant,
+) -> String {
+    let id = req.id;
+    let result = deadline::command(
+        end,
+        state::SESSION.scope(session, dispatch(state, out, req)),
+    )
+    .await;
+    result.unwrap_or_else(|_| protocol::err(id, ErrorCode::UpstreamTimeout, "upstream_timeout"))
 }
 
 async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> String {
@@ -159,4 +202,33 @@ async fn dispatch(state: Arc<State>, out_tx: Out, req: protocol::Request) -> Str
 
 fn arg(flag: &str) -> Option<String> {
     std::env::args().skip_while(|a| a != flag).nth(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn unknown_command_never_echoes_input() {
+        let state = Arc::new(State::new(None));
+        let session = state.session();
+        let (out, mut logs) = mpsc::unbounded_channel();
+        let req = protocol::parse_request(
+            r#"{"id":17,"cmd":"SENTINEL https://synthetic.invalid/?token=secret","args":{}}"#,
+        )
+        .unwrap();
+        let response = execute(
+            state,
+            out,
+            req,
+            session,
+            tokio::time::Instant::now() + deadline::COMMAND_TIMEOUT,
+        )
+        .await;
+        assert!(!response.contains("SENTINEL"));
+        assert!(!response.contains("synthetic.invalid"));
+        let response: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(response["error"]["code"], "unknown_cmd");
+        assert!(logs.try_recv().is_err());
+    }
 }

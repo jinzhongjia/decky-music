@@ -148,7 +148,7 @@ graph LR
 
 - UI 只通过 `src/api.ts` 与 bridge 通信，不接触播放 URL 或音频流。
 - `main.py` 是 Decky callable 门面：`CALLABLES` 白名单 + `__getattr__` 转发给 bridge；
-  `py_modules/bridge.py` 管理状态、持久化、事件和子进程。
+  `py_modules/bridge.py` 组合 IPC、配置持久化、进程监督及 RPC 模块，播放/队列/电台仍由 bridge 持有。
 - 同一时间只运行一个 provider；player 独立常驻，直接拉流、解码并输出到系统音频栈。
 - bridge 运行在 Decky 冻结的 CPython 中，因此只使用 Python 标准库。
 - bridge 与子进程使用 Unix domain socket 和 NDJSON 协议 v1，不开放本地 TCP 端口；Rust 两端

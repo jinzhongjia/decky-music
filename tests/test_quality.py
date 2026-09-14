@@ -27,9 +27,10 @@ async def _emit(*_a, **_k):
 decky_stub.emit = _emit
 sys.modules.setdefault("decky", decky_stub)
 
-import bridge as bridge_mod  # noqa: E402
+import settings
 import protocol  # noqa: E402
-from bridge import DEFAULT_QUALITY, QUALITIES, Bridge  # noqa: E402
+from bridge import Bridge
+from settings import DEFAULT_QUALITY, QUALITIES  # noqa: E402
 from playback import Playback  # noqa: E402
 
 
@@ -37,12 +38,12 @@ class TestSetQuality(unittest.TestCase):
     def setUp(self):
         self.b = Bridge()
         self.b.settings = {"version": 1, "quality": DEFAULT_QUALITY}
-        self.saved = bridge_mod.save_settings
+        self.saved = settings.save_settings
         self.written = []
-        bridge_mod.save_settings = lambda s: self.written.append(dict(s))
+        settings.save_settings = lambda s: self.written.append(dict(s))
 
     def tearDown(self):
-        bridge_mod.save_settings = self.saved
+        settings.save_settings = self.saved
 
     def test_valid_value_persists(self):
         got = asyncio.run(self.b.set_quality("lossless"))

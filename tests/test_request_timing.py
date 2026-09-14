@@ -30,7 +30,7 @@ async def _emit(*_a, **_k):
 decky_stub.emit = _emit
 sys.modules.setdefault("decky", decky_stub)
 
-import bridge as bridge_mod  # noqa: E402
+import ipc
 import protocol  # noqa: E402
 
 
@@ -47,16 +47,16 @@ class _FakeWriter:
 
 class TestRequestTiming(unittest.TestCase):
     def setUp(self):
-        self.conn = bridge_mod.Conn("provider")
+        self.conn = ipc.Conn("provider")
         self.conn.writer = _FakeWriter()
         self.logs = []
-        self._saved_log = bridge_mod.log
-        self._saved_slow = bridge_mod.SLOW_REQUEST_S
-        bridge_mod.log = lambda src, origin, level, msg: self.logs.append((level, msg))
+        self._saved_log = ipc.log
+        self._saved_slow = ipc.SLOW_REQUEST_S
+        ipc.log = lambda src, origin, level, msg: self.logs.append((level, msg))
 
     def tearDown(self):
-        bridge_mod.log = self._saved_log
-        bridge_mod.SLOW_REQUEST_S = self._saved_slow
+        ipc.log = self._saved_log
+        ipc.SLOW_REQUEST_S = self._saved_slow
 
     def _round_trip(self):
         """跑一次 request,并在它挂上 pending 后立刻替读循环把响应塞回去。"""
@@ -80,7 +80,7 @@ class TestRequestTiming(unittest.TestCase):
         self.assertIn("song_url", self.logs[0][1])
 
     def test_slow_request_logs_warn(self):
-        bridge_mod.SLOW_REQUEST_S = 0.0  # 任何耗时都算慢,免得测试真去 sleep 两秒
+        ipc.SLOW_REQUEST_S = 0.0  # 任何耗时都算慢,免得测试真去 sleep 两秒
         self._round_trip()
         warns = [msg for lv, msg in self.logs if lv == "warn"]
         self.assertEqual(len(warns), 1)
@@ -89,12 +89,12 @@ class TestRequestTiming(unittest.TestCase):
 
     def test_timeout_does_not_log_timing(self):
         # 超时已有自己的 error 日志,别再叠一条误导性的耗时行
-        saved = bridge_mod.REQUEST_TIMEOUT
-        bridge_mod.REQUEST_TIMEOUT = 0.01
+        saved = ipc.REQUEST_TIMEOUT
+        ipc.REQUEST_TIMEOUT = 0.01
         try:
             resp = asyncio.run(self.conn.request("song_url"))
         finally:
-            bridge_mod.REQUEST_TIMEOUT = saved
+            ipc.REQUEST_TIMEOUT = saved
         self.assertFalse(resp.ok)
         self.assertEqual(resp.error.code, "timeout")
         self.assertNotIn("debug", [lv for lv, _ in self.logs])

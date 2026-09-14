@@ -1,6 +1,7 @@
 """榜单(P6):分类打平成 Playlist 形状卡片;榜单曲目为标准 Song,复用 _song_brief。"""
 
-from qq.search import _page_args, _song_brief
+from qq.paging import window
+from qq.search import _song_brief
 
 
 async def toplists(q) -> list[dict]:
@@ -22,6 +23,8 @@ async def toplists(q) -> list[dict]:
 
 
 async def songs(q, top_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
-    page, num, skip = _page_args(limit, offset)
-    d = await q.client.top.get_detail(int(top_id), num=num, page=page)
-    return [_song_brief(s) for s in d.songs[skip : skip + limit]]
+    async def fetch(**page):
+        return await q.client.top.get_detail(int(top_id), **page)
+
+    items, _ = await window(fetch, "songs", limit, offset)
+    return [_song_brief(s) for s in items]

@@ -74,7 +74,7 @@ pub async fn song_url(state: &State, id: u64, song_id: &str, quality: &str, tx: 
                     let _ = tx.send(log_json(
                         LogLevel::Debug,
                         "song_url",
-                        &format!("id={song_id} want={quality} got={name}"),
+                        &format!("resolved quality={name}"),
                     ));
                     return protocol::ok(id, json!({ "url": url, "quality": name }));
                 }
@@ -84,20 +84,20 @@ pub async fn song_url(state: &State, id: u64, song_id: &str, quality: &str, tx: 
             Err(_) => return protocol::err(id, ErrorCode::UpstreamTimeout, "upstream_timeout"),
         }
     }
-    let _ = tx.send(log_json(
-        LogLevel::Warn,
-        "song_url",
-        &format!("no url id={song_id} (VIP/无版权)"),
-    ));
+    let _ = tx.send(log_json(LogLevel::Warn, "song_url", "no playable quality"));
     protocol::err(id, ErrorCode::NoPlayable, "no_playable")
 }
 
 pub async fn logout(state: &State, id: u64) -> String {
-    if state.credential().await.is_some() {
-        let q = maybe_cookie(Query::new(), state.cookie().await);
-        let _ = with_timeout(state.client.logout(&q)).await; // 尽力而为
+    let session = state.session();
+    let cookie = state.cookie().await;
+    if !state.replace_credential(None, Some(&session)) {
+        return protocol::err(id, ErrorCode::Superseded, "superseded");
     }
-    *state.cookie.lock().await = None;
+    if session.credential.is_some() {
+        let q = maybe_cookie(Query::new(), cookie);
+        let _ = with_timeout(state.client.logout(&q)).await;
+    }
     protocol::ok_empty(id)
 }
 

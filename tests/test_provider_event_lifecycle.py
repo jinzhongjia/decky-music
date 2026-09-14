@@ -8,7 +8,17 @@ import types
 import unittest
 from unittest.mock import patch
 
-from tests.test_child_death import Bridge, Conn, _LiveProc, bridge_mod
+from tests.test_child_death import _LiveProc
+from bridge import Bridge
+from ipc import Conn
+import child_process
+import decky
+import ipc
+import log
+import protocol
+import provider_rpc
+import settings
+import supervision
 
 
 class Reader(asyncio.StreamReader):
@@ -79,17 +89,20 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
 
         self.b.playback = types.SimpleNamespace(queue_clear=clear)
         self.b.provider.on_event = self.b._on_provider_event
-        for name, value in (
-            ("RUNTIME", self.temp.name),
-            ("spawn", spawn),
-            ("qq_exe", lambda: "/fabricated/qq-provider"),
-            ("save_settings", lambda data: self.saved.append(copy.deepcopy(data))),
-            ("log", lambda *args: self.logs.append(args)),
+        for module, name, value in (
+            (ipc, "RUNTIME", self.temp.name),
+            (child_process, "spawn", spawn),
+            (child_process, "qq_exe", lambda: "/fabricated/qq-provider"),
+            (settings, "save_settings", lambda data: self.saved.append(copy.deepcopy(data))),
+            (ipc, "log", lambda *args: self.logs.append(args)),
+            (provider_rpc, "log", lambda *args: self.logs.append(args)),
+            (supervision, "log", lambda *args: self.logs.append(args)),
+            (log, "log", lambda *args: self.logs.append(args)),
         ):
-            p = patch.object(bridge_mod, name, value)
+            p = patch.object(module, name, value)
             p.start()
             self.addCleanup(p.stop)
-        p = patch.object(bridge_mod.decky, "emit", emit)
+        p = patch.object(decky, "emit", emit)
         p.start()
         self.addCleanup(p.stop)
         self.addAsyncCleanup(self.shutdown)
@@ -151,9 +164,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
             self.b.settings["accounts"],
             {"qq": "fabricated-qq", "ncm": "fabricated-ncm"},
         )
-        self.assertEqual(
-            self.emitted, [("login", {"ev": "login", "type": "done", "data": {}})] * 2
-        )
+        self.assertEqual(self.emitted, [("login", {"ev": "login", "type": "done", "data": {}})] * 2)
         self.assertNotIn("fabricated-qq", repr(self.emitted) + repr(self.logs))
         self.assertNotIn("fabricated-ncm", repr(self.emitted) + repr(self.logs))
 
@@ -164,9 +175,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         writer.hold.add("account")
         request = asyncio.create_task(self.b.provider.request("account"))
         frame = await asyncio.wait_for(writer.frames.get(), 1)
-        await old_reader.send(
-            {"id": frame["id"], "ok": True, "data": {"name": "stale"}}
-        )
+        await old_reader.send({"id": frame["id"], "ok": True, "data": {"name": "stale"}})
         old_reader.feed_eof()
         await asyncio.wait_for(old_task, 1)
         self.assertFalse(request.done())
@@ -224,7 +233,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
                 raise
             self.emitted.append((channel, event))
 
-        with patch.object(bridge_mod.decky, "emit", delayed_emit):
+        with patch.object(decky, "emit", delayed_emit):
             await self.peers[-1][0].send(
                 {
                     "ev": "login",
@@ -240,9 +249,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.emitted, [])
         self.assertEqual(self.b.settings["accounts"], {"qq": "fabricated-current-qq"})
         # Cancelling one callback must not kill the single ordered consumer.
-        await self.peers[-1][0].send(
-            {"ev": "login", "type": "qr", "data": {"url": "current-qr"}}
-        )
+        await self.peers[-1][0].send({"ev": "login", "type": "qr", "data": {"url": "current-qr"}})
         await asyncio.wait_for(self.b.provider._events.join(), 1)
         self.assertEqual(self.emitted[-1][1]["type"], "qr")
 
@@ -257,8 +264,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         self.b.provider.on_event = callback
         reader = self.peers[-1][0]
         reader.feed_data(
-            b'{"ev":"login","type":"qr","data":{}}\n'
-            b'{"ev":"login","type":"done","data":{}}\n'
+            b'{"ev":"login","type":"qr","data":{}}\n{"ev":"login","type":"done","data":{}}\n'
         )
         await asyncio.wait_for(reader.reads.get(), 1)
         await asyncio.wait_for(self.b.provider._events.join(), 1)
@@ -274,7 +280,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
             if cmd == "set_credential":
                 entered.set()
                 await release.wait()
-                return bridge_mod.protocol.ChildResponse(
+                return protocol.ChildResponse(
                     response.id, True, {"refreshed": "fabricated-stale-refresh"}
                 )
             return response

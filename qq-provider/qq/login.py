@@ -67,7 +67,7 @@ async def run(q, emit, log, generation: int, login_type: str = "qq"):
             return
         # 具体登录失败(设备超限/封禁/频率)映射到专属码,前端本地化真实原因;其余通用 login_failed。
         code = _login_error_code(e)
-        log("error", "login", f"{type(e).__name__} -> {code}")  # 真实原因进日志(不含敏感)
+        log("error", "login", code)
         emit("error", code=code, message=code)
 
 
@@ -86,10 +86,10 @@ async def refresh_if_expired(q, log, generation: int) -> dict | None:
         return None
     try:
         new = await asyncio.ensure_future(q.client.login.refresh_credential(cred))
-    except Exception as e:
+    except Exception:
         if not _current(q, generation):
             return None
-        log("warn", "credential", f"refresh failed: {type(e).__name__}")
+        log("warn", "credential", "refresh failed")
         return None
     if not _current(q, generation):
         return None

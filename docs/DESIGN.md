@@ -124,7 +124,7 @@ Decky 只提供两种原语,足够:
 实现约束:
 
 - 构造 / 解码集中在协议模块:bridge `py_modules/protocol.py`,QQ `qq-provider/protocol.py`;NCM 与 player 共用 `wire` crate(通用部分),各自的 `src/protocol.rs` 只留命令 args struct。
-- request id 由 bridge 递增生成。当前 [`Conn.request` / `_read_loop`](../py_modules/bridge.py) 允许多请求同时在途,
+- request id 由 bridge 递增生成。当前 [`Conn.request` / `_read_loop`](../py_modules/ipc.py) 允许多请求同时在途,
   用 `pending[id] -> Future` 匹配响应,不依赖响应顺序,无主的迟到响应丢弃;写锁只保护单帧写入。
   domain 事件另由 `_events` / `_pump_events` 按到达顺序消费,避免事件处理中的回调请求堵住读循环。
   子进程的响应/事件写回仍经单一 out queue 串行写帧;这不等于把整个请求生命周期串行化。
@@ -135,13 +135,13 @@ Decky 只提供两种原语,足够:
 - 播放侧通过内部 `is_current` 守卫把意图代次带到 `Conn.request` 的按需启动之后、写锁内实际 write 之前及超时判死之前。
   过期请求在本地取消，不新增 wire 错误码；已写出请求的旧响应不得回灌状态或无条件停止新播放。
   source 选择另有意图代次，旧清空完成后不能覆盖更新的选择；清空等待期间不提前改写旧 provider 的账号槽位。
-- 失败响应必须带稳定 `error.code`,前端 `src/api.ts` 本地化;`message` 只作安全 fallback。
+- 失败响应必须带稳定 `error.code`，`message` 只使用固定安全文案；前端已知码本地化，未知值显示通用错误，不显示或记录不受控异常原文。
 - 超时分两级:`timeout` 由 bridge 产出,表示通道不可用或等待子进程响应超时(请求等待上限 30s),
-  在播放编排中硬熔断,不逐曲顺延。`upstream_timeout` 由 provider 产出,表示单次上游请求超时。
+  在播放编排中硬熔断,不逐曲顺延。`upstream_timeout` 由 provider 产出，表示上游或完整命令预算耗尽；NCM 完整命令 25s，单段最多 15s 且不超过剩余预算。
   [`Playback._play_index`](../py_modules/playback.py) 对 `song_url` 首次上游超时退避 0.5s,
   原地重试同一首一次;若仍为 `upstream_timeout`,按 `FUSE_ERRORS` 硬熔断并报错,不跳到其他歌曲。
   重试结果若变为其他错误码,按对应分类处理;跨歌曲连续两次的软熔断只适用于 `SOFT_FUSE_ERRORS` 中的 `fetch_failed`。
-- 子进程诊断走 `Log Event`;stderr 只留 panic/traceback 等非预期输出。
+- 子进程诊断走 `Log Event`，producer 不输出秘密；bridge 对不受控日志正文和 stderr 只保留受控类别/错误码或固定摘要，不原样落盘。
 - 每端在 JSON 解码前以字节数强制 1 MiB 上限:超限入站帧立即断开,bridge 拒绝超限 request(`invalid_request`),子进程停止向该连接写入。不得为诊断把原始帧写日志。
 
 > 关于 provider 包裹:ncm-api-rs 与 QQMusicApi **都作为库使用**,由我们各写一层 wrapper 暴露上述 NDJSON-over-UDS 协议(不用它们自带的 axum / FastAPI HTTP server)。两个 provider 因此协议一致,bridge 统一对待。
@@ -204,6 +204,10 @@ UI 全程拿不到 URL、碰不到音频流,一切经 bridge。
    > YAGNI:低频 resync(定时纠偏)先不做——插值在无缓冲卡顿时精确;等真观测到漂移再加。
 2. **全链路 event-driven,禁止轮询忙等。** bridge 阻塞在 `asyncio` `readline` 上,无消息即睡。
 3. **解码效率交给 rodio/symphonia**(原生码,压缩流解码 ~1-2% 单核),已由 §7.3 解决。
+4. **播放器 store 有明确生命周期。** 插件入口调用 `startPlayer`，卸载调用幂等 `stopPlayer`；
+   保存并执行事件退订，清除音量 debounce timer，以代次/修订号拒绝旧 hydrate 和异步错误。宿主替换 listener map 不等于清理这些 timer/promise。
+5. **窗口化几何一致。** 歌曲内容行高 72px、行间距 6.4px，使用统一 stride；外层不再额外施加 gap。
+   首尾 spacer 与可见行共用同一总高度模型，包含底部部分可见行，避免窗口切换时坐标漂移。
 
 **何时才换二进制格式(YAGNI 闸门):** 仅当 profiling 实测 JSON 成为瓶颈——对纯控制面流量不会发生。现在上 msgpack/protobuf 是纯负债:bridge 侧还用不了(编译扩展),白白牺牲可调试性。
 
@@ -396,7 +400,7 @@ player 额外托管标准 **MPRIS2** D-Bus 服务(`org.mpris.MediaPlayer2` + `.P
     task cancellation 用于回收，代次才决定是否允许提交；第三方吞掉取消也不能发布旧结果。协议字段不变。
     上游 await 在独立任务中运行，隔离 `urllib3-future` 内部超时遗留的取消计数；不能把库内部已处理的取消
     当成用户退出而静默丢弃二维码或刷新结果，认证任务自身的外部取消仍须传播。
-- **不可用歌曲:直接报告用户,不绕。** 版权下架、VIP-only、区域限制(如 ncm `460 cheating` / `301` 未登录)等——provider 把错误原样上报,UI 显示"这首暂时无法播放(原因)",**不支持配置代理 / real_ip**。海外/受限网络下的可用性不是本项目目标。呼应 §6.5 防御式渲染:错误态是正常分支,不崩不冻。
+- **不可用歌曲:直接报告用户,不绕。** 版权下架、VIP-only、区域限制等返回稳定错误码，UI 本地化原因；未知诊断使用安全通用文案，不转发第三方原文。**不支持配置代理 / real_ip**。海外/受限网络下的可用性不是本项目目标。错误态是正常分支，不崩不冻。
 
 ---
 
@@ -439,22 +443,29 @@ CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/
 | 文件 | 职责 |
 |---|---|
 | `main.py` | Decky `Plugin` 门面,只把 callable 转发给 bridge |
-| [`py_modules/bridge.py`](../py_modules/bridge.py) | `Conn` 多请求 demux、事件顺序消费、子进程生命周期、provider 切换、credential 注入与 RPC 编排 |
+| [`py_modules/bridge.py`](../py_modules/bridge.py) | 生命周期门面与任务/持久化回调，组合监督与 RPC 职责 |
+| [`py_modules/ipc.py`](../py_modules/ipc.py) | `Conn` 并发 demux、来源代次、事件顺序消费及连接清理 |
+| [`py_modules/settings.py`](../py_modules/settings.py) | 配置归一化、队列白名单、原子写与 0600 权限 |
+| [`child_process.py`](../py_modules/child_process.py) / [`supervision.py`](../py_modules/supervision.py) | 环境、二进制解包与启动、子进程自愈、凭证启动注入 |
+| [`provider_rpc.py`](../py_modules/provider_rpc.py) / [`playback_rpc.py`](../py_modules/playback_rpc.py) | 内容/账号与播放控制的外部 callable，保持唯一契约 |
 | [`py_modules/protocol.py`](../py_modules/protocol.py) | 协议 v1 request 构造、response/event/log 严格解码与消息分类;不管理在途请求 |
-| [`py_modules/playback.py`](../py_modules/playback.py) | bridge 内的播放/普通队列/电台真相源、自动切歌、同曲重试与熔断、快照及播放事件 |
+| [`playback.py`](../py_modules/playback.py) / [`playback_queue.py`](../py_modules/playback_queue.py) / [`playback_radio.py`](../py_modules/playback_radio.py) | 播放意图、同曲重试与恢复；普通队列与电台职责分离，仍由 bridge 持有真相 |
 | `src/api.ts` | 前端唯一接口层:callable 声明、事件类型、运行时 guard |
 | `qq-provider/protocol.py` | QQ provider 协议 v1 构造/解码 |
 | `wire/src/lib.rs` | 协议 v1 Rust 侧共用:错误码 / 日志 / 请求解析 / 响应·事件构造 |
 | `ncm-provider/src/protocol.rs` | NCM provider 的命令 args struct |
 | `player/src/protocol.rs` | player 的命令 args struct |
+| `qq-provider/commands/` / `qq-provider/qq/paging.py` | 按职责分组命令；固定 50 条上游窗口、跨页合并裁剪 |
+| `ncm-provider/src/deadline.rs` / `provider_commands/playlists.rs` | 25s 命令预算；按会话/uid/变更版本隔离的有界歌单元数据缓存 |
+| `player/src/loading.rs` / `stream/{buffer,http}.rs` | latest-wins 加载所有权、可取消 HTTP 与有界同步读缓冲 |
 | `player/src/mpris.rs` | player 侧 MPRIS2 D-Bus 服务(now-playing 展示 + 控制上送 bridge;zbus 纯 Rust,§7.5) |
 
 三项契约的实现与现有回归(同步说明见 [issue #72](https://github.com/jinzhongjia/decky-music/issues/72)):
 
 | 契约 | 实现 | 相关回归与覆盖范围 |
 |---|---|---|
-| 请求按 id 匹配,事件独立顺序消费 | [`Conn.request` / `_read_loop` / `_pump_events`](../py_modules/bridge.py) | [`test_child_death.py`](../tests/test_child_death.py):`TestConnDeath.test_disconnect_fails_inflight_requests_fast`、`TestStaleDisconnect.test_old_connection_eof_does_not_kill_new_one`,覆盖在途请求与连接替换边界 |
-| 上游超时重试同一首,仍超时不顺延 | [`Playback._play_index` / `_fuse_check`](../py_modules/playback.py) | [`test_playback.py`](../tests/test_playback.py):`TestUpstreamTimeoutRetriesSameSong.test_transient_timeout_plays_the_intended_song`、`test_persistent_timeout_never_skips_to_another_song`、`test_radio_advance_retries_then_reports` |
+| 请求按 id 匹配,事件独立顺序消费 | [`Conn.request` / `_read_loop` / `_pump_events`](../py_modules/ipc.py) | [`test_child_death.py`](../tests/test_child_death.py):`TestConnDeath.test_disconnect_fails_inflight_requests_fast`、`TestStaleDisconnect.test_old_connection_eof_does_not_kill_new_one`,覆盖在途请求与连接替换边界 |
+| 上游超时重试同一首,仍超时不顺延 | [`Playback._play_index` / `_fuse_check`](../py_modules/playback.py) | [`test_playback_retries.py`](../tests/test_playback_retries.py):`TestUpstreamTimeoutRetriesSameSong.test_transient_timeout_plays_the_intended_song`、`test_persistent_timeout_never_skips_to_another_song`、`test_radio_advance_retries_then_reports` |
 | 队列与电台决策留在 bridge | [`Playback`](../py_modules/playback.py),由 [`Bridge`](../py_modules/bridge.py) 持有 | [`test_playback.py`](../tests/test_playback.py):`TestQueueEdit.test_clear_and_snapshot`、`test_provider_switch_clears_radio_state`、`test_radio_ended_refills_near_tail_and_advances` |
 
 [`test_protocol.py::TestDemux`](../tests/test_protocol.py) 验证的是 response/event/log 的消息分类,
@@ -482,7 +493,7 @@ CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/
    - **通用 SteamOS 待验收**:以上是历史 Steam Deck 记录,不是当前所有设备的支持证明。非 Deck
      设备暂缺硬件,后续须记录系统/Steam/Decky 版本、用户名/UID、安装路径、屏幕比例/缩放、
      外接控制器、默认音频与设备切换、睡眠唤醒、故障后宿主存活。Steam Deck 回归与该矩阵分开记录。
-2. **子进程崩溃恢复。** bridge 仍需 watchdog:监听子进程退出,自动重启并 `emit` 通知 UI;当前进程管理已集中在 `py_modules/bridge.py`,后续在该处补齐。
+2. **子进程崩溃恢复。** 连接失效由 `ipc.py` 通知，`supervision.py` 负责按需重启和重新注入状态；player 不在时保留断点，provider 整体超时后回收并在下一请求重建。继续用真机故障注入验证，不把架构说明当作所有恢复路径已验收。
 3. **NDJSON 乱序并发。** 已完成:bridge `Conn` 支持 request-id demux;QQ/NCM provider 命令处理后台化,慢上游不堵读循环;player `load` 后台化,慢 CDN 不堵控制命令。请求语义按 id 匹配响应,互不等待。
 4. **二进制执行位。** `remote_binary` 下载后确认 `bin/` 下文件有 `+x`;缺失则 bridge 里 `os.chmod`。
 5. **provider 端口/环境差异消除。** 因统一走 UDS + 自写 wrapper,原库的 HTTP server / 端口配置不再使用。
@@ -587,7 +598,7 @@ music-plugin/
 | **大屏页代码分割懒加载** | `React.lazy` + `WithSuspense`,进路由才加载平板 UI | QAM 秒开;减小注入 Steam 的初始 JS 与内存(Decky 原生用法) |
 | **播放完成/位置锚点走 source 事件** | decoder EOF 的 `EmptyCallback` 和实际音频样本消耗的 `periodic_access` 写回音频命令队列 | 活跃 player 阻塞等待命令/事件，不再每 250ms 唤醒检查 `sink.empty()`；缓冲停摆也不产生假位置 |
 | **暂停久了释放音频 sink / player 崩溃** | player 只在 pause 后等待一个 30s deadline，超时 drop sink；bridge 收到 `unloaded` 或 player 连接断开后将已载入状态置空，并向 UI 发 `paused` | PipeWire 节点不再常驻；恢复播放按需重拉 player，重载流并 seek 回中断位置（失败才从头播）；UI 不会停在“正在播放”而把下一次按键误作 pause |
-| **读停摆正确报错（#58）** | 在缓冲空且 30 秒等待耗尽后，锁内重查数据/错误/EOF，再记录失败、推进流代次并唤醒读写等待者 | failure probe 保持可见，迟到 HTTP 数据不能复活失败流；音频上报 `fetch_failed` 而非 `ended`，bridge 保留断点恢复。未在此处解决 #64 的阻塞 HTTP 读取取消与任务数量上限 |
+| **读停摆与加载取消（#58/#64）** | 空缓冲等待 30s 后记录失败；新 load/stop/drop 取消并回收旧首开/正文任务 | 首开 10s × 2 + 1s 退避，正文没有整曲总时限；活动加载上限 2。failure probe 保持可见，旧代次 EOF/error 不发到当前播放，正常失败沿用 `fetch_failed` 与断点恢复 |
 | **封面图缩略图 + 虚拟列表**(P3) | 请求 CDN 缩略图尺寸(如 `?param=200y200`,非原图);歌单只渲染视口内封面,离屏不请求;按 songId/URL 缓存 | 缩略图省 ~25× 纹理内存;`<img>` 直连 CDN(§6.3 方案 A),失败 `onError` 占位不崩溃 |
 
 ### 13.3 已内建(设计里已有,无需另做)

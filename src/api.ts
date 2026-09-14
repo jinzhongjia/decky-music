@@ -5,9 +5,9 @@ import { t } from "./i18n";
 // 前端对 bridge(main.py)的唯一接口层:RPC 与事件在此集中声明、统一类型,便于复用。
 // 改动务必与 bridge 的 callable / emit 对应。
 
-// provider/bridge 自造失败以英文 code 上报,这里映射到本地化文案;
-// 非已知 code(= 库抛出的原始错误)原样显示,便于把真实错误暴露给用户。
+// Provider/bridge failures use stable codes. Unknown diagnostics must never reach the UI.
 const ERR_CODES: Record<string, string> = {
+  invalid_request: "errInvalidRequest",
   timeout: "errTimeout",
   // 区分两种超时:timeout = 后端整体不响应;upstream_timeout = 音乐源单次请求超时
   // (常见于打游戏抢带宽)。后者会先原地重试同一首,重试再失败才报到这里。
@@ -33,8 +33,8 @@ const ERR_CODES: Record<string, string> = {
   provider_error: "errProvider",
 };
 export function errorText(msg: string): string {
-  const key = ERR_CODES[msg];
-  return key ? t(key as any) : msg;
+  const key = Object.prototype.hasOwnProperty.call(ERR_CODES, msg) ? ERR_CODES[msg] : undefined;
+  return key ? t(key) : t("unavailable");
 }
 
 // VIP 档位 code(provider 出)→ 本地化标签。code = <tier> 或 <tier>_annual;空 = 非会员。
@@ -282,32 +282,126 @@ export type ProviderEvent = {
 };
 
 // 来自 Decky event bus 的是 unknown,先 guard 形状再交给组件,畸形事件直接忽略,不崩 UI。
-function isDomainEvent(v: unknown, ev: string): v is { ev: string; type: string; data: any } {
-  if (typeof v !== "object" || v === null) return false;
-  const o = v as Record<string, unknown>;
-  return o.ev === ev && typeof o.type === "string" && typeof o.data === "object" && o.data !== null;
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isTrack(value: unknown): value is TrackInfo {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "singer" in value &&
+    typeof value.singer === "string" &&
+    "cover" in value &&
+    typeof value.cover === "string" &&
+    "duration" in value &&
+    isFiniteNumber(value.duration)
+  );
+}
+
+function isErrorData(data: Record<string, unknown>): boolean {
+  return typeof data.code === "string" && typeof data.message === "string";
+}
+
+function isDomainEvent(
+  value: unknown,
+  domain: string
+): value is {
+  ev: string;
+  type: string;
+  data: Record<string, unknown>;
+} {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "ev" in value &&
+    value.ev === domain &&
+    "type" in value &&
+    typeof value.type === "string" &&
+    "data" in value &&
+    typeof value.data === "object" &&
+    value.data !== null &&
+    !Array.isArray(value.data)
+  );
+}
+
+function isPlayerEvent(value: unknown): value is PlayerEvent {
+  if (!isDomainEvent(value, "player")) return false;
+  const { type, data } = value;
+  switch (type) {
+    case "playing":
+      return isFiniteNumber(data.pos) && isFiniteNumber(data.wall_ms);
+    case "paused":
+    case "unloaded":
+      return isFiniteNumber(data.pos);
+    case "ended":
+      return Object.keys(data).length === 0;
+    case "error":
+      return isErrorData(data);
+    case "track":
+      return isFiniteNumber(data.index) && (data.song === null || isTrack(data.song));
+    case "queue":
+      return (
+        isFiniteNumber(data.length) &&
+        isFiniteNumber(data.index) &&
+        (data.mode === "normal" || data.mode === "radio")
+      );
+    default:
+      return false;
+  }
+}
+
+function isLoginEvent(value: unknown): value is LoginEvent {
+  if (!isDomainEvent(value, "login")) return false;
+  switch (value.type) {
+    case "qr":
+      return (
+        typeof value.data.qr === "string" &&
+        (value.data.mimetype === undefined || typeof value.data.mimetype === "string")
+      );
+    case "waiting":
+    case "scanned":
+    case "done":
+    case "timeout":
+    case "refuse":
+      return Object.keys(value.data).length === 0;
+    case "error":
+      return isErrorData(value.data);
+    default:
+      return false;
+  }
+}
+
+function isProviderEvent(value: unknown): value is ProviderEvent {
+  return isDomainEvent(value, "provider") && value.type === "error" && isErrorData(value.data);
 }
 
 export function onPlayer(cb: (e: PlayerEvent) => void): () => void {
   const listener = (e: unknown) => {
-    if (isDomainEvent(e, "player")) cb(e as PlayerEvent);
+    if (isPlayerEvent(e)) cb(e);
   };
-  addEventListener("player", listener as any);
-  return () => removeEventListener("player", listener as any);
+  addEventListener("player", listener);
+  return () => removeEventListener("player", listener);
 }
 
 export function onLogin(cb: (e: LoginEvent) => void): () => void {
   const listener = (e: unknown) => {
-    if (isDomainEvent(e, "login")) cb(e as LoginEvent);
+    if (isLoginEvent(e)) cb(e);
   };
-  addEventListener("login", listener as any);
-  return () => removeEventListener("login", listener as any);
+  addEventListener("login", listener);
+  return () => removeEventListener("login", listener);
 }
 
 export function onProvider(cb: (e: ProviderEvent) => void): () => void {
   const listener = (e: unknown) => {
-    if (isDomainEvent(e, "provider")) cb(e as ProviderEvent);
+    if (isProviderEvent(e)) cb(e);
   };
-  addEventListener("provider", listener as any);
-  return () => removeEventListener("provider", listener as any);
+  addEventListener("provider", listener);
+  return () => removeEventListener("provider", listener);
 }

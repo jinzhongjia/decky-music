@@ -4,6 +4,8 @@ import re
 
 from qqmusic_api.modules.search import SearchType
 
+from qq.paging import window
+
 # search_by_type 的登录态响应把命中词包进 <em ...> 高亮标记,按字面渲染很脏;
 # 名称类字段不存在合法尖括号,通用剥标签
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -22,21 +24,27 @@ def _field(obj, name: str, default=None):
 
 async def songs(q, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
     # 全程 search_by_type:首页曾走 general_search,与后续页排序源不同,翻页会轻微错位/重复
-    page, num, skip = _page_args(limit, offset)
-    resp = await q.client.search.search_by_type(keyword, SearchType.SONG, num=num, page=page)
-    return [_song_brief(s) for s in resp.song[skip : skip + limit]]
+    async def fetch(**page):
+        return await q.client.search.search_by_type(keyword, SearchType.SONG, **page)
+
+    items, _ = await window(fetch, "song", limit, offset)
+    return [_song_brief(s) for s in items]
 
 
 async def playlists(q, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
-    page, num, skip = _page_args(limit, offset)
-    resp = await q.client.search.search_by_type(keyword, SearchType.SONGLIST, num=num, page=page)
-    return [_playlist_brief(s) for s in resp.songlist[skip : skip + limit]]
+    async def fetch(**page):
+        return await q.client.search.search_by_type(keyword, SearchType.SONGLIST, **page)
+
+    items, _ = await window(fetch, "songlist", limit, offset)
+    return [_playlist_brief(s) for s in items]
 
 
 async def albums(q, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
-    page, num, skip = _page_args(limit, offset)
-    resp = await q.client.search.search_by_type(keyword, SearchType.ALBUM, num=num, page=page)
-    return [_album_brief(a) for a in resp.album[skip : skip + limit]]
+    async def fetch(**page):
+        return await q.client.search.search_by_type(keyword, SearchType.ALBUM, **page)
+
+    items, _ = await window(fetch, "album", limit, offset)
+    return [_album_brief(a) for a in items]
 
 
 async def artists(q, keyword: str, limit: int = 20, offset: int = 0) -> list[dict]:
@@ -65,11 +73,6 @@ async def hot_keywords(q, limit: int = 20) -> list[dict]:
         if query:
             out.append({"keyword": query, "label": "hot" if _field(k, "need_top") else "none"})
     return out
-
-
-def _page_args(limit: int, offset: int) -> tuple[int, int, int]:
-    skip = offset % limit
-    return offset // limit + 1, limit + skip, skip
 
 
 def _song_brief(s) -> dict:

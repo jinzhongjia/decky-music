@@ -5,14 +5,18 @@ import types
 import unittest
 from unittest.mock import patch
 
-from tests.test_playback import Bridge, bridge_mod
+from tests.playback_support import FakeConn
+from bridge import Bridge
+import ipc
+import protocol
+import settings
 
 
 class TestProviderChangeIntent(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.bridge = Bridge()
         self.bridge.settings = {"provider": "qq", "accounts": {}}
-        self.bridge.provider = bridge_mod.Conn("provider")
+        self.bridge.provider = FakeConn()
         self.bridge.provider_error = None
         self.entered = asyncio.Event()
         self.release = asyncio.Event()
@@ -28,7 +32,7 @@ class TestProviderChangeIntent(unittest.IsolatedAsyncioTestCase):
         self.bridge.playback = types.SimpleNamespace(queue_clear=clear)
         self.bridge._ensure_provider = ensure
         self.bridge._kick_seed_liked = lambda: None
-        persistence = patch.object(bridge_mod, "save_settings")
+        persistence = patch.object(settings, "save_settings")
         persistence.start()
         self.addCleanup(persistence.stop)
 
@@ -42,15 +46,13 @@ class TestProviderChangeIntent(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("ncm", self.ensured)
 
     async def test_login_during_teardown_is_discarded(self):
-        origin = bridge_mod.ConnectionOrigin(1, "qq")
+        origin = ipc.ConnectionOrigin(1, "qq")
         self.bridge.provider.origin = origin
         transition = asyncio.create_task(self.bridge.set_provider("ncm"))
         await asyncio.wait_for(self.entered.wait(), 1)
         # Do not enlarge the old-provider event race while waiting for player cancellation.
         await self.bridge._on_provider_event(
-            bridge_mod.protocol.ChildEvent(
-                "login", "done", {"cred": "fake-test-credential"}
-            ),
+            protocol.ChildEvent("login", "done", {"cred": "fake-test-credential"}),
             origin,
         )
         self.assertEqual(self.bridge.settings["accounts"], {})

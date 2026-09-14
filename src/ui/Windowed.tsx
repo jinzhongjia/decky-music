@@ -51,12 +51,14 @@ function useViewport(onNearBottom?: () => void): Viewport {
 export function WindowedList<T>({
   items,
   itemHeight,
+  gap,
   renderItem,
   onNearBottom,
   style,
 }: WindowProps & {
   items: T[];
   itemHeight: number;
+  gap: number;
   renderItem: (item: T, index: number) => ReactNode;
 }) {
   const viewport = useViewport(onNearBottom);
@@ -65,16 +67,21 @@ export function WindowedList<T>({
     itemHeight,
     viewport.scrollTop,
     viewport.height,
-    OVERSCAN_ROWS
+    OVERSCAN_ROWS,
+    gap
   );
 
   return (
-    <div ref={viewport.ref} onScroll={viewport.onScroll} style={style}>
+    <div ref={viewport.ref} onScroll={viewport.onScroll} style={{ ...style, gap: 0 }}>
       <div style={{ height: range.before, flexShrink: 0 }} />
       {items.slice(range.start, range.end).map((item, index) => (
         <div
           key={range.start + index}
-          style={{ height: itemHeight, overflow: "hidden", flexShrink: 0 }}
+          style={{
+            height: itemHeight,
+            flexShrink: 0,
+            marginBottom: range.start + index + 1 < range.end ? gap : 0,
+          }}
         >
           {renderItem(item, range.start + index)}
         </div>

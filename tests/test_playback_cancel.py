@@ -25,9 +25,12 @@ async def _emit(*_args, **_kwargs):
 decky_stub.emit = _emit
 sys.modules.setdefault("decky", decky_stub)
 
-import bridge as bridge_mod  # noqa: E402
+import decky
+import ipc
+import settings
 import protocol  # noqa: E402
-from bridge import Bridge, Conn  # noqa: E402
+from bridge import Bridge
+from ipc import Conn  # noqa: E402
 from playback import Playback  # noqa: E402
 
 
@@ -51,9 +54,7 @@ class Provider(Conn):
         self.requests.put_nowait(name)
         if name in self.delayed:
             await asyncio.shield(self.delayed[name])
-        return protocol.ChildResponse(
-            1, True, {"url": f"https://example.invalid/{name}"}
-        )
+        return protocol.ChildResponse(1, True, {"url": f"https://example.invalid/{name}"})
 
 
 class WaitingLock(asyncio.Lock):
@@ -76,7 +77,7 @@ class PlayerWire:
         self.conn = Conn("player")
         self.conn._wlock = WaitingLock()
         self.conn.writer = self
-        self.conn.origin = bridge_mod.ConnectionOrigin(1, None)
+        self.conn.origin = ipc.ConnectionOrigin(1, None)
         self.reader = asyncio.StreamReader()
         self.frames = []
         self.commands = asyncio.Queue()
@@ -136,7 +137,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
         async def emit(_channel, event):
             self.emitted.append(event)
 
-        self.emit_patch = patch.object(bridge_mod.decky, "emit", emit, create=True)
+        self.emit_patch = patch.object(decky, "emit", emit, create=True)
         self.emit_patch.start()
         self.addCleanup(self.emit_patch.stop)
         self.wire = PlayerWire()
@@ -217,9 +218,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
         released.set_result(None)
         await old
         self.assertEqual(self.wire.frames, before[0])
-        self.assertFalse(
-            any(e["type"] == "track" for e in self.emitted[len(before[1]) :])
-        )
+        self.assertFalse(any(e["type"] == "track" for e in self.emitted[len(before[1]) :]))
         self.assert_current("new")
 
     async def test_provider_switch_cancels_both_id_namespaces(self):
@@ -237,7 +236,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
                 br._ensure_provider = ensure
                 released = self.provider.hold("old")
                 old = await self.started()
-                with patch.object(bridge_mod, "save_settings"):
+                with patch.object(settings, "save_settings"):
                     await br.set_provider(target)
                 before = list(self.wire.frames)
                 released.set_result(None)
@@ -281,14 +280,8 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
                     self.assert_empty()
                 self.wire.conn._wlock.release()
                 await asyncio.gather(old, newer)
-                loads = [
-                    f["args"]["url"]
-                    for f in self.wire.frames[start:]
-                    if f["cmd"] == "load"
-                ]
-                self.assertEqual(
-                    loads, ["https://example.invalid/new"] if replacement else []
-                )
+                loads = [f["args"]["url"] for f in self.wire.frames[start:] if f["cmd"] == "load"]
+                self.assertEqual(loads, ["https://example.invalid/new"] if replacement else [])
                 if replacement:
                     self.assert_current("new")
                 else:
@@ -310,9 +303,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
                 self.wire.reply(frame)
                 await old
                 self.assertEqual(self.wire.frames, before[0])
-                self.assertFalse(
-                    any(e["type"] == "track" for e in self.emitted[len(before[1]) :])
-                )
+                self.assertFalse(any(e["type"] == "track" for e in self.emitted[len(before[1]) :]))
                 if replacement:
                     self.assert_current("new")
                 else:
@@ -336,9 +327,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
         frame = await self.wire.command("load")
         await self.wire.conn._wlock.acquire()
         self.wire.reply(frame)
-        self.assertIs(
-            await asyncio.wait_for(self.wire.conn._wlock.waiting.get(), 1), old
-        )
+        self.assertIs(await asyncio.wait_for(self.wire.conn._wlock.waiting.get(), 1), old)
         newer = await self.started("new")
         self.wire.held.clear()
         self.wire.conn._wlock.release()
@@ -355,7 +344,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
                 await self.wire.conn._wlock.acquire()
                 track_emitted.set()
 
-        with patch.object(bridge_mod.decky, "emit", emit):
+        with patch.object(decky, "emit", emit):
             old = await self.started()
             await track_emitted.wait()
             clearing = asyncio.create_task(self.pb.queue_clear())
@@ -440,7 +429,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
                 started.set()
                 await released
 
-        with patch.object(bridge_mod.decky, "emit", emit):
+        with patch.object(decky, "emit", emit):
             self.wire.event("ended")
             await started.wait()
             await self.pb.play_queue([item("new"), item("next")])
@@ -489,7 +478,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
 
         br._ensure_provider = ensure
         self.wire.held.add("stop")
-        with patch.object(bridge_mod, "save_settings"):
+        with patch.object(settings, "save_settings"):
             switching = asyncio.create_task(br.set_provider("ncm"))
             frame = await self.wire.command("stop")
             self.wire.held.clear()

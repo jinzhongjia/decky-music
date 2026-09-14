@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { errorText } from "./api";
 
 // 极简错误总线:guard 是普通函数(在事件回调里调),不能直接 setState,
 // 故用模块级 pub-sub 把异步/事件错误传给对应 UI 面的 <ErrorBanner/> 渲染。
@@ -25,12 +26,14 @@ export function useError(scope: ErrorScope = "page") {
 }
 
 /** 包裹异步/事件 callable:失败不外抛(不拖垮宿主 UI),错误推总线在 UI 上渲染。 */
-export async function guard(fn: () => Promise<unknown>, where = "", scope: ErrorScope = "page") {
+export async function guard(
+  fn: () => Promise<unknown>,
+  scope: ErrorScope = "page",
+  isCurrent: () => boolean = () => true
+) {
   try {
     await fn();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[decky-music] callable failed", where, e);
-    reportError(msg, scope);
+  } catch (error) {
+    if (isCurrent()) reportError(errorText(error instanceof Error ? error.message : ""), scope);
   }
 }

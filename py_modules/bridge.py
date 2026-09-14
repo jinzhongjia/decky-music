@@ -1,428 +1,18 @@
-"""bridge 实现:UDS 连接、进程管理、provider 生命周期、事件路由、命令编排。
-
-main.py 只留 Decky 接口(Plugin 门面),具体实现都在这里。放 py_modules/ 才能被
-Decky 加进 sys.path 且被 CLI 打包。日志见 log.py。
-"""
+"""Decky bridge facade composing IPC, supervision and RPC responsibilities."""
 
 import asyncio
-import json
-import os
-import shutil
-import tarfile
-import time
-from collections.abc import Callable
-from dataclasses import dataclass
-from itertools import count
-
-import decky
-import protocol
-
-from log import DEV, clear_logs, log, log_dir_size, pump_stderr
+import settings
+from ipc import Conn
+from log import DEV, clear_logs, log, log_dir_size
 from playback import Playback
-from session_env import audio_environment
+from supervision import Supervision
+from provider_rpc import ProviderRPC
+from playback_rpc import PlaybackRPC
 
-RUNTIME = decky.DECKY_PLUGIN_RUNTIME_DIR
-SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
-REQUEST_TIMEOUT = 30  # 子进程响应上限(秒):song_url 最坏 ~20s;超时兜底防永久挂
-# player spawn 后等它连入 UDS 的上限(秒)。真机实测约 10ms 量级,给足余量仍远小于
-# REQUEST_TIMEOUT —— 连不进来就放弃同步音量,不能让启动流程挂在这儿。
-PLAYER_CONNECT_TIMEOUT = 5
-# 超过这个耗时的请求按 warn 记,好让 release 日志里也留下慢请求的痕迹
-SLOW_REQUEST_S = 2.0
 VOLUME_PERSIST_DELAY = 0.15
-# 音质上限档位(两个 provider 各自映射到自家 level/前缀,见各自的 LADDER)。
-# 语义是"上限":provider 从这档往下逐档试,保证无版权/非会员的歌仍能播。
-QUALITIES = ("standard", "high", "lossless")
-DEFAULT_QUALITY = "high"  # = 改动前的固定上限,老用户升级后行为不变
 
 
-def BIN(name: str) -> str:
-    # 拼出插件 bin/ 下二进制的绝对路径,供 spawn 子进程用。
-    # 安装目录运行时才由 DECKY_PLUGIN_DIR 决定,不能写死。
-    # 二进制经 remote_binary(正式)或开发期侧载放入 bin/。
-    # 例:BIN("player") → .../decky-music/bin/player
-    return os.path.join(decky.DECKY_PLUGIN_DIR, "bin", name)
-
-
-def qq_exe() -> str:
-    """qq-provider 可执行路径,必要时自解包。
-
-    Nuitka standalone 是目录包(tar.gz);remote_binary 安装时 Decky 只把资产原样存成
-    bin/qq-provider 文件、不解包(侧载则由 deploy.sh 解),首次用到时在这里自解。
-    归档经 remote_binary 的 sha256 校验,内容可信;bin/ 由安装器创建、deck 可写。
-    阻塞(~秒级),调用方走 asyncio.to_thread。"""
-    bin_dir = os.path.join(decky.DECKY_PLUGIN_DIR, "bin")
-    exe = os.path.join(bin_dir, "qq-provider", "qq-provider")
-    if os.path.isfile(exe):
-        return exe
-    tarball = os.path.join(bin_dir, "qq-provider")
-    if not os.path.isfile(tarball):
-        return exe  # 归档也缺失:让 spawn 报自然错误
-    tmp = os.path.join(bin_dir, ".qq-unpack")
-    shutil.rmtree(tmp, ignore_errors=True)
-    with tarfile.open(tarball) as tf:
-        tf.extractall(tmp)  # 顶层即 qq-provider/ 目录
-    os.chmod(os.path.join(tmp, "qq-provider", "qq-provider"), 0o755)
-    # 目录顶掉同名 tar 文件:先挪开,目录就位后再删,中途失败不丢归档
-    aside = tarball + ".tar.gz"
-    os.rename(tarball, aside)
-    os.rename(os.path.join(tmp, "qq-provider"), os.path.join(bin_dir, "qq-provider"))
-    os.remove(aside)
-    os.rmdir(tmp)
-    log("bridge", "own", "info", "qq-provider unpacked")
-    return exe
-
-
-def _child_env() -> dict:
-    # 保留有效的用户音频会话,否则按实际有效 UID 查找;不假定 deck/1000。
-    env = audio_environment()
-    # provider 持久化自己的设备身份用(qq 的伪造安卓机档案)。不持久化的话每次重启
-    # 都是一台新设备,同账号同 IP 冒出大量新设备正是风控特征,见 issue #44。
-    env["DECKY_MUSIC_STATE_DIR"] = decky.DECKY_PLUGIN_SETTINGS_DIR
-    if DEV:
-        env["DECKY_MUSIC_DEBUG"] = "1"  # 子进程据此决定是否发 debug 日志(release 省 IPC)
-    return env
-
-
-def stop_child(proc, hard: bool = False):
-    """停掉子进程,已经退出的也安全。
-
-    asyncio 的 Process.terminate() 对已退出的进程抛 ProcessLookupError。子进程自己崩了
-    (或被判死杀掉)之后再切 provider 就会撞上,异常从 set_provider 冒出去,此后再也切不动,
-    只能重启 Steam。真机复现过。
-    hard=True 用 SIGKILL:判死的进程可能正卡在不响应的状态,别指望它体面退出。
-    """
-    if proc is None:
-        return
-    try:
-        proc.kill() if hard else proc.terminate()
-    except ProcessLookupError:
-        pass  # 已经没了 —— 正是想要的结果
-
-
-async def spawn(source: str, *args: str) -> asyncio.subprocess.Process:
-    log("bridge", "own", "info", f"spawn {source}: {' '.join(args)}")
-    # ponytail: full-zip 装机经 Decky extractall 落地会丢执行位;spawn 前补 +x 兜底。
-    # 幂等(remote_binary/侧载本就 +x),best-effort 不阻断 spawn。
-    try:
-        os.chmod(args[0], 0o755)
-    except OSError:
-        pass
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        env=_child_env(),
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    asyncio.create_task(pump_stderr(source, proc.stderr))
-    return proc
-
-
-@dataclass(frozen=True)
-class ConnectionOrigin:
-    epoch: int
-    provider: str | None
-
-
-_connection_epochs = count(1)
-
-
-class Conn:
-    """一个子进程的 UDS 连接:bridge 作 server,子进程连入。"""
-
-    def __init__(self, name: str):
-        self.name = name  # "provider" | "player":日志 source + id 错配提示
-        self.path = os.path.join(RUNTIME, f"{name}.sock")
-        self.writer: asyncio.StreamWriter | None = None
-        self.server: asyncio.AbstractServer | None = None
-        self.on_event = None  # ChildEvent(player/login/provider)时回调
-        self.on_dead = None  # 通道级 timeout(= 子进程整体不响应)时回调,由 Bridge 装
-        self.on_missing = None  # 发请求时子进程不在:先把它拉起来再发(player 装;provider 走 _ensure_provider)
-        self.on_lost = None  # 连接真的断了(子进程崩溃/被杀)时回调,由 Bridge 装
-        self.pending: dict[int, asyncio.Future] = {}  # 在途请求:id → Future(响应按 id demux)
-        self.connected: asyncio.Event = asyncio.Event()  # 子进程连入后置位
-        self._next_id = 0
-        self._wlock = asyncio.Lock()  # 只保护写帧原子性;请求周期不再互相排队(修按键排队无响应)
-        self._events: asyncio.Queue = asyncio.Queue()  # 域事件顺序队列(单消费者,保序)
-        self._ev_task: asyncio.Task | None = None
-        self.session: ConnectionOrigin | None = None
-        self.origin: ConnectionOrigin | None = None
-        self._active_event: asyncio.Task | None = None
-
-    def is_current(self, origin: ConnectionOrigin | None) -> bool:
-        return origin is not None and self.origin is origin and self.writer is not None
-
-    def end_session(self):
-        """Invalidate before teardown can yield; old listener callbacks cannot rebind."""
-        self.session = None
-        if self.server:
-            self.server.close()
-        self.disconnect()
-
-    async def listen(self, provider: str | None = None):
-        self.end_session()
-        session = ConnectionOrigin(next(_connection_epochs), provider)
-        self.session = session
-        try:
-            os.unlink(self.path)
-        except FileNotFoundError:
-            pass
-        if provider is not None:
-            self.path = os.path.join(RUNTIME, f"{self.name}-{session.epoch}.sock")
-        self.server = await asyncio.start_unix_server(
-            lambda reader, writer: self._accept(reader, writer, session),
-            self.path,
-            limit=protocol.MAX_FRAME_BYTES,
-        )
-        if self.session is not session:
-            self.server.close()
-        if self._ev_task is None:
-            self._ev_task = asyncio.create_task(self._pump_events())
-
-    async def _pump_events(self):
-        # 事件单消费者:绝不让 on_event 内联阻塞读循环 —— ended → 自动切歌会向本 Conn
-        # 发 load 并等响应,而响应只能由读循环收,内联即自死锁(每次自然播完卡 60s)。
-        # 独立任务消费还保证事件按到达顺序处理(playing/paused 不乱序)。
-        while True:
-            origin, msg = await self._events.get()
-            try:
-                if self.on_event and self.is_current(origin):
-                    self._active_event = asyncio.create_task(self.on_event(msg, origin))
-                    await self._active_event
-            except asyncio.CancelledError:
-                if asyncio.current_task().cancelling():
-                    raise
-            except Exception as e:  # 单个事件失败不放倒消费循环(宿主安全)
-                log("bridge", "own", "error", f"{self.name} event handler failed: {type(e).__name__}")
-            finally:
-                self._active_event = None
-                self._events.task_done()
-
-    async def _accept(self, reader, writer, session: ConnectionOrigin):
-        if self.session is not session:
-            writer.close()
-            return
-        if self.writer is not None:
-            self.disconnect()
-        origin = ConnectionOrigin(next(_connection_epochs), session.provider)
-        self.origin = origin
-        self.writer = writer
-        self.connected.set()
-        try:
-            await self._read_loop(reader, origin)
-        except (ConnectionResetError, OSError) as e:
-            # 子进程被 kill / 崩溃时读循环会直接抛。不接住的话异常冒到 asyncio 顶层
-            # (Unhandled exception in client_connected_cb),而连接状态还停在"已连上",
-            # 之后每次 set_provider 都失败,只能重启 Steam。真机上复现过。
-            if self.is_current(origin):
-                log("bridge", "own", "warn", f"{self.name} connection lost: {type(e).__name__}")
-        finally:
-            self.disconnect(writer)
-
-    async def _read_loop(self, reader: asyncio.StreamReader, origin: ConnectionOrigin):
-        # 单读循环分流:log 直接落盘;domain 事件入独立顺序队列;response 按 id 完成 pending Future。
-        # 响应可乱序到达;事件处理不占读循环,允许其回调继续发请求并等待响应。
-        try:
-            while line := await reader.readline():  # \n 分帧,同 Decky localsocket.py
-                if not self.is_current(origin):
-                    return
-                if len(line) > protocol.MAX_FRAME_BYTES + 1:
-                    log("bridge", "own", "warn", f"{self.name} frame exceeded size limit")
-                    return
-                try:
-                    msg = protocol.decode_child_message(json.loads(line))
-                except (json.JSONDecodeError, protocol.ProtocolError) as e:
-                    log("bridge", "own", "warn", f"bad {self.name} message: {e}")
-                    continue
-                if isinstance(msg, protocol.LogEvent):
-                    where = msg.where
-                    log(self.name, "socket", msg.level, f"{where}: {msg.msg}" if where else msg.msg)
-                elif isinstance(msg, protocol.ChildEvent):
-                    self._events.put_nowait((origin, msg))
-                else:  # ChildResponse:按 id 匹配在途请求;无主(已超时放弃)的迟到响应丢弃
-                    fut = self.pending.pop(msg.id, None)
-                    if fut and not fut.done():
-                        fut.set_result(msg)
-                    else:
-                        log("bridge", "own", "warn", f"{self.name} drop stale response id={msg.id}")
-        except ValueError:
-            if self.is_current(origin):
-                log("bridge", "own", "warn", f"{self.name} frame exceeded size limit")
-
-    def disconnect(self, writer: asyncio.StreamWriter | None = None):
-        """连接断开:清干净状态,好让下一次 spawn 能重新连进来。
-
-        在途请求必须立刻收到失败 —— 不然它们要干等满 30s 才等到通道超时,而对面
-        进程已经没了,那 30s 纯属白等。
-
-        `writer` = 发起断开的那条连接;省略表示无条件拆(close 走这条)。同一监听器内
-        重连,或旧监听器回调延迟结束时,旧连接的 EOF 仍可能晚于新连接接入。
-        此时 self.writer 已指向新连接,无条件拆会把健康连接判死并失败它的在途请求。
-        provider 的独立会话路径阻止旧进程接入新会话;这里的 writer 身份检查再保证
-        迟到的旧 EOF 不拆新连接,同样覆盖固定 player.sock 的重连。
-        """
-        if writer is not None and self.writer is not writer:
-            return
-        old_writer = self.writer
-        self.origin = None
-        if self._active_event:
-            self._active_event.cancel()
-        if old_writer:
-            old_writer.close()
-        self.connected.clear()
-        self.writer = None
-        for fut in list(self.pending.values()):
-            if not fut.done():
-                fut.set_exception(ConnectionResetError(f"{self.name} gone"))
-        self.pending.clear()
-        if self.on_lost:
-            self.on_lost()
-
-    async def request(
-        self, cmd: str, args: dict | None = None, *, is_current: Callable[[], bool] | None = None
-    ) -> protocol.ChildResponse:
-        # 当前已实现协议 v1 的并发 demux:多请求可同时在途,响应按 id 匹配。
-        # 写锁只保护一帧,慢请求不占住整个请求周期;事件顺序消费见 _pump_events。
-        self._next_id += 1
-        rid = self._next_id
-        if self.writer is None and self.on_missing:
-            # 子进程不在了:先给它一次拉起的机会再发。player 走这条(它没有 provider 那样
-            # 的「每条命令前 _ensure_provider」入口),否则 player 崩一次就永久失声。
-            await self.on_missing()
-        if is_current is not None and not is_current():
-            raise asyncio.CancelledError
-        if self.writer is None:  # 子进程已经没了(见 disconnect),别等满 30s 再说
-            return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
-        payload = json.dumps(protocol.request(rid, cmd, args)).encode()
-        if len(payload) > protocol.MAX_FRAME_BYTES:
-            return protocol.ChildResponse(
-                rid, False, {}, protocol.ErrorBody("invalid_request", "frame too large")
-            )
-        writer, origin = self.writer, self.origin
-        fut: asyncio.Future = asyncio.get_running_loop().create_future()
-        self.pending[rid] = fut
-        t0 = time.monotonic()
-        try:
-            async with self._wlock:  # 写帧原子,防并发写乱行
-                if is_current is not None and not is_current():
-                    raise asyncio.CancelledError
-                if self.writer is not writer or self.origin is not origin:
-                    raise ConnectionResetError
-                writer.write(payload + b"\n")
-                await writer.drain()
-            resp = await asyncio.wait_for(fut, REQUEST_TIMEOUT)
-            if self.writer is not writer or self.origin is not origin:
-                raise ConnectionResetError
-            self._log_timing(cmd, time.monotonic() - t0)
-            return resp
-        except asyncio.TimeoutError:
-            if is_current is not None and not is_current():
-                raise asyncio.CancelledError
-            if self.writer is not writer or self.origin is not origin:
-                return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
-            # 协议 v1 里通道级 timeout 的含义就是「子进程整体不响应」。观测两次它都不会
-            # 自己好转(issue #44 的 100% CPU 自旋:只有换进程能救),所以判死,让下一条
-            # 命令重开一个,而不是把后面每个操作都拖 30s。
-            log("bridge", "own", "error", f"{self.name} request timeout: {cmd}")
-            if self.on_dead:
-                self.on_dead()
-            return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
-        except (ConnectionResetError, OSError):
-            # 等待期间子进程没了(disconnect 会把在途 future 全部置失败)
-            log("bridge", "own", "warn", f"{self.name} died mid-request: {cmd}")
-            return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
-        finally:
-            self.pending.pop(rid, None)
-            if fut.done() and not fut.cancelled():
-                fut.exception()  # A disconnect can fail the future while its write lock is still held.
-
-    def _log_timing(self, cmd: str, secs: float):
-        """请求耗时。debug 记全部(仅 dev 可见);超过阈值升 warn —— release 只有 INFO 以上,
-        没这条的话用户报「插件变慢」时日志里一点线索都没有(见 issue #44 的排查)。
-        阈值 2s:正常命令 p95 在 0.4s 量级,2s 已经是肉眼可感的卡顿。"""
-        ms = secs * 1000
-        if secs >= SLOW_REQUEST_S:
-            log("bridge", "own", "warn", f"slow {self.name} request: {cmd} took {ms:.0f}ms")
-        else:
-            log("bridge", "own", "debug", f"{self.name} {cmd} {ms:.0f}ms")
-
-    async def close(self):
-        writer, server = self.writer, self.server
-        self.end_session()
-        task = self._ev_task
-        if task:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-        self._ev_task = None
-        if writer:
-            try:
-                await writer.wait_closed()
-            except (ConnectionResetError, OSError):
-                pass
-        if server:
-            await server.wait_closed()
-        try:
-            os.unlink(self.path)
-        except FileNotFoundError:
-            pass
-
-
-def _songs_to_items(songs) -> list[dict]:
-    # provider 出 Song 形状(mid);队列项形状是 id(前端 toQueueItem 同款映射)。
-    # 电台/后端直灌队列的路径必须在此边界归一,否则 playback 读 item["id"] 会炸。
-    if not isinstance(songs, list):
-        return []
-    return [
-        {
-            "id": str(s.get("mid", "")),
-            "media_mid": s.get("media_mid", "") or "",
-            "name": s.get("name", "") or "",
-            "singer": s.get("singer", "") or "",
-            "cover": s.get("cover", "") or "",
-            "duration": s.get("duration", 0) or 0,
-        }
-        for s in songs
-        if isinstance(s, dict) and s.get("mid")
-    ]
-
-
-def load_settings() -> dict:
-    try:
-        with open(SETTINGS, encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {
-            "version": 1,
-            "provider": None,
-            "volume": 0.8,
-            "play_mode": "list_loop",
-            "quality": DEFAULT_QUALITY,
-        }
-
-
-def save_settings(data: dict):
-    # 原子写:临时文件(创建即 0600) → os.replace()。bridge 可能被 kill,半截写会损坏配置。
-    tmp = SETTINGS + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            fd = None
-            json.dump(data, f, ensure_ascii=False)
-        os.replace(tmp, SETTINGS)
-        os.chmod(SETTINGS, 0o600)  # cookie 私有
-    except Exception:
-        if fd is not None:
-            os.close(fd)
-        try:
-            os.unlink(tmp)
-        except FileNotFoundError:
-            pass
-        raise
-
-
-class Bridge:
-    """总线实现:管理 player/provider 两个子进程,编排 UI 命令,路由子进程事件。"""
-
+class Bridge(Supervision, ProviderRPC, PlaybackRPC):
     def __init__(self):
         # 红心记忆:启动/登录后由 _kick_seed_liked 从服务器种全量,like 动作增量维护;
         # 切 provider 清空(两家 id 体系不通用)。
@@ -432,7 +22,7 @@ class Bridge:
         self._provider_change_gen = 0
 
     async def start(self):
-        self.settings = load_settings()
+        self.settings = settings.load_settings()
         self.provider = Conn("provider")
         self.player = Conn("player")
         self.provider_proc: asyncio.subprocess.Process | None = None
@@ -440,7 +30,9 @@ class Bridge:
         self.provider_lock = asyncio.Lock()  # 串行化 _ensure_provider,保证幂等不重复 spawn
         self.player_proc: asyncio.subprocess.Process | None = None
         self.player_lock = asyncio.Lock()  # 串行化 _ensure_player,同上
-        self.provider_error = None  # provider 启动失败 code,get_provider 回灌(emit 易在前端未连时丢,#38)
+        self.provider_error = (
+            None  # provider 启动失败 code,get_provider 回灌(emit 易在前端未连时丢,#38)
+        )
         self.playback = Playback(  # 播放 + 队列编排
             self.player,
             self.provider,
@@ -448,7 +40,7 @@ class Bridge:
             persist=self._persist_queue,
             radio_fetcher=self._radio_fetch,
             auth_retry=self._refresh_credential,
-            quality=lambda: self.settings.get("quality", DEFAULT_QUALITY),
+            quality=lambda: self.settings.get("quality", settings.DEFAULT_QUALITY),
         )
         # 恢复上次的普通队列(只存了 id 类字段;不自动开播,见 QUEUE-BEHAVIOR §1.1)
         self.playback.restore(self.settings.get("queue"))
@@ -460,7 +52,9 @@ class Bridge:
         self.player.on_lost = self._player_connection_lost
         log("bridge", "own", "info", f"started (dev={DEV})")
         # player 常驻:启动时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
-        self.player_failed = False  # 启动失败态,get_playback 回灌给 UI(emit 易在前端 WS 未连时丢,#38)
+        self.player_failed = (
+            False  # 启动失败态,get_playback 回灌给 UI(emit 易在前端 WS 未连时丢,#38)
+        )
         await self._spawn_player()
         await self._sync_player_volume()  # 否则 UI 滑块与实际输出对不上(见该方法注释)
         # 预设了 provider 就在加载时后台预拉起(不阻塞启动),省去 UI 首次 get_provider 的
@@ -468,215 +62,6 @@ class Bridge:
         if self.settings.get("provider"):
             self._track_task(self._ensure_provider(self.settings["provider"]))
         self._track_task(self._credential_refresh_loop())
-
-    def _player_connection_lost(self):
-        """player 连接断了 = 进程崩了/被杀(正常路径下它与 bridge 同生共死)。
-
-        告诉 playback 记下中断处并把 _loaded 置 False,否则之后每次 resume 都只是朝一个
-        不存在的进程发命令 —— 表现为"按播放键没反应"。真正的重启不在这里做:下一条命令
-        会经 Conn.on_missing → _ensure_player 拉起,省一次无谓 spawn(同 provider 的做法)。
-        """
-        try:
-            event = self.playback.player_gone()
-            if event is not None:
-                self._track_task(decky.emit("player", event))
-        except Exception as e:  # 断连路径上绝不能再抛,否则冒到 asyncio 顶层
-            log("bridge", "own", "error", f"player_gone handler failed: {type(e).__name__}")
-
-    async def _ensure_player(self):
-        """幂等:确保 player 进程在跑且已连上。崩溃后由 Conn.on_missing 触发。
-
-        音量同步放在锁**外**:它要走 player.request,而 request 在 writer 为空时会回调
-        on_missing(就是本方法)—— 锁内同步等于自己等自己,asyncio.Lock 不可重入,直接死锁。
-        """
-        async with self.player_lock:
-            alive = self.player_proc is not None and self.player_proc.returncode is None
-            if alive and self.player.connected.is_set():
-                return  # 已经好了(并发命令会连着调这里)
-            stop_child(self.player_proc, hard=True)  # 可能是卡死而非退出,别指望体面退出
-            self.player_proc = None
-            self.player.connected.clear()
-            log("bridge", "own", "warn", "player gone, respawning")
-            await self._spawn_player()
-        await self._sync_player_volume()
-
-    async def _sync_player_volume(self):
-        """把 bridge 持久化的音量同步给刚起来的 player。
-
-        player 自己的默认是满音量(audio.rs 的 `let mut volume: f32 = 1.0`),而 bridge
-        只在用户拖动音量和 clear_data 时才下发 volume 命令 —— 启动路径上从来不发。于是
-        重启后 get_playback 把持久化值(如 0.4)回灌给 UI,滑块显示 40%,player 却在
-        100% 出声,MPRIS 的 Volume 属性也跟着偏;用户得手动动一下滑块才对上。
-
-        等连接就绪有上限:player 连不进来是它自己的问题,不该把启动流程挂在这儿。
-        """
-        if self.player_failed:
-            return
-        try:
-            await asyncio.wait_for(self.player.connected.wait(), PLAYER_CONNECT_TIMEOUT)
-        except asyncio.TimeoutError:
-            log("bridge", "own", "warn", "player not connected in time; volume left at its default")
-            return
-        vol = self.settings.get("volume", 0.8)
-        await self.player.request("volume", {"val": vol})
-
-    async def _spawn_player(self):
-        """player 常驻,启动即拉起。缺二进制(remote_binary 下载失败)不裸炸 _main:
-        兜住 OSError + 给 UI 报 player_start_failed,否则整个后端起不来且 UI 无任何提示。
-        (provider 侧同款兜底见 _ensure_provider。)"""
-        try:
-            self.player_proc = await spawn("player", BIN("player"), "--socket", self.player.path)
-            self.player_failed = False
-        except OSError as e:
-            self.player_failed = True
-            log("bridge", "own", "error", f"player spawn failed: {type(e).__name__}")
-            await decky.emit(
-                "player",
-                {
-                    "ev": "player",
-                    "type": "error",
-                    "data": {"code": "player_start_failed", "message": "player_start_failed"},
-                },
-            )
-
-    async def _refresh_credential(self) -> bool:
-        """重注入当前凭证触发 provider 侧过期检测/刷新(QQ musickey 有效期撑不过长会话;
-        NCM 无刷新概念,幂等无害)。返回是否真的刷新了(供播放失败重试判断值不值得再试)。"""
-        origin = self.provider.origin
-        if not self.provider.is_current(origin):
-            return False
-        which = origin.provider
-        cred = (self.settings.get("accounts") or {}).get(which)
-        if not cred:
-            return False
-        r = await self.provider.request("set_credential", {"cred": cred})
-        if not self.provider.is_current(origin):
-            return False
-        new_cred = r.data.get("refreshed") if r.ok else None
-        if new_cred:
-            self.settings.setdefault("accounts", {})[which] = new_cred
-            save_settings(self.settings)
-            log("bridge", "own", "info", f"{which} credential refreshed mid-session, persisted")
-            return True
-        return False
-
-    async def _credential_refresh_loop(self):
-        # 每小时查一次过期(曾发生 13h 长会话 musickey 过期 → 全部歌报"无权限");
-        # 播放路径另有 no_playable 时的即时刷新重试兜底,这里把常态过期窗口压到 ≤1h
-        while True:
-            await asyncio.sleep(3600)
-            try:
-                await self._refresh_credential()
-            except Exception as e:
-                log("bridge", "own", "debug", f"credential refresh loop: {type(e).__name__}")
-
-    def _provider_unresponsive(self):
-        """provider 判死:直接杀掉,下一条命令会经 _ensure_provider 重开一个。
-
-        为什么非杀不可:通道级 timeout 意味着它整体没反应,而这种状态观测到两次都不会
-        自愈 —— issue #44 那次是 100% CPU 自旋在 niquests 的多路复用抽干循环里,连它
-        自己的 15s 上游超时都跑不了。不杀的话之后每个操作都得先赔 30s,直到用户重启 Steam。
-
-        SIGKILL 而非 SIGTERM:卡死的进程未必还能体面退出。杀完不立刻重开,是因为下一条
-        命令自然会走 _ensure_provider(connected 已被 disconnect 清掉),省一次无谓 spawn。
-        """
-        if self.provider_proc is None or self.provider_proc.returncode is not None:
-            return  # 已经在换了 / 已经没了:并发超时时这里会被连着调用好几次
-        self.provider.end_session()
-        log("bridge", "own", "warn", "provider unresponsive, killing it for respawn")
-        stop_child(self.provider_proc, hard=True)
-        self.provider_proc = None
-
-    async def _ensure_provider(self, which: str | None):
-        """Serialize spawn; both listener and bootstrap belong to one source lifetime."""
-        async with self.provider_lock:
-            if which != self.settings.get("provider"):
-                return
-            alive = self.provider_proc is not None and self.provider_proc.returncode is None
-            if which and self.provider_which == which and alive and self.provider.connected.is_set():
-                return
-            self.provider.end_session()
-            stop_child(self.provider_proc)
-            self.provider_proc = None
-            self.provider_which = which
-            self.provider_error = None
-            if which is None:
-                return
-            gen = self._provider_change_gen
-            await self.provider.listen(which)
-            session = self.provider.session
-            if session is None or gen != self._provider_change_gen:
-                return
-            try:
-                binpath = await asyncio.to_thread(qq_exe) if which == "qq" else BIN("ncm-provider")
-                if self.provider.session is not session:
-                    return
-                proc = await spawn("provider", binpath, "--socket", self.provider.path)
-                if self.provider.session is not session:
-                    stop_child(proc)
-                    return
-                self.provider_proc = proc
-            except (OSError, tarfile.TarError):
-                await self._provider_start_error(session, "provider_start_failed")
-                return
-            await self._bootstrap_provider(session)
-
-    async def _provider_start_error(self, session: ConnectionOrigin, code: str):
-        if self.provider.session is not session:
-            return
-        self.provider_error = code
-        log("bridge", "own", "error", f"provider {session.provider}: {code}")
-        await decky.emit(
-            "provider", {"ev": "provider", "type": "error", "data": {"code": code, "message": code}}
-        )
-
-    async def _bootstrap_provider(self, session: ConnectionOrigin):
-        try:
-            await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
-        except asyncio.TimeoutError:
-            await self._provider_start_error(session, "provider_start_timeout")
-            return
-        if self.provider.session is not session:
-            return
-        origin = self.provider.origin
-        if not self.provider.is_current(origin):
-            return
-        self.provider_error = None
-        which = origin.provider
-        cred = (self.settings.get("accounts") or {}).get(which)
-        if cred:
-            r = await self.provider.request("set_credential", {"cred": cred})
-            if not self.provider.is_current(origin):
-                return
-            new_cred = r.data.get("refreshed") if r.ok else None
-            if new_cred:
-                self.settings.setdefault("accounts", {})[which] = new_cred
-                save_settings(self.settings)
-                log("bridge", "own", "info", f"{which} credential auto-refreshed, persisted")
-            self._kick_seed_liked()
-
-    def _kick_seed_liked(self):
-        # 红心种子(P6):后台拉服务器已收藏 id 全集灌 liked_ids,跨会话点亮与服务器一致。
-        # 双端 liked_ids 命令:NCM likelist 全量;QQ get_fav_song 大 num 一发拉全(quaverq 实证)。
-        origin = self.provider.origin
-        async def seed():
-            if not self.provider.is_current(origin):
-                return
-            try:
-                r = await self.provider.request("liked_ids")
-                if not self.provider.is_current(origin):
-                    return
-                if r.ok:
-                    ids = {str(i) for i in r.data.get("ids", []) if i}
-                    self.liked_ids |= ids  # 合并,不覆盖本会话已点的
-                    log("bridge", "own", "info", f"liked seed: {len(ids)} ids")
-                else:
-                    code = r.error.code if r.error else "provider_error"
-                    log("bridge", "own", "debug", f"liked seed skipped: {code}")
-            except Exception as e:
-                log("bridge", "own", "debug", f"liked seed failed: {e}")
-
-        self._track_task(seed())
 
     def _track_task(self, coro) -> asyncio.Task:
         task = asyncio.create_task(coro)
@@ -693,7 +78,7 @@ class Bridge:
     async def _persist_volume_later(self):
         try:
             await asyncio.sleep(VOLUME_PERSIST_DELAY)
-            save_settings(self.settings)
+            settings.save_settings(self.settings)
         finally:
             if self._volume_persist_task is asyncio.current_task():
                 self._volume_persist_task = None
@@ -705,268 +90,15 @@ class Bridge:
         if not task.done():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
-            save_settings(self.settings)
+            settings.save_settings(self.settings)
         self._volume_persist_task = None
-
-    async def _stop_process(self, proc):
-        stop_child(proc)
-        if proc is None or proc.returncode is not None or not hasattr(proc, "wait"):
-            return
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=2)
-        except asyncio.TimeoutError:
-            log("bridge", "own", "warn", "child did not stop gracefully, killing")
-            stop_child(proc, hard=True)
-            await proc.wait()
-
-    async def set_provider(self, which: str | None):
-        self._provider_change_gen += 1
-        gen = self._provider_change_gen
-        if self.settings.get("provider") != which:
-            self.provider.end_session()
-            self.liked_ids.clear()  # 两家 id 体系不通用
-            await self.playback.queue_clear()
-        if gen != self._provider_change_gen:
-            return
-        # Only the latest source intent may establish a new provider lifetime.
-        self.settings["provider"] = which
-        save_settings(self.settings)
-        await self._ensure_provider(which)
-
-    async def get_provider(self) -> dict:
-        # 读回当前 provider + 是否已登录(bridge 是真相源),并幂等拉起其进程:
-        # 解决"settings 预设了 provider、首次加载 UI 拿到了但进程没起"的问题。
-        which = self.settings.get("provider")
-        await self._ensure_provider(which)
-        logged_in = bool((self.settings.get("accounts") or {}).get(which))
-        log("bridge", "own", "debug", f"get_provider -> {which} loggedIn={logged_in}")
-        return {"provider": which, "loggedIn": logged_in, "error": self.provider_error}
-
-    async def login(self, login_type: str | None = None):
-        await self.provider.request("login", {"type": login_type})
-
-    async def logout(self):
-        origin = self.provider.origin
-        if not self.provider.is_current(origin):
-            return
-        which = origin.provider
-        await self.provider.request("logout")
-        if not self.provider.is_current(origin):
-            return
-        (self.settings.get("accounts") or {}).pop(which, None)
-        save_settings(self.settings)
-        await self.provider.request("set_credential", {"cred": None})
-        if not self.provider.is_current(origin):
-            return
-        log("bridge", "own", "info", f"{which} logged out")
-
-    async def get_account(self) -> dict:
-        # UI callable 返回沿用旧形状(账号字段平铺);失败回空对象,前端按空账号渲染。
-        r = await self.provider.request("account")
-        return r.data if r.ok else {}
 
     def _persist_queue(self, items: list, index: int):
         # 队列落盘:id 类字段 + 展示字段(恢复后浮层/徽章直接是真名字真封面),
         # 白名单键,绝不存解析出的播放 URL(限时 vkey)
-        keys = ("id", "media_mid", "name", "singer", "cover", "duration")
-        self.settings["queue"] = {
-            "items": [{k: x.get(k, "") for k in keys} for x in items],
-            "index": index,
-        }
-        save_settings(self.settings)
-
-    async def _radio_fetch(self, kind: str) -> list[dict]:
-        r = await self.provider.request("radio_fetch", {"kind": kind})
-        if not r.ok:
-            code = r.error.code if r.error else "provider_error"
-            log("bridge", "own", "warn", f"radio_fetch failed kind={kind}: {code}")
-            return []
-        return _songs_to_items(r.data.get("songs", []))
-
-    async def play_radio(self, kind: str) -> dict:
-        # 进电台模式(P5d):拉第一批开播。失败带稳定 error code(not_logged_in 等)供前端 i18n
-        r = await self.provider.request("radio_fetch", {"kind": kind})
-        if not r.ok:
-            code = r.error.code if r.error else "provider_error"
-            log("bridge", "own", "warn", f"radio start failed kind={kind}: {code}")
-            return {"ok": False, "error": code}
-        ok = await self.playback.play_radio(kind, _songs_to_items(r.data.get("songs", [])))
-        return {"ok": bool(ok), "error": None if ok else "provider_error"}
-
-    async def fm_trash(self):
-        # FM 垃圾桶:标记当前曲不喜欢 + 切下一首(仅 radio 模式;NCM 专属)
-        cur = self.playback.current_id()
-        if self.playback.mode != "radio" or not cur:
-            return
-        r = await self.provider.request("fm_trash", {"id": cur})
-        if not r.ok:
-            log("bridge", "own", "warn", f"fm_trash failed: {r.error.code if r.error else '?'}")
-        await self.playback.next_track()
-
-    async def like_current(self, on: bool) -> dict:
-        # 红心当前曲(QQ/NCM 同名命令 like_song {id, on})。
-        # QQ 以 data.success 表达业务失败(如曲目查不到),必须一并校验,不能只看 r.ok。
-        cur = self.playback.current_id()
-        if not cur:
-            log("bridge", "own", "warn", "like_current ignored: no current track")
-            return {"ok": False, "error": "provider_error"}
-        r = await self.provider.request("like_song", {"id": cur, "on": on})
-        success = r.ok and bool(r.data.get("success", True))
-        if success:
-            (self.liked_ids.add if on else self.liked_ids.discard)(cur)
-            log("bridge", "own", "info", f"like_song ok id={cur} on={on}")
-            return {"ok": True, "error": None, "liked": on}
-        code = (r.error.code if r.error else "provider_error") if not r.ok else "provider_error"
-        log("bridge", "own", "warn", f"like_song failed id={cur}: {code}")
-        return {"ok": False, "error": code, "liked": cur in self.liked_ids}
-
-    async def get_comments(self, song_id: str) -> dict:
-        # 热评(P5f;NCM 专属命令,QQ 调用会得 unknown_cmd → 空列表 + error)
-        r = await self.provider.request("comments", {"id": song_id, "limit": 30})
-        if r.ok:
-            return {"ok": True, "comments": r.data.get("comments", [])}
-        return {"ok": False, "comments": [], "error": r.error.code if r.error else "provider_error"}
-
-    # ---- 我的资产(P5e;provider 命令两端已就绪,此处透传) ----
-
-    async def get_user_assets(self) -> dict:
-        r = await self.provider.request("user_assets")
-        if r.ok:
-            return {"ok": True, **r.data}
-        return {"ok": False, "error": r.error.code if r.error else "provider_error"}
-
-    async def _list_cmd(self, cmd: str, key: str, limit: int = 50, extra: dict | None = None) -> dict:
-        # 列表类命令统一形状:{ok, <key>: [...], error?}。首页 50 条(翻页 P6)
-        args = {"limit": limit, **(extra or {})}
-        r = await self.provider.request(cmd, args)
-        # provider 进程没了(崩溃/被杀)时 writer 为 None,request 会立刻短路成 timeout。
-        # 浏览类命令自己不经 _ensure_provider,所以在用户回到 QAM / 重进页面(那时才有
-        # get_provider)之前,每次搜索翻页都报错 —— 看起来就是"插件坏了"。这里就地拉起
-        # 并重试一次,把它收敛成一次用户无感的重连。只在通道确实断了时重试:上游错误
-        # (无版权 / upstream_timeout 等)不该触发重开进程。
-        # 判断只在失败分支里做:成功路径不碰 self.settings —— 有测试用 Bridge.__new__()
-        # 构造、根本没跑过 start(),成功路径读 settings 会直接 AttributeError。
-        if not r.ok and getattr(self.provider, "writer", None) is None:
-            which = getattr(self, "settings", {}).get("provider")
-            if which:
-                log("bridge", "own", "info", f"{cmd}: provider gone, respawning")
-                await self._ensure_provider(which)
-                r = await self.provider.request(cmd, args)
-        if r.ok:
-            return {"ok": True, key: r.data.get(key, [])}
-        code = r.error.code if r.error else "provider_error"
-        detail = r.error.message if r.error else ""
-        # 失败必落日志(UI 只有 error banner,无迹可查的瞬时抖动全靠这里定位)
-        log("bridge", "own", "warn", f"{cmd} failed: {code} {detail}")
-        return {"ok": False, key: [], "error": code}
-
-    # ---- 搜索(P6:分类 + 热搜;老 search callable 已被下列分类命令取代) ----
-    # 列表类统一分页:offset 由前端翻页传入(usePaged),页大小恒 50(provider MAX_LIMIT 同值)
-
-    async def search_songs(self, keyword: str, offset: int = 0) -> dict:
-        return await self._list_cmd("search_songs", "songs", extra={"keyword": keyword, "offset": offset})
-
-    async def search_playlists(self, keyword: str, offset: int = 0) -> dict:
-        return await self._list_cmd("search_playlists", "playlists", extra={"keyword": keyword, "offset": offset})
-
-    async def search_albums(self, keyword: str, offset: int = 0) -> dict:
-        return await self._list_cmd("search_albums", "albums", extra={"keyword": keyword, "offset": offset})
-
-    async def search_artists(self, keyword: str, offset: int = 0) -> dict:
-        return await self._list_cmd("search_artists", "artists", extra={"keyword": keyword, "offset": offset})
-
-    async def search_hot(self) -> dict:
-        # 双 provider 同名命令(qq get_hotkey / ncm search_hot_detail),形状 {keyword,label}
-        return await self._list_cmd("search_hot", "keywords", 20)
-
-    # ---- 歌手/专辑详情(P6):双端 {artist|album, songs} ----
-
-    async def _detail_cmd(self, cmd: str, item_id: str) -> dict:
-        r = await self.provider.request(cmd, {"id": item_id, "limit": 50})
-        if r.ok:
-            return {"ok": True, **r.data}
-        code = r.error.code if r.error else "provider_error"
-        detail = r.error.message if r.error else ""
-        log("bridge", "own", "warn", f"{cmd} failed id={item_id}: {code} {detail}")
-        return {"ok": False, "error": code}
-
-    async def get_artist_detail(self, artist_id: str) -> dict:
-        return await self._detail_cmd("artist_detail", artist_id)
-
-    async def get_album_detail(self, album_id: str) -> dict:
-        return await self._detail_cmd("album_detail", album_id)
-
-    async def get_fav_songs(self, offset: int = 0) -> dict:
-        return await self._list_cmd("fav_songs", "songs", extra={"offset": offset})
-
-    async def get_listen_rank(self, offset: int = 0) -> dict:
-        return await self._list_cmd("listen_rank", "songs", extra={"offset": offset})
-
-    async def get_created_playlists(self, offset: int = 0) -> dict:
-        return await self._list_cmd("created_playlists", "playlists", extra={"offset": offset})
-
-    async def get_fav_playlists(self, offset: int = 0) -> dict:
-        return await self._list_cmd("fav_playlists", "playlists", extra={"offset": offset})
-
-    async def add_to_playlist(self, playlist_id: str, song_id: str) -> dict:
-        # 收藏到歌单(P6,X 菜单):QQ 传 dirid(add_songs 语义)、NCM 传 pid,由前端按数据形状选
-        r = await self.provider.request(
-            "add_to_playlist", {"playlist_id": playlist_id, "song_id": song_id}
-        )
-        # QQ 带 success 布尔(查无此歌等假成功),NCM 无该字段默认 True(同 like_current 口径)
-        if r.ok and bool(r.data.get("success", True)):
-            log("bridge", "own", "info", f"add_to_playlist ok id={song_id}")
-            return {"ok": True}
-        code = r.error.code if (not r.ok and r.error) else "provider_error"
-        detail = r.error.message if (not r.ok and r.error) else ""
-        log("bridge", "own", "warn", f"add_to_playlist failed id={song_id}: {code} {detail}")
-        return {"ok": False, "error": code}
-
-    async def fav_playlist(self, playlist_id: str, on: bool) -> dict:
-        # 收藏/取消收藏他人歌单。id 用全局 tid/pid(QQ 的 dirid 不认;榜单 id 也不是它,
-        # 故 UI 只在搜索/推荐/发现的歌单卡上给这个动作)。两端接口都幂等。
-        r = await self.provider.request("fav_playlist", {"id": playlist_id, "on": on})
-        if r.ok and bool(r.data.get("success", True)):
-            log("bridge", "own", "info", f"fav_playlist ok id={playlist_id} on={on}")
-            return {"ok": True}
-        code = (r.error.code if r.error else "provider_error") if not r.ok else "provider_error"
-        detail = r.error.message if (not r.ok and r.error) else ""
-        log("bridge", "own", "warn", f"fav_playlist failed id={playlist_id}: {code} {detail}")
-        return {"ok": False, "error": code}
-
-    async def like_state(self) -> dict:
-        # 当前曲红心态(会话级记忆);沉浸页换曲/重进时拉取点亮
-        cur = self.playback.current_id()
-        return {"id": cur, "liked": bool(cur) and cur in self.liked_ids}
-
-    async def play_queue(self, items: list, start_index: int = 0):
-        await self.playback.play_queue(items, start_index)
-
-    async def get_playback(self) -> dict:
-        # 前端挂载回灌:bridge 是播放/队列真相源(见 playback.snapshot);音量归 bridge 持久化
-        return {
-            **self.playback.snapshot(),
-            "volume": self.settings.get("volume", 0.8),
-            "player_failed": getattr(self, "player_failed", False),  # 启动失败回灌兜底(#38)
-        }
-
-    async def get_queue(self) -> dict:
-        return self.playback.snapshot_queue()
-
-    async def queue_play(self, index: int):
-        await self.playback.queue_play(index)
-
-    async def queue_insert_next(self, item: dict):
-        await self.playback.queue_insert_next(item)
-
-    async def queue_append(self, item: dict):
-        await self.playback.queue_append(item)
-
-    async def queue_remove(self, index: int):
-        await self.playback.queue_remove(index)
-
-    async def queue_clear(self):
-        await self.playback.queue_clear()
+        self.settings["queue"] = settings.normalize_queue({"items": items, "index": index})
+        self.settings["queue_mode"] = "normal"
+        settings.save_settings(self.settings)
 
     async def clear_cache(self) -> int:
         # 本机无独立缓存,"缓存"即日志目录;返回清理后剩余字节供 UI 回填
@@ -985,162 +117,28 @@ class Bridge:
                 await self.provider.request("logout")
                 if self.provider.is_current(origin):
                     await self.provider.request("set_credential", {"cred": None})
-            except Exception as e:
-                log("bridge", "own", "warn", f"clear_data logout skipped: {type(e).__name__}")
+            except Exception:
+                log("bridge", "own", "warn", "clear_data logout skipped")
         self.provider.end_session()
         try:  # 停 player + 清队列(会落盘,随后被覆盖);player 未连时 stop 会抛,不能挡住数据清除
             await self.playback.queue_clear()
-        except Exception as e:
-            log("bridge", "own", "warn", f"clear_data queue_clear skipped: {type(e).__name__}")
+        except Exception:
+            log("bridge", "own", "warn", "clear_data queue_clear skipped")
         self.liked_ids.clear()
         self.settings = {
             "version": 1,
             "provider": None,
             "volume": 0.8,
             "play_mode": "list_loop",
-            "quality": DEFAULT_QUALITY,
+            "quality": settings.DEFAULT_QUALITY,
         }
         self.playback.set_play_mode("list_loop")
         try:
             await self.player.request("volume", {"val": 0.8})  # 同步 player 音量到默认
         except Exception:
             pass
-        save_settings(self.settings)
+        settings.save_settings(self.settings)
         log("bridge", "own", "info", "user data cleared")
-
-    async def next_track(self):
-        await self.playback.next_track()
-
-    async def prev_track(self):
-        await self.playback.prev_track()
-
-    async def set_play_mode(self, mode: str):
-        if self.playback.set_play_mode(mode):
-            self.settings["play_mode"] = mode  # 播放模式归 bridge 持久化
-            save_settings(self.settings)
-            await self.playback.push_current_meta()  # 同步 MPRIS LoopStatus/Shuffle
-
-    async def get_quality(self) -> str:
-        return self.settings.get("quality", DEFAULT_QUALITY)
-
-    async def set_quality(self, quality: str) -> str:
-        """设音质上限。只对**下一首**生效 —— 当前这首已经在放的流不重拉。
-
-        中途换流要么听到一声断,要么得 seek 回原位重新解码,在掌机上白烧一次 CPU 和电;
-        换首歌自然就生效了,不值得为此折腾。返回实际生效值供 UI 回填。
-        """
-        if quality not in QUALITIES:
-            return self.settings.get("quality", DEFAULT_QUALITY)
-        self.settings["quality"] = quality
-        save_settings(self.settings)
-        log("bridge", "own", "info", f"quality cap -> {quality}")
-        return quality
-
-    async def pause(self):
-        await self.player.request("pause")
-
-    async def resume(self):
-        await self.playback.resume()  # 回灌后冷启动由 playback 判定(空 player 的 resume 是空操作)
-
-    async def seek(self, sec: float):
-        await self.player.request("seek", {"sec": sec})
-
-    async def volume(self, val: float):
-        self.settings["volume"] = val  # UI/MPRIS 立即读到目标值;落盘合并避免重复原子写
-        self._schedule_volume_persist()
-        await self.player.request("volume", {"val": val})
-
-    async def get_lyric(self, mid: str) -> dict:
-        # 透传 provider 归一化歌词;失败回空歌词(前端显示占位,不报错)
-        r = await self.provider.request("lyric", {"id": mid})
-        return r.data if r.ok else {"word_by_word": False, "lines": []}
-
-    async def get_recommend(self) -> dict:
-        # 推荐页数据(QQ);失败回空列表,UI 渲染可恢复空态
-        r = await self.provider.request("recommend")
-        return r.data if r.ok else {"playlists": [], "newsongs": []}
-
-    async def get_toplists(self) -> dict:
-        # 榜单卡列表(Playlist 形状;两端 toplists 同名命令,数量几十一次拉全)
-        return await self._list_cmd("toplists", "toplists", 100)
-
-    async def get_toplist_songs(self, top_id: str, offset: int = 0) -> dict:
-        return await self._list_cmd("toplist_songs", "songs", extra={"id": top_id, "offset": offset})
-
-    async def get_playlist_songs(self, playlist_id: str, offset: int = 0) -> dict:
-        # 歌单曲目,统一 offset 分页(QQ/NCM 同名命令,透传共用;失败经 _list_cmd 落日志)
-        return await self._list_cmd("playlist_songs", "songs", extra={"id": playlist_id, "offset": offset})
-
-    async def get_discover(self) -> dict:
-        # NCM 发现页;失败回空列表
-        r = await self.provider.request("discover")
-        return r.data if r.ok else {"playlists": []}
-
-    async def get_daily_songs(self) -> dict:
-        # NCM 每日推荐(需登录);失败带 error code 供前端 i18n(not_logged_in 等)
-        r = await self.provider.request("daily_songs")
-        if r.ok:
-            return {"ok": True, "songs": r.data.get("songs", [])}
-        return {"ok": False, "songs": [], "error": r.error.code if r.error else "provider_error"}
-
-    async def _on_player_event(self, ev: protocol.ChildEvent, origin: ConnectionOrigin):
-        # MPRIS 控制意图(桌面媒体键 / 蓝牙耳机按键)与 UI callable 走同一套 bridge 方法 ——
-        # bridge 是唯一真相源(DESIGN §4),不在 player 本地执行,避免状态分叉。其余播放态事件
-        # 照旧交 playback 跟踪 + 转发 UI。
-        if not self.player.is_current(origin):
-            return
-        if ev.type == "control":
-            await self._handle_mpris_control(ev.data)
-            return
-        await self.playback.on_player_event(ev)
-
-    async def _handle_mpris_control(self, data: dict):
-        action = data.get("action")
-        if action == "next":
-            await self.next_track()
-        elif action == "prev":
-            await self.prev_track()
-        elif action == "pause":
-            await self.pause()
-        elif action == "play":
-            await self.resume()
-        elif action == "playpause":
-            if self.playback.playing:
-                await self.pause()
-            else:
-                await self.resume()
-        elif action == "stop":
-            await self.pause()  # ponytail: Stop 映射为暂停,媒体键不应清空队列
-        elif action == "seek":
-            v = data.get("value")
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                await self.seek(float(v))
-        elif action == "volume":
-            v = data.get("value")
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                await self.volume(max(0.0, min(1.0, float(v))))
-        elif action == "play_mode":
-            m = data.get("mode")
-            if isinstance(m, str):
-                await self.set_play_mode(m)
-        else:
-            log("bridge", "own", "warn", f"unknown mpris control action: {action}")
-
-    async def _on_provider_event(self, ev: protocol.ChildEvent, origin: ConnectionOrigin):
-        if not self.provider.is_current(origin):
-            return
-        # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI
-        if ev.ev == "login" and ev.type == "done":
-            which = origin.provider
-            self.settings.setdefault("accounts", {})[which] = ev.data.get("cred")
-            save_settings(self.settings)
-            log("bridge", "own", "info", f"{which} login success, credential persisted")
-            self._kick_seed_liked()
-            await decky.emit("login", {"ev": "login", "type": "done", "data": {}})
-            return
-        if ev.type == "error":
-            log("bridge", "own", "warn", f"{ev.ev} error: {ev.data.get('code', '')}")
-        await decky.emit(ev.ev, {"ev": ev.ev, "type": ev.type, "data": ev.data})
 
     async def unload(self):
         log("bridge", "own", "info", "unload: closing subprocesses and sockets")

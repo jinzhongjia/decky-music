@@ -8,7 +8,7 @@ import { Song } from "../api";
 import { t } from "../i18n";
 import { playQueue } from "../player/usePlayer";
 import { usePlaybackShortcuts } from "../ui/AppShell";
-import { SongRows, songListStyle } from "../ui/SongRow";
+import { SONG_ROW_GAP, SONG_ROW_HEIGHT, SongRows, songListStyle } from "../ui/SongRow";
 import { theme } from "../ui/theme";
 import { WindowedList } from "../ui/Windowed";
 
@@ -88,7 +88,8 @@ export function CollectionPage({
           ) : (
             <WindowedList
               items={songs}
-              itemHeight={72}
+              itemHeight={SONG_ROW_HEIGHT}
+              gap={SONG_ROW_GAP}
               onNearBottom={loadMore}
               renderItem={(song, index) => (
                 <SongRows songs={[song]} queue={songs} startIndex={index} />

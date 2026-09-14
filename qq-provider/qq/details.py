@@ -2,6 +2,7 @@
 
 from qqmusic_api.modules.singer import TabType
 
+from qq.paging import window
 from qq.search import _album_brief, _artist_brief, _song_brief
 
 
@@ -13,27 +14,24 @@ def _album_with_count(album, count: int, singers: list) -> dict:
 
 
 async def artist_detail(q, artist_id: str, limit: int = 20, offset: int = 0) -> dict:
-    page = offset // limit + 1
-    skip = offset % limit
+    async def fetch(**page):
+        return await q.client.singer.get_tab_detail(artist_id, TabType.SONG, **page)
+
     info = await q.client.singer.get_info(artist_id)
-    songs = await q.client.singer.get_tab_detail(
-        artist_id,
-        TabType.SONG,
-        page=page,
-        num=limit + skip,
-    )
+    songs, _ = await window(fetch, "song_tab", limit, offset)
     return {
         "artist": _artist_brief(info.singer),
-        "songs": [_song_brief(s) for s in songs.song_tab[skip : skip + limit]],
+        "songs": [_song_brief(s) for s in songs],
     }
 
 
 async def album_detail(q, album_id: str, limit: int = 50, offset: int = 0) -> dict:
-    page = offset // limit + 1
-    skip = offset % limit
+    async def fetch(**page):
+        return await q.client.album.get_song(album_id, **page)
+
     detail = await q.client.album.get_detail(album_id)
-    songs = await q.client.album.get_song(album_id, num=limit + skip, page=page)
+    songs, first = await window(fetch, "song_list", limit, offset)
     return {
-        "album": _album_with_count(detail.album, songs.total_num, detail.singers),
-        "songs": [_song_brief(s) for s in songs.song_list[skip : skip + limit]],
+        "album": _album_with_count(detail.album, first.total_num, detail.singers),
+        "songs": [_song_brief(s) for s in songs],
     }
