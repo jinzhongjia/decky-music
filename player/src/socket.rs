@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use parking_lot::Mutex;
 use std::sync::{mpsc, Arc};
 
 use tokio::io::{AsyncWriteExt, BufReader};
@@ -71,7 +71,7 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
 
     // load 代次:每来一个 load(或 stop)自增;后台打开完成时代次已过 → 丢弃,
     // 迟到的旧 load 绝不夺播(修「UI 显示与实际播放不一致」)。
-    let load_gen = Arc::new(AtomicU64::new(0));
+    let load_gen = Arc::new(Mutex::new(0_u64));
 
     // NDJSON:每条一行 {json}\n,UTF-8,单条 ≤ 1 MiB。
     while let Some(line) = protocol::read_frame(&mut reader, &mut frame).await? {
@@ -110,7 +110,7 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
             continue;
         }
         if req.cmd == "stop" {
-            load_gen.fetch_add(1, Ordering::SeqCst); // 作废在途的旧 load 打开
+            advance_load_generation(&load_gen); // 与旧 load 的检查/音频入队互斥
         }
         let resp = handle_request(&cmd_tx, req).await;
         let _ = out_tx.send(resp);
@@ -118,20 +118,27 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
+fn advance_load_generation(load_gen: &Mutex<u64>) -> u64 {
+    let mut generation = load_gen.lock();
+    *generation += 1;
+    *generation
+}
+
 /// load 后台任务:开流成功且代次未过 → 交音频线程;代次已过(有更新的 load/stop)→ 丢弃。
 fn spawn_load(
-    load_gen: &Arc<AtomicU64>,
+    load_gen: &Arc<Mutex<u64>>,
     cmd_tx: &mpsc::Sender<AudioCmd>,
     out_tx: &tmpsc::UnboundedSender<String>,
     req: protocol::Request,
 ) {
-    let gen = load_gen.fetch_add(1, Ordering::SeqCst) + 1;
+    let gen = advance_load_generation(load_gen);
     let (gen_ref, cmd_tx, out_tx) = (Arc::clone(load_gen), cmd_tx.clone(), out_tx.clone());
     tokio::spawn(async move {
         let resp = match protocol::parse_args::<protocol::LoadArgs>(&req) {
             // 不记 URL(含限时 vkey,避免泄漏);只打开响应头,音频数据由 rodio 按需读取。
-            Ok(a) => match open_http_stream(a.url).await {
-                Ok(stream) if gen_ref.load(Ordering::SeqCst) == gen => {
+            Ok(a) => match (open_http_stream(a.url).await, gen_ref.lock()) {
+                // Keep the guard through send: stop/new load cannot pass between validation and handoff.
+                (Ok(stream), current) if *current == gen => {
                     let msg = if stream.range_supported() {
                         "stream opened with range"
                     } else {
@@ -147,11 +154,11 @@ fn spawn_load(
                         req.id,
                     )
                 }
-                Ok(_) => {
+                (Ok(_), _) => {
                     let _ = out_tx.send(log_json(LogLevel::Warn, "load", "superseded, dropped"));
                     protocol::err(req.id, ErrorCode::Superseded, "superseded by newer load")
                 }
-                Err(e) => {
+                (Err(e), _) => {
                     let (code, msg) = match e {
                         OpenError::Timeout => (
                             ErrorCode::FetchTimeout,

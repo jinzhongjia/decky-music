@@ -10,6 +10,7 @@ import os
 import shutil
 import tarfile
 import time
+from collections.abc import Callable
 
 import decky
 import protocol
@@ -220,7 +221,9 @@ class Conn:
         if self.on_lost:
             self.on_lost()
 
-    async def request(self, cmd: str, args: dict | None = None) -> protocol.ChildResponse:
+    async def request(
+        self, cmd: str, args: dict | None = None, *, is_current: Callable[[], bool] | None = None
+    ) -> protocol.ChildResponse:
         # 当前已实现协议 v1 的并发 demux:多请求可同时在途,响应按 id 匹配。
         # 写锁只保护一帧,慢请求不占住整个请求周期;事件顺序消费见 _pump_events。
         self._next_id += 1
@@ -229,6 +232,8 @@ class Conn:
             # 子进程不在了:先给它一次拉起的机会再发。player 走这条(它没有 provider 那样
             # 的「每条命令前 _ensure_provider」入口),否则 player 崩一次就永久失声。
             await self.on_missing()
+        if is_current is not None and not is_current():
+            raise asyncio.CancelledError
         if self.writer is None:  # 子进程已经没了(见 disconnect),别等满 30s 再说
             return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
         payload = json.dumps(protocol.request(rid, cmd, args)).encode()
@@ -241,12 +246,16 @@ class Conn:
         t0 = time.monotonic()
         try:
             async with self._wlock:  # 写帧原子,防并发写乱行
+                if is_current is not None and not is_current():
+                    raise asyncio.CancelledError
                 self.writer.write(payload + b"\n")
                 await self.writer.drain()
             resp = await asyncio.wait_for(fut, REQUEST_TIMEOUT)
             self._log_timing(cmd, time.monotonic() - t0)
             return resp
         except asyncio.TimeoutError:
+            if is_current is not None and not is_current():
+                raise asyncio.CancelledError
             # 协议 v1 里通道级 timeout 的含义就是「子进程整体不响应」。观测两次它都不会
             # 自己好转(issue #44 的 100% CPU 自旋:只有换进程能救),所以判死,让下一条
             # 命令重开一个,而不是把后面每个操作都拖 30s。
@@ -349,6 +358,7 @@ class Bridge:
         self.liked_ids: set[str] = set()
         self._tasks: set[asyncio.Task] = set()
         self._volume_persist_task: asyncio.Task | None = None
+        self._provider_change_gen = 0
 
     async def start(self):
         self.settings = load_settings()
@@ -627,9 +637,14 @@ class Bridge:
             await proc.wait()
 
     async def set_provider(self, which: str | None):
+        self._provider_change_gen += 1
+        gen = self._provider_change_gen
         if self.settings.get("provider") != which:
-            await self.playback.queue_clear()
             self.liked_ids.clear()  # 两家 id 体系不通用
+            await self.playback.queue_clear()
+        if gen != self._provider_change_gen:
+            return
+        # Keep pending source intent out of the old provider's account slot during queue teardown.
         self.settings["provider"] = which
         save_settings(self.settings)
         await self._ensure_provider(which)

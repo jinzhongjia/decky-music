@@ -68,7 +68,7 @@ class _FakeConn:
     def __init__(self):
         self.calls = []
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.calls.append((cmd, args or {}))
         if cmd == "song_url":
             return protocol.ChildResponse(1, True, {"url": "http://x/y.mp3"}, None)

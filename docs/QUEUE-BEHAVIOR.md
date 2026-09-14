@@ -58,6 +58,11 @@ bridge 必须处理 player 的 `ended` 事件以决定下一首。协议 v1 事�
 - **触发**：初次安装、跨 provider 切换、用户清空队列。
 - **表现**：Tab 状态徽章显示空态；正在播放页显示“暂无播放”；进度和切歌控件禁用。
 - **拦截**：此时 `Start` 盲操无效，Footer Legend 不展示“播放 / 暂停”为可执行动作。
+- **取消语义（#57）**：清空、空 `play_queue`、空电台及移除最后一曲，在首个 await 前作废旧播放代次并清除已加载/恢复状态。
+  旧 `song_url`、按需启动或写锁等待结束后都必须复核代次；过期 `load/seek/meta/stop` 不得继续写入。
+  已写出的旧 `load` 由后续 stop/new load 的 player 代次失效，不能在旧响应返回时无条件 stop 新歌。
+  player 用同一代次锁保护后台 load 的检查及音频入队，与 stop/new load 的代次更新互斥；不跨 HTTP await 持锁。
+- **迟到事件**：空队列不能被旧 playing/paused/unloaded/ended 或流死亡事件复活；有效非空队列的流错误仍须进入恢复路径。
 
 ## 4. UI 队列浮层
 

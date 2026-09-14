@@ -39,7 +39,7 @@ class FakeConn:
     def __init__(self):
         self.calls = []
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.calls.append(cmd)
         return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
 
@@ -295,7 +295,7 @@ class RecordingConn:
     def __init__(self):
         self.calls = []
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.calls.append((cmd, args))
         return types.SimpleNamespace(ok=True, data={}, error=None)
 
@@ -324,7 +324,7 @@ class FlakyAuthConn:
         self.calls = []
         self.refreshed = False
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.calls.append(cmd)
         if cmd == "song_url" and not self.refreshed:
             err = types.SimpleNamespace(code="no_playable", message="no_playable")
@@ -339,7 +339,7 @@ class VipOnlyConn:
         self.blocked = set(blocked)
         self.calls = []
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.calls.append((cmd, (args or {}).get("id")))
         if cmd == "song_url" and (args or {}).get("id") in self.blocked:
             err = types.SimpleNamespace(code="no_playable", message="no_playable")
@@ -394,7 +394,7 @@ class SlowNetPlayer:
     def __init__(self):
         self.calls = []
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.calls.append(cmd)
         if cmd == "load":
             err = types.SimpleNamespace(code="fetch_timeout", message="fetch_timeout")
@@ -428,7 +428,7 @@ class OfflinePlayer:
     def __init__(self):
         self.calls = []
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.calls.append(cmd)
         if cmd == "load":
             err = types.SimpleNamespace(code="fetch_failed", message="fetch_failed")
@@ -463,7 +463,7 @@ class UpstreamTimeoutConn:
         self.asked = []
         self.fail_times = fail_times
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.calls.append(cmd)
         if cmd == "song_url":
             self.asked.append((args or {}).get("id"))
@@ -531,7 +531,7 @@ class SeekTrackingConn:
         self.seeks = []
         self.seek_ok = seek_ok
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.calls.append(cmd)
         if cmd == "seek":
             self.seeks.append((args or {}).get("sec"))

@@ -61,7 +61,7 @@ class _PlayerConn:
         self.sent = []
         self.on_missing = self.on_lost = None
 
-    async def request(self, cmd, args=None):
+    async def request(self, cmd, args=None, *, is_current=None):
         self.sent.append((cmd, args))
         return protocol.ChildResponse(1, True, {}, None)
 
