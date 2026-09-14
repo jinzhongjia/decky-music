@@ -16,6 +16,7 @@ import asyncio
 import logging
 import os
 import sys
+import tempfile
 import types
 import unittest
 
@@ -252,20 +253,22 @@ class TestUnloadDetachesHooks(unittest.TestCase):
     def test_unload_clears_selfheal_hooks(self):
         """主动下线不是崩溃:close() 引发的断连不该被当成猝死,更不该顺手再拉起来。"""
         b = _bridge()
-        b.player.on_lost = lambda: None
-        b.player.on_missing = lambda: None
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        b.player = Conn("player")
+        b.provider = Conn("provider")
+        for conn in (b.player, b.provider):
+            conn.path = os.path.join(directory.name, f"{conn.name}.sock")
+        callbacks = []
+        b.player.on_lost = lambda: callbacks.append("unexpected loss")
+
+        async def missing():
+            callbacks.append("unexpected respawn")
+
+        b.player.on_missing = missing
         b.provider_proc = None
-        closed = []
-
-        class _C:
-            async def close(self):
-                closed.append(1)
-
-        b.provider = _C()
-        b.player.close = _C().close
         asyncio.run(b.unload())
-        self.assertIsNone(b.player.on_lost)
-        self.assertIsNone(b.player.on_missing)
+        self.assertEqual(callbacks, [])
 
 
 
@@ -292,7 +295,10 @@ class TestVolumePersistence(unittest.TestCase):
 class TestUnloadBackgroundTasks(unittest.TestCase):
     def test_unload_cancels_bridge_owned_tasks(self):
         b = _bridge()
-        b.provider = type("Conn", (), {"close": staticmethod(_emit)})()
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        b.provider = Conn("provider")
+        b.provider.path = os.path.join(directory.name, "provider.sock")
         b.player.close = _emit
         b.provider_proc = None
         cancelled = asyncio.Event()

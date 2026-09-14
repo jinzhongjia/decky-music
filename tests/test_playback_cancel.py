@@ -35,8 +35,9 @@ def item(name):
     return {"id": name, "name": name, "duration": 120}
 
 
-class Provider:
+class Provider(Conn):
     def __init__(self):
+        super().__init__("provider")
         self.requests = asyncio.Queue()
         self.delayed = {}
 
@@ -75,6 +76,7 @@ class PlayerWire:
         self.conn = Conn("player")
         self.conn._wlock = WaitingLock()
         self.conn.writer = self
+        self.conn.origin = bridge_mod.ConnectionOrigin(1, None)
         self.reader = asyncio.StreamReader()
         self.frames = []
         self.commands = asyncio.Queue()
@@ -83,7 +85,7 @@ class PlayerWire:
         self.event_gate = None
         self.event_started = asyncio.Event()
         self.conn.on_event = self.on_event
-        self.read_task = asyncio.create_task(self.conn._read_loop(self.reader))
+        self.read_task = asyncio.create_task(self.conn._read_loop(self.reader, self.conn.origin))
         self.event_task = asyncio.create_task(self.conn._pump_events())
 
     def write(self, data):
@@ -108,10 +110,12 @@ class PlayerWire:
             if frame["cmd"] == name:
                 return frame
 
-    async def on_event(self, event):
+    async def on_event(self, event, origin):
         self.event_started.set()
         if self.event_gate:
             await self.event_gate
+        if not self.conn.is_current(origin):
+            return
         await self.playback.on_player_event(event)
         self.events.put_nowait(event)
 
@@ -224,6 +228,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
                 br = Bridge()
                 br.settings = {"provider": source}
                 br.playback = self.pb
+                br.provider = self.provider
                 ensured = []
 
                 async def ensure(which):
@@ -476,6 +481,7 @@ class TestPlaybackCancellation(unittest.IsolatedAsyncioTestCase):
         br = Bridge()
         br.settings = {"provider": "qq"}
         br.playback = self.pb
+        br.provider = self.provider
         ensured = []
 
         async def ensure(which):

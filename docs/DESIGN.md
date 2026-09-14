@@ -34,7 +34,7 @@ graph TB
   PL[player 进程<br/>Rust<br/>拉流·解码·出声]
 
   UI <-->|① Decky RPC<br/>callable / emit| BR
-  BR <-->|② UDS · NDJSON<br/>provider.sock| P
+  BR <-->|② UDS · NDJSON<br/>provider-EPOCH.sock| P
   BR <-->|② UDS · NDJSON<br/>player.sock| PL
   PL -.->|动态链 libasound| PW[(PipeWire 守护进程<br/>系统常驻)]
 ```
@@ -82,12 +82,13 @@ sequenceDiagram
   participant PL as player
   participant P as provider
   D->>BR: _main()
-  BR->>BR: 建 player.sock / provider.sock (作 server)
+  BR->>BR: 建 player.sock (作 server)
   BR->>PL: spawn player --socket player.sock
   PL-->>BR: 连入 player.sock
   Note over BR: 等 UI 选 provider
-  BR->>P: spawn (qq|ncm) --socket provider.sock
-  P-->>BR: 连入 provider.sock
+  BR->>BR: 为当前 provider 会话建立新的 provider-EPOCH.sock
+  BR->>P: spawn (qq|ncm) --socket provider-EPOCH.sock
+  P-->>BR: 连入本次会话的 socket
   D->>BR: _unload()
   BR->>PL: 关闭
   BR->>P: 关闭
@@ -127,6 +128,10 @@ Decky 只提供两种原语,足够:
   用 `pending[id] -> Future` 匹配响应,不依赖响应顺序,无主的迟到响应丢弃;写锁只保护单帧写入。
   domain 事件另由 `_events` / `_pump_events` 按到达顺序消费,避免事件处理中的回调请求堵住读循环。
   子进程的响应/事件写回仍经单一 out queue 串行写帧;这不等于把整个请求生命周期串行化。
+- 连接来源通过内部 `ConnectionOrigin(epoch, provider)` 绑定：监听会话与每条接入连接都分配进程内不复用的身份。
+  provider 会话使用独立 `provider-EPOCH.sock`，通过原有 `--socket` 参数传给子进程；诊断脚本不得假定固定路径。
+  读循环、事件队列、请求提交及凭证持久化均复核来源；切源先失效旧会话，并取消正在等待的旧事件回调。
+  登录凭证写入来源身份对应的账号槽位，不按消费时的 `settings.provider` 猜测；旧 EOF 不得拆除新连接。
 - 播放侧通过内部 `is_current` 守卫把意图代次带到 `Conn.request` 的按需启动之后、写锁内实际 write 之前及超时判死之前。
   过期请求在本地取消，不新增 wire 错误码；已写出请求的旧响应不得回灌状态或无条件停止新播放。
   source 选择另有意图代次，旧清空完成后不能覆盖更新的选择；清空等待期间不提前改写旧 provider 的账号槽位。

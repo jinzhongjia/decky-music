@@ -81,6 +81,12 @@ class _FakeWriter:
     async def drain(self):
         pass
 
+    def close(self):
+        pass
+
+    async def wait_closed(self):
+        pass
+
 
 
 class _ResetWriter(_FakeWriter):
@@ -141,6 +147,7 @@ class TestConnFrameLimit(unittest.TestCase):
     def setUp(self):
         self.conn = Conn("provider")
         self.conn.writer = _FakeWriter()
+        self.conn.origin = bridge_mod.ConnectionOrigin(1, "qq")
         self.messages = []
         self._saved_log = bridge_mod.log
         bridge_mod.log = lambda *_args: self.messages.append(_args[-1])
@@ -160,7 +167,7 @@ class TestConnFrameLimit(unittest.TestCase):
             reader = asyncio.StreamReader(limit=protocol.MAX_FRAME_BYTES)
             reader.feed_data(b"x" * (protocol.MAX_FRAME_BYTES + 2) + b"\n")
             reader.feed_eof()
-            await self.conn._read_loop(reader)
+            await self.conn._read_loop(reader, self.conn.origin)
 
         asyncio.run(run())
         self.assertTrue(any("frame exceeded size limit" in message for message in self.messages))
@@ -231,6 +238,7 @@ class TestStaleDisconnect(unittest.TestCase):
 class TestProviderRespawn(unittest.TestCase):
     def setUp(self):
         self.b = Bridge()
+        self.b.provider = Conn("provider")
         self._saved_log = bridge_mod.log
         bridge_mod.log = lambda *_a, **_k: None
 

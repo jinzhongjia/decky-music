@@ -28,7 +28,10 @@ sys.modules.setdefault("decky", decky_stub)
 import bridge as bridge_mod  # noqa: E402
 
 
-class _FakeConn:
+class _FakeConn(bridge_mod.Conn):
+    def __init__(self):
+        super().__init__("provider")
+
     async def request(self, *_a, **_k):
         return None
 

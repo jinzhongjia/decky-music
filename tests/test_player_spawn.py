@@ -77,18 +77,13 @@ class TestPlayerSpawn(unittest.TestCase):
         self.assertFalse(self.b.player_failed)
 
 
-class _FakeProviderConn:
-    def __init__(self):
-        self.connected = asyncio.Event()
-        self.path = "/tmp/provider.sock"
-
 
 class TestProviderSpawn(unittest.TestCase):
     """provider 缺二进制:_ensure_provider 兜住失败、记 provider_error,get_provider 回灌给 UI(#38 同款回灌)。"""
 
     def setUp(self):
         self.b = Bridge()
-        self.b.provider = _FakeProviderConn()
+        self.b.provider = bridge_mod.Conn("provider")
         self.b.provider_proc = None
         self.b.provider_which = None
         self.b.provider_lock = asyncio.Lock()
@@ -110,10 +105,16 @@ class TestProviderSpawn(unittest.TestCase):
 
         bridge_mod.spawn = boom
         bridge_mod.BIN = lambda name: "/nonexistent/" + name
-        asyncio.run(self.b._ensure_provider("ncm"))
-        self.assertEqual(self.b.provider_error, "provider_start_failed")
-        st = asyncio.run(self.b.get_provider())  # 回灌:get_provider 内部重试仍失败,带回 error
-        self.assertEqual(st["error"], "provider_start_failed")
+        async def scenario():
+            try:
+                await self.b._ensure_provider("ncm")
+                self.assertEqual(self.b.provider_error, "provider_start_failed")
+                st = await self.b.get_provider()
+                self.assertEqual(st["error"], "provider_start_failed")
+            finally:
+                await self.b.provider.close()
+
+        asyncio.run(scenario())
 
 
 class TestSpawnChmod(unittest.TestCase):

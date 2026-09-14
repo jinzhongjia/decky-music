@@ -12,6 +12,7 @@ class TestProviderChangeIntent(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.bridge = Bridge()
         self.bridge.settings = {"provider": "qq", "accounts": {}}
+        self.bridge.provider = bridge_mod.Conn("provider")
         self.bridge.provider_error = None
         self.entered = asyncio.Event()
         self.release = asyncio.Event()
@@ -40,18 +41,19 @@ class TestProviderChangeIntent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.bridge.get_provider())["provider"], "qq")
         self.assertNotIn("ncm", self.ensured)
 
-    async def test_login_during_teardown_keeps_the_old_account_slot(self):
+    async def test_login_during_teardown_is_discarded(self):
+        origin = bridge_mod.ConnectionOrigin(1, "qq")
+        self.bridge.provider.origin = origin
         transition = asyncio.create_task(self.bridge.set_provider("ncm"))
         await asyncio.wait_for(self.entered.wait(), 1)
         # Do not enlarge the old-provider event race while waiting for player cancellation.
         await self.bridge._on_provider_event(
             bridge_mod.protocol.ChildEvent(
                 "login", "done", {"cred": "fake-test-credential"}
-            )
+            ),
+            origin,
         )
-        self.assertEqual(
-            self.bridge.settings["accounts"], {"qq": "fake-test-credential"}
-        )
+        self.assertEqual(self.bridge.settings["accounts"], {})
         self.release.set()
         await asyncio.wait_for(transition, 1)
         self.assertEqual((await self.bridge.get_provider())["provider"], "ncm")

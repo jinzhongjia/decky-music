@@ -33,10 +33,11 @@ from bridge import Bridge  # noqa: E402
 from playback import Playback  # noqa: E402
 
 
-class FakeConn:
+class FakeConn(bridge_mod.Conn):
     """假 Conn:song_url / load / stop 全部成功。"""
 
     def __init__(self):
+        super().__init__("provider")
         self.calls = []
 
     async def request(self, cmd, args=None, *, is_current=None):
