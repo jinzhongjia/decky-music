@@ -73,6 +73,7 @@ class QQ:
         # 库内部结构变动时的兜底 guid(进程内稳定)。正常路径见 get_guid()。
         self._fallback_guid = uuid.uuid4().hex
         self.login_task: asyncio.Task | None = None  # 在跑的登录轮询;新登录来时顶掉
+        self.auth_generation = 0  # login/logout/set_credential 的意图顺序,不随 HTTP 重建改变
 
     async def ensure_device(self) -> None:
         """启动时把设备身份落到盘上并收紧权限。
@@ -104,8 +105,35 @@ class QQ:
         except Exception:
             return self._fallback_guid
 
-    def set_credential(self, cred: dict | None):
+    def begin_auth(self) -> int:
+        """在任何 await 前作废旧认证工作;取消只是回收,代次才是提交权限。"""
+        self.auth_generation += 1
+        return self.auth_generation
+
+    async def cancel_login(self) -> None:
+        previous = self.login_task
+        if previous is None:
+            return
+        if not previous.done() and not previous.cancelling():
+            previous.cancel()
+        try:
+            # 多个认证命令可同时等同一旧任务;取消某个命令不能再次取消共享的回收任务。
+            await asyncio.shield(previous)
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise
+        except Exception:
+            pass  # 旧任务已无发布权限;失败也不能挡住新认证意图
+        finally:
+            if self.login_task is previous and previous.done():
+                self.login_task = None
+
+    async def set_credential(self, cred: dict | None, generation: int) -> int | None:
+        await self.cancel_login()
+        if generation != self.auth_generation:
+            return None
         self.client.credential = Credential(**cred) if cred else Credential()
+        return generation
 
     def reset_client(self):
         """换一个全新的 HTTP client(保留 credential 与设备身份)。
@@ -118,9 +146,14 @@ class QQ:
         self.client = _no_multiplexing(Client(device_path=self._device_path))
         self.client.credential = cred
 
-    async def logout(self):
+    async def logout(self, generation: int):
+        client, credential = self.client, self.client.credential
+        # 本地退出不依赖旧轮询/网络的可取消性,也不会在迟到的 logout 完成时清掉新账号。
+        self.client.credential = Credential()
+        await self.cancel_login()
+        if generation != self.auth_generation:
+            return
         try:
-            await self.client.login.logout(self.client.credential)
+            await client.login.logout(credential)
         except Exception:
             pass  # 尽力而为:服务端登出失败不阻塞清本地态
-        self.client.credential = Credential()

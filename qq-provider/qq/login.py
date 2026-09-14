@@ -26,13 +26,29 @@ def _login_error_code(e: Exception) -> str:
     return "login_failed"
 
 
-async def run(q, emit, log, login_type: str = "qq"):
+def _current(q, generation: int) -> bool:
+    # 第三方协程即使吞掉取消,真正的任务取消仍须传播(包括 wait_for 的请求超时)。
+    if asyncio.current_task().cancelling():
+        raise asyncio.CancelledError
+    return generation == q.auth_generation
+
+
+async def run(q, emit, log, generation: int, login_type: str = "qq"):
     qr_type = QRLoginType.WX if login_type == "wx" else QRLoginType.QQ
+    if not _current(q, generation):
+        return
+    client = q.client
     try:
-        qr = await q.client.login.get_qrcode(qr_type)
+        # urllib3-future handles internal cancellation without clearing its task counter.
+        # Keep those counters out of the authentication task's cancellation boundary.
+        qr = await asyncio.ensure_future(client.login.get_qrcode(qr_type))
+        if not _current(q, generation):
+            return
         emit("qr", qr=base64.b64encode(qr.data).decode(), mimetype=qr.mimetype)
         while True:
-            result = await q.client.login.check_qrcode(qr)
+            result = await asyncio.ensure_future(client.login.check_qrcode(qr))
+            if not _current(q, generation):
+                return
             event = result.event
             if event == QRCodeLoginEvents.DONE:
                 q.client.credential = result.credential
@@ -44,7 +60,11 @@ async def run(q, emit, log, login_type: str = "qq"):
                 return emit("refuse")
             emit("scanned" if event == QRCodeLoginEvents.CONF else "waiting")
             await asyncio.sleep(0.8 if event == QRCodeLoginEvents.CONF else 1.5)
+            if not _current(q, generation):
+                return
     except Exception as e:
+        if not _current(q, generation):
+            return
         # 具体登录失败(设备超限/封禁/频率)映射到专属码,前端本地化真实原因;其余通用 login_failed。
         code = _login_error_code(e)
         log("error", "login", f"{type(e).__name__} -> {code}")  # 真实原因进日志(不含敏感)
@@ -56,16 +76,22 @@ def _should_refresh(cred) -> bool:
     return bool(cred and cred.musickey and cred.is_expired())
 
 
-async def refresh_if_expired(q, log) -> dict | None:
+async def refresh_if_expired(q, log, generation: int) -> dict | None:
     """凭证过期则用 refresh_key 换新;成功返回新凭证 dict(供 bridge 持久化),否则 None。
     刷新失败(refresh_key 也过期等)不抛,保留原凭证——最坏回到原来的"需重新登录"。"""
+    if not _current(q, generation):
+        return None
     cred = q.client.credential
     if not _should_refresh(cred):
         return None
     try:
-        new = await q.client.login.refresh_credential(cred)
+        new = await asyncio.ensure_future(q.client.login.refresh_credential(cred))
     except Exception as e:
+        if not _current(q, generation):
+            return None
         log("warn", "credential", f"refresh failed: {type(e).__name__}")
+        return None
+    if not _current(q, generation):
         return None
     q.client.credential = new
     return new.model_dump(mode="json")  # 与 login done 同形状,bridge 存后可原样回注

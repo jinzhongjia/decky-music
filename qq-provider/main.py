@@ -41,9 +41,7 @@ async def main():
     parser.add_argument("--socket", required=True)
     args = parser.parse_args()
 
-    reader, writer = await asyncio.open_unix_connection(
-        args.socket, limit=protocol.MAX_FRAME_BYTES
-    )
+    reader, writer = await asyncio.open_unix_connection(args.socket, limit=protocol.MAX_FRAME_BYTES)
     # 设备身份要跨进程持久化(见 qq/__init__.py 的 _device_path):bridge 经环境变量注入目录
     qq = QQ(state_dir=os.environ.get("DECKY_MUSIC_STATE_DIR"))
     await qq.ensure_device()  # 先把设备身份落盘,首个请求就用稳定身份
@@ -131,28 +129,38 @@ async def _run_request(qq: QQ, req: protocol.Request, emit, log, out):
     await out.put(resp)
 
 
-async def handle(qq: QQ, req: protocol.Request, emit, log) -> dict:
+def handle(qq: QQ, req: protocol.Request, emit, log):
+    # 同步登记意图:wait_for 会另起任务,不能把作废旧登录延后到它的首次调度。
+    generation = qq.begin_auth() if req.cmd in {"login", "logout", "set_credential"} else None
+    return _handle(qq, req, emit, log, generation)
+
+
+async def _handle(qq: QQ, req: protocol.Request, emit, log, generation: int | None) -> dict:
+    if generation is not None and generation != qq.auth_generation:
+        return protocol.ok(req.id, {"refreshed": None} if req.cmd == "set_credential" else {})
     args = req.args
     try:
         match req.cmd:
             case "set_credential":
                 cred = args.get("cred")
-                qq.set_credential(cred)
+                generation = await qq.set_credential(cred, generation)
+                if generation is None:
+                    return protocol.ok(req.id, {"refreshed": None})
                 log("info", "credential", "injected" if cred else "cleared")
                 # 过期则刷新;新凭证随响应回传 bridge 持久化(provider 无状态,bridge 是真相源)
-                refreshed = await login.refresh_if_expired(qq, log) if cred else None
+                refreshed = await login.refresh_if_expired(qq, log, generation) if cred else None
                 if refreshed:
                     log("info", "credential", "refreshed expired credential")
                 return protocol.ok(req.id, {"refreshed": refreshed})
             case "login":
                 # 长流程:后台跑,QR 与状态经 login 事件上报;命令本身即刻返 ok
-                if qq.login_task and not qq.login_task.done():
-                    qq.login_task.cancel()  # 顶掉上一个未结束的登录轮询,避免双循环并发 emit
-                kind = args.get("type") or "qq"
-                qq.login_task = asyncio.create_task(login.run(qq, emit, log, kind))
+                await qq.cancel_login()
+                if generation == qq.auth_generation:
+                    kind = args.get("type") or "qq"
+                    qq.login_task = asyncio.create_task(login.run(qq, emit, log, generation, kind))
                 return protocol.ok(req.id)
             case "logout":
-                await qq.logout()
+                await qq.logout(generation)
                 log("info", "logout", "done")
                 return protocol.ok(req.id)
             case "account":

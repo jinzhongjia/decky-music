@@ -391,6 +391,11 @@ player 额外托管标准 **MPRIS2** D-Bus 服务(`org.mpris.MediaPlayer2` + `.P
 - **登录:统一扫码(QR)。** 两 provider 都走二维码登录,不做手机号/密码。bridge 向 provider 要登录二维码 → `emit` 给 UI 在大屏显示 → 用户手机扫 → provider 轮询到 cookie → 回传 bridge → bridge 存 `DECKY_PLUGIN_SETTINGS_DIR`(§4 持久化)。后续 spawn provider 时由 bridge 注入 cookie,provider 无状态。
   - 手柄友好:扫码无需任何文本输入,天然适配无鼠标/键盘环境。cookie 过期 → 报错并提示重新扫码。
   - **修订(2026-07-04):登录是 QQ 基本播放的前置,非 VIP/高音质专属。** 实测 QQ 即使免费歌,song_url(vkey)匿名请求也返 `104003`(无版权/需登录),必须先扫码登录。故登录已提前到 P1 实现(原计划放 P4)。QQ 用 `QRLoginType.QQ`(手机 QQ 扫)。**ncm 相反(2026-07-05 P2 实测):免费歌 `song_url_v1` 匿名即返 `code=200` + 可播 URL,基本播放无需登录**;登录仅为 VIP/高音质。
+  - **QQ 认证取消（#60）**：`login/logout/set_credential` 在处理入口同步登记认证代次，再取消并等待旧扫码任务。
+    退出先清本地凭证，不让迟到的服务端 logout 清掉新账号；二维码、轮询状态、错误、成功与凭证刷新提交前均复核代次。
+    task cancellation 用于回收，代次才决定是否允许提交；第三方吞掉取消也不能发布旧结果。协议字段不变。
+    上游 await 在独立任务中运行，隔离 `urllib3-future` 内部超时遗留的取消计数；不能把库内部已处理的取消
+    当成用户退出而静默丢弃二维码或刷新结果，认证任务自身的外部取消仍须传播。
 - **不可用歌曲:直接报告用户,不绕。** 版权下架、VIP-only、区域限制(如 ncm `460 cheating` / `301` 未登录)等——provider 把错误原样上报,UI 显示"这首暂时无法播放(原因)",**不支持配置代理 / real_ip**。海外/受限网络下的可用性不是本项目目标。呼应 §6.5 防御式渲染:错误态是正常分支,不崩不冻。
 
 ---

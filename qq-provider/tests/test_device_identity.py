@@ -38,10 +38,12 @@ class TestDeviceIdentityPersistence(unittest.TestCase):
         """两次构造 QQ(模拟进程重启)必须拿到同一台设备。"""
         with tempfile.TemporaryDirectory() as d:
             first = run(_boot(d))
-            ident = json.loads(open(os.path.join(d, DEVICE_FILE), encoding="utf-8").read())
+            with open(os.path.join(d, DEVICE_FILE), encoding="utf-8") as source:
+                ident = json.load(source)
             second = run(_boot(d))
             self.assertEqual(first, second, "重启后 guid 变了 = 在 QQ 看来换了台设备")
-            again = json.loads(open(os.path.join(d, DEVICE_FILE), encoding="utf-8").read())
+            with open(os.path.join(d, DEVICE_FILE), encoding="utf-8") as source:
+                again = json.load(source)
             for key in ("imei", "android_id", "boot_id", "fingerprint", "open_udid"):
                 self.assertEqual(ident[key], again[key], f"{key} 不该在重启后变化")
 
