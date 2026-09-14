@@ -13,6 +13,8 @@
 ## 架构速览
 
 UI 只跟 bridge 说话;bridge 是唯一常驻的真相源;provider / player 是插件沙盒外的独立二进制。
+bridge 包含播放与队列的控制决策(`Playback`):普通队列/电台、自动切歌、失败重试和状态回灌。
+音源 API 与可播 URL 解析归 provider,拉流/解码/出声归 player;不能把队列决策移回 UI 或子进程。
 
 ```
 UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
@@ -28,7 +30,7 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 - `main.py` —— 只剩对外接口 facade:`CALLABLES` 白名单 + `__getattr__` 转发给 bridge
   (Decky loader 按名 `getattr` 分发,不必逐个写同名方法;`tests/test_callables.py`
   机械校验白名单 ↔ Bridge 方法 ↔ `src/api.ts` 三端一致)
-- `py_modules/` —— bridge 实现(`bridge.py` 总线 + 进程管理 / `log.py` 日志);放这里才被 Decky 加进 sys.path 且被 CLI 打包
+- `py_modules/` —— bridge 实现(`bridge.py` 总线 + 进程管理 / `playback.py` 播放与队列编排 / `log.py` 日志);放这里才被 Decky 加进 sys.path 且被 CLI 打包
 - `src/` —— React UI:`index.tsx`(`definePlugin` 入口)/ `QAM.tsx`(QAM 面板)/ `Page.tsx`(大屏页,导出 `ROUTE`)/ `api.ts`(前端↔bridge 唯一接口层)/ `errors.ts`+`ErrorBanner.tsx`+`Boundary.tsx`(错误纵深)/ `Footer.tsx` / `i18n.ts`
 - `player/` —— Rust,`reqwest` + `rodio`
 - `ncm-provider/` —— Rust,依赖 ncm-api-rs
@@ -170,7 +172,7 @@ bridge ↔ provider/player 走**协议 v1**(见 issue #31)。传输仍是 UDS + 
 - Log(child→bridge):`{"ev":"log","level","where","msg"}`(独立顶层格式)
 
 **构造 / 解码集中在各自的 protocol 模块,业务代码不碰裸 JSON**:
-`py_modules/protocol.py`(bridge,typed decode + demux)、`qq-provider/protocol.py`;
+`py_modules/protocol.py`(bridge,typed decode;连接级分发由 `bridge.Conn` 完成)、`qq-provider/protocol.py`;
 Rust 两端共用 `wire` crate(错误码 `ErrorCode`、`LogLevel`、请求解析、响应/事件构造),
 `ncm-provider/src/protocol.rs` 与 `player/src/protocol.rs` 只留各自的命令 args struct。
 改协议时四端 + `src/api.ts` 的
@@ -178,14 +180,19 @@ Rust 两端共用 `wire` crate(错误码 `ErrorCode`、`LogLevel`、请求解析
 Rust `#[cfg(test)]`)。
 
 要点:
-- **request id**:bridge 递增生成,当前仍 FIFO 收发,id 只用于校验错配;并发/乱序 demux 留后续。
+- **request id**:bridge 递增生成,当前已支持多请求同时在途;[`Conn.request` / `_read_loop`](py_modules/bridge.py)
+  通过 `pending[id] -> Future` 匹配响应,不依赖响应到达顺序,无主的迟到响应丢弃。
+  写锁只保护一帧写入;domain 事件由 `_events` / `_pump_events` 独立按到达顺序消费,不内联阻塞读循环。
+  连接生命周期回归见 [`tests/test_child_death.py`](tests/test_child_death.py) 的 `TestConnDeath`、`TestStaleDisconnect`。
 - **错误码**:失败必带稳定 `error.code`(供前端 i18n),`message` 只作安全 fallback。第三方库原始错误
   **默认不透 UI**;前端 `errorText(code)` 命中已知码 → 本地化,否则原样显示。
-- **两种超时不可混用**:`timeout` 只由 bridge 产出,表示子进程整体不响应(30s 上限);
-  `upstream_timeout` 由 provider 产出,表示单次上游请求超时(打游戏抢带宽等瞬时抖动)。
-  后者由 `_play_index` **原地重试同一首**消化,不顺延 —— 顺延会让用户看到歌被无故跳过,
-  比直接报错更费解。重试再失败才熔断报错。见 playback 的 FUSE_ERRORS / SOFT_FUSE_ERRORS 与
-  tests/test_playback.py 的 TestUpstreamTimeoutRetriesSameSong(含两次回归的反证)。
+- **两种超时不可混用**:`timeout` 只由 bridge 产出,表示通道不可用或等待子进程响应超时(请求等待上限 30s);
+  `upstream_timeout` 由 provider 产出,表示单次上游请求超时。
+  [`Playback._play_index`](py_modules/playback.py) 对 `song_url` 的 `upstream_timeout` 退避 0.5s 后
+  **原地重试同一首一次**,不因首次抖动顺延。重试仍返回 `upstream_timeout` 时,由 `FUSE_ERRORS`
+  硬熔断报错,不再试下一首;若错误码变化,按对应错误分类处理。`SOFT_FUSE_ERRORS` 仅包含 `fetch_failed`,
+  不是跨两首歌累计 `upstream_timeout`。回归见 [`tests/test_playback.py`](tests/test_playback.py)
+  的 `TestUpstreamTimeoutRetriesSameSong`(瞬时恢复、持续超时不跳歌、电台重试)。
 - **红线延续**:`message` / 日志都不得含 URL(限时 token)/ cookie / credential。
 - 前端订阅事件先过 `isDomainEvent` 运行时 guard,畸形事件忽略不崩 UI。
 - **断流后从中断处接上**:`stream.rs` 已按字节位置 Range 续传;它退避重试仍无进展而判死时,

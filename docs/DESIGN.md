@@ -52,7 +52,7 @@ graph TB
 | 组件 | 语言/形态 | 职责 | 明确不做 |
 |---|---|---|---|
 | **UI** | React (TS) | 发控制事件、收状态推送、渲染 | 不碰音频流、不碰 URL、不直连后端 |
-| **bridge** | Python (`main.py` Plugin 类) | 总线:收 UI 命令→转发子进程→回 emit;spawn/监督/重启两个子进程 | 不含任何音乐业务逻辑 |
+| **bridge** | Python (`main.py` 门面 + `py_modules` 实现) | 子进程/连接管理、请求与事件分发、账号与设置持久化;由 `Playback` 负责普通队列/电台、自动切歌、失败重试和播放态回灌 | 不实现音源 API/可播 URL 解析,不拉流、解码或输出音频 |
 | **provider** | qq: Python+Nuitka / ncm: Rust | 搜索、歌单、歌词、**解析可播 URL** | 不播放音频 |
 | **player** | Rust | 拿 URL:HTTP 拉流、解码、seek、音量、推 PipeWire;上报进度/结束 | 不查询音乐 API |
 
@@ -123,10 +123,16 @@ Decky 只提供两种原语,足够:
 实现约束:
 
 - 构造 / 解码集中在协议模块:bridge `py_modules/protocol.py`,QQ `qq-provider/protocol.py`;NCM 与 player 共用 `wire` crate(通用部分),各自的 `src/protocol.rs` 只留命令 args struct。
-- request id 由 bridge 递增生成。每条 `Conn` 支持多请求在途,bridge 用 `id -> Future` demux 响应并丢弃超时后的迟到响应;写 socket 只锁单帧原子性。provider/player 写回仍经单一 out queue 串行写帧。
+- request id 由 bridge 递增生成。当前 [`Conn.request` / `_read_loop`](../py_modules/bridge.py) 允许多请求同时在途,
+  用 `pending[id] -> Future` 匹配响应,不依赖响应顺序,无主的迟到响应丢弃;写锁只保护单帧写入。
+  domain 事件另由 `_events` / `_pump_events` 按到达顺序消费,避免事件处理中的回调请求堵住读循环。
+  子进程的响应/事件写回仍经单一 out queue 串行写帧;这不等于把整个请求生命周期串行化。
 - 失败响应必须带稳定 `error.code`,前端 `src/api.ts` 本地化;`message` 只作安全 fallback。
-- 超时分两级:`timeout`(bridge 通道级,子进程整体不响应)立即熔断;`upstream_timeout`
-  (provider 单次上游请求)连续 2 次才熔断 —— 单次抖动只跳过当前曲。
+- 超时分两级:`timeout` 由 bridge 产出,表示通道不可用或等待子进程响应超时(请求等待上限 30s),
+  在播放编排中硬熔断,不逐曲顺延。`upstream_timeout` 由 provider 产出,表示单次上游请求超时。
+  [`Playback._play_index`](../py_modules/playback.py) 对 `song_url` 首次上游超时退避 0.5s,
+  原地重试同一首一次;若仍为 `upstream_timeout`,按 `FUSE_ERRORS` 硬熔断并报错,不跳到其他歌曲。
+  重试结果若变为其他错误码,按对应分类处理;跨歌曲连续两次的软熔断只适用于 `SOFT_FUSE_ERRORS` 中的 `fetch_failed`。
 - 子进程诊断走 `Log Event`;stderr 只留 panic/traceback 等非预期输出。
 - 每端在 JSON 解码前以字节数强制 1 MiB 上限:超限入站帧立即断开,bridge 拒绝超限 request(`invalid_request`),子进程停止向该连接写入。不得为诊断把原始帧写日志。
 
@@ -420,15 +426,26 @@ CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/
 | 文件 | 职责 |
 |---|---|
 | `main.py` | Decky `Plugin` 门面,只把 callable 转发给 bridge |
-| `py_modules/bridge.py` | UDS server、子进程生命周期、provider 切换、credential 注入、UI 事件转发 |
-| `py_modules/protocol.py` | bridge 侧协议 v1 request 构造、response/event/log 严格解码 |
-| `py_modules/playback.py` | 播放/普通队列真相源、自动切歌、`track`/`player` 事件转发 |
+| [`py_modules/bridge.py`](../py_modules/bridge.py) | `Conn` 多请求 demux、事件顺序消费、子进程生命周期、provider 切换、credential 注入与 RPC 编排 |
+| [`py_modules/protocol.py`](../py_modules/protocol.py) | 协议 v1 request 构造、response/event/log 严格解码与消息分类;不管理在途请求 |
+| [`py_modules/playback.py`](../py_modules/playback.py) | bridge 内的播放/普通队列/电台真相源、自动切歌、同曲重试与熔断、快照及播放事件 |
 | `src/api.ts` | 前端唯一接口层:callable 声明、事件类型、运行时 guard |
 | `qq-provider/protocol.py` | QQ provider 协议 v1 构造/解码 |
 | `wire/src/lib.rs` | 协议 v1 Rust 侧共用:错误码 / 日志 / 请求解析 / 响应·事件构造 |
 | `ncm-provider/src/protocol.rs` | NCM provider 的命令 args struct |
 | `player/src/protocol.rs` | player 的命令 args struct |
 | `player/src/mpris.rs` | player 侧 MPRIS2 D-Bus 服务(now-playing 展示 + 控制上送 bridge;zbus 纯 Rust,§7.5) |
+
+三项契约的实现与现有回归(同步说明见 [issue #72](https://github.com/jinzhongjia/decky-music/issues/72)):
+
+| 契约 | 实现 | 相关回归与覆盖范围 |
+|---|---|---|
+| 请求按 id 匹配,事件独立顺序消费 | [`Conn.request` / `_read_loop` / `_pump_events`](../py_modules/bridge.py) | [`test_child_death.py`](../tests/test_child_death.py):`TestConnDeath.test_disconnect_fails_inflight_requests_fast`、`TestStaleDisconnect.test_old_connection_eof_does_not_kill_new_one`,覆盖在途请求与连接替换边界 |
+| 上游超时重试同一首,仍超时不顺延 | [`Playback._play_index` / `_fuse_check`](../py_modules/playback.py) | [`test_playback.py`](../tests/test_playback.py):`TestUpstreamTimeoutRetriesSameSong.test_transient_timeout_plays_the_intended_song`、`test_persistent_timeout_never_skips_to_another_song`、`test_radio_advance_retries_then_reports` |
+| 队列与电台决策留在 bridge | [`Playback`](../py_modules/playback.py),由 [`Bridge`](../py_modules/bridge.py) 持有 | [`test_playback.py`](../tests/test_playback.py):`TestQueueEdit.test_clear_and_snapshot`、`test_provider_switch_clears_radio_state`、`test_radio_ended_refills_near_tail_and_advances` |
+
+[`test_protocol.py::TestDemux`](../tests/test_protocol.py) 验证的是 response/event/log 的消息分类,
+不是多请求乱序响应测试。不能把现有连接边界回归描述为所有并发业务竞态都已覆盖。
 
 跨层改动规则:
 
@@ -462,6 +479,8 @@ CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/
 ---
 
 ## 11. 实现分阶段规划
+
+以下保留早期阶段顺序与当时的范围,不作为未完成事项清单;当前协议、并发和播放编排契约以 §4、§5.2、§9 为准。
 
 **排序原则:先 gate 出声命门,再按 provider 逐个做"基本播放",最后才做差异化接口与 UI 微调。** "基本播放" = 选歌 → 出声 → 基本传输控制(play/pause,能则含 seek/volume)。每阶段有可观测验收,未过不进下一阶段;与 §5.5/§10/§13 的 YAGNI 一致。
 

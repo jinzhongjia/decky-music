@@ -122,8 +122,8 @@ async def _run_request(qq: QQ, req: protocol.Request, emit, log, out):
         resp = protocol.err(req.id, "upstream_timeout")
     except Exception as e:
         # 上游库异常(断网 curl Timeout / NetworkError 等)只失败该命令,绝不崩进程。
-        # Timeout 类异常 → upstream_timeout(单次上游请求超时,非 bridge 通道级);
-        # playback 据此按「连续 2 次才熔断」处理,一次抖动不打死整个电台。
+        # Timeout 类异常 → upstream_timeout(单次上游请求超时,非 bridge 通道级)。
+        # 播放的 song_url 由 bridge 原地重试同一首一次;仍超时才硬熔断,不是跨歌曲累计两次。
         name = type(e).__name__
         log("warn", "cmd", f"{req.cmd} failed: {name}")
         code = "upstream_timeout" if "Timeout" in name else "provider_error"

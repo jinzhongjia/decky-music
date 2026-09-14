@@ -57,6 +57,9 @@
 
 ## 现状(截至 2026-07-11)
 
+以下保留阶段背景；涉及协议与编排的当前契约以 [DESIGN §5.2 / §9](DESIGN.md)
+及对应源码为准，不从早期阶段安排推断并发 demux 尚未实现。
+
 - **P3 / P4 / P5a / P5b / P5c / P5d / P5e / P5f 完成**:shell 重构、歌词、队列浮层与编辑
   (富信息持久化)、X 上下文菜单、QQ 推荐页、NCM 发现页、歌单详情(独立路由,B 原生返回)、
   电台模式(智能电台沉浸路由 + NCM 私人FM 页签,补水/无上一首/不落盘)、我的音乐/我的资产页、
@@ -73,10 +76,10 @@
   EOF/3 秒位置锚点(无 250ms sink 轮询)、暂停 30s 后释放 sink、恢复重载并 seek、
   普通/电台双队列模式、`get_playback` 回灌(含 queue_mode/radio_kind)、协议 v1。
 - **健壮性**:QQ 凭证自动刷新、登录具体错误码、settings 0600 原子写、错误提示分域(page/qam)。
-- **超时契约**(改动需保持不等式):
-  `curl 连接 10s(qq 库内) < provider 上游兜底 15s < bridge 请求 30s`;
-  player 侧 `connect 10s / 逐操作 IO 15s / 读侧停摆兜底 30s`。
-  provider 兜住一切异常(Timeout 类映射 `timeout` 码);playback 自动切歌遇 `timeout` 熔断。
+- **当前超时契约**:bridge 通道不可用/请求等待超时产出 `timeout`(等待上限 30s);
+  provider 的单次上游超时产出 `upstream_timeout`。`Playback._play_index` 对 `song_url`
+  退避 0.5s 后重试同一首一次,仍为 `upstream_timeout` 才硬熔断,不因首次抖动跳歌。
+  `fetch_failed` 的连续两次软熔断另算。实现与回归名称见 [DESIGN 契约追溯](DESIGN.md#9-当前实现索引)。
 - **未做**:搜索分类 Tab/热搜(P6);红心服务器种子同步、QQ 最近播放(provider 桩)、
   资产翻页、评论点赞快捷键(P6)。
 

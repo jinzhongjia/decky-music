@@ -342,7 +342,7 @@ class Playback:
                     return None
         if not r.ok and r.error and r.error.code == "upstream_timeout":
             # 瞬时抖动(打游戏抢带宽等)不是这一首的问题,原地重试同一首 —— 顺延到下一首会让
-            # 用户看到歌无故消失,比报错更费解。重试仍失败则落到熔断,由调用方明确报错。
+            # 用户看到歌无故消失,比报错更费解。重试仍超时才硬熔断;其他结果按其错误码处理。
             await asyncio.sleep(UPSTREAM_RETRY_BACKOFF)
             if gen != self._play_gen:
                 return None

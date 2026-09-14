@@ -170,8 +170,8 @@ class Conn:
             self.disconnect(writer)
 
     async def _read_loop(self, reader: asyncio.StreamReader):
-        # 单读循环 + 分流(协议 v1):log 事件直接落盘;domain 事件 → on_event;response → 队列。
-        # 子进程在同一条连接上既回响应又推事件,必须在这里 demux,否则响应会被吞掉。
+        # 单读循环分流:log 直接落盘;domain 事件入独立顺序队列;response 按 id 完成 pending Future。
+        # 响应可乱序到达;事件处理不占读循环,允许其回调继续发请求并等待响应。
         try:
             while line := await reader.readline():  # \n 分帧,同 Decky localsocket.py
                 if len(line) > protocol.MAX_FRAME_BYTES + 1:
@@ -221,8 +221,8 @@ class Conn:
             self.on_lost()
 
     async def request(self, cmd: str, args: dict | None = None) -> protocol.ChildResponse:
-        # 并发 demux(协议 v1 预留的升级):多请求可同时在途,响应按 id 匹配,
-        # 一个挂着的慢请求(如慢 CDN 的 load)不再队头阻塞 pause/next 等其它命令。
+        # 当前已实现协议 v1 的并发 demux:多请求可同时在途,响应按 id 匹配。
+        # 写锁只保护一帧,慢请求不占住整个请求周期;事件顺序消费见 _pump_events。
         self._next_id += 1
         rid = self._next_id
         if self.writer is None and self.on_missing:
