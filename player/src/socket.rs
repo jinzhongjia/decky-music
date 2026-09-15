@@ -1,4 +1,3 @@
-use parking_lot::Mutex;
 use std::sync::{mpsc, Arc};
 
 use tokio::io::{AsyncWriteExt, BufReader};
@@ -6,10 +5,10 @@ use tokio::net::UnixStream;
 use tokio::sync::mpsc as tmpsc;
 
 use crate::audio::{audio_thread, AudioCmd, AudioEv};
+use crate::loading::Loads;
 use crate::mpris;
 use crate::protocol::{self, ErrorCode};
 use crate::protocol::{log_json, LogLevel};
-use crate::stream::{open_http_stream, OpenError};
 
 pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::Error>> {
     let stream = UnixStream::connect(socket).await?;
@@ -20,9 +19,11 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
     // 音频线程 + 两条 channel:cmd(tokio→audio,std mpsc)、event(audio→tokio,tokio mpsc)。
     // audio 侧保留 sender，rodio source 完成/消耗进度通过同一命令队列唤醒它。
     let (cmd_tx, cmd_rx) = mpsc::channel::<AudioCmd>();
-    let (ev_tx, mut ev_rx) = tmpsc::unbounded_channel::<AudioEv>();
+    let (ev_tx, mut ev_rx) = tmpsc::unbounded_channel::<(u64, AudioEv)>();
+    let mut loads = Loads::new();
+    let load_state = Arc::clone(&loads.state);
     let audio_cmd_tx = cmd_tx.clone();
-    std::thread::spawn(move || audio_thread(cmd_rx, audio_cmd_tx, ev_tx));
+    std::thread::spawn(move || audio_thread(cmd_rx, audio_cmd_tx, ev_tx, load_state));
 
     // 单一写出:命令响应 + 事件都汇到这里串行写回,避免并发写乱帧
     let (out_tx, mut out_rx) = tmpsc::unbounded_channel::<String>();
@@ -44,9 +45,13 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
     let mpris = mpris::start(out_tx.clone()).await;
 
     let ev_out = out_tx.clone();
+    let event_loads = Arc::clone(&loads.state);
     let ev_mpris = mpris.clone();
     tokio::spawn(async move {
-        while let Some(e) = ev_rx.recv().await {
+        while let Some((generation, e)) = ev_rx.recv().await {
+            if event_loads.lock().generation != generation {
+                continue;
+            }
             if let Some(m) = &ev_mpris {
                 match &e {
                     AudioEv::Playing { pos } => mpris::apply_playing(m, *pos).await,
@@ -63,36 +68,38 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
             if matches!(e, AudioEv::Seeked { .. } | AudioEv::Volume { .. }) {
                 continue;
             }
-            let _ = ev_out.send(e.to_ndjson());
+            forward_audio_event(&event_loads, generation, e, &ev_out);
         }
     });
 
     let debug = std::env::var("DECKY_MUSIC_DEBUG").is_ok(); // release 下不发 debug 日志
-
-    // load 代次:每来一个 load(或 stop)自增;后台打开完成时代次已过 → 丢弃,
-    // 迟到的旧 load 绝不夺播(修「UI 显示与实际播放不一致」)。
-    let load_gen = Arc::new(Mutex::new(0_u64));
 
     // NDJSON:每条一行 {json}\n,UTF-8,单条 ≤ 1 MiB。
     while let Some(line) = protocol::read_frame(&mut reader, &mut frame).await? {
         let req = match protocol::parse_request(&line) {
             Ok(r) => r,
             // 解析失败拿不到 id → 记录并丢弃(协议 v1 规则)
-            Err(e) => {
+            Err(_) => {
                 let _ = out_tx.send(log_json(
                     LogLevel::Warn,
                     "protocol",
-                    &format!("bad request: {}", e.0),
+                    "invalid request frame",
                 ));
                 continue;
             }
         };
         if debug {
-            let _ = out_tx.send(log_json(LogLevel::Debug, "cmd", &req.cmd));
+            let command = match req.cmd.as_str() {
+                "load" | "meta" | "pause" | "resume" | "stop" | "volume" | "seek" => {
+                    req.cmd.as_str()
+                }
+                _ => "unknown",
+            };
+            let _ = out_tx.send(log_json(LogLevel::Debug, "cmd", command));
         }
         // load 后台化:慢 CDN 打开(可 20s+)不阻塞命令循环,pause/next/新 load 即时处理
         if req.cmd == "load" {
-            spawn_load(&load_gen, &cmd_tx, &out_tx, req);
+            loads.start(&cmd_tx, &out_tx, req).await;
             continue;
         }
         // meta:更新 MPRIS 展示态,不碰音频线程(mpris 不可用时静默 ok)
@@ -110,70 +117,14 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
             continue;
         }
         if req.cmd == "stop" {
-            advance_load_generation(&load_gen); // 与旧 load 的检查/音频入队互斥
+            loads.invalidate(&out_tx).await;
         }
         let resp = handle_request(&cmd_tx, req).await;
         let _ = out_tx.send(resp);
     }
+    loads.invalidate(&out_tx).await;
+    let _ = cmd_tx.send(AudioCmd::Stop);
     Ok(())
-}
-
-fn advance_load_generation(load_gen: &Mutex<u64>) -> u64 {
-    let mut generation = load_gen.lock();
-    *generation += 1;
-    *generation
-}
-
-/// load 后台任务:开流成功且代次未过 → 交音频线程;代次已过(有更新的 load/stop)→ 丢弃。
-fn spawn_load(
-    load_gen: &Arc<Mutex<u64>>,
-    cmd_tx: &mpsc::Sender<AudioCmd>,
-    out_tx: &tmpsc::UnboundedSender<String>,
-    req: protocol::Request,
-) {
-    let gen = advance_load_generation(load_gen);
-    let (gen_ref, cmd_tx, out_tx) = (Arc::clone(load_gen), cmd_tx.clone(), out_tx.clone());
-    tokio::spawn(async move {
-        let resp = match protocol::parse_args::<protocol::LoadArgs>(&req) {
-            // 不记 URL(含限时 vkey,避免泄漏);只打开响应头,音频数据由 rodio 按需读取。
-            Ok(a) => match (open_http_stream(a.url).await, gen_ref.lock()) {
-                // Keep the guard through send: stop/new load cannot pass between validation and handoff.
-                (Ok(stream), current) if *current == gen => {
-                    let msg = if stream.range_supported() {
-                        "stream opened with range"
-                    } else {
-                        "stream opened without range"
-                    };
-                    let _ = out_tx.send(log_json(LogLevel::Info, "load", msg));
-                    send(
-                        &cmd_tx,
-                        AudioCmd::Load {
-                            stream: Box::new(stream),
-                            generation: gen,
-                        },
-                        req.id,
-                    )
-                }
-                (Ok(_), _) => {
-                    let _ = out_tx.send(log_json(LogLevel::Warn, "load", "superseded, dropped"));
-                    protocol::err(req.id, ErrorCode::Superseded, "superseded by newer load")
-                }
-                (Err(e), _) => {
-                    let (code, msg) = match e {
-                        OpenError::Timeout => (
-                            ErrorCode::FetchTimeout,
-                            "stream open timed out (slow network)",
-                        ),
-                        OpenError::Network => (ErrorCode::FetchFailed, "stream open failed"),
-                    };
-                    let _ = out_tx.send(log_json(LogLevel::Error, "load", msg));
-                    protocol::err(req.id, code, msg)
-                }
-            },
-            Err(_) => protocol::err(req.id, ErrorCode::MissingField, "url required"),
-        };
-        let _ = out_tx.send(resp);
-    });
 }
 
 async fn handle_request(cmd_tx: &mpsc::Sender<AudioCmd>, req: protocol::Request) -> String {
@@ -194,10 +145,22 @@ async fn handle_request(cmd_tx: &mpsc::Sender<AudioCmd>, req: protocol::Request)
     }
 }
 
-fn send(tx: &mpsc::Sender<AudioCmd>, c: AudioCmd, id: u64) -> String {
+pub(crate) fn send(tx: &mpsc::Sender<AudioCmd>, c: AudioCmd, id: u64) -> String {
     match tx.send(c) {
         Ok(_) => protocol::ok_empty(id),
         Err(_) => protocol::err(id, ErrorCode::AudioThreadGone, "audio thread gone"),
+    }
+}
+
+fn forward_audio_event(
+    loads: &parking_lot::Mutex<crate::loading::LoadState>,
+    generation: u64,
+    event: AudioEv,
+    out: &tmpsc::UnboundedSender<String>,
+) {
+    let current = loads.lock();
+    if current.generation == generation {
+        let _ = out.send(event.to_ndjson());
     }
 }
 
@@ -278,5 +241,28 @@ mod tests {
             json!({"id": 10, "ok": false, "error": {"code": "unknown_cmd", "message": "unknown cmd"}})
         );
         assert_no_audio_cmd(&cmd_rx);
+    }
+
+    #[tokio::test]
+    async fn superseded_completion_cannot_end_or_fail_new_selection() {
+        let mut loads = Loads::new();
+        let (out, mut received) = tmpsc::unbounded_channel();
+        let old = loads.state.lock().generation;
+        loads.invalidate(&out).await;
+        forward_audio_event(&loads.state, old, AudioEv::Ended, &out);
+        forward_audio_event(
+            &loads.state,
+            old,
+            AudioEv::Error {
+                code: ErrorCode::FetchFailed,
+                message: "stream stalled".into(),
+            },
+            &out,
+        );
+        assert!(received.try_recv().is_err());
+        let current = loads.state.lock().generation;
+        forward_audio_event(&loads.state, current, AudioEv::Ended, &out);
+        let event: Value = serde_json::from_str(&received.try_recv().unwrap()).unwrap();
+        assert_eq!(event["type"], "ended");
     }
 }

@@ -305,12 +305,8 @@ pub async fn start(ctl: UnboundedSender<String>) -> Option<Arc<MprisServer>> {
             ));
             Some(Arc::new(srv))
         }
-        Err(e) => {
-            let _ = ctl.send(log_json(
-                LogLevel::Warn,
-                "mpris",
-                &format!("unavailable: {e}"),
-            ));
+        Err(_) => {
+            let _ = ctl.send(log_json(LogLevel::Warn, "mpris", "session bus unavailable"));
             None
         }
     }

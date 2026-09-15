@@ -11,6 +11,29 @@ use crate::protocol::{log_json, LogLevel};
 use crate::stream::HttpRangeReader;
 use crate::util::epoch_ms;
 
+pub(crate) struct AudioEvents {
+    tx: tmpsc::UnboundedSender<(u64, AudioEv)>,
+    generation: std::cell::Cell<u64>,
+    loads: Arc<parking_lot::Mutex<crate::loading::LoadState>>,
+}
+
+impl AudioEvents {
+    fn new(
+        tx: tmpsc::UnboundedSender<(u64, AudioEv)>,
+        loads: Arc<parking_lot::Mutex<crate::loading::LoadState>>,
+    ) -> Self {
+        Self {
+            tx,
+            generation: std::cell::Cell::new(0),
+            loads,
+        }
+    }
+
+    fn send(&self, event: AudioEv) -> Result<(), tmpsc::error::SendError<(u64, AudioEv)>> {
+        self.tx.send((self.generation.get(), event))
+    }
+}
+
 pub(crate) enum AudioCmd {
     Load {
         stream: Box<HttpRangeReader>,
@@ -134,7 +157,7 @@ fn fade_out_playing(sink: &Option<rodio::Player>, volume: f32) {
     }
 }
 
-fn ensure_device(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) -> bool {
+fn ensure_device(state: &mut AudioState, ev: &AudioEvents) -> bool {
     if state.device_sink.is_some() {
         return true;
     }
@@ -149,10 +172,10 @@ fn ensure_device(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) -
             });
             true
         }
-        Err(e) => {
+        Err(_) => {
             let _ = ev.send(AudioEv::Error {
                 code: ErrorCode::AudioDeviceFailed,
-                message: format!("open audio device: {e}"),
+                message: "open audio device failed".into(),
             });
             false
         }
@@ -178,52 +201,71 @@ fn load_stream(
     stream: HttpRangeReader,
     generation: u64,
     cmd_tx: &mpsc::Sender<AudioCmd>,
-    ev: &tmpsc::UnboundedSender<AudioEv>,
+    ev: &AudioEvents,
 ) {
     if !ensure_device(state, ev) {
         return;
     }
     let probe = stream.probe();
+    if probe.cancelled() {
+        return;
+    }
     match rodio::Decoder::new(stream) {
-        Ok(decoder) => {
-            fade_out_playing(&state.sink, state.volume);
-            let sink = rodio::Player::connect_new(
-                state
-                    .device_sink
-                    .as_ref()
-                    .expect("device sink initialized")
-                    .mixer(),
-            );
-            let anchor_tx = cmd_tx.clone();
-            let source = decoder
-                .fade_in(FADE_IN)
-                .periodic_access(POS_ANCHOR_INTERVAL, move |_| {
-                    let _ = anchor_tx.send(AudioCmd::Anchor { generation });
-                });
-            let done_tx = cmd_tx.clone();
-            let done_once = Arc::new(AtomicBool::new(false));
-            let done_flag = Arc::clone(&done_once);
-            sink.set_volume(state.volume);
-            sink.append(source);
-            sink.append(rodio::source::EmptyCallback::new(Box::new(move || {
-                notify_finished(&done_flag, &done_tx, generation, probe.failure());
-            })));
-            state.sink = Some(sink);
-            state.generation = generation;
-            state.last_anchor = std::time::Instant::now();
-            state.paused_since = None;
-            let _ = ev.send(AudioEv::Playing { pos: 0.0 });
-        }
-        Err(e) => {
+        Ok(decoder) => attach_decoder(state, decoder, probe, generation, cmd_tx, ev),
+        Err(_) if probe.cancelled() => {}
+        Err(_) => {
             let _ = ev.send(AudioEv::Error {
                 code: ErrorCode::DecodeFailed,
-                message: format!("decode/play: {e}"),
+                message: "decode/play failed".into(),
             });
         }
     }
 }
 
-fn pause(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
+fn attach_decoder(
+    state: &mut AudioState,
+    decoder: rodio::Decoder<HttpRangeReader>,
+    probe: crate::stream::StreamProbe,
+    generation: u64,
+    cmd_tx: &mpsc::Sender<AudioCmd>,
+    ev: &AudioEvents,
+) {
+    if probe.cancelled() {
+        return;
+    }
+    fade_out_playing(&state.sink, state.volume);
+    let current = ev.loads.lock();
+    if current.generation != generation || probe.cancelled() {
+        return;
+    }
+    let sink = rodio::Player::connect_new(
+        state
+            .device_sink
+            .as_ref()
+            .expect("device sink initialized")
+            .mixer(),
+    );
+    let anchor_tx = cmd_tx.clone();
+    let source = decoder
+        .fade_in(FADE_IN)
+        .periodic_access(POS_ANCHOR_INTERVAL, move |_| {
+            let _ = anchor_tx.send(AudioCmd::Anchor { generation });
+        });
+    let done_tx = cmd_tx.clone();
+    let done_once = AtomicBool::new(false);
+    sink.set_volume(state.volume);
+    sink.append(source);
+    sink.append(rodio::source::EmptyCallback::new(Box::new(move || {
+        notify_finished(&done_once, &done_tx, generation, probe.failure());
+    })));
+    state.sink = Some(sink);
+    state.generation = generation;
+    state.last_anchor = std::time::Instant::now();
+    state.paused_since = None;
+    let _ = ev.send(AudioEv::Playing { pos: 0.0 });
+}
+
+fn pause(state: &mut AudioState, ev: &AudioEvents) {
     if let Some(sink) = &state.sink {
         if !sink.empty() && !sink.is_paused() {
             fade(sink, state.volume, 0.0, FADE_OUT);
@@ -237,7 +279,7 @@ fn pause(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
     }
 }
 
-fn resume(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
+fn resume(state: &mut AudioState, ev: &AudioEvents) {
     if let Some(sink) = &state.sink {
         sink.set_volume(0.0);
         sink.play();
@@ -250,7 +292,7 @@ fn resume(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
     }
 }
 
-fn set_volume(state: &mut AudioState, value: f32, ev: &tmpsc::UnboundedSender<AudioEv>) {
+fn set_volume(state: &mut AudioState, value: f32, ev: &AudioEvents) {
     state.volume = value.clamp(0.0, 1.0);
     if let Some(sink) = &state.sink {
         sink.set_volume(state.volume);
@@ -258,7 +300,7 @@ fn set_volume(state: &mut AudioState, value: f32, ev: &tmpsc::UnboundedSender<Au
     let _ = ev.send(AudioEv::Volume { val: state.volume });
 }
 
-fn seek(state: &mut AudioState, sec: f64, ev: &tmpsc::UnboundedSender<AudioEv>) {
+fn seek(state: &mut AudioState, sec: f64, ev: &AudioEvents) {
     if let Some(sink) = &state.sink {
         if sink
             .try_seek(Duration::from_secs_f64(sec.max(0.0)))
@@ -286,7 +328,7 @@ fn stop(state: &mut AudioState) {
     state.paused_since = None;
 }
 
-fn unload_idle_sink(state: &mut AudioState, ev: &tmpsc::UnboundedSender<AudioEv>) {
+fn unload_idle_sink(state: &mut AudioState, ev: &AudioEvents) {
     let pos = state
         .sink
         .as_ref()
@@ -299,7 +341,7 @@ fn finish_stream(
     state: &mut AudioState,
     generation: u64,
     failure: Option<&'static str>,
-    ev: &tmpsc::UnboundedSender<AudioEv>,
+    ev: &AudioEvents,
 ) {
     if state.generation != generation || state.sink.is_none() {
         return; // stop/newer load invalidated this source before its completion callback ran
@@ -319,7 +361,7 @@ fn finish_stream(
     }
 }
 
-fn send_anchor(state: &mut AudioState, generation: u64, ev: &tmpsc::UnboundedSender<AudioEv>) {
+fn send_anchor(state: &mut AudioState, generation: u64, ev: &AudioEvents) {
     if state.generation != generation || state.last_anchor.elapsed() < POS_ANCHOR_INTERVAL {
         return;
     }
@@ -343,17 +385,21 @@ fn handle_command(
     state: &mut AudioState,
     cmd: AudioCmd,
     cmd_tx: &mpsc::Sender<AudioCmd>,
-    ev: &tmpsc::UnboundedSender<AudioEv>,
+    ev: &AudioEvents,
 ) {
     match cmd {
         AudioCmd::Load { stream, generation } => {
+            ev.generation.set(generation);
             load_stream(state, *stream, generation, cmd_tx, ev)
         }
         AudioCmd::Pause => pause(state, ev),
         AudioCmd::Resume => resume(state, ev),
         AudioCmd::Volume(value) => set_volume(state, value, ev),
         AudioCmd::Seek(sec) => seek(state, sec, ev),
-        AudioCmd::Stop => stop(state),
+        AudioCmd::Stop => {
+            ev.generation.set(ev.loads.lock().generation);
+            stop(state);
+        }
         AudioCmd::Finished {
             generation,
             failure,
@@ -367,105 +413,40 @@ fn handle_command(
 pub(crate) fn audio_thread(
     rx: mpsc::Receiver<AudioCmd>,
     cmd_tx: mpsc::Sender<AudioCmd>,
-    ev: tmpsc::UnboundedSender<AudioEv>,
+    tx: tmpsc::UnboundedSender<(u64, AudioEv)>,
+    loads: Arc<parking_lot::Mutex<crate::loading::LoadState>>,
 ) {
+    let ev = AudioEvents::new(tx, Arc::clone(&loads));
     let mut state = AudioState::new();
     loop {
         match idle_timeout(&state) {
             Some(timeout) => match rx.recv_timeout(timeout) {
-                Ok(cmd) => handle_command(&mut state, cmd, &cmd_tx, &ev),
+                Ok(cmd) => handle_current_command(&mut state, cmd, &cmd_tx, &ev, &loads),
                 Err(mpsc::RecvTimeoutError::Timeout) => unload_idle_sink(&mut state, &ev),
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
             },
             None => match rx.recv() {
-                Ok(cmd) => handle_command(&mut state, cmd, &cmd_tx, &ev),
+                Ok(cmd) => handle_current_command(&mut state, cmd, &cmd_tx, &ev, &loads),
                 Err(_) => break,
             },
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unloaded_event_carries_resume_position() {
-        let value: serde_json::Value =
-            serde_json::from_str(&AudioEv::Unloaded { pos: 42.5 }.to_ndjson()).unwrap();
-        assert_eq!(
-            value,
-            json!({"ev":"player","type":"unloaded","data":{"pos":42.5}})
-        );
+fn handle_current_command(
+    state: &mut AudioState,
+    cmd: AudioCmd,
+    cmd_tx: &mpsc::Sender<AudioCmd>,
+    ev: &AudioEvents,
+    loads: &parking_lot::Mutex<crate::loading::LoadState>,
+) {
+    if let AudioCmd::Load { generation, .. } = &cmd {
+        if *generation != loads.lock().generation {
+            return;
+        }
     }
-
-    #[test]
-    fn completion_callback_enqueues_once() {
-        let (tx, rx) = mpsc::channel();
-        let done = AtomicBool::new(false);
-
-        notify_finished(&done, &tx, 7, None);
-        notify_finished(&done, &tx, 7, None);
-
-        assert!(matches!(
-            rx.recv().unwrap(),
-            AudioCmd::Finished {
-                generation: 7,
-                failure: None
-            }
-        ));
-        assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
-    }
-
-    #[test]
-    fn paused_state_has_one_release_deadline() {
-        let mut state = AudioState::new();
-        state.paused_since = Some(std::time::Instant::now() - IDLE_PAUSE_TIMEOUT);
-
-        assert_eq!(idle_timeout(&state), Some(Duration::ZERO));
-    }
-
-    #[test]
-    fn failed_completion_emits_fetch_failed_not_ended() {
-        let (events, mut received) = tmpsc::unbounded_channel();
-        let (sink, _source) = rodio::Player::new();
-        let mut state = AudioState::new();
-        state.sink = Some(sink);
-        state.generation = 7;
-
-        // A previous source cannot suppress or replace the current source's failure.
-        finish_stream(&mut state, 6, Some("stream truncated"), &events);
-        assert!(matches!(
-            received.try_recv(),
-            Err(tmpsc::error::TryRecvError::Empty)
-        ));
-        finish_stream(&mut state, 7, Some("stream stalled"), &events);
-        let event: serde_json::Value =
-            serde_json::from_str(&received.try_recv().unwrap().to_ndjson()).unwrap();
-        assert_eq!(event["type"], "error");
-        assert_eq!(event["data"]["code"], "fetch_failed");
-
-        finish_stream(&mut state, 7, None, &events);
-        assert!(matches!(
-            received.try_recv(),
-            Err(tmpsc::error::TryRecvError::Empty)
-        ));
-    }
-
-    #[test]
-    fn clean_completion_emits_ended_once() {
-        let (events, mut received) = tmpsc::unbounded_channel();
-        let (sink, _source) = rodio::Player::new();
-        let mut state = AudioState::new();
-        state.sink = Some(sink);
-        state.generation = 7;
-
-        finish_stream(&mut state, 7, None, &events);
-        assert!(matches!(received.try_recv().unwrap(), AudioEv::Ended));
-        finish_stream(&mut state, 7, None, &events);
-        assert!(matches!(
-            received.try_recv(),
-            Err(tmpsc::error::TryRecvError::Empty)
-        ));
-    }
+    handle_command(state, cmd, cmd_tx, ev);
 }
+
+#[cfg(test)]
+mod tests;
