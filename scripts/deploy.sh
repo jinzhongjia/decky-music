@@ -21,16 +21,9 @@ printf 'Deploy target: %s:%s/%s\n' "$DECK_HOST" "$PLUGINS" "$NAME"
 python3 scripts/check-binaries.py \
   target/release/player target/release/ncm-provider qq-provider/build/qq-provider.tar.gz
 
-if [ ! -x cli/decky ]; then
-  mkdir -p cli
-  curl -fL -o cli/decky \
-    https://github.com/SteamDeckHomebrew/cli/releases/latest/download/decky-linux-x86_64
-  chmod +x cli/decky
-fi
-
 # CLI 以 root 构建；清理上次产物与 CLI 留下的临时目录。
 sudo rm -rf out dist /tmp/decky
-sudo ./cli/decky plugin build .
+bash scripts/decky-build.sh
 sudo chown -R "$(id -u):$(id -g)" out dist
 # out 已清空，不依赖目录遍历顺序或按空格拆文件名。
 shopt -s nullglob

@@ -7,28 +7,41 @@ on:
 permissions:
   contents: write
 
+# Do not interrupt a release after some assets have already been uploaded.
+concurrency:
+  group: release-assets
+  cancel-in-progress: false
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up release runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
 
-      - name: Download Decky CLI
+      - name: Set up release Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11.16"
+
+      - name: Install packaging system dependencies
         run: |
-          mkdir -p cli
-          curl -L -o cli/decky \
-            https://github.com/SteamDeckHomebrew/cli/releases/latest/download/decky-linux-x86_64
-          chmod +x cli/decky
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends binutils curl git jq rsync unzip
 
       - name: Build plugin
-        run: sudo ./cli/decky plugin build .
+        run: bash scripts/decky-build.sh
 
       - name: Get plugin info
         id: plugin_info
@@ -40,7 +53,7 @@ jobs:
         run: bash scripts/full-package.sh
 
       - name: Upload artifact to release
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -50,7 +63,7 @@ jobs:
           asset_content_type: application/zip
 
       - name: Upload full zip to release
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -68,7 +81,7 @@ jobs:
         run: bash scripts/release-cn.sh
 
       - name: Upload CN zip to release
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

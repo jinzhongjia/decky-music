@@ -16,7 +16,7 @@ put() {  # $1=local file  $2=r2 key (no bucket prefix)  $3=optional Cache-Contro
   if [ "${DRY_RUN:-}" = "1" ]; then echo "DRY put -> $2"; return; fi
   local cc=()
   [ -n "${3:-}" ] && cc=(--cache-control "$3")
-  npx --yes wrangler r2 object put "$R2_BUCKET/$2" --file="$1" --remote "${cc[@]}"
+  npx --yes wrangler@4.131.2 r2 object put "$R2_BUCKET/$2" --file="$1" --remote "${cc[@]}"
 }
 
 # 1. Mirror each remote_binary GitHub asset -> R2, verifying sha256 en route.
@@ -32,8 +32,8 @@ done < <(jq -r '.remote_binary[] | "\(.url)\t\(.sha256hash)"' package.json)
 # 2. Build the CN zip (package.json URLs -> R2), then restore package.json.
 cp package.json "$work/package.json.orig"
 scripts/cn-package.sh "$TAG" "$work/package.json.orig" > package.json
-sudo ./cli/decky plugin build .
-sudo chown -R "$(id -u):$(id -g)" out dist 2>/dev/null || true
+bash scripts/decky-build.sh
+sudo chown -R "$(id -u):$(id -g)" out dist
 # decky CLI names the zip after plugin.json's name (which contains a space:
 # "Decky Music.zip"); GitHub only dots it on asset upload. Don't hardcode.
 mv "out/$(jq -r '.name' plugin.json).zip" "$work/Decky.Music.cn.zip"
