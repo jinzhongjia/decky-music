@@ -295,6 +295,22 @@ class Playback(PlaybackQueue, PlaybackRadio):
             if not self._superseded(gen):
                 raise
 
+    def _on_player_error(self, code: str):
+        if code in STREAM_DEATH_ERRORS:
+            # A dead stream must cold-load on resume; retain the current position.
+            self.playing = False
+            self._resume_at = self.pos
+            self._loaded = False
+            log(
+                "bridge",
+                "own",
+                "warn",
+                f"stream died at {self.pos:.1f}s ({code}), resume will continue from here",
+            )
+        else:
+            # Failed seek leaves playback intact; do not rewind it on a later resume.
+            log("bridge", "own", "warn", f"player error: {code} (non-fatal, playback untouched)")
+
     async def on_player_event(self, ev):
         """player 域事件(protocol.ChildEvent)。跟踪播放态/进度 → 转发 → ended 自动切歌。"""
         ev = safe_event(ev)
@@ -325,26 +341,7 @@ class Playback(PlaybackQueue, PlaybackRadio):
         elif ev.type == "ended":
             self.playing = False
         elif ev.type == "error":
-            code = ev.data.get("code", "")
-            if code in STREAM_DEATH_ERRORS:
-                # 流真的死了(sink 放空且 probe 报错),再往它发 resume 是"按播放键没反应"。
-                # _loaded 置 False 让下次 resume() 冷启动重新加载,并记下中断处以便接上。
-                self.playing = False
-                self._resume_at = self.pos
-                self._loaded = False
-                log(
-                    "bridge",
-                    "own",
-                    "warn",
-                    f"stream died at {self.pos:.1f}s ({code}), resume will continue from here",
-                )
-            else:
-                # 非致命错误(如 seek_failed:try_seek 失败但 sink 照常出声)。绝不能动
-                # _loaded/_resume_at —— 否则之后任何一次 resume 都会白重载一遍并往回跳,
-                # 而音频其实一直在往前走(真机实测踩到:seek_failed 后播到 222s,resume 却跳回 189s)。
-                log(
-                    "bridge", "own", "warn", f"player error: {code} (non-fatal, playback untouched)"
-                )
+            self._on_player_error(ev.data.get("code", ""))
         await decky.emit("player", {"ev": ev.ev, "type": ev.type, "data": ev.data})
         if ev.type == "ended" and gen == self._play_gen:
             await self._on_ended()

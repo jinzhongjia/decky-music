@@ -207,6 +207,18 @@ bash scripts/build-qq-provider.sh
 glibc 需求不超过 2.39，以及 Rust 可执行文件的动态依赖；QQ standalone 包内的 ELF 也必须通过。
 此检查只能证明二进制 ABI 边界，不能代替音频、手柄、屏幕缩放和睡眠恢复的真机验收。
 
+### 自动检查与固定构建工具
+
+PR 和分支 push 会运行 [Checks](.github/workflows/checks.yml)：stdlib bridge 单测、真实依赖环境中的
+QQ 单测/lint、pnpm 9/11 两套 UI 测试/类型检查/构建，以及 Rust fmt/test/clippy。
+运行时和第三方 Actions 使用固定版本或提交；工作流失败不会被忽略，不自动修改分支保护规则。
+
+插件打包统一使用 `bash scripts/decky-build.sh`。它校验固定版本 Decky CLI 的 SHA-256，
+从固定 digest 准备官方 builder，并使用 Git 可见的当前工作区源码建立临时输入目录：
+未提交的新源码仍会纳入，`target/`、Nuitka 产物、虚拟环境及被忽略的密钥文件不会被复制进构建输入。
+默认使用 Docker + sudo；已有 rootless Podman 时可用
+`DECKY_BUILD_SUDO=0 DECKY_BUILD_ENGINE=podman bash scripts/decky-build.sh --build-as-root`。
+
 ### 部署到开发机
 
 ```bash

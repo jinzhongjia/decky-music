@@ -25,7 +25,7 @@ esac
 
 mkdir -p cli
 # Verify cached downloads too; an old/unverified executable must never run as root.
-if ! printf '%s  cli/decky\n' "$CLI_SHA256" | sha256sum --check --status; then
+if [ ! -f cli/decky ] || ! printf '%s  cli/decky\n' "$CLI_SHA256" | sha256sum --check --status; then
   download=$(mktemp cli/decky.XXXXXX)
   trap 'rm -f "$download"' EXIT
   curl --fail --location --proto '=https' --tlsv1.2 --retry 3 \
@@ -38,8 +38,30 @@ if ! printf '%s  cli/decky\n' "$CLI_SHA256" | sha256sum --check --status; then
 fi
 chmod 0755 cli/decky
 
+# The official builder copies its entire input tree into /out. Stage Git-visible
+# working-tree files so target/, Nuitka output, virtualenvs and secrets stay out,
+# while uncommitted source changes remain available for authorized sideloads.
+stage_root=$(mktemp -d)
+stage="$stage_root/$(basename "$PWD")"
+mkdir -p "$stage"
+trap '"${privilege[@]}" rm -rf -- "$stage_root"' EXIT
+python3 - "$stage_root/files" <<'PY'
+import os
+import subprocess
+import sys
+
+paths = subprocess.check_output(
+    ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"]
+).split(b"\0")
+with open(sys.argv[1], "wb") as manifest:
+    for path in dict.fromkeys(paths):
+        if path and (os.path.isfile(path) or os.path.islink(path)):
+            manifest.write(path + b"\0")
+PY
+rsync -a --from0 --files-from="$stage_root/files" ./ "$stage/"
+
 # CLI 0.0.8 hardcodes builder:latest and docker run uses the local image if present.
 # Populate that local name from a digest, never pull the mutable upstream tag.
 "${privilege[@]}" "$engine" pull "$BUILDER@$BUILDER_DIGEST"
 "${privilege[@]}" "$engine" tag "$BUILDER@$BUILDER_DIGEST" "$BUILDER:latest"
-"${privilege[@]}" ./cli/decky plugin build . --engine "$engine" "$@"
+"${privilege[@]}" ./cli/decky plugin build "$stage" --engine "$engine" "$@"

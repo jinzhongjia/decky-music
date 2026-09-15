@@ -23,6 +23,18 @@ from qq import QQ
 UPSTREAM_TIMEOUT = 15
 
 
+async def _pump_messages(out, writer):
+    while True:
+        message = await out.get()
+        frame = json.dumps(message, ensure_ascii=False).encode()
+        if len(frame) > protocol.MAX_FRAME_BYTES:
+            writer.close()
+            await writer.wait_closed()
+            return
+        writer.write(frame + b"\n")
+        await writer.drain()
+
+
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--socket", required=True)
@@ -34,24 +46,13 @@ async def main():
     await qq.ensure_device()  # 先把设备身份落盘,首个请求就用稳定身份
     out: asyncio.Queue = asyncio.Queue()  # 响应 + 事件汇到单写出,避免并发写乱帧
 
-    async def pump():
-        while True:
-            message = await out.get()
-            frame = json.dumps(message, ensure_ascii=False).encode()
-            if len(frame) > protocol.MAX_FRAME_BYTES:
-                writer.close()
-                await writer.wait_closed()
-                return
-            writer.write(frame + b"\n")
-            await writer.drain()
-
     def emit(typ: str, **data):
         # 发一条 login 域事件(协议 v1:{ev:"login",type,data})
         out.put_nowait(protocol.login_event(typ, data))
 
     log = make_log(out)
 
-    asyncio.create_task(pump())
+    asyncio.create_task(_pump_messages(out, writer))
     in_flight: set[asyncio.Task] = set()
 
     def track(coro):

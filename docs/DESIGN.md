@@ -206,8 +206,8 @@ UI 全程拿不到 URL、碰不到音频流,一切经 bridge。
 3. **解码效率交给 rodio/symphonia**(原生码,压缩流解码 ~1-2% 单核),已由 §7.3 解决。
 4. **播放器 store 有明确生命周期。** 插件入口调用 `startPlayer`，卸载调用幂等 `stopPlayer`；
    保存并执行事件退订，清除音量 debounce timer，以代次/修订号拒绝旧 hydrate 和异步错误。宿主替换 listener map 不等于清理这些 timer/promise。
-5. **窗口化几何一致。** 歌曲内容行高 72px、行间距 6.4px，使用统一 stride；外层不再额外施加 gap。
-   首尾 spacer 与可见行共用同一总高度模型，包含底部部分可见行，避免窗口切换时坐标漂移。
+5. **窗口化几何一致。** 歌曲内容行高 64px（48px 封面 + 上下各 8px）、行间距 6.4px，使用统一 stride；外层不再额外施加 gap。
+   首尾 spacer 与可见行共用同一总高度模型，包含底部部分可见行；布局变化时测量实际 stride，避免 CEF 缩放下分数间距的累计取整偏差。
 
 **何时才换二进制格式(YAGNI 闸门):** 仅当 profiling 实测 JSON 成为瓶颈——对纯控制面流量不会发生。现在上 msgpack/protobuf 是纯负债:bridge 侧还用不了(编译扩展),白白牺牲可调试性。
 

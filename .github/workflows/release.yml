@@ -38,7 +38,7 @@ jobs:
       - name: Install packaging system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends binutils curl jq unzip
+          sudo apt-get install --yes --no-install-recommends binutils curl git jq rsync unzip
 
       - name: Build plugin
         run: bash scripts/decky-build.sh
