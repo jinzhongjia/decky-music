@@ -6,6 +6,8 @@ import sys
 import unittest
 from types import SimpleNamespace
 
+from qqmusic_api import Credential
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import commands  # noqa: E402
@@ -184,6 +186,62 @@ class TestProviderLoginRequired(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(NotLoggedIn):
             await _like_song(q, "123", True)
+
+
+class TestCollectionSongLookup(unittest.IsolatedAsyncioTestCase):
+    """Exercise real SDK query/mutation methods against a local CGI boundary."""
+
+    async def asyncSetUp(self):
+        self.q = QQ()
+        self.addAsyncCleanup(self.q.client.close)
+        self.q.client.credential = Credential(musicid=1, encrypt_uin="test-account")
+        self.collections = {}
+        self.q.client.song._build_cgi = self.cgi
+        self.q.client.songlist._build_cgi = self.cgi
+
+    async def cgi(self, *, method, param, **_kwargs):
+        if method == "CgiGetTrackInfo":
+            tracks = [SimpleNamespace(id=42, type=1)] if param.get("mids") == ["track-mid"] else []
+            return SimpleNamespace(tracks=tracks)
+        songs = self.collections.setdefault(param["dirId"], set())
+        for song in param["v_songInfo"]:
+            key = (song["songId"], song["songType"])
+            if method == "AddSonglist":
+                songs.add(key)
+            elif method == "DelSonglist":
+                songs.discard(key)
+            else:
+                raise AssertionError("unexpected CGI method")
+        return {"retCode": 0}
+
+    async def request(self, command, args):
+        out = asyncio.Queue()
+        await _run_request(
+            self.q, protocol.Request(1, command, args), None, lambda *_args: None, out
+        )
+        return await out.get()
+
+    async def test_heart_can_add_and_remove_a_track_mid(self):
+        for on in (True, False):
+            response = await self.request("like_song", {"id": "track-mid", "on": on})
+            self.assertTrue(response["ok"], response)
+            self.assertTrue(response["data"]["success"])
+            self.assertEqual(self.collections[201], {(42, 0)} if on else set())
+
+    async def test_add_to_playlist_resolves_the_track_mid(self):
+        response = await self.request(
+            "add_to_playlist", {"playlist_id": 301, "song_id": "track-mid"}
+        )
+        self.assertTrue(response["ok"], response)
+        self.assertTrue(response["data"]["success"])
+        self.assertEqual(self.collections, {301: {(42, 0)}})
+
+    async def test_unlike_removes_an_existing_qq_catalog_entry(self):
+        self.collections[201] = {(42, 0)}
+        response = await self.request("like_song", {"id": "track-mid", "on": False})
+        self.assertTrue(response["ok"], response)
+        self.assertTrue(response["data"]["success"])
+        self.assertEqual(self.collections[201], set())
 
 
 class TestTimeoutResetsClient(unittest.IsolatedAsyncioTestCase):

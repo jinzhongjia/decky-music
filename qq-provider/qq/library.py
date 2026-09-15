@@ -1,5 +1,7 @@
 """用户资产/收藏动作等 issue #35 QQ 命令。"""
 
+from qqmusic_api.modules.song import SongQueryInfo
+
 from qq.paging import WINDOW_SIZE, window
 from qq.search import _playlist_brief, _song_brief
 
@@ -149,9 +151,11 @@ async def fav_playlist(q, playlist_id: int, on: bool) -> bool:
 
 
 async def _song_info(q, song_id: str) -> tuple[int, int] | None:
-    resp = await q.client.song.query_song([song_id])
+    resp = await q.client.song.query_song([SongQueryInfo(mid=song_id, song_type=0)])
     tracks = getattr(resp, "tracks", None) or []
     if not tracks:
         return None
     song = tracks[0]
-    return int(getattr(song, "id", 0) or 0), int(getattr(song, "type", 0) or 0)
+    # QQ catalog keys use songType=0; metadata type=1 means "ordinary song",
+    # not the collection namespace. Passing it makes deletion silently do nothing.
+    return int(getattr(song, "id", 0) or 0), 0
