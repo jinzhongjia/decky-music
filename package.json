@@ -1,6 +1,6 @@
 {
   "name": "decky-music",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "SteamOS 游戏模式音乐插件(QQ音乐 + 网易云)",
   "type": "module",
   "packageManager": "pnpm@11.3.0",
@@ -22,18 +22,18 @@
   "remote_binary": [
     {
       "name": "player",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.4/player-linux-x64",
-      "sha256hash": "2543f8f69d3a6acfb236cca5b266c6ddedb57c3c1b1c4b5fa542c833d639d9fa"
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.7/player-linux-x64",
+      "sha256hash": "bccf8e4f1f071a92cb223ce48f75b4761d372ddbd6096b1bd1355ff52a662169"
     },
     {
       "name": "ncm-provider",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.4/ncm-provider-linux-x64",
-      "sha256hash": "aac411a83ad8dc70af7b2e3e93648df5c84d30067ffabdea2eacb6cc5b6c3dbe"
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.7/ncm-provider-linux-x64",
+      "sha256hash": "3b4e82a728248895eb3fd999ebcf41222d87c49a08486aa55cf6cc25116b88b5"
     },
     {
       "name": "qq-provider",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.4/qq-provider-linux-x64.tar.gz",
-      "sha256hash": "58672ed8238bdb0cffd6fe742bc9335d2189d15d683181e8b8453f84a77be635"
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.7/qq-provider-linux-x64.tar.gz",
+      "sha256hash": "63f020cf9fddaa06be3dc1bddd0af169e92bf023f31b21b90c13c86e0439e08d"
     }
   ],
   "dependencies": {

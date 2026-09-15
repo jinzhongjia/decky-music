@@ -61,7 +61,7 @@
   [push](https://github.com/jinzhongjia/decky-music/actions/runs/34876006917)。
 - 最终集成与截图快照通过：[PR](https://github.com/jinzhongjia/decky-music/actions/runs/34922353271) /
   [push](https://github.com/jinzhongjia/decky-music/actions/runs/34922350888)。
-- 本轮未发版，`remote_binary` 仍指向既有发布资产；下次发布必须上传本轮重建的三个二进制并更新指纹。
+- 上述验收完成时尚未发版；本轮修复归入 v1.0.7，发布时重建三个二进制并更新 `remote_binary` 指纹。
 
 ---
 
