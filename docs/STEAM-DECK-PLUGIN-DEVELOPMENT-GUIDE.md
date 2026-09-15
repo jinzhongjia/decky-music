@@ -305,6 +305,8 @@ ssh "$DECK_HOST" 'systemd-inhibit --list --mode=block'
 
 Starting the unit does not prove the inhibitor is already active: inspect it after startup. After a long pause, reboot, or lost SSH session, recheck both the address and blocker state. Never leave an unbounded inhibitor running overnight.
 
+The `idle:sleep` blocker also blocks intentional suspend. Remove it before the user presses Power or tests sleep/resume. A blocked sleep transition can leave Steam's own suspend overlay holding focus even while JavaScript timers continue running; inspect the host's suspend/resume state instead of assuming the plugin's event loop has frozen.
+
 ### Connect through a local-only CDP tunnel
 
 Steam's CEF commonly exposes the Chrome DevTools Protocol (CDP) on device port 8080 in Decky development setups. Verify that it is available; do not expose it to the network.

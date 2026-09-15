@@ -24,7 +24,7 @@ python3 scripts/check-binaries.py \
 # CLI 以 root 构建；清理上次产物与 CLI 留下的临时目录。
 sudo rm -rf out dist /tmp/decky
 bash scripts/decky-build.sh
-sudo chown -R "$(id -u):$(id -g)" out dist
+sudo chown -R "$(id -u):$(id -g)" out
 # out 已清空，不依赖目录遍历顺序或按空格拆文件名。
 shopt -s nullglob
 archives=(out/*.zip)
