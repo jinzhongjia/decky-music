@@ -257,6 +257,7 @@ player/provider；修改 `player/`、`ncm-provider/` 或 `qq-provider/` 后，�
 
 ## 设计与开发文档
 
+- [Steam Deck Plugin Development Guide (English)](docs/STEAM-DECK-PLUGIN-DEVELOPMENT-GUIDE.md)
 - [总体架构与协议](docs/DESIGN.md)
 - [功能路线图与当前实现](docs/ROADMAP.md)
 - [播放队列语义](docs/QUEUE-BEHAVIOR.md)
