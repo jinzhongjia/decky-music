@@ -5,6 +5,7 @@ import { FaMusic } from "react-icons/fa";
 import { Boundary } from "./Boundary";
 import { Page, ROUTE } from "./Page";
 import { QAM } from "./QAM";
+import { startPlayer, stopPlayer } from "./player/usePlayer";
 import { ALBUM_ROUTE, AlbumDetailPage } from "./screens/AlbumDetail";
 import { ARTIST_ROUTE, ArtistDetailPage } from "./screens/ArtistDetail";
 import { RADIO_ROUTE, RadioPage } from "./screens/Immersive";
@@ -13,6 +14,7 @@ import { TOPLIST_ROUTE, ToplistDetailPage } from "./screens/ToplistDetail";
 import { disableMenuInjection, enableMenuInjection } from "./steamMenu";
 
 export default definePlugin(() => {
+  startPlayer();
   routerHook.addRoute(ROUTE, () => (
     <Boundary>
       <Page />
@@ -57,6 +59,7 @@ export default definePlugin(() => {
       </Boundary>
     ),
     onDismount() {
+      stopPlayer();
       disableMenuInjection();
       routerHook.removeRoute(ROUTE);
       routerHook.removeRoute(DETAIL_ROUTE);

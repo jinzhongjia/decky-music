@@ -10,10 +10,11 @@ import { openSongMenu } from "./songMenu";
 import { fmtTime, theme } from "./theme";
 
 // 歌曲列表容器样式:纵向滚动、行间距一致(资产/搜索列表与详情页共用)
+export const SONG_ROW_HEIGHT = 64; // 48px cover + 8px padding on each side
+export const SONG_ROW_GAP = 6.4; // 0.4rem at Steam's 16px root
 export const songListStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: "0.4rem",
   flexGrow: 1,
   minHeight: 0,
   overflowY: "auto",

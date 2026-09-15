@@ -25,6 +25,26 @@
 实机截图覆盖首页/榜单、搜索及四分类、歌单/专辑/歌手详情、个人资产、电台与正在播放。
 文件名按稳定场景编号维护；更新 UI 后直接替换受影响场景，不创建带日期或随机后缀的副本。
 
+### 本轮重拍：窗口化列表、队列与安全错误（2026-09-15）
+
+以下均为本轮部署后捕获的原始 1281×801 PNG，没有缩放、合成或用设计图替代：
+
+| 场景 | QQ | NCM |
+| :--- | :--- | :--- |
+| 榜单详情 | [原图](assets/device-screenshots/qq/03-toplist-detail.png) | [原图](assets/device-screenshots/ncm/03-toplist-detail.png) |
+| 单曲搜索 | [原图](assets/device-screenshots/qq/05-search-songs.png) | [原图](assets/device-screenshots/ncm/05-search-songs.png) |
+| 歌单详情 | [原图](assets/device-screenshots/qq/07-playlist-detail.png) | [原图](assets/device-screenshots/ncm/07-playlist-detail.png) |
+| 专辑详情 | [原图](assets/device-screenshots/qq/09-album-detail.png) | [原图](assets/device-screenshots/ncm/09-album-detail.png) |
+| 歌手详情 | [原图](assets/device-screenshots/qq/11-artist-detail.png) | [原图](assets/device-screenshots/ncm/11-artist-detail.png) |
+| 我喜欢 | [原图](assets/device-screenshots/qq/12-my-fav.png) | [原图](assets/device-screenshots/ncm/12-my-fav.png) |
+| 听歌排行 | 不适用 | [原图](assets/device-screenshots/ncm/13-my-rank.png)，当前账号真实返回空列表 |
+| 普通队列 | [原图](assets/device-screenshots/qq/19-queue-normal.png) | [原图](assets/device-screenshots/ncm/19-queue-normal.png) |
+| 安全错误文案 | [原图](assets/device-screenshots/qq/21-invalid-request-error.png) | [原图](assets/device-screenshots/ncm/21-invalid-request-error.png) |
+
+长列表另用真实导航按键跨多个 overscan 窗口及追加页验证，返回后焦点仍在原页面；
+实测行内容 64px，CEF 缩放后的实际 stride 约 70.3958px，spacer 用测量值消除累计取整偏差。
+截图本身不代替这些交互与几何验收。**请使用以上最新原图重新生成对应 `device-renders/`；旧展示图不是本轮效果。**
+
 ### 本轮重拍：歌词首帧定位（2026-09-13）
 
 | 场景 | QQ | NCM |

@@ -1,7 +1,7 @@
 // Bounded DOM windows for long, gamepad-navigable lists and grids. Overscan keeps the next
 // focus target mounted while Steam scrolls the current target into view.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, RefObject, UIEvent } from "react";
 
 import { Grid } from "./cards";
@@ -48,33 +48,63 @@ function useViewport(onNearBottom?: () => void): Viewport {
   return { ref, scrollTop, width: size.width, height: size.height, onScroll };
 }
 
+function useRowGeometry(viewport: Viewport, height: number, gap: number, hasRows: boolean) {
+  const [geometry, setGeometry] = useState({ height, gap });
+  useLayoutEffect(() => {
+    const children = viewport.ref.current?.children;
+    if (!children || children.length < 4) return;
+    const first = children[1].getBoundingClientRect();
+    const last = children[children.length - 2].getBoundingClientRect();
+    const stride = (last.top - first.top) / (children.length - 3);
+    if (first.height <= 0 || stride < first.height) return;
+    // CEF quantizes fractional CSS gaps under UI scaling. Measure only on layout
+    // changes, so accumulated spacer offsets match fully rendered rows exactly.
+    const measured = { height: first.height, gap: stride - first.height };
+    setGeometry((old) =>
+      Math.abs(old.height - measured.height) > 0.000001 ||
+      Math.abs(old.gap - measured.gap) > 0.000001
+        ? measured
+        : old
+    );
+  }, [viewport.ref, viewport.width, viewport.height, height, gap, hasRows]);
+  return geometry;
+}
+
 export function WindowedList<T>({
   items,
   itemHeight,
+  gap,
   renderItem,
   onNearBottom,
   style,
 }: WindowProps & {
   items: T[];
   itemHeight: number;
+  gap: number;
   renderItem: (item: T, index: number) => ReactNode;
 }) {
   const viewport = useViewport(onNearBottom);
+  const geometry = useRowGeometry(viewport, itemHeight, gap, items.length > 1);
   const range = windowRange(
     items.length,
-    itemHeight,
+    geometry.height,
     viewport.scrollTop,
     viewport.height,
-    OVERSCAN_ROWS
+    OVERSCAN_ROWS,
+    geometry.gap
   );
 
   return (
-    <div ref={viewport.ref} onScroll={viewport.onScroll} style={style}>
+    <div ref={viewport.ref} onScroll={viewport.onScroll} style={{ ...style, gap: 0 }}>
       <div style={{ height: range.before, flexShrink: 0 }} />
       {items.slice(range.start, range.end).map((item, index) => (
         <div
           key={range.start + index}
-          style={{ height: itemHeight, overflow: "hidden", flexShrink: 0 }}
+          style={{
+            height: itemHeight,
+            flexShrink: 0,
+            marginBottom: range.start + index + 1 < range.end ? gap : 0,
+          }}
         >
           {renderItem(item, range.start + index)}
         </div>

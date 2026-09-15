@@ -65,3 +65,41 @@ test("does not render invalid dimensions", () => {
     after: 0,
   });
 });
+
+test("windowed rows match full-list offsets and height, including gaps and boundary windows", () => {
+  const height = 72,
+    gap = 6.4,
+    stride = height + gap;
+  for (const count of [1, 2, 37, 500]) {
+    const fullHeight = count * height + (count - 1) * gap;
+    for (const top of [
+      0,
+      0.5,
+      stride - 1,
+      stride,
+      15 * stride + 20,
+      fullHeight - 100,
+      fullHeight + 500,
+    ]) {
+      for (const viewport of [0, 1, 200, 360]) {
+        for (const overscan of [0, 4, 12]) {
+          const range = windowed.windowRange(count, height, top, viewport, overscan, gap);
+          assert.ok(range.start >= 0 && range.start < range.end && range.end <= count);
+          const mounted = range.end - range.start;
+          const renderedHeight = mounted * height + (mounted - 1) * gap;
+          assert.ok(Math.abs(range.before + renderedHeight + range.after - fullHeight) < 1e-8);
+          for (let index = range.start; index < range.end; index++) {
+            const renderedTop = range.before + (index - range.start) * stride;
+            assert.ok(Math.abs(renderedTop - index * stride) < 1e-8);
+          }
+        }
+      }
+    }
+  }
+});
+
+test("partially visible bottom rows stay mounted for the next gamepad focus target", () => {
+  const range = windowed.windowRange(100, 72, 70, 72, 0, 6.4);
+  assert.equal(range.start, 0);
+  assert.equal(range.end, 2);
+});

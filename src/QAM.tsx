@@ -152,11 +152,11 @@ export function QAM() {
     setQr(null);
     setStatus("");
     setView("qr");
-    await guard(() => api.login(type), "login", "qam");
+    await guard(() => api.login(type), "qam");
   };
 
   const doLogout = async () => {
-    await guard(() => api.logout(), "logout", "qam");
+    await guard(() => api.logout(), "qam");
     setAccount(null);
     setView("pick");
   };

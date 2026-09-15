@@ -8,7 +8,7 @@ import { t } from "../i18n";
 import { openAlbumDetail } from "../screens/AlbumDetail";
 import { openArtistDetail } from "../screens/ArtistDetail";
 import { openPlaylistDetail } from "../screens/PlaylistDetail";
-import { SongRows, songListStyle } from "./SongRow";
+import { SONG_ROW_GAP, SONG_ROW_HEIGHT, SongRows, songListStyle } from "./SongRow";
 import { openPlaylistMenu } from "./playlistMenu";
 import { AlbumCard, ArtistCard, PlaylistCard } from "./cards";
 import { theme } from "./theme";
@@ -30,7 +30,8 @@ export function SongListView({ fetch }: { fetch: (offset: number) => Promise<Sea
   return (
     <WindowedList
       items={songs}
-      itemHeight={72}
+      itemHeight={SONG_ROW_HEIGHT}
+      gap={SONG_ROW_GAP}
       onNearBottom={loadMore}
       renderItem={(song, index) => <SongRows songs={[song]} queue={songs} startIndex={index} />}
       style={songListStyle}
