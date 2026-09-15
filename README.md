@@ -148,7 +148,7 @@ graph LR
 
 - UI 只通过 `src/api.ts` 与 bridge 通信，不接触播放 URL 或音频流。
 - `main.py` 是 Decky callable 门面：`CALLABLES` 白名单 + `__getattr__` 转发给 bridge；
-  `py_modules/bridge.py` 管理状态、持久化、事件和子进程。
+  `py_modules/bridge.py` 组合 IPC、配置持久化、进程监督及 RPC 模块，播放/队列/电台仍由 bridge 持有。
 - 同一时间只运行一个 provider；player 独立常驻，直接拉流、解码并输出到系统音频栈。
 - bridge 运行在 Decky 冻结的 CPython 中，因此只使用 Python 标准库。
 - bridge 与子进程使用 Unix domain socket 和 NDJSON 协议 v1，不开放本地 TCP 端口；Rust 两端
@@ -206,6 +206,18 @@ bash scripts/build-qq-provider.sh
 构建镜像固定到 digest，构建脚本自动运行 `scripts/check-binaries.py`：检查 x86-64 ELF、
 glibc 需求不超过 2.39，以及 Rust 可执行文件的动态依赖；QQ standalone 包内的 ELF 也必须通过。
 此检查只能证明二进制 ABI 边界，不能代替音频、手柄、屏幕缩放和睡眠恢复的真机验收。
+
+### 自动检查与固定构建工具
+
+PR 和分支 push 会运行 [Checks](.github/workflows/checks.yml)：stdlib bridge 单测、真实依赖环境中的
+QQ 单测/lint、pnpm 9/11 两套 UI 测试/类型检查/构建，以及 Rust fmt/test/clippy。
+运行时和第三方 Actions 使用固定版本或提交；工作流失败不会被忽略，不自动修改分支保护规则。
+
+插件打包统一使用 `bash scripts/decky-build.sh`。它校验固定版本 Decky CLI 的 SHA-256，
+从固定 digest 准备官方 builder，并使用 Git 可见的当前工作区源码建立临时输入目录：
+未提交的新源码仍会纳入，`target/`、Nuitka 产物、虚拟环境及被忽略的密钥文件不会被复制进构建输入。
+默认使用 Docker + sudo；已有 rootless Podman 时可用
+`DECKY_BUILD_SUDO=0 DECKY_BUILD_ENGINE=podman bash scripts/decky-build.sh --build-as-root`。
 
 ### 部署到开发机
 

@@ -30,7 +30,7 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 - `main.py` —— 只剩对外接口 facade:`CALLABLES` 白名单 + `__getattr__` 转发给 bridge
   (Decky loader 按名 `getattr` 分发,不必逐个写同名方法;`tests/test_callables.py`
   机械校验白名单 ↔ Bridge 方法 ↔ `src/api.ts` 三端一致)
-- `py_modules/` —— bridge 实现(`bridge.py` 总线 + 进程管理 / `playback.py` 播放与队列编排 / `log.py` 日志);放这里才被 Decky 加进 sys.path 且被 CLI 打包
+- `py_modules/` —— bridge 实现:`bridge.py` 生命周期门面、`ipc.py` 连接与事件代次、`music_settings.py` 归一化与私有持久化、`child_process.py`/`supervision.py` 进程监督、`provider_rpc.py`/`playback_rpc.py` RPC、`playback*.py` 播放/队列/电台、`diagnostics.py`/`log.py` 安全诊断。配置模块避免使用宿主占用的 `settings` 名称；所有模块放这里才被 Decky 加进 sys.path 且被 CLI 打包。
 - `src/` —— React UI:`index.tsx`(`definePlugin` 入口)/ `QAM.tsx`(QAM 面板)/ `Page.tsx`(大屏页,导出 `ROUTE`)/ `api.ts`(前端↔bridge 唯一接口层)/ `errors.ts`+`ErrorBanner.tsx`+`Boundary.tsx`(错误纵深)/ `Footer.tsx` / `i18n.ts`
 - `player/` —— Rust,`reqwest` + `rodio`
 - `ncm-provider/` —— Rust,依赖 ncm-api-rs
@@ -63,10 +63,10 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 pnpm install                    # 前端依赖
 pnpm build                      # 只构建前端 → dist/
 pnpm lint                       # 前端 lint:tsc --noEmit + prettier --check;pnpm format 自动格式化
-sudo ./cli/decky plugin build . # 官方 CLI 打包整个插件 → out/<name>.zip(需 Docker + sudo)
+bash scripts/decky-build.sh      # 校验固定 CLI 与 builder 镜像后打包 → out/<name>.zip(默认 Docker + sudo)
 DECK_HOST=user@ip bash scripts/deploy.sh  # 打包 + rsync 到 SteamOS 设备 + 重启 plugin_loader
 # DECK_HOST 必填、无默认值(见 issue #48);远端 sudo 要口令时另加 DECK_PASS=<口令>
-# 首次会自动下载官方 CLI 到 cli/decky(gitignore 已忽略)
+# 首次会下载并校验固定版本 CLI 到 cli/decky；无宿主 sudo 时可设 DECKY_BUILD_SUDO=0 并传 --build-as-root
 
 cargo build --release -p player          # 各二进制单独构建(走 remote_binary,不进插件包)
 cargo build --release -p ncm-provider
@@ -134,7 +134,7 @@ dev → `logger.setLevel(DEBUG)`(debug 输出);release → `INFO`(debug 过滤,�
 **各组件的日志实现**:
 - bridge:`py_modules/log.py` —— `log(source, origin, level, msg)` + `log_child_event` + `pump_stderr`。
   (放 `py_modules/` 才能被 Decky 加进 sys.path 且被 CLI 打包。)子进程的 `{"ev":"log"}` 与
-  `{"ev":"error"}` 事件由 bridge 自动落日志,stderr 由 bridge 逐行捕获落 `warn`。
+  `{"ev":"error"}` 事件由 bridge 自动落日志；自由文本不受信任，只保留受控类别/错误码，stderr 仅记固定摘要，不原样落盘。
 - player / ncm-provider(Rust):`wire` crate 的 `log_json(LogLevel, place, msg)` 发
   `{"ev":"log",...}`;player 的音频线程用 `AudioEv::Log`。
 - provider(Python):`qq-provider/log.py` —— `make_log(out)` 返回 `log(level, where, msg)` 发 `{"ev":"log",...}`。
@@ -172,7 +172,7 @@ bridge ↔ provider/player 走**协议 v1**(见 issue #31)。传输仍是 UDS + 
 - Log(child→bridge):`{"ev":"log","level","where","msg"}`(独立顶层格式)
 
 **构造 / 解码集中在各自的 protocol 模块,业务代码不碰裸 JSON**:
-`py_modules/protocol.py`(bridge,typed decode;连接级分发由 `bridge.Conn` 完成)、`qq-provider/protocol.py`;
+`py_modules/protocol.py`(bridge,typed decode;连接级分发由 `ipc.Conn` 完成)、`qq-provider/protocol.py`;
 Rust 两端共用 `wire` crate(错误码 `ErrorCode`、`LogLevel`、请求解析、响应/事件构造),
 `ncm-provider/src/protocol.rs` 与 `player/src/protocol.rs` 只留各自的命令 args struct。
 改协议时四端 + `src/api.ts` 的
@@ -180,24 +180,26 @@ Rust 两端共用 `wire` crate(错误码 `ErrorCode`、`LogLevel`、请求解析
 Rust `#[cfg(test)]`)。
 
 要点:
-- **request id**:bridge 递增生成,当前已支持多请求同时在途;[`Conn.request` / `_read_loop`](py_modules/bridge.py)
+- **request id**:bridge 递增生成,当前已支持多请求同时在途;[`Conn.request` / `_read_loop`](py_modules/ipc.py)
   通过 `pending[id] -> Future` 匹配响应,不依赖响应到达顺序,无主的迟到响应丢弃。
   写锁只保护一帧写入;domain 事件由 `_events` / `_pump_events` 独立按到达顺序消费,不内联阻塞读循环。
   连接生命周期回归见 [`tests/test_child_death.py`](tests/test_child_death.py) 的 `TestConnDeath`、`TestStaleDisconnect`。
 - **错误码**:失败必带稳定 `error.code`(供前端 i18n),`message` 只作安全 fallback。第三方库原始错误
-  **默认不透 UI**;前端 `errorText(code)` 命中已知码 → 本地化,否则原样显示。
+  **不透 UI、不原样落日志**;前端 `errorText(code)` 命中已知码 → 本地化，否则显示安全的通用错误。
 - **两种超时不可混用**:`timeout` 只由 bridge 产出,表示通道不可用或等待子进程响应超时(请求等待上限 30s);
-  `upstream_timeout` 由 provider 产出,表示单次上游请求超时。
+  `upstream_timeout` 由 provider 产出，表示上游或整条命令预算耗尽。NCM 整条命令 25s、单段最多 15s 且服从剩余预算。
   [`Playback._play_index`](py_modules/playback.py) 对 `song_url` 的 `upstream_timeout` 退避 0.5s 后
   **原地重试同一首一次**,不因首次抖动顺延。重试仍返回 `upstream_timeout` 时,由 `FUSE_ERRORS`
   硬熔断报错,不再试下一首;若错误码变化,按对应错误分类处理。`SOFT_FUSE_ERRORS` 仅包含 `fetch_failed`,
-  不是跨两首歌累计 `upstream_timeout`。回归见 [`tests/test_playback.py`](tests/test_playback.py)
+  不是跨两首歌累计 `upstream_timeout`。回归见 [`tests/test_playback_retries.py`](tests/test_playback_retries.py)
   的 `TestUpstreamTimeoutRetriesSameSong`(瞬时恢复、持续超时不跳歌、电台重试)。
 - **红线延续**:`message` / 日志都不得含 URL(限时 token)/ cookie / credential。
-- 前端订阅事件先过 `isDomainEvent` 运行时 guard,畸形事件忽略不崩 UI。
+- 前端订阅先按 player/login/provider 的具体事件类型校验 payload，拒绝数组、缺字段、非法枚举及非有限数值；畸形事件不调用订阅者。
 - **断流后从中断处接上**:`stream.rs` 已按字节位置 Range 续传;它退避重试仍无进展而判死时,
   bridge 收到 player error 会置 `_loaded=False` 并记下 `_resume_at`,下次 `resume()` 重新加载
   并 seek 回中断处。seek 失败降级从头播,绝不让「按播放键」变成报错。
+- **可取消拉流**：player 首开每次最多 10s、最多两次加 1s 退避；正文无整曲总时限。新 load/stop/drop 取消并回收旧 HTTP 任务，活动加载上限为 2；旧代次的音频事件不得更新当前状态。
+- **store 生命周期**：`startPlayer`/`stopPlayer` 由插件初始化/卸载调用，退订事件、清除音量 timer，并失效在途 hydrate/错误回调。
 - **播放错误双通道上报**:插件 UI 内的 `ErrorBanner` + Steam 系统 toast。播放出错时用户
   多半不在插件界面(在玩游戏),只有横幅等于没提示。见 `src/player/usePlayer.ts`。
 
