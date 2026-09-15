@@ -1,4 +1,4 @@
-use ncm_api_rs::{CryptoType, Query, RequestOption};
+use ncm_api_rs::{ApiResponse, CryptoType, Query, RequestOption};
 use serde_json::{json, Value};
 
 use crate::commands::song_brief;
@@ -129,6 +129,26 @@ pub async fn listen_rank(state: &State, id: u64, args: &Value) -> String {
     .await
 }
 
+fn like_response(id: u64, response: Result<ApiResponse, String>) -> String {
+    match response {
+        Ok(response) => {
+            // The SDK normalizes some business failures to status=200.
+            // /song/like succeeds only when its own body code is 200.
+            let code = response.body.get("code").and_then(|value| {
+                value
+                    .as_i64()
+                    .or_else(|| value.as_str()?.parse::<i64>().ok())
+            });
+            if code == Some(200) {
+                protocol::ok(id, json!({}))
+            } else {
+                protocol::err(id, protocol::ErrorCode::ProviderError, "provider_error")
+            }
+        }
+        Err(error) => error,
+    }
+}
+
 pub async fn like_song(state: &State, id: u64, args: &Value) -> String {
     let Ok(song_id) = string_arg(args, "id") else {
         return invalid(id);
@@ -146,7 +166,7 @@ pub async fn like_song(state: &State, id: u64, args: &Value) -> String {
         .param("uid", &uid)
         .param("like", if on { "true" } else { "false" })
         .cookie(&cookie);
-    fetch(state.client.song_like(&q), id, |_| json!({})).await
+    like_response(id, call(state.client.song_like(&q), id).await)
 }
 
 /// 收藏 / 取消收藏歌单(/playlist/subscribe)。t=1 收藏、t=0 取消,库层按 t 选 path。
@@ -209,5 +229,49 @@ pub async fn add_to_playlist(state: &State, id: u64, args: &Value) -> String {
     {
         Ok(_) => protocol::ok(id, json!({})),
         Err(e) => e,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reply(body: Value) -> Value {
+        let response = ApiResponse {
+            status: 200,
+            body,
+            cookie: vec![],
+        };
+        serde_json::from_str(&like_response(7, Ok(response))).unwrap()
+    }
+
+    #[test]
+    fn masked_business_error_is_not_a_successful_like() {
+        let response = reply(json!({
+            "code": 502,
+            "message": "SENTINEL https://synthetic.invalid/?token=secret",
+        }));
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], "provider_error");
+        assert!(!response.to_string().contains("SENTINEL"));
+    }
+
+    #[test]
+    fn missing_business_code_is_not_success() {
+        assert_eq!(reply(json!({}))["ok"], false);
+    }
+
+    #[test]
+    fn explicit_numeric_and_string_success_codes_are_accepted() {
+        assert_eq!(reply(json!({"code": 200}))["ok"], true);
+        assert_eq!(reply(json!({"code": "200"}))["ok"], true);
+    }
+
+    #[test]
+    fn upstream_timeout_is_preserved() {
+        let error = protocol::err(7, protocol::ErrorCode::UpstreamTimeout, "upstream_timeout");
+        let response: Value = serde_json::from_str(&like_response(7, Err(error))).unwrap();
+        assert_eq!(response["ok"], false);
+        assert_eq!(response["error"]["code"], "upstream_timeout");
     }
 }
