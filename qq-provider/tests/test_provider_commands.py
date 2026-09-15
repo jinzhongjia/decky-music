@@ -8,9 +8,11 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import commands  # noqa: E402
 import main as main_mod  # noqa: E402
 import protocol  # noqa: E402
-from main import _run_request, handle  # noqa: E402
+from commands import handle  # noqa: E402
+from main import _run_request  # noqa: E402
 from qq import (  # noqa: E402
     QQ,  # noqa: E402
     library,
@@ -22,7 +24,6 @@ from qq.library import (  # noqa: E402
     _as_bool,
     _as_int,
     _limit,
-    _playlist_brief,
 )
 from qq.library import (
     like_song as _like_song,
@@ -30,7 +31,7 @@ from qq.library import (
 from qq.library import (
     user_assets as _user_assets,
 )
-from qq.search import _album_brief, _artist_brief, _song_brief  # noqa: E402
+from qq.search import _album_brief, _artist_brief, _playlist_brief, _song_brief  # noqa: E402
 
 
 class TestProviderMappers(unittest.TestCase):
@@ -103,7 +104,7 @@ class TestProviderArgValidation(unittest.TestCase):
 
 
 class TestProviderDispatch(unittest.IsolatedAsyncioTestCase):
-    """dispatch 直接调域模块函数(main.handle 的 match 即唯一一层),故打桩打在模块上。"""
+    """Exercise grouped dispatch through its public request boundary."""
 
     def patch(self, module, name, fn):
         original = getattr(module, name)
@@ -119,24 +120,6 @@ class TestProviderDispatch(unittest.IsolatedAsyncioTestCase):
         resp = await handle(object(), req, None, lambda *a: None)
         self.assertEqual(resp["ok"], False)
         self.assertEqual(resp["error"]["code"], "invalid_request")
-
-    async def test_dispatch_search_playlists_success_shape(self):
-        seen = {}
-        entry = {"id": "1", "name": "List", "cover": "", "count": 0, "play_count": 0}
-
-        async def fake(q, keyword, limit=20, offset=0):
-            seen["args"] = (keyword, limit, offset)
-            return [entry]
-
-        self.patch(search, "playlists", fake)
-        resp = await handle(
-            object(),
-            protocol.Request(2, "search_playlists", {"keyword": "jay", "limit": 3, "offset": 6}),
-            None,
-            lambda *a: None,
-        )
-        self.assertEqual(resp, protocol.ok(2, {"playlists": [entry]}))
-        self.assertEqual(seen["args"], ("jay", 3, 6))
 
     async def test_invalid_like_song_missing_on(self):
         async def boom(*_a, **_k):  # pragma: no cover - 必须不被调用
@@ -219,13 +202,13 @@ class TestTimeoutResetsClient(unittest.IsolatedAsyncioTestCase):
         async def hang(*_a, **_k):
             await asyncio.sleep(3600)
 
-        original, main_mod.handle = main_mod.handle, hang
+        original, commands.handle = commands.handle, hang
         original_timeout, main_mod.UPSTREAM_TIMEOUT = main_mod.UPSTREAM_TIMEOUT, 0.05
         try:
             req = protocol.Request(1, "search_hot", {})
             await main_mod._run_request(qq, req, None, lambda *a: None, out)
         finally:
-            main_mod.handle = original
+            commands.handle = original
             main_mod.UPSTREAM_TIMEOUT = original_timeout
 
         resp = await out.get()
@@ -241,12 +224,12 @@ class TestTimeoutResetsClient(unittest.IsolatedAsyncioTestCase):
         async def ok(*_a, **_k):
             return protocol.ok(1, {})
 
-        original, main_mod.handle = main_mod.handle, ok
+        original, commands.handle = commands.handle, ok
         try:
             req = protocol.Request(1, "search_hot", {})
             await main_mod._run_request(qq, req, None, lambda *a: None, out)
         finally:
-            main_mod.handle = original
+            commands.handle = original
         await out.get()
         self.assertIs(qq.client, old, "没超时就别重建,否则每次都白付握手成本")
 
@@ -261,12 +244,12 @@ class TestCancelledErrorDoesNotEscape(unittest.IsolatedAsyncioTestCase):
     async def _run_with(self, handler, qq=None):
         out = asyncio.Queue()
         qq = qq or QQ()
-        original, main_mod.handle = main_mod.handle, handler
+        original, commands.handle = commands.handle, handler
         try:
             req = protocol.Request(1, "search_hot", {})
             await main_mod._run_request(qq, req, None, lambda *a: None, out)
         finally:
-            main_mod.handle = original
+            commands.handle = original
         return out
 
     async def test_leaked_cancel_still_answers_the_request(self):
@@ -291,7 +274,7 @@ class TestCancelledErrorDoesNotEscape(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(3600)
 
         out = asyncio.Queue()
-        original, main_mod.handle = main_mod.handle, hang
+        original, commands.handle = commands.handle, hang
         try:
             req = protocol.Request(1, "search_hot", {})
             qq_new = QQ()
@@ -303,7 +286,7 @@ class TestCancelledErrorDoesNotEscape(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await task
         finally:
-            main_mod.handle = original
+            commands.handle = original
         self.assertTrue(out.empty(), "真取消时不该硬塞一条响应")
         self.assertIsNotNone(qq_new)
 

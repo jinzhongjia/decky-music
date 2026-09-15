@@ -20,6 +20,7 @@ from qqmusic_api import (  # noqa: E402
 )
 from qqmusic_api.models.login import QRCodeLoginEvents  # noqa: E402
 
+import commands  # noqa: E402
 import main as main_mod  # noqa: E402
 import protocol  # noqa: E402
 from qq import QQ  # noqa: E402
@@ -153,7 +154,7 @@ class TestAuthenticationIntents(unittest.IsolatedAsyncioTestCase):
         self.logs.append(args)
 
     async def command(self, cmd, **args):
-        return await main_mod.handle(self.q, protocol.Request(1, cmd, args), self.emit, self.log)
+        return await commands.handle(self.q, protocol.Request(1, cmd, args), self.emit, self.log)
 
     async def pending_command(self, cmd, **args):
         entered = asyncio.Event()
@@ -408,7 +409,7 @@ class TestAuthenticationIntents(unittest.IsolatedAsyncioTestCase):
     async def test_superseded_dispatch_cannot_start_old_auth_work(self):
         for cmd in ("logout", "login", "set_credential"):
             with self.subTest(cmd=cmd):
-                pending = main_mod.handle(self.q, protocol.Request(2, cmd, {}), self.emit, self.log)
+                pending = commands.handle(self.q, protocol.Request(2, cmd, {}), self.emit, self.log)
                 account = credential("new")
                 await self.command("set_credential", cred=account.model_dump(mode="json"))
                 await pending

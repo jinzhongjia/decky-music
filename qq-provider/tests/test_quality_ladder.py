@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 import protocol
-from main import handle
+from commands import handle
 from qq import playback as playback_mod
 from qq.playback import (
     DEFAULT_QUALITY,

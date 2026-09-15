@@ -1,9 +1,10 @@
 """用户资产/收藏动作等 issue #35 QQ 命令。"""
 
+from qq.paging import WINDOW_SIZE, window
 from qq.search import _playlist_brief, _song_brief
 
 FAV_DIRID = 201
-MAX_LIMIT = 50
+MAX_LIMIT = WINDOW_SIZE
 
 
 class NotLoggedIn(Exception):
@@ -98,15 +99,12 @@ async def liked_ids(q, limit: int = 500) -> list[str]:
 
 async def fav_songs(q, limit: int = 20, offset: int = 0) -> list[dict]:
     cred = _credential(q)
-    page = offset // limit + 1
-    skip = offset % limit
-    resp = await q.client.user.get_fav_song(
-        cred.encrypt_uin,
-        page=page,
-        num=limit + skip,
-        credential=cred,
-    )
-    return [_song_brief(s) for s in resp.songs[skip : skip + limit]]
+
+    async def fetch(**page):
+        return await q.client.user.get_fav_song(cred.encrypt_uin, credential=cred, **page)
+
+    songs, _ = await window(fetch, "songs", limit, offset)
+    return [_song_brief(s) for s in songs]
 
 
 async def created_playlists(q, limit: int = 20, offset: int = 0) -> list[dict]:
@@ -117,15 +115,12 @@ async def created_playlists(q, limit: int = 20, offset: int = 0) -> list[dict]:
 
 async def fav_playlists(q, limit: int = 20, offset: int = 0) -> list[dict]:
     cred = _credential(q)
-    page = offset // limit + 1
-    skip = offset % limit
-    resp = await q.client.user.get_fav_songlist(
-        cred.encrypt_uin,
-        page=page,
-        num=limit + skip,
-        credential=cred,
-    )
-    return [_playlist_brief(p) for p in resp.playlists[skip : skip + limit]]
+
+    async def fetch(**page):
+        return await q.client.user.get_fav_songlist(cred.encrypt_uin, credential=cred, **page)
+
+    playlists, _ = await window(fetch, "playlists", limit, offset)
+    return [_playlist_brief(p) for p in playlists]
 
 
 async def like_song(q, song_id: str, on: bool) -> bool:
