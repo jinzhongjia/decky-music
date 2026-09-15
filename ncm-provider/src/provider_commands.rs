@@ -12,15 +12,16 @@ use crate::state::{with_timeout, State};
 mod comments;
 mod details;
 mod library;
+pub(crate) mod playlists;
 mod radio;
 mod search;
 
 pub use comments::comments;
 pub use details::{album_detail, artist_detail};
 pub use library::{
-    add_to_playlist, created_playlists, fav_playlist, fav_playlists, fav_songs, like_song,
-    liked_ids, listen_rank, user_assets,
+    add_to_playlist, fav_playlist, fav_songs, like_song, liked_ids, listen_rank, user_assets,
 };
+pub use playlists::{created_playlists, fav_playlists};
 pub use radio::{fm_trash, radio_fetch};
 pub use search::{search_albums, search_artists, search_hot, search_playlists, search_songs};
 
@@ -36,11 +37,10 @@ pub(crate) async fn call<F: Future<Output = Result<ApiResponse, NcmError>>>(
 ) -> Result<ApiResponse, String> {
     match with_timeout(fut).await {
         Ok(Ok(r)) => Ok(r),
-        // message 携带上游错误简述(业务码+msg,无凭证)供 bridge 落日志诊断;UI 仍按 code 本地化
-        Ok(Err(e)) => Err(protocol::err(
+        Ok(Err(_)) => Err(protocol::err(
             id,
             ErrorCode::ProviderError,
-            &format!("provider_error: {e}"),
+            "provider_error",
         )),
         Err(_) => Err(protocol::err(
             id,
@@ -133,21 +133,42 @@ pub(crate) fn maybe_cookie(mut q: Query, cookie: Option<String>) -> Query {
 }
 
 async fn current_uid(state: &State, id: u64) -> Result<(String, String), String> {
-    if state.credential().await.is_none() {
+    let session = state.session();
+    if session.credential.is_none() {
         return Err(protocol::err(id, ErrorCode::NotLoggedIn, "not_logged_in"));
     }
     let cookie = state.cookie().await.unwrap_or_default();
-    // uid 按会话缓存(set_credential 时清空):免去每个资产/电台命令先打一发 login_status
-    if let Some(uid) = state.uid.lock().await.clone() {
-        return Ok((uid, cookie));
+    let uid = resolve_uid(&session, id, async {
+        let q = Query::new().cookie(&cookie);
+        let status = call(state.client.login_status(&q), id).await?;
+        Ok(id_string(&status.body["profile"]["userId"]))
+    })
+    .await?;
+    if !state.is_current(&session) {
+        return Err(protocol::err(id, ErrorCode::Superseded, "superseded"));
     }
-    let status = call(state.client.login_status(&Query::new().cookie(&cookie)), id).await?;
-    let uid = id_string(&status.body["profile"]["userId"]);
+    Ok((uid, cookie))
+}
+
+pub(crate) async fn resolve_uid<F>(
+    session: &crate::state::Session,
+    id: u64,
+    fetch: F,
+) -> Result<String, String>
+where
+    F: Future<Output = Result<String, String>>,
+{
+    // Single-flight only the uid lookup; unrelated upstream work remains concurrent.
+    let mut cached = session.uid.lock().await;
+    if let Some(uid) = cached.as_ref() {
+        return Ok(uid.clone());
+    }
+    let uid = fetch.await?;
     if uid.is_empty() {
         return Err(protocol::err(id, ErrorCode::NotLoggedIn, "not_logged_in"));
     }
-    *state.uid.lock().await = Some(uid.clone());
-    Ok((uid, cookie))
+    *cached = Some(uid.clone());
+    Ok(uid)
 }
 
 fn id_string(v: &Value) -> String {
@@ -166,6 +187,28 @@ pub(crate) fn map_arr(v: &Value, f: fn(&Value) -> Value) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn upstream_diagnostics_never_reach_error_responses() {
+        let secret = "SENTINEL https://synthetic.invalid/?token=secret cookie=synthetic";
+        for error in [
+            NcmError::Unknown(secret.into()),
+            NcmError::AuthRequired(secret.into()),
+            NcmError::Api {
+                code: 500,
+                msg: secret.into(),
+            },
+            NcmError::InvalidParam(secret.into()),
+            NcmError::Timeout(secret.into()),
+        ] {
+            let response = call(async { Err(error) }, 7).await.unwrap_err();
+            assert!(!response.contains("SENTINEL"));
+            assert!(!response.contains("synthetic.invalid"));
+            let response: Value = serde_json::from_str(&response).unwrap();
+            assert_eq!(response["error"]["code"], "provider_error");
+            assert_eq!(response["error"]["message"], "provider_error");
+        }
+    }
+
     use serde_json::json;
 
     #[test]

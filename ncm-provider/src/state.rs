@@ -1,33 +1,28 @@
-//! 共享类型:进程状态 State、写出通道 Out、上游超时。命令类型见 protocol.rs。
-
-use std::future::Future;
-use std::time::Duration;
+//! Process-local credential snapshots and metadata; bridge remains the persistence owner.
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as SyncMutex};
 
 use ncm_api_rs::{create_client, ApiClient};
 use tokio::sync::{mpsc, Mutex};
-use tokio::time::{error::Elapsed, timeout};
 
+pub use crate::deadline::with_timeout;
 use crate::device::{self, Device};
+use crate::provider_commands::playlists::PlaylistCache;
 
-/// 单一写出通道:命令响应 + 事件都经它串行写回 socket,避免并发写乱帧。
 pub type Out = mpsc::UnboundedSender<String>;
 
-/// 上游网易云接口的统一超时:每个请求独立兜底,避免断网调用永久挂住 bridge。
-pub const NET_TIMEOUT: Duration = Duration::from_secs(15);
-
-/// 给上游 Future 套 NET_TIMEOUT。超时返回 Err(Elapsed)。
-pub async fn with_timeout<F: Future>(fut: F) -> Result<F::Output, Elapsed> {
-    timeout(NET_TIMEOUT, fut).await
+pub struct Session {
+    pub credential: Option<String>,
+    pub uid: Mutex<Option<String>>,
 }
 
-/// provider 进程状态。凭证不自持久化(bridge 是真相源,经 set_credential 注入);
-/// 设备身份是唯一的例外,见 device.rs。
+tokio::task_local! { pub static SESSION: Arc<Session>; }
+
 pub struct State {
-    pub client: ApiClient, // create_client(None),cookie 走 Query 逐次覆盖
-    pub cookie: Mutex<Option<String>>,
-    /// uid 缓存:资产/电台类命令都要 uid,避免每个命令先打一发 login_status
-    /// (一屏多命令时延叠加)。set_credential 时清空。
-    pub uid: Mutex<Option<String>>,
+    pub client: ApiClient,
+    session: SyncMutex<Arc<Session>>,
+    pub playlists: Mutex<PlaylistCache>,
+    pub library_revision: AtomicU64,
     device: Device,
 }
 
@@ -35,16 +30,73 @@ impl State {
     pub fn new(state_dir: Option<&str>) -> Self {
         Self {
             client: create_client(None),
-            cookie: Mutex::new(None),
-            uid: Mutex::new(None),
+            session: SyncMutex::new(Arc::new(Session {
+                credential: None,
+                uid: Mutex::new(None),
+            })),
+            playlists: Mutex::new(PlaylistCache::default()),
+            library_revision: AtomicU64::new(0),
             device: device::load(state_dir),
         }
     }
 
-    /// 发请求时实际带的 cookie:设备锚点 +(已登录则)凭证。
-    ///
-    /// 永远是 `Some`。未登录也要带锚点 —— 搜索、榜单这些匿名命令一样在暴露指纹,
-    /// 而且登录流程本身就该用与登录后同一台"设备"。判断是否登录用 `credential()`。
+    pub fn session(&self) -> Arc<Session> {
+        SESSION
+            .try_with(Arc::clone)
+            .unwrap_or_else(|_| self.live_session())
+    }
+
+    pub fn live_session(&self) -> Arc<Session> {
+        Arc::clone(&self.session.lock().unwrap())
+    }
+
+    pub fn is_current(&self, session: &Arc<Session>) -> bool {
+        Arc::ptr_eq(&self.session.lock().unwrap(), session)
+    }
+
+    pub fn replace_credential(
+        &self,
+        credential: Option<String>,
+        expected: Option<&Arc<Session>>,
+    ) -> bool {
+        self.replace_credential_with(credential, expected, || {})
+    }
+
+    pub fn replace_credential_with(
+        &self,
+        credential: Option<String>,
+        expected: Option<&Arc<Session>>,
+        publish: impl FnOnce(),
+    ) -> bool {
+        let mut session = self.session.lock().unwrap();
+        if expected.is_some_and(|old| !Arc::ptr_eq(&session, old)) {
+            return false;
+        }
+        *session = Arc::new(Session {
+            credential,
+            uid: Mutex::new(None),
+        });
+        self.library_revision.fetch_add(1, Ordering::Relaxed);
+        publish();
+        true
+    }
+
+    pub fn publish_response(
+        &self,
+        expected: Option<&Arc<Session>>,
+        out: &Out,
+        id: u64,
+        response: String,
+    ) {
+        let session = self.session.lock().unwrap();
+        let response = if expected.is_some_and(|old| !Arc::ptr_eq(&session, old)) {
+            crate::protocol::err(id, crate::protocol::ErrorCode::Superseded, "superseded")
+        } else {
+            response
+        };
+        let _ = out.send(response);
+    }
+
     pub async fn cookie(&self) -> Option<String> {
         let pins = self.device.cookie_pins();
         Some(match self.credential().await {
@@ -53,38 +105,28 @@ impl State {
         })
     }
 
-    /// 只要设备锚点、不带凭证。登录流程用:换账号时把旧 MUSIC_U 发给登录接口没有好处。
     pub fn device_pins(&self) -> Option<String> {
         Some(self.device.cookie_pins())
     }
 
-    /// 已登录凭证,`None` = 未登录。只用于登录判定与登出。
     pub async fn credential(&self) -> Option<String> {
-        self.cookie.lock().await.clone()
+        self.session().credential.clone()
+    }
+
+    /// Invalidate on entry and on exit, including cancellation/timeout. A scan begun
+    /// during a mutation cannot leave a reusable pre-mutation page behind.
+    pub fn library_mutation(&self) -> LibraryMutation<'_> {
+        self.library_revision.fetch_add(1, Ordering::Relaxed);
+        LibraryMutation(&self.library_revision)
+    }
+}
+
+pub struct LibraryMutation<'a>(&'a AtomicU64);
+impl Drop for LibraryMutation<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::Relaxed);
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 我们交给 Query::cookie() 的那串字符串是这里唯一能控的边界:四个设备锚点必须在,
-    /// 凭证必须跟在后面。库那边是 `or_insert`,键在了它就不会再随机生成。
-    #[tokio::test]
-    async fn cookie_carries_pins_with_and_without_credential() {
-        let st = State::new(None);
-
-        let anon = st.cookie().await.unwrap();
-        for k in ["deviceId=", "_ntes_nuid=", "_ntes_nnid=", "WNMCID="] {
-            assert!(anon.contains(k), "未登录时缺 {k}");
-        }
-
-        *st.cookie.lock().await = Some("MUSIC_U=deadbeef".into());
-        let signed = st.cookie().await.unwrap();
-        assert!(signed.starts_with(&anon), "登录前后设备锚点必须是同一套");
-        assert!(signed.ends_with("; MUSIC_U=deadbeef"));
-
-        // 登录流程只带锚点,不把旧凭证发给登录接口
-        assert_eq!(st.device_pins().unwrap(), anon);
-    }
-}
+mod tests;

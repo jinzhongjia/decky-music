@@ -1,6 +1,4 @@
-//! 扫码登录长流程:取 unikey → 生成二维码 → 本地渲染 SVG → 轮询扫码状态。
-//! QR 与状态经 login 事件上报;成功时 emit("done", cred)。
-
+//! QR login is event-driven; its acknowledged command does not wait for scanning.
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,89 +6,89 @@ use base64::Engine;
 use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
-use crate::protocol;
-use crate::protocol::{log_json, LogLevel};
+use crate::protocol::{self, log_json, LogLevel};
 use crate::provider_commands::maybe_cookie;
-use crate::state::{with_timeout, Out, State};
+use crate::state::{with_timeout, Out, Session, State};
 
-/// 发一条 login 域事件(协议 v1:{ev:"login",type,data})。
-pub fn emit(tx: &Out, typ: &str, data: Value) {
+fn emit(tx: &Out, typ: &str, data: Value) {
     let _ = tx.send(protocol::event("login", typ, data));
 }
 
-pub async fn login_flow(state: Arc<State>, tx: Out) {
-    // 登录三步也要带设备锚点:扫码登录正是网易把设备绑到账号上的时刻,
-    // 这里用一台随机设备、登录后换成另一台,本身就是矛盾特征(见 device.rs)。
-    let pins = state.device_pins();
-    // 1. 取 unikey
-    let key = match with_timeout(
-        state
-            .client
-            .login_qr_key(&maybe_cookie(Query::new(), pins.clone())),
-    )
-    .await
-    {
-        Ok(Ok(r)) => r.body["unikey"].as_str().unwrap_or("").to_string(),
-        Ok(Err(e)) => return login_fail(&tx, &e.to_string()),
-        Err(_) => return login_fail(&tx, "qr_key timeout"),
-    };
-    if key.is_empty() {
-        return login_fail(&tx, "empty unikey");
+pub async fn login_flow(state: Arc<State>, tx: Out, session: Arc<Session>) {
+    let result = create_qr(&state).await;
+    if !state.is_current(&session) {
+        return;
     }
-    // 2. 生成二维码 URL(库只给 qrurl,不出图)
-    let qrurl = match with_timeout(
-        state
-            .client
-            .login_qr_create(&maybe_cookie(Query::new().param("key", &key), pins.clone())),
-    )
-    .await
-    {
-        Ok(Ok(r)) => r.body["data"]["qrurl"].as_str().unwrap_or("").to_string(),
-        Ok(Err(e)) => return login_fail(&tx, &e.to_string()),
-        Err(_) => return login_fail(&tx, "qr_create timeout"),
+    let (key, qr) = match result {
+        Ok(value) => value,
+        Err(error) => return login_fail(&tx, error),
     };
-    // 3. 本地渲染二维码 → base64 SVG → 发给 UI
-    match make_qr(&qrurl) {
-        Ok(b64) => emit(&tx, "qr", json!({ "qr": b64, "mimetype": "image/svg+xml" })),
-        Err(e) => return login_fail(&tx, &format!("qr render: {e}")),
-    }
-    // 4. 轮询扫码状态:800 过期 / 801 待扫 / 802 已扫 / 803 成功
+    emit(&tx, "qr", json!({ "qr": qr, "mimetype": "image/svg+xml" }));
+    poll_login(&state, &tx, &session, &key).await;
+}
+
+async fn create_qr(state: &State) -> Result<(String, String), &'static str> {
+    let key_q = maybe_cookie(Query::new(), state.device_pins());
+    let response = with_timeout(state.client.login_qr_key(&key_q))
+        .await
+        .map_err(|_| "qr_key timeout")?
+        .map_err(|_| "qr key failed")?;
+    let key = response.body["unikey"]
+        .as_str()
+        .filter(|key| !key.is_empty())
+        .ok_or("empty unikey")?
+        .to_owned();
+    let create_q = maybe_cookie(Query::new().param("key", &key), state.device_pins());
+    let response = with_timeout(state.client.login_qr_create(&create_q))
+        .await
+        .map_err(|_| "qr_create timeout")?
+        .map_err(|_| "qr create failed")?;
+    let url = response.body["data"]["qrurl"]
+        .as_str()
+        .filter(|url| !url.is_empty())
+        .ok_or("qr create failed")?;
+    let qr = make_qr(url).map_err(|_| "qr render failed")?;
+    Ok((key, qr))
+}
+
+async fn poll_login(state: &State, tx: &Out, session: &Arc<Session>, key: &str) {
     loop {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        let r = match with_timeout(
-            state
-                .client
-                .login_qr_check(&maybe_cookie(Query::new().param("key", &key), pins.clone())),
-        )
-        .await
-        {
-            Ok(Ok(r)) => r,
-            Ok(Err(e)) => return login_fail(&tx, &e.to_string()),
-            Err(_) => return login_fail(&tx, "qr_check timeout"),
+        if !state.is_current(session) {
+            return;
+        }
+        let q = maybe_cookie(Query::new().param("key", key), state.device_pins());
+        let response = with_timeout(state.client.login_qr_check(&q)).await;
+        if !state.is_current(session) {
+            return;
+        }
+        let response = match response {
+            Ok(Ok(response)) => response,
+            Ok(Err(_)) => return login_fail(tx, "qr check failed"),
+            Err(_) => return login_fail(tx, "qr_check timeout"),
         };
-        match r.body["code"].as_i64().unwrap_or(0) {
+        match response.body["code"].as_i64().unwrap_or(0) {
             803 => {
-                // Set-Cookie 列表 → "name=value; name=value"(create_client / Query.cookie 用)
-                let cookie = r
+                let cookie = response
                     .cookie
                     .iter()
                     .filter_map(|c| c.split(';').next())
                     .collect::<Vec<_>>()
                     .join("; ");
-                *state.cookie.lock().await = Some(cookie.clone());
-                emit(&tx, "done", json!({ "cred": { "cookie": cookie } }));
+                state.replace_credential_with(Some(cookie.clone()), Some(session), || {
+                    emit(tx, "done", json!({ "cred": { "cookie": cookie } }));
+                });
                 return;
             }
-            800 => return emit(&tx, "timeout", json!({})),
-            802 => emit(&tx, "scanned", json!({})),
-            _ => emit(&tx, "waiting", json!({})),
+            800 => return emit(tx, "timeout", json!({})),
+            802 => emit(tx, "scanned", json!({})),
+            _ => emit(tx, "waiting", json!({})),
         }
     }
 }
 
-fn login_fail(tx: &Out, err: &str) {
-    let _ = tx.send(log_json(LogLevel::Error, "login", err)); // 真实原因进日志
-                                                              // 对 UI 报 login error 事件(code=login_failed),前端提示可重试
+fn login_fail(tx: &Out, error: &'static str) {
+    let _ = tx.send(log_json(LogLevel::Error, "login", error));
     emit(
         tx,
         "error",
@@ -98,7 +96,7 @@ fn login_fail(tx: &Out, err: &str) {
     );
 }
 
-fn make_qr(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn make_qr(url: &str) -> Result<String, qrcode::types::QrError> {
     let code = qrcode::QrCode::new(url.as_bytes())?;
     let svg = code
         .render::<qrcode::render::svg::Color>()

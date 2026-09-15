@@ -2,7 +2,6 @@ use ncm_api_rs::{CryptoType, Query, RequestOption};
 use serde_json::{json, Value};
 
 use crate::commands::song_brief;
-use crate::content::playlist_brief;
 use crate::protocol;
 
 use super::{
@@ -24,19 +23,15 @@ pub async fn user_assets(state: &State, id: u64) -> String {
         Ok(v) => v,
         Err(e) => return e,
     };
-    let sub = match call(
-        state.client.user_subcount(&Query::new().cookie(&cookie)),
-        id,
-    )
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => return e,
-    };
+    let sub_q = Query::new().cookie(&cookie);
     let liked_q = Query::new().param("uid", &uid).cookie(&cookie);
-    let liked = match call(state.client.likelist(&liked_q), id).await {
-        Ok(r) => r,
-        Err(e) => return e,
+    let (sub, liked) = tokio::join!(
+        call(state.client.user_subcount(&sub_q), id),
+        call(state.client.likelist(&liked_q), id),
+    );
+    let (sub, liked) = match (sub, liked) {
+        (Ok(sub), Ok(liked)) => (sub, liked),
+        (Err(error), _) | (_, Err(error)) => return error,
     };
     let fav_songs = liked.body["ids"].as_array().map(|a| a.len()).unwrap_or(0);
     protocol::ok(id, user_assets_data(uid, &sub.body, fav_songs))
@@ -134,55 +129,6 @@ pub async fn listen_rank(state: &State, id: u64, args: &Value) -> String {
     .await
 }
 
-async fn user_playlists(state: &State, id: u64) -> Result<(String, Vec<Value>), String> {
-    let (uid, cookie) = current_uid(state, id).await?;
-    let q = Query::new()
-        .param("uid", &uid)
-        .param("limit", "1000")
-        .cookie(&cookie);
-    let r = call(state.client.user_playlist(&q), id).await?;
-    Ok((
-        uid,
-        r.body["playlist"].as_array().cloned().unwrap_or_default(),
-    ))
-}
-
-pub async fn created_playlists(state: &State, id: u64, args: &Value) -> String {
-    let Ok((limit, offset)) = paging(args) else {
-        return invalid(id);
-    };
-    let (uid, lists) = match user_playlists(state, id).await {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let playlists = lists
-        .iter()
-        .filter(|p| id_string(&p["creator"]["userId"]) == uid)
-        .skip(offset)
-        .take(limit)
-        .map(playlist_brief)
-        .collect::<Vec<_>>();
-    protocol::ok(id, json!({ "playlists": playlists }))
-}
-
-pub async fn fav_playlists(state: &State, id: u64, args: &Value) -> String {
-    let Ok((limit, offset)) = paging(args) else {
-        return invalid(id);
-    };
-    let (uid, lists) = match user_playlists(state, id).await {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
-    let playlists = lists
-        .iter()
-        .filter(|p| id_string(&p["creator"]["userId"]) != uid)
-        .skip(offset)
-        .take(limit)
-        .map(playlist_brief)
-        .collect::<Vec<_>>();
-    protocol::ok(id, json!({ "playlists": playlists }))
-}
-
 pub async fn like_song(state: &State, id: u64, args: &Value) -> String {
     let Ok(song_id) = string_arg(args, "id") else {
         return invalid(id);
@@ -194,6 +140,7 @@ pub async fn like_song(state: &State, id: u64, args: &Value) -> String {
         Ok(v) => v,
         Err(e) => return e,
     };
+    let _mutation = state.library_mutation();
     let q = Query::new()
         .param("id", &song_id)
         .param("uid", &uid)
@@ -215,6 +162,7 @@ pub async fn fav_playlist(state: &State, id: u64, args: &Value) -> String {
         Ok(v) => v,
         Err(e) => return e,
     };
+    let _mutation = state.library_mutation();
     let q = Query::new()
         .cookie(&cookie)
         .param("id", &playlist_id)
@@ -236,6 +184,7 @@ pub async fn add_to_playlist(state: &State, id: u64, args: &Value) -> String {
         Ok(v) => v,
         Err(e) => return e,
     };
+    let _mutation = state.library_mutation();
     // 经典收藏路径 /playlist/manipulate/tracks,按 Node 参考实现走 weapi(绕过库封装:
     // 库的 playlist_tracks 写死 eapi 且该端点 eapi 发送即失败;playlist_track_add 新端点
     // 又返 401 无权限——均真机实测)。歌已存在(502)库层特判为成功,天然幂等。
