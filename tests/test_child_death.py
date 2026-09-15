@@ -32,9 +32,11 @@ async def _emit(*_a, **_k):
 decky_stub.emit = _emit
 sys.modules.setdefault("decky", decky_stub)
 
-import bridge as bridge_mod  # noqa: E402
+import ipc
 import protocol  # noqa: E402
-from bridge import Bridge, Conn, stop_child  # noqa: E402
+from bridge import Bridge
+from ipc import Conn
+from child_process import stop_child  # noqa: E402
 
 
 class _DeadProc:
@@ -88,7 +90,6 @@ class _FakeWriter:
         pass
 
 
-
 class _ResetWriter(_FakeWriter):
     def close(self):
         pass
@@ -96,15 +97,16 @@ class _ResetWriter(_FakeWriter):
     async def wait_closed(self):
         raise ConnectionResetError()
 
+
 class TestConnDeath(unittest.TestCase):
     def setUp(self):
         self.conn = Conn("provider")
         self.conn.writer = _FakeWriter()
-        self._saved_log = bridge_mod.log
-        bridge_mod.log = lambda *_a, **_k: None
+        self._saved_log = ipc.log
+        ipc.log = lambda *_a, **_k: None
 
     def tearDown(self):
-        bridge_mod.log = self._saved_log
+        ipc.log = self._saved_log
 
     def test_disconnect_fails_inflight_requests_fast(self):
         """在途请求要立刻失败,而不是干等满 30s —— 对面进程都没了。"""
@@ -129,12 +131,12 @@ class TestConnDeath(unittest.TestCase):
     def test_timeout_declares_child_dead(self):
         called = []
         self.conn.on_dead = lambda: called.append(1)
-        saved = bridge_mod.REQUEST_TIMEOUT
-        bridge_mod.REQUEST_TIMEOUT = 0.01
+        saved = ipc.REQUEST_TIMEOUT
+        ipc.REQUEST_TIMEOUT = 0.01
         try:
             resp = asyncio.run(self.conn.request("liked_ids"))
         finally:
-            bridge_mod.REQUEST_TIMEOUT = saved
+            ipc.REQUEST_TIMEOUT = saved
         self.assertFalse(resp.ok)
         self.assertEqual(called, [1])  # 判死回调必须被调到,否则不会重开进程
 
@@ -147,13 +149,13 @@ class TestConnFrameLimit(unittest.TestCase):
     def setUp(self):
         self.conn = Conn("provider")
         self.conn.writer = _FakeWriter()
-        self.conn.origin = bridge_mod.ConnectionOrigin(1, "qq")
+        self.conn.origin = ipc.ConnectionOrigin(1, "qq")
         self.messages = []
-        self._saved_log = bridge_mod.log
-        bridge_mod.log = lambda *_args: self.messages.append(_args[-1])
+        self._saved_log = ipc.log
+        ipc.log = lambda *_args: self.messages.append(_args[-1])
 
     def tearDown(self):
-        bridge_mod.log = self._saved_log
+        ipc.log = self._saved_log
 
     def test_rejects_oversized_outbound_request_without_waiting(self):
         args = {"value": "x" * protocol.MAX_FRAME_BYTES}
@@ -185,11 +187,11 @@ class TestStaleDisconnect(unittest.TestCase):
 
     def setUp(self):
         self.conn = Conn("provider")
-        self._saved_log = bridge_mod.log
-        bridge_mod.log = lambda *_a, **_k: None
+        self._saved_log = ipc.log
+        ipc.log = lambda *_a, **_k: None
 
     def tearDown(self):
-        bridge_mod.log = self._saved_log
+        ipc.log = self._saved_log
 
     def test_old_connection_eof_does_not_kill_new_one(self):
         old_writer, new_writer = _FakeWriter(), _FakeWriter()
@@ -239,11 +241,11 @@ class TestProviderRespawn(unittest.TestCase):
     def setUp(self):
         self.b = Bridge()
         self.b.provider = Conn("provider")
-        self._saved_log = bridge_mod.log
-        bridge_mod.log = lambda *_a, **_k: None
+        self._saved_log = ipc.log
+        ipc.log = lambda *_a, **_k: None
 
     def tearDown(self):
-        bridge_mod.log = self._saved_log
+        ipc.log = self._saved_log
 
     def test_unresponsive_kills_process(self):
         p = _LiveProc()

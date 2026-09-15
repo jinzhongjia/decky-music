@@ -8,6 +8,7 @@ import inspect
 import logging
 import os
 import re
+import subprocess
 import sys
 import types
 import unittest
@@ -69,6 +70,35 @@ class TestCallableContract(unittest.TestCase):
         # loader 用 hasattr 探测这两个,且要在 bridge 存在前就能拿到
         self.assertTrue(inspect.iscoroutinefunction(plugin_main.Plugin._main))
         self.assertTrue(inspect.iscoroutinefunction(plugin_main.Plugin._unload))
+
+
+class TestFrozenHostImports(unittest.TestCase):
+    def test_plugin_loads_with_decky_settings_module_already_imported(self):
+        probe = """
+import logging, os, sys, types
+root = sys.argv[1]
+sys.path.insert(0, root)
+sys.path.append(os.path.join(root, "py_modules"))
+decky = types.ModuleType("decky")
+for name in ("DIR", "RUNTIME_DIR", "SETTINGS_DIR", "LOG_DIR"):
+    setattr(decky, "DECKY_PLUGIN_" + name, "/tmp")
+decky.logger = logging.getLogger("host-import-probe")
+sys.modules["decky"] = decky
+host_settings = types.ModuleType("decky_loader.settings")
+sys.modules["settings"] = host_settings
+from main import Plugin
+from music_settings import normalize_settings
+assert callable(Plugin()._main)
+assert normalize_settings([])["provider"] is None
+assert sys.modules["settings"] is host_settings
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", probe, os.path.abspath(ROOT)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

@@ -37,9 +37,13 @@ decky_stub.emit = _emit
 sys.modules.setdefault("decky", decky_stub)
 decky_stub = sys.modules["decky"]
 
-import bridge as bridge_mod  # noqa: E402
+import decky
+import child_process
+import music_settings
+import supervision
 import protocol  # noqa: E402
-from bridge import Bridge, Conn  # noqa: E402
+from bridge import Bridge
+from ipc import Conn  # noqa: E402
 
 
 class _LiveProc:
@@ -102,12 +106,12 @@ class TestVolumeSyncOnSpawn(unittest.TestCase):
     def test_never_connecting_player_does_not_hang_startup(self):
         """player 连不进来是它自己的问题,不该把启动挂死在这儿。"""
         b = _bridge(connect=False)
-        saved = bridge_mod.PLAYER_CONNECT_TIMEOUT
-        bridge_mod.PLAYER_CONNECT_TIMEOUT = 0.05
+        saved = supervision.PLAYER_CONNECT_TIMEOUT
+        supervision.PLAYER_CONNECT_TIMEOUT = 0.05
         try:
             asyncio.run(asyncio.wait_for(b._sync_player_volume(), 2))
         finally:
-            bridge_mod.PLAYER_CONNECT_TIMEOUT = saved
+            supervision.PLAYER_CONNECT_TIMEOUT = saved
         self.assertEqual(b.player.sent, [])
 
 
@@ -122,11 +126,11 @@ class TestEnsurePlayer(unittest.TestCase):
             spawned.append(a)
             return _LiveProc()
 
-        saved, bridge_mod.spawn = bridge_mod.spawn, spy
+        saved, child_process.spawn = child_process.spawn, spy
         try:
             asyncio.run(b._ensure_player())
         finally:
-            bridge_mod.spawn = saved
+            child_process.spawn = saved
         self.assertEqual(spawned, [])
 
     def test_dead_player_is_respawned(self):
@@ -137,12 +141,12 @@ class TestEnsurePlayer(unittest.TestCase):
             b.player.connected.set()  # 真 player spawn 后会连入 UDS
             return _LiveProc()
 
-        saved_spawn, bridge_mod.spawn = bridge_mod.spawn, spy
-        saved_bin, bridge_mod.BIN = bridge_mod.BIN, lambda n: "/tmp/" + n
+        saved_spawn, child_process.spawn = child_process.spawn, spy
+        saved_bin, child_process.BIN = child_process.BIN, lambda n: "/tmp/" + n
         try:
             asyncio.run(b._ensure_player())
         finally:
-            bridge_mod.spawn, bridge_mod.BIN = saved_spawn, saved_bin
+            child_process.spawn, child_process.BIN = saved_spawn, saved_bin
         self.assertIsNotNone(b.player_proc)
         # 重开之后音量必须重新同步:新进程又是默认满音量
         self.assertEqual(b.player.sent, [("volume", {"val": 0.4})])
@@ -158,12 +162,12 @@ class TestEnsurePlayer(unittest.TestCase):
             b.player.connected.set()
             return _LiveProc()
 
-        saved_spawn, bridge_mod.spawn = bridge_mod.spawn, spy
-        saved_bin, bridge_mod.BIN = bridge_mod.BIN, lambda n: "/tmp/" + n
+        saved_spawn, child_process.spawn = child_process.spawn, spy
+        saved_bin, child_process.BIN = child_process.BIN, lambda n: "/tmp/" + n
         try:
             asyncio.run(asyncio.wait_for(b._ensure_player(), 2))  # 死锁则超时
         finally:
-            bridge_mod.spawn, bridge_mod.BIN = saved_spawn, saved_bin
+            child_process.spawn, child_process.BIN = saved_spawn, saved_bin
 
 
 class TestConnMissingHook(unittest.TestCase):
@@ -237,14 +241,14 @@ class TestBridgePlayerLostNotification(unittest.TestCase):
         async def emit(*args):
             emitted.append(args)
 
-        old_emit = bridge_mod.decky.emit
-        bridge_mod.decky.emit = emit
+        old_emit = decky.emit
+        decky.emit = emit
         try:
             b._player_connection_lost()
             self.assertEqual(len(tasks), 1)
             asyncio.run(tasks[0])
         finally:
-            bridge_mod.decky.emit = old_emit
+            decky.emit = old_emit
 
         self.assertEqual(emitted, [("player", event)])
 
@@ -271,13 +275,12 @@ class TestUnloadDetachesHooks(unittest.TestCase):
         self.assertEqual(callbacks, [])
 
 
-
 class TestVolumePersistence(unittest.TestCase):
     def test_volume_is_applied_immediately_but_persisted_once(self):
         b = _bridge()
         saved = []
-        original = bridge_mod.save_settings
-        bridge_mod.save_settings = lambda data: saved.append(data.copy())
+        original = music_settings.save_settings
+        music_settings.save_settings = lambda data: saved.append(data.copy())
 
         async def check():
             await b.volume(0.65)
@@ -288,7 +291,7 @@ class TestVolumePersistence(unittest.TestCase):
         try:
             asyncio.run(check())
         finally:
-            bridge_mod.save_settings = original
+            music_settings.save_settings = original
         self.assertEqual(saved, [{"volume": 0.65}])
 
 
@@ -302,8 +305,8 @@ class TestUnloadBackgroundTasks(unittest.TestCase):
         b.player.close = _emit
         b.provider_proc = None
         cancelled = asyncio.Event()
-        original = bridge_mod.save_settings
-        bridge_mod.save_settings = lambda _data: None
+        original = music_settings.save_settings
+        music_settings.save_settings = lambda _data: None
 
         async def linger():
             try:
@@ -322,7 +325,8 @@ class TestUnloadBackgroundTasks(unittest.TestCase):
         try:
             asyncio.run(check())
         finally:
-            bridge_mod.save_settings = original
+            music_settings.save_settings = original
+
 
 if __name__ == "__main__":
     unittest.main()

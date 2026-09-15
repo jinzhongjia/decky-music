@@ -1,56 +1,14 @@
-"""playback 队列编辑单测(P4):插入/移除的索引账目、清空空态、持久化回调。
-
-decky 是 Decky 运行时注入的模块,测试里打桩;player/provider 用假 Conn(鸭子类型)。
-运行:python -m unittest tests/test_playback.py
-"""
+"""Queue edits and restoration behavior."""
 
 import asyncio
-import logging
 import os
 import sys
 import types
 import unittest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "py_modules"))
-
-# ---- 打桩 decky(必须在 import playback 前) ----
-decky_stub = types.ModuleType("decky")
-decky_stub.DECKY_PLUGIN_DIR = "/tmp"
-decky_stub.DECKY_PLUGIN_RUNTIME_DIR = "/tmp"
-decky_stub.DECKY_PLUGIN_SETTINGS_DIR = "/tmp"
-decky_stub.logger = logging.getLogger("test-decky")
-
-
-async def _emit(*_a, **_k):
-    pass
-
-
-decky_stub.emit = _emit
-sys.modules.setdefault("decky", decky_stub)
-
-import bridge as bridge_mod  # noqa: E402
-from bridge import Bridge  # noqa: E402
-from playback import Playback  # noqa: E402
-
-
-class FakeConn(bridge_mod.Conn):
-    """假 Conn:song_url / load / stop 全部成功。"""
-
-    def __init__(self):
-        super().__init__("provider")
-        self.calls = []
-
-    async def request(self, cmd, args=None, *, is_current=None):
-        self.calls.append(cmd)
-        return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
-
-
-def item(i: str) -> dict:
-    return {"id": i, "media_mid": f"m{i}", "name": i, "singer": "", "cover": "", "duration": 1}
-
-
-def run(coro):
-    return asyncio.run(coro)
+from tests.playback_support import FakeConn, item, run
+from bridge import Bridge
+import music_settings
+from playback import Playback
 
 
 class TestQueueEdit(unittest.TestCase):
@@ -172,16 +130,20 @@ class TestQueueEdit(unittest.TestCase):
             async def ensure_provider(which):
                 ensured.append(which)
 
-            old_save_settings = bridge_mod.save_settings
-            bridge_mod.save_settings = lambda settings: saved.append(("settings", dict(settings)))
+            old_save_settings = music_settings.save_settings
+            music_settings.save_settings = lambda settings: saved.append(
+                ("settings", dict(settings))
+            )
             br._ensure_provider = ensure_provider
             try:
                 await br.set_provider("ncm")
             finally:
-                bridge_mod.save_settings = old_save_settings
+                music_settings.save_settings = old_save_settings
 
             self.assertEqual(ensured, ["ncm"])
-            self.assertEqual((br.playback.mode, br.playback.queue, br.playback.index), ("normal", [], -1))
+            self.assertEqual(
+                (br.playback.mode, br.playback.queue, br.playback.index), ("normal", [], -1)
+            )
 
         run(scenario())
 
@@ -252,18 +214,14 @@ class TestQueueEdit(unittest.TestCase):
         run(scenario())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestSongsToItems(unittest.TestCase):
     """bridge 边界映射:provider Song 形状(mid)→ 队列项形状(id)。P5d 电台回归。"""
 
     def test_maps_mid_to_id_and_filters_junk(self):
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-        from py_modules.bridge import _songs_to_items  # noqa: PLC0415
+        from queue_items import songs_to_items  # noqa: PLC0415
 
-        items = _songs_to_items(
+        items = songs_to_items(
             [
                 {"mid": "9", "name": "n", "singer": "s", "cover": "c", "duration": 7},
                 {"name": "no-mid"},
@@ -275,404 +233,6 @@ class TestSongsToItems(unittest.TestCase):
         self.assertEqual(items[0]["media_mid"], "")
 
     def test_non_list_returns_empty(self):
-        from py_modules.bridge import _songs_to_items  # noqa: PLC0415
+        from queue_items import songs_to_items  # noqa: PLC0415
 
-        self.assertEqual(_songs_to_items(None), [])
-
-
-class TestRadioSongShapeRegression(unittest.TestCase):
-    """回归:电台队列项缺 id(旧 bug 是 Song 形状直灌)不再 KeyError,走失败路径。"""
-
-    def test_play_index_tolerates_missing_id(self):
-        pb = Playback(FakeConn(), FakeConn())
-        pb.queue = [{"name": "song-without-id"}]
-        res = run(pb._play_index(0))
-        self.assertTrue(res)  # FakeConn 对任意 id 都返回成功;重点是不抛 KeyError
-
-
-class RecordingConn:
-    """记录 (cmd, args) 的假 provider,验证分页参数逐层透传。"""
-
-    def __init__(self):
-        self.calls = []
-
-    async def request(self, cmd, args=None, *, is_current=None):
-        self.calls.append((cmd, args))
-        return types.SimpleNamespace(ok=True, data={}, error=None)
-
-
-class TestListCmdPaging(unittest.TestCase):
-    def setUp(self):
-        self.bridge = Bridge.__new__(Bridge)  # 不 start():只测 callable → provider 参数
-        self.bridge.provider = RecordingConn()
-
-    def test_asset_offset_passthrough(self):
-        run(self.bridge.get_fav_songs(50))
-        self.assertEqual(self.bridge.provider.calls[0], ("fav_songs", {"limit": 50, "offset": 50}))
-
-    def test_search_keyword_and_offset_passthrough(self):
-        run(self.bridge.search_songs("k", 100))
-        self.assertEqual(
-            self.bridge.provider.calls[0],
-            ("search_songs", {"limit": 50, "keyword": "k", "offset": 100}),
-        )
-
-
-class FlakyAuthConn:
-    """song_url 先报 no_playable,凭证刷新后放行(模拟 musickey 会话中途过期)。"""
-
-    def __init__(self):
-        self.calls = []
-        self.refreshed = False
-
-    async def request(self, cmd, args=None, *, is_current=None):
-        self.calls.append(cmd)
-        if cmd == "song_url" and not self.refreshed:
-            err = types.SimpleNamespace(code="no_playable", message="no_playable")
-            return types.SimpleNamespace(ok=False, data={}, error=err)
-        return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
-
-
-class VipOnlyConn:
-    """指定 id 恒不可播(真 VIP 歌),其余正常。"""
-
-    def __init__(self, blocked):
-        self.blocked = set(blocked)
-        self.calls = []
-
-    async def request(self, cmd, args=None, *, is_current=None):
-        self.calls.append((cmd, (args or {}).get("id")))
-        if cmd == "song_url" and (args or {}).get("id") in self.blocked:
-            err = types.SimpleNamespace(code="no_playable", message="no_playable")
-            return types.SimpleNamespace(ok=False, data={}, error=err)
-        return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
-
-
-class TestAuthRetryAndRadioSkip(unittest.TestCase):
-    def test_no_playable_refresh_then_retry_succeeds(self):
-        conn = FlakyAuthConn()
-
-        async def refresh():
-            conn.refreshed = True
-            return True
-
-        pb = Playback(FakeConn(), conn, auth_retry=refresh)
-        run(pb.play_queue([item("a")], 0))
-        self.assertTrue(pb.playing)
-        self.assertEqual(conn.calls.count("song_url"), 2)  # 失败 → 刷新 → 重试成功
-
-    def test_no_refresh_means_no_retry(self):
-        conn = FlakyAuthConn()
-
-        async def refresh():
-            return False  # 凭证没过期:真无版权,不浪费第二发
-
-        pb = Playback(FakeConn(), conn, auth_retry=refresh)
-        run(pb.play_queue([item("a")], 0))
-        self.assertFalse(pb.playing)
-        self.assertEqual(conn.calls.count("song_url"), 1)
-
-    def test_radio_start_skips_unplayable_first_song(self):
-        conn = VipOnlyConn(blocked=["a"])
-        pb = Playback(FakeConn(), conn)
-        res = run(pb.play_radio("qq_guess", [item("a"), item("b")]))
-        self.assertTrue(res)
-        self.assertEqual(pb.index, 1)  # 首歌 VIP 被跳过,第二首开播
-        self.assertTrue(pb.playing)
-
-    def test_radio_advance_skips_unplayable(self):
-        conn = VipOnlyConn(blocked=["b"])
-        pb = Playback(FakeConn(), conn)
-        run(pb.play_radio("qq_guess", [item("a"), item("b"), item("c")]))
-        run(pb.next_track())  # a 播完 → b 不可播 → 跳到 c
-        self.assertEqual(pb.index, 2)
-        self.assertTrue(pb.playing)
-
-
-class SlowNetPlayer:
-    """load 恒报 fetch_timeout(慢网首开超时),其余命令成功。"""
-
-    def __init__(self):
-        self.calls = []
-
-    async def request(self, cmd, args=None, *, is_current=None):
-        self.calls.append(cmd)
-        if cmd == "load":
-            err = types.SimpleNamespace(code="fetch_timeout", message="fetch_timeout")
-            return types.SimpleNamespace(ok=False, data={}, error=err)
-        return types.SimpleNamespace(ok=True, data={}, error=None)
-
-
-class TestAutoAdvanceFuse(unittest.TestCase):
-    def test_ended_fuses_on_fetch_timeout(self):
-        """慢网熔断:播完自动切歌遇 fetch_timeout 只试一首,不逐首撞 21s 重试。"""
-        player = SlowNetPlayer()
-        pb = Playback(player, FakeConn())
-        pb.queue = [item("a"), item("b"), item("c")]
-        pb.index = 0
-        run(pb._on_ended())
-        self.assertEqual(player.calls.count("load"), 1)
-        self.assertFalse(pb.playing)
-        self.assertEqual(pb.last_error, "fetch_timeout")
-
-    def test_radio_start_fuses_on_fetch_timeout(self):
-        player = SlowNetPlayer()
-        pb = Playback(player, FakeConn())
-        res = run(pb.play_radio("qq_guess", [item("a"), item("b"), item("c")]))
-        self.assertFalse(res)
-        self.assertEqual(player.calls.count("load"), 1)
-
-
-class OfflinePlayer:
-    """load 恒报 fetch_failed(断网/坏 URL),其余命令成功。"""
-
-    def __init__(self):
-        self.calls = []
-
-    async def request(self, cmd, args=None, *, is_current=None):
-        self.calls.append(cmd)
-        if cmd == "load":
-            err = types.SimpleNamespace(code="fetch_failed", message="fetch_failed")
-            return types.SimpleNamespace(ok=False, data={}, error=err)
-        return types.SimpleNamespace(ok=True, data={}, error=None)
-
-
-def _capture_events(pb_coro):
-    """跑协程并收集 decky.emit 的事件 payload。"""
-    import playback as playback_mod
-
-    events = []
-
-    async def rec(_name, payload):
-        events.append(payload)
-
-    old = playback_mod.decky.emit
-    playback_mod.decky.emit = rec
-    try:
-        run(pb_coro)
-    finally:
-        playback_mod.decky.emit = old
-    return events
-
-
-class UpstreamTimeoutConn:
-    """provider 的 song_url 前 fail_times 次报 upstream_timeout,之后成功。
-    记录每次被请求的歌曲 id —— 判「重试同一首」还是「顺延下一首」全靠它。"""
-
-    def __init__(self, fail_times=99):
-        self.calls = []
-        self.asked = []
-        self.fail_times = fail_times
-
-    async def request(self, cmd, args=None, *, is_current=None):
-        self.calls.append(cmd)
-        if cmd == "song_url":
-            self.asked.append((args or {}).get("id"))
-            if len(self.asked) <= self.fail_times:
-                err = types.SimpleNamespace(code="upstream_timeout", message="upstream_timeout")
-                return types.SimpleNamespace(ok=False, data={}, error=err)
-            return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
-        return types.SimpleNamespace(ok=True, data={}, error=None)
-
-
-class TestUpstreamTimeoutRetriesSameSong(unittest.TestCase):
-    """上游瞬时超时必须原地重试同一首,不能顺延。
-
-    回归 2026-07-25/26 两次:先是被当成通道级 timeout 立即硬熔断(电台一首都不跳就停),
-    改软熔断后又变成静默跳过下一首 —— 用户视角是「歌无故消失」,比报错更费解。
-    正解是重试同一首:抖动就照常播出来,真故障就明确报错。
-    """
-
-    def setUp(self):
-        import playback as playback_mod
-
-        self._old = playback_mod.UPSTREAM_RETRY_BACKOFF
-        playback_mod.UPSTREAM_RETRY_BACKOFF = 0  # 测试不真睡
-        self.addCleanup(setattr, playback_mod, "UPSTREAM_RETRY_BACKOFF", self._old)
-
-    def test_transient_timeout_plays_the_intended_song(self):
-        """只抖一次:重试后该放的还是原来那首,不跳过。"""
-        provider = UpstreamTimeoutConn(fail_times=1)
-        pb = Playback(FakeConn(), provider)
-        pb.queue = [item(c) for c in "abcde"]
-        pb.index = 0
-        run(pb._on_ended())
-        self.assertEqual(provider.asked, ["b", "b"])  # 同一首问了两次
-        self.assertEqual(pb.index, 1)  # 落在 b,没被跳到 c
-        self.assertTrue(pb.playing)
-
-    def test_persistent_timeout_never_skips_to_another_song(self):
-        """一直超时:重试也失败 → 熔断报错,绝不顺延到别的歌。"""
-        provider = UpstreamTimeoutConn()
-        pb = Playback(FakeConn(), provider)
-        pb.queue = [item(c) for c in "abcde"]
-        pb.index = 0
-        run(pb._on_ended())
-        self.assertEqual(set(provider.asked), {"b"})  # 只碰过 b 这一首
-        self.assertEqual(len(provider.asked), 2)  # 首发 + 一次重试,不再多试
-        self.assertFalse(pb.playing)
-        self.assertEqual(pb.last_error, "upstream_timeout")
-
-    def test_radio_advance_retries_then_reports(self):
-        provider = UpstreamTimeoutConn()
-        pb = Playback(FakeConn(), provider)
-        pb.mode = "radio"
-        pb.queue = [item(c) for c in "abcde"]
-        pb.index = 0
-        run(pb._radio_next())
-        self.assertEqual(set(provider.asked), {"b"})
-        self.assertEqual(len(provider.asked), 2)
-
-
-class SeekTrackingConn:
-    """记录 load / seek / stop,并可让 seek 失败(模拟上游不支持 Range)。"""
-
-    def __init__(self, seek_ok=True):
-        self.calls = []
-        self.seeks = []
-        self.seek_ok = seek_ok
-
-    async def request(self, cmd, args=None, *, is_current=None):
-        self.calls.append(cmd)
-        if cmd == "seek":
-            self.seeks.append((args or {}).get("sec"))
-            if not self.seek_ok:
-                err = types.SimpleNamespace(code="seek_failed", message="seek_failed")
-                return types.SimpleNamespace(ok=False, data={}, error=err)
-        return types.SimpleNamespace(ok=True, data={"url": "http://x"}, error=None)
-
-
-class TestResumeAfterStreamDeath(unittest.TestCase):
-    """流中途彻底死掉后,按播放键要从中断处接上,而不是没反应 / 从头重放。
-
-    stream.rs 已经会用 Range 从字节位置续传,但它退避重试 3 次仍无进展时会判死;
-    此前 bridge 收到 error 只把 playing 置 False,_loaded 仍是 True —— resume() 于是
-    往一个已死的 sink 发 resume,表现为「按播放键没反应」,而 self.pos 从没被用过。
-    """
-
-    def _died_at(self, player, pos=42.5, code="fetch_failed"):
-        pb = Playback(player, FakeConn())
-        pb.queue = [item(c) for c in "abc"]
-        pb.index = 1
-        pb._loaded = True
-        pb.playing, pb.pos = True, pos
-        run(pb.on_player_event(types.SimpleNamespace(
-            ev="player", type="error", data={"code": code, "message": code})))
-        return pb
-
-    def test_error_marks_unloaded_and_remembers_position(self):
-        pb = self._died_at(SeekTrackingConn())
-        self.assertFalse(pb.playing)
-        self.assertFalse(pb._loaded)  # 否则 resume 会发给死 sink
-        self.assertEqual(pb._resume_at, 42.5)
-
-
-    def test_idle_sink_release_reloads_and_seeks_on_resume(self):
-        """久暂停后 player 丢 sink 省电;bridge 必须把它视为可恢复冷启动。"""
-        player = SeekTrackingConn()
-        pb = Playback(player, FakeConn())
-        pb.queue = [item(c) for c in "abc"]
-        pb.index = 1
-        pb._loaded = True
-        pb.pos = 42.5
-        run(pb.on_player_event(types.SimpleNamespace(
-            ev="player", type="unloaded", data={"pos": 42.5})))
-
-        self.assertFalse(pb._loaded)
-        self.assertFalse(pb.playing)
-        self.assertEqual(pb._resume_at, 42.5)
-
-        run(pb.resume())
-        self.assertIn("load", player.calls)
-        self.assertEqual(player.seeks, [42.5])
-
-    def test_resume_reloads_and_seeks_back(self):
-        player = SeekTrackingConn()
-        pb = self._died_at(player)
-        run(pb.resume())
-        self.assertIn("load", player.calls)  # 重新加载,而不是裸发 resume
-        self.assertEqual(player.seeks, [42.5])  # 跳回中断处
-        self.assertEqual(pb.index, 1)  # 还是原来那首
-        self.assertAlmostEqual(pb.pos, 42.5)
-
-    def test_seek_failure_falls_back_to_start_not_error(self):
-        """上游不支持 Range 时 seek 会失败:降级从头播,不能让「按播放键」变成报错。"""
-        player = SeekTrackingConn(seek_ok=False)
-        pb = self._died_at(player)
-        run(pb.resume())
-        self.assertIn("load", player.calls)
-        self.assertTrue(pb.playing)  # 照样在播
-        self.assertEqual(pb.last_error, "")  # 不算失败
-
-    def test_new_song_clears_the_resume_point(self):
-        """换歌后 _resume_at 必须清零,否则下一首会莫名跳到中间。"""
-        player = SeekTrackingConn()
-        pb = self._died_at(player)
-        run(pb._play_index(2))
-        self.assertEqual(pb._resume_at, 0.0)
-        self.assertEqual(player.seeks, [])
-
-    def test_non_fatal_error_leaves_playback_state_alone(self):
-        """seek_failed 不杀 sink(audio.rs 里 try_seek 失败只发事件,照常出声)。
-        若照样记中断处,之后任何 resume 都会白重载并往回跳 —— 真机实测踩过:
-        seek_failed 后音频已播到 222s,resume 却跳回 189s。"""
-        player = SeekTrackingConn()
-        pb = self._died_at(player, pos=189.1, code="seek_failed")
-        self.assertTrue(pb._loaded)  # 流没死,别动
-        self.assertEqual(pb._resume_at, 0.0)
-        self.assertTrue(pb.playing)
-
-        run(pb.resume())
-        self.assertNotIn("load", player.calls)  # 不该重载
-        self.assertEqual(player.seeks, [])  # 更不该往回跳
-        self.assertIn("resume", player.calls)
-
-    def test_queue_clear_clears_the_resume_point(self):
-        player = SeekTrackingConn()
-        pb = self._died_at(player)
-        run(pb.queue_clear())
-        self.assertEqual(pb._resume_at, 0.0)
-
-
-class TestAutoAdvancePolish(unittest.TestCase):
-    def test_two_consecutive_fetch_failed_fuse(self):
-        """断网:fetch_failed 连续 2 次熔断,不把整个队列扫一圈。"""
-        player = OfflinePlayer()
-        pb = Playback(player, FakeConn())
-        pb.queue = [item(c) for c in "abcde"]
-        pb.index = 0
-        run(pb._on_ended())
-        self.assertEqual(player.calls.count("load"), 2)
-        self.assertFalse(pb.playing)
-
-    def test_shuffle_skip_always_finds_playable(self):
-        """随机模式顺延用一次性乱序:多首不可播也必然找到唯一可播的那首。"""
-        conn = VipOnlyConn(blocked=["a", "b", "d"])
-        pb = Playback(FakeConn(), conn, play_mode="shuffle")
-        pb.queue = [item(c) for c in "abcd"]
-        pb.index = 0
-        run(pb._on_ended())
-        self.assertTrue(pb.playing)
-        self.assertEqual(pb.queue[pb.index]["id"], "c")
-
-    def test_skip_is_quiet_until_success(self):
-        """跳过不可播的歌不逐首发 error;成功接上后 UI 只看到 track 事件。"""
-        conn = VipOnlyConn(blocked=["b"])
-        pb = Playback(FakeConn(), conn)
-        pb.queue = [item("a"), item("b"), item("c")]
-        pb.index = 0
-        events = _capture_events(pb._on_ended())
-        self.assertEqual([e["type"] for e in events if e["type"] == "error"], [])
-        self.assertTrue(pb.playing)
-
-    def test_give_up_emits_single_error(self):
-        """整圈都不可播:放弃时只报一次错,不刷一串横幅。"""
-        conn = VipOnlyConn(blocked=["a", "b", "c"])
-        pb = Playback(FakeConn(), conn)
-        pb.queue = [item("a"), item("b"), item("c")]
-        pb.index = 0
-        events = _capture_events(pb._on_ended())
-        errs = [e for e in events if e["type"] == "error"]
-        self.assertEqual(len(errs), 1)
-        self.assertEqual(errs[0]["data"]["code"], "no_playable")
-        self.assertFalse(pb.playing)
+        self.assertEqual(songs_to_items(None), [])

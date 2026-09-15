@@ -29,7 +29,8 @@ sys.modules.setdefault("decky", decky_stub)
 # discover 跑全套时别的用例可能已装桩:补丁必须打在真正被 bridge 引用的那个模块上
 decky_stub = sys.modules["decky"]
 
-import bridge as bridge_mod  # noqa: E402
+import child_process
+import ipc
 from bridge import Bridge  # noqa: E402
 
 
@@ -47,18 +48,18 @@ class TestPlayerSpawn(unittest.TestCase):
             self.emitted.append((ev, payload))
 
         self._saved_emit = decky_stub.emit
-        self._saved_spawn = bridge_mod.spawn
+        self._saved_spawn = child_process.spawn
         decky_stub.emit = capture
 
     def tearDown(self):
         decky_stub.emit = self._saved_emit
-        bridge_mod.spawn = self._saved_spawn
+        child_process.spawn = self._saved_spawn
 
     def test_missing_binary_emits_error_no_raise(self):
         async def boom(*_a, **_k):
             raise FileNotFoundError("bin/player")  # 缺二进制的真实异常
 
-        bridge_mod.spawn = boom
+        child_process.spawn = boom
         asyncio.run(self.b._spawn_player())  # 关键:不应向上抛,否则 _main 整个挂掉
         self.assertEqual(len(self.emitted), 1)
         ev, payload = self.emitted[0]
@@ -71,11 +72,10 @@ class TestPlayerSpawn(unittest.TestCase):
         async def ok(*_a, **_k):
             return object()
 
-        bridge_mod.spawn = ok
+        child_process.spawn = ok
         asyncio.run(self.b._spawn_player())
         self.assertEqual(self.emitted, [])
         self.assertFalse(self.b.player_failed)
-
 
 
 class TestProviderSpawn(unittest.TestCase):
@@ -83,28 +83,29 @@ class TestProviderSpawn(unittest.TestCase):
 
     def setUp(self):
         self.b = Bridge()
-        self.b.provider = bridge_mod.Conn("provider")
+        self.b.provider = ipc.Conn("provider")
         self.b.provider_proc = None
         self.b.provider_which = None
         self.b.provider_lock = asyncio.Lock()
         self.b.provider_error = None
         self.b.settings = {"provider": "ncm", "accounts": {}}
         self._saved_emit = decky_stub.emit
-        self._saved_spawn = bridge_mod.spawn
-        self._saved_bin = bridge_mod.BIN
+        self._saved_spawn = child_process.spawn
+        self._saved_bin = child_process.BIN
         decky_stub.emit = _emit  # 丢弃 emit(测回灌,不测 emit)
 
     def tearDown(self):
         decky_stub.emit = self._saved_emit
-        bridge_mod.spawn = self._saved_spawn
-        bridge_mod.BIN = self._saved_bin
+        child_process.spawn = self._saved_spawn
+        child_process.BIN = self._saved_bin
 
     def test_spawn_fail_sets_error_and_get_provider_relays(self):
         async def boom(*_a, **_k):
             raise FileNotFoundError("bin/ncm-provider")
 
-        bridge_mod.spawn = boom
-        bridge_mod.BIN = lambda name: "/nonexistent/" + name
+        child_process.spawn = boom
+        child_process.BIN = lambda name: "/nonexistent/" + name
+
         async def scenario():
             try:
                 await self.b._ensure_provider("ncm")
@@ -132,7 +133,7 @@ class TestSpawnChmod(unittest.TestCase):
         self.assertFalse(os.stat(exe).st_mode & stat.S_IXUSR)
 
         async def run():
-            proc = await bridge_mod.spawn("test", exe)
+            proc = await child_process.spawn("test", exe)
             await proc.wait()
             return proc.returncode
 

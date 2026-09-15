@@ -28,7 +28,7 @@ sys.modules.setdefault("decky", decky_stub)
 # discover 跑全套时别的用例可能已装桩:后续属性补丁必须打在真正被 bridge 引用的那个模块上
 decky_stub = sys.modules["decky"]
 
-import bridge  # noqa: E402
+import child_process
 
 
 def _make_tarball(path: str):
@@ -60,21 +60,21 @@ class TestQqUnpack(unittest.TestCase):
         exe = os.path.join(self.bin, "qq-provider", "qq-provider")
         os.makedirs(os.path.dirname(exe))
         open(exe, "w").close()
-        self.assertEqual(bridge.qq_exe(), exe)
+        self.assertEqual(child_process.qq_exe(), exe)
 
     def test_unpacks_tarball_into_bin(self):
         _make_tarball(os.path.join(self.bin, "qq-provider"))
-        exe = bridge.qq_exe()
+        exe = child_process.qq_exe()
         self.assertEqual(exe, os.path.join(self.bin, "qq-provider", "qq-provider"))
         self.assertTrue(os.path.isfile(exe))
         self.assertTrue(os.stat(exe).st_mode & stat.S_IXUSR)  # chmod +x
         # tar 文件已让位,重复调用幂等
-        self.assertEqual(bridge.qq_exe(), exe)
+        self.assertEqual(child_process.qq_exe(), exe)
 
     def test_missing_binary_returns_natural_path(self):
         # 什么都没有:返回常规路径,让 spawn 报出自然的 FileNotFoundError
         self.assertEqual(
-            bridge.qq_exe(), os.path.join(self.bin, "qq-provider", "qq-provider")
+            child_process.qq_exe(), os.path.join(self.bin, "qq-provider", "qq-provider")
         )
 
 

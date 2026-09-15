@@ -85,21 +85,18 @@ class TestPumpStderr(unittest.TestCase):
     def tearDown(self):
         log_mod.log = self._saved
 
-    def test_mixed_stream_splits_by_level(self):
+    def test_diagnostics_are_classified_without_disclosing_child_text(self):
+        secret = "synthetic-secret-cookie-value"
         stream = _FakeStream(
             [
-                b"cannot connect player.P.1.2:out_000 to system:playback_1\n",
-                b"thread 'main' panicked at src/lib.rs:1:1:\n",
-                b"\n",  # 空行不该产生记录
-                b"ALSA lib pcm_oss.c:404:(_snd_pcm_oss_open) Cannot open device /dev/dsp\n",
+                f"ALSA lib pcm.c:123:(snd_pcm_open_noupdate) Unknown PCM {secret}\n".encode(),
+                f"thread panicked: https://example.invalid/?token={secret}\n".encode(),
             ]
         )
         asyncio.run(log_mod.pump_stderr("player", stream))
-
-        self.assertEqual([r[1] for r in self.records], ["debug", "warn", "debug"])
-        self.assertTrue(all(r[0] == "stderr" for r in self.records))
-        # panic 必须原样保留,不被改写
-        self.assertIn("panicked", self.records[1][2])
+        self.assertEqual([r[1] for r in self.records], ["debug", "warn"])
+        self.assertNotIn(secret, repr(self.records))
+        self.assertNotIn("https://", repr(self.records))
 
     def test_no_stream_is_a_noop(self):
         asyncio.run(log_mod.pump_stderr("player", None))

@@ -99,7 +99,7 @@ def _decode_event(raw: dict) -> ChildEvent:
 
 def _decode_log(raw: dict) -> LogEvent:
     level = raw.get("level")
-    if level not in _LOG_LEVELS:
+    if not isinstance(level, str) or level not in _LOG_LEVELS:
         raise ProtocolError("log event bad level")
     where, msg = raw.get("where", ""), raw.get("msg", "")
     if not isinstance(where, str) or not isinstance(msg, str):

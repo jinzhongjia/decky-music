@@ -1,61 +1,22 @@
-"""播放 + 队列编排:持有 player + provider 连接,管理队列、电台流、自动切歌、播放态快照。
-
-bridge 是播放/队列的**真相源**:队列存富信息(id/media_mid/名/歌手/封面/时长),并跟踪播放态与进度,
-供前端挂载时经 `get_playback` 回灌(前端重载后仍能同步,不再 desync)。队列语义见 docs/QUEUE-BEHAVIOR.md。
-Conn 走鸭子类型,不 import bridge。
-"""
+"""Playback intent execution, stream recovery and state events."""
 
 import asyncio
 import random
-import time
-
 import decky
-
 from log import log
+from diagnostics import safe_code, safe_event
+from music_settings import PLAY_MODES
+from playback_state import public_item, now_ms
+from playback_queue import PlaybackQueue
+from playback_radio import PlaybackRadio
 
-PLAY_MODES = ("list_loop", "single_loop", "shuffle")
-
-# 自动切歌熔断,分两档(见 _fuse_check)。判据是「这次失败该不该归咎于这一首」:
-# 硬熔断 —— 一次即停,不顺延。整条链路已不可用,换哪首都一样;顺延只会逐首撞超时,
-# 还会让用户看到歌被无故跳过 —— 那比直接报错更费解。
-#   timeout          = bridge 30s 请求上限,子进程整体不响应
-#   fetch_timeout    = player 首开慢网重试 ~21s/首
-#   upstream_timeout = provider 单次上游请求超时。瞬时抖动已由 _play_index 原地重试
-#                      同一首消化掉(见 UPSTREAM_RETRY_BACKOFF),还能走到这里说明重试也栽了
-# 软熔断 —— 连续 2 次才停。fetch_failed 单发可能只是这一首的 URL 坏了,跳过是对的;
-# 连着两首都拉不开基本是网断了。
-#   fetch_failed = player 拉流打不开
-# 其余(如 no_playable,秒回的单曲性失败)照常跳过,不计数。
 FUSE_ERRORS = ("timeout", "fetch_timeout", "upstream_timeout")
 SOFT_FUSE_ERRORS = ("fetch_failed",)
-
-# 上游瞬时超时的原地重试退避:够让一次抖动过去,又不至于让切歌明显卡顿。
 UPSTREAM_RETRY_BACKOFF = 0.5
-
-# 会让 sink 真正死掉的 player 错误码 —— 只有这些才记「断流中断处」供 resume 接上。
-# 其余(seek_failed:try_seek 失败但 sink 照常出声;audio_* :重载也救不回来)一律不动
-# 播放状态,否则 bridge 会与实际出声脱节,之后 resume 白重载一遍还往回跳。
 STREAM_DEATH_ERRORS = ("fetch_failed", "fetch_timeout", "decode_failed")
 
 
-def _now_ms() -> int:
-    return int(time.time() * 1000)
-
-
-def _public(item: dict | None) -> dict | None:
-    # 下发/回灌给 UI 的曲目展示信息(不含 media_mid 等内部字段)
-    if not item:
-        return None
-    return {
-        "id": item.get("id", ""),
-        "name": item.get("name", ""),
-        "singer": item.get("singer", ""),
-        "cover": item.get("cover", ""),
-        "duration": item.get("duration", 0),
-    }
-
-
-class Playback:
+class Playback(PlaybackQueue, PlaybackRadio):
     def __init__(
         self,
         player,
@@ -86,52 +47,14 @@ class Playback:
         self._play_gen = 0  # 播放意图代次:新意图作废在途旧意图(最后一次操作赢,不排队)
 
         self._radio_kind = ""
-        self._radio_fetcher = radio_fetcher  # async (kind) -> list[dict];bridge 注入 provider radio_fetch
+        self._radio_fetcher = (
+            radio_fetcher  # async (kind) -> list[dict];bridge 注入 provider radio_fetch
+        )
         self._radio_refill_task: asyncio.Task | None = None
         self._radio_gen = 0
         # bridge 注入的凭证刷新回调 async () -> bool(是否真的刷新了)。
         # QQ musickey 会话中途过期时所有歌报 no_playable(误导性"无权限"),刷新后重试即恢复。
         self._auth_retry = auth_retry
-
-    def _exit_radio(self):
-        self._radio_gen += 1
-        if self._radio_refill_task and not self._radio_refill_task.done():
-            self._radio_refill_task.cancel()
-        self._radio_refill_task = None
-        self._radio_kind = ""
-        self.mode = "normal"
-
-    def restore(self, saved: dict | None):
-        """启动时从 settings 恢复普通队列(含展示字段;旧存档缺失则空串占位),不自动开播。"""
-        items = (saved or {}).get("items")
-        if not isinstance(items, list) or not items:
-            return
-        self.queue = [
-            {
-                "id": str(it.get("id", "")),
-                "media_mid": str(it.get("media_mid", "")),
-                "name": it.get("name", "") or "",
-                "singer": it.get("singer", "") or "",
-                "cover": it.get("cover", "") or "",
-                "duration": it.get("duration", 0) or 0,
-            }
-            for it in items
-            if isinstance(it, dict) and it.get("id")
-        ]
-        idx = (saved or {}).get("index", 0)
-        self.index = max(0, min(int(idx), len(self.queue) - 1)) if self.queue else -1
-
-    # ---- 对外命令 ----
-
-    async def play_queue(self, items: list[dict], start_index: int = 0):
-        if self.mode == "radio":
-            self._exit_radio()
-        self.queue = items or []
-        if not self.queue:
-            await self._stop_empty()
-            return
-        await self._play_index(max(0, min(start_index, len(self.queue) - 1)))
-        await self._queue_changed()
 
     async def next_track(self):
         if self.mode == "radio":
@@ -157,115 +80,6 @@ class Playback:
         if self.queue:
             await self._play_index((self.index - 1) % len(self.queue))
 
-
-    async def play_radio(self, kind: str, items: list[dict]):
-        self._exit_radio()
-        self.queue, self.index = [], -1
-        if self._persist:
-            self._persist([], -1)  # clear saved normal queue; never persist radio contents
-        self.mode, self._radio_kind = "radio", kind
-        self.queue = items or []
-        if not self.queue:
-            await self._stop_empty()
-            return False
-        # 首歌不可播(如真 VIP 歌)不打死整个电台:顺次尝试本批,系统性错误熔断
-        res: bool | None = False
-        fails = 0
-        for i in range(len(self.queue)):
-            res = await self._play_index(i, quiet=True)
-            if res or res is None:
-                break
-            fails, fused = self._fuse_check(fails)
-            if fused:
-                break
-        if res is False:
-            await self._skip_gave_up("radio start")
-        await self._queue_changed()
-        return res
-
-    # ---- 队列查看 / 编辑(P4;语义见 QUEUE-BEHAVIOR §2/§4) ----
-
-    def snapshot_queue(self) -> dict:
-        """队列快照(浮层用)。radio 模式只暴露当前曲,保持电台未知感(P5d)。"""
-        if self.mode == "radio":
-            cur = self.queue[self.index] if 0 <= self.index < len(self.queue) else None
-            return {"mode": "radio", "index": 0 if cur else -1, "items": [_public(cur)] if cur else []}
-        return {"mode": self.mode, "index": self.index, "items": [_public(x) for x in self.queue]}
-
-    async def queue_play(self, index: int):
-        if self.mode == "radio":
-            return
-        if 0 <= index < len(self.queue):
-            await self._play_index(index)
-
-    async def queue_insert_next(self, item: dict):
-        if self.mode == "radio":
-            return
-        # 无当前曲(空队列)时直接开播:否则曲子躺在队列里,Start 对空 sink 也无声
-        if self.index < 0:
-            self.queue = [item]
-            await self._play_index(0)
-        else:
-            self.queue.insert(self.index + 1, item)
-        await self._queue_changed()
-
-    async def queue_append(self, item: dict):
-        if self.mode == "radio":
-            return
-        if self.index < 0:
-            self.queue = [item]
-            await self._play_index(0)
-        else:
-            self.queue.append(item)
-        await self._queue_changed()
-
-    async def queue_remove(self, index: int):
-        if self.mode == "radio":
-            return
-        if not (0 <= index < len(self.queue)):
-            return  # 越界忽略(浮层与事件间的竞态)
-        removing_current = index == self.index
-        del self.queue[index]
-        if index < self.index:
-            self.index -= 1
-        if removing_current:
-            if self.queue:
-                await self._play_index(min(self.index, len(self.queue) - 1))  # 播补位的下一首
-            else:
-                await self._stop_empty()
-                return  # _stop_empty 已广播 queue 事件
-        await self._queue_changed()
-
-    async def queue_clear(self):
-        await self._stop_empty()
-
-    async def _stop_empty(self):
-        """清空进入空态:停播 + 通知 UI 当前曲清空(QUEUE-BEHAVIOR §3.1)。"""
-        self._play_gen += 1
-        gen = self._play_gen
-        self._exit_radio()
-        self.queue, self.index = [], -1
-        self.playing, self.pos, self.wall = False, 0.0, _now_ms()
-        self._resume_at = 0.0  # 队列都清空了,断流中断处不能留着
-        self._loaded = False
-        self.last_error = ""
-        try:
-            await self._request_current(self.player, gen, "stop")
-            await self._emit("track", {"index": -1, "song": None})
-            self._check_current(gen)
-            await self._push_meta(None, gen)
-            self._check_current(gen)
-            await self._queue_changed()
-        except asyncio.CancelledError:
-            if not self._superseded(gen):
-                raise
-
-    async def _queue_changed(self):
-        # 结构变化:落盘(只存 id 类字段,见 QUEUE-BEHAVIOR §1.1)+ 广播给浮层刷新
-        if self._persist and self.mode == "normal":
-            self._persist(self.queue, self.index)
-        await self._emit("queue", {"length": len(self.queue), "index": self.index, "mode": self.mode})
-
     def set_play_mode(self, mode: str) -> bool:
         if self.mode == "radio":
             return False
@@ -278,7 +92,7 @@ class Playback:
         """当前播放态快照,供前端挂载回灌(bridge 是真相源)。"""
         cur = self.queue[self.index] if 0 <= self.index < len(self.queue) else None
         return {
-            "current": _public(cur),
+            "current": public_item(cur),
             "index": self.index,
             "playing": self.playing,
             "pos": self.pos,
@@ -291,8 +105,6 @@ class Playback:
     def current_id(self) -> str:
         cur = self.queue[self.index] if 0 <= self.index < len(self.queue) else None
         return (cur or {}).get("id", "")
-
-    # ---- 内部 ----
 
     def _advance_index(self) -> int:
         n = len(self.queue)
@@ -341,9 +153,9 @@ class Playback:
         try:
             r = await self._resolve_url(item, gen)
             if not r.ok:
-                self.last_error = r.error.code if r.error else "play_failed"
-                message = r.error.message if r.error else "play_failed"
-                log("bridge", "own", "warn", f"song_url failed id={item.get('id', '')}: {self.last_error}")
+                self.last_error = safe_code(r.error.code) if r.error else "play_failed"
+                message = self.last_error
+                log("bridge", "own", "warn", f"song_url failed: {self.last_error}")
                 if not quiet:
                     await self._emit("error", {"code": self.last_error, "message": message})
                     self._check_current(gen)
@@ -361,24 +173,24 @@ class Playback:
             "quality": self._quality(),
         }
         r = await self._request_current(self.provider, gen, "song_url", args)
-        if not r.ok and r.error and r.error.code == "no_playable" and self._auth_retry:
+        if not r.ok and r.error and safe_code(r.error.code) == "no_playable" and self._auth_retry:
             refreshed = await self._auth_retry()
             self._check_current(gen)
             if refreshed:
-                log("bridge", "own", "info", f"retry song_url after credential refresh id={item.get('id', '')}")
+                log("bridge", "own", "info", "retry song_url after credential refresh")
                 r = await self._request_current(self.provider, gen, "song_url", args)
-        if not r.ok and r.error and r.error.code == "upstream_timeout":
+        if not r.ok and r.error and safe_code(r.error.code) == "upstream_timeout":
             await asyncio.sleep(UPSTREAM_RETRY_BACKOFF)
             self._check_current(gen)
-            log("bridge", "own", "info", f"retry song_url after upstream timeout id={item.get('id', '')}")
+            log("bridge", "own", "info", "retry song_url after upstream timeout")
             r = await self._request_current(self.provider, gen, "song_url", args)
         return r
 
     async def _load_track(self, item: dict, gen: int, url: str, quiet: bool, seek_to: float):
         pr = await self._request_current(self.player, gen, "load", {"url": url})
         if not pr.ok:
-            self.last_error = pr.error.code if pr.error else "play_failed"
-            log("bridge", "own", "warn", f"player load failed id={item.get('id', '')}: {self.last_error}")
+            self.last_error = safe_code(pr.error.code, "play_failed") if pr.error else "play_failed"
+            log("bridge", "own", "warn", f"player load failed: {self.last_error}")
             if not quiet:
                 await self._emit("error", {"code": self.last_error, "message": self.last_error})
                 self._check_current(gen)
@@ -388,88 +200,32 @@ class Playback:
             return False
         self.last_error = ""
         self._loaded = True
-        self.playing, self.pos, self.wall = True, 0.0, _now_ms()
+        self.playing, self.pos, self.wall = True, 0.0, now_ms()
         if seek_to > 0:
             sr = await self._request_current(self.player, gen, "seek", {"sec": seek_to})
             if sr.ok:
-                self.pos, self.wall = seek_to, _now_ms()
+                self.pos, self.wall = seek_to, now_ms()
             else:
-                code = sr.error.code if sr.error else "seek_failed"
-                log("bridge", "own", "warn", f"resume seek to {seek_to:.1f}s failed ({code}), from start")
+                code = safe_code(sr.error.code, "seek_failed") if sr.error else "seek_failed"
+                log(
+                    "bridge",
+                    "own",
+                    "warn",
+                    f"resume seek to {seek_to:.1f}s failed ({code}), from start",
+                )
         if self._persist and self.mode == "normal":
             self._persist(self.queue, self.index)
-        log("bridge", "own", "info", f"queue -> {self.index + 1}/{len(self.queue)} (mode={self.mode if self.mode == 'radio' else self.play_mode})")
-        await self._emit("track", {"index": self.index, "song": _public(item)})
+        log(
+            "bridge",
+            "own",
+            "info",
+            f"queue -> {self.index + 1}/{len(self.queue)} (mode={self.mode if self.mode == 'radio' else self.play_mode})",
+        )
+        await self._emit("track", {"index": self.index, "song": public_item(item)})
         self._check_current(gen)
-        await self._push_meta(_public(item), gen)
+        await self._push_meta(public_item(item), gen)
         self._check_current(gen)
         return True
-
-    async def _radio_next(self):
-        if not self.queue:
-            return
-        gen = self._play_gen
-        near_tail = self.index >= len(self.queue) - 2
-        if near_tail and self.index + 1 < len(self.queue):
-            self._kick_radio_refill()
-        if self.index + 1 >= len(self.queue):
-            await self._refill_radio()
-            if gen != self._play_gen:
-                return
-        # 顺次尝试后续曲目(跳过不可播,系统性错误熔断),与普通模式自动切歌语义一致
-        fails = 0
-        failed_any = False
-        while self.index + 1 < len(self.queue):
-            res = await self._play_index(self.index + 1, quiet=True)
-            if res or res is None:
-                return
-            failed_any = True
-            fails, fused = self._fuse_check(fails)
-            if fused:
-                break
-        if failed_any:
-            await self._skip_gave_up("radio advance")
-        else:
-            log("bridge", "own", "warn", "radio advance stopped: no next track")
-
-    def _kick_radio_refill(self):
-        if not (self._radio_fetcher and self._radio_kind):
-            return None
-        task = self._radio_refill_task
-        if task and not task.done():
-            return task
-        kind, gen = self._radio_kind, self._radio_gen
-
-        async def fetch():
-            try:
-                batch = await self._radio_fetcher(kind)
-                if not isinstance(batch, list):
-                    log("bridge", "own", "warn", f"radio refill failed kind={kind}: invalid response")
-                    return
-                items = [x for x in batch if isinstance(x, dict)]
-                if items and self.mode == "radio" and self._radio_gen == gen:
-                    self.queue.extend(items)
-                    await self._queue_changed()
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                log("bridge", "own", "warn", f"radio refill failed kind={kind}: {type(e).__name__}")
-            finally:
-                if self._radio_refill_task is task:
-                    self._radio_refill_task = None
-
-        task = asyncio.create_task(fetch())
-        self._radio_refill_task = task
-        return task
-
-    async def _refill_radio(self):
-        task = self._kick_radio_refill()
-        if not task:
-            return
-        try:
-            await task
-        except asyncio.CancelledError:
-            return
 
     async def _on_ended(self):
         if not self.queue:
@@ -514,7 +270,8 @@ class Playback:
             n = len(self.queue)
             can_next = can_prev = n > 0
         await self._request_current(
-            self.player, gen,
+            self.player,
+            gen,
             "meta",
             {
                 "title": song.get("name", ""),
@@ -533,13 +290,32 @@ class Playback:
         cur = self.queue[self.index] if 0 <= self.index < len(self.queue) else None
         gen = self._play_gen
         try:
-            await self._push_meta(_public(cur), gen)
+            await self._push_meta(public_item(cur), gen)
         except asyncio.CancelledError:
             if not self._superseded(gen):
                 raise
 
+    def _on_player_error(self, code: str):
+        if code in STREAM_DEATH_ERRORS:
+            # A dead stream must cold-load on resume; retain the current position.
+            self.playing = False
+            self._resume_at = self.pos
+            self._loaded = False
+            log(
+                "bridge",
+                "own",
+                "warn",
+                f"stream died at {self.pos:.1f}s ({code}), resume will continue from here",
+            )
+        else:
+            # Failed seek leaves playback intact; do not rewind it on a later resume.
+            log("bridge", "own", "warn", f"player error: {code} (non-fatal, playback untouched)")
+
     async def on_player_event(self, ev):
         """player 域事件(protocol.ChildEvent)。跟踪播放态/进度 → 转发 → ended 自动切歌。"""
+        ev = safe_event(ev)
+        if ev is None:
+            return
         # Domain events have no request id and are consumed separately from responses.
         # A stopped/cleared queue cannot acquire state from an already queued old event.
         if not self.queue and (
@@ -551,7 +327,7 @@ class Playback:
         if ev.type == "playing":
             self.playing = True
             self.pos = ev.data.get("pos", 0.0)
-            self.wall = ev.data.get("wall_ms", _now_ms())
+            self.wall = ev.data.get("wall_ms", now_ms())
         elif ev.type == "paused":
             self.playing = False
             self.pos = ev.data.get("pos", self.pos)
@@ -565,19 +341,7 @@ class Playback:
         elif ev.type == "ended":
             self.playing = False
         elif ev.type == "error":
-            code = ev.data.get("code", "")
-            if code in STREAM_DEATH_ERRORS:
-                # 流真的死了(sink 放空且 probe 报错),再往它发 resume 是"按播放键没反应"。
-                # _loaded 置 False 让下次 resume() 冷启动重新加载,并记下中断处以便接上。
-                self.playing = False
-                self._resume_at = self.pos
-                self._loaded = False
-                log("bridge", "own", "warn", f"stream died at {self.pos:.1f}s ({code}), resume will continue from here")
-            else:
-                # 非致命错误(如 seek_failed:try_seek 失败但 sink 照常出声)。绝不能动
-                # _loaded/_resume_at —— 否则之后任何一次 resume 都会白重载一遍并往回跳,
-                # 而音频其实一直在往前走(真机实测踩到:seek_failed 后播到 222s,resume 却跳回 189s)。
-                log("bridge", "own", "warn", f"player error: {code} (non-fatal, playback untouched)")
+            self._on_player_error(ev.data.get("code", ""))
         await decky.emit("player", {"ev": ev.ev, "type": ev.type, "data": ev.data})
         if ev.type == "ended" and gen == self._play_gen:
             await self._on_ended()
@@ -597,5 +361,10 @@ class Playback:
         self.playing = False
         self._resume_at = self.pos
         self._loaded = False
-        log("bridge", "own", "warn", f"player gone at {self.pos:.1f}s, resume will continue from here")
+        log(
+            "bridge",
+            "own",
+            "warn",
+            f"player gone at {self.pos:.1f}s, resume will continue from here",
+        )
         return {"ev": "player", "type": "paused", "data": {"pos": self.pos}}

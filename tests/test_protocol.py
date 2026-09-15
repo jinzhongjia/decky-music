@@ -68,7 +68,9 @@ class TestDecodeEvent(unittest.TestCase):
         self.assertEqual((e.ev, e.type), ("player", "playing"))
 
     def test_log_event(self):
-        e = protocol.decode_child_message({"ev": "log", "level": "info", "where": "audio", "msg": "ok"})
+        e = protocol.decode_child_message(
+            {"ev": "log", "level": "info", "where": "audio", "msg": "ok"}
+        )
         self.assertIsInstance(e, protocol.LogEvent)
         self.assertEqual(e.level, "info")
 

@@ -37,9 +37,7 @@ class TestDeployTarget(unittest.TestCase):
                 ]
             ),
         }
-        self.service = patch.object(
-            deploy, "service_properties", return_value=self.properties
-        )
+        self.service = patch.object(deploy, "service_properties", return_value=self.properties)
         self.service.start()
         self.addCleanup(self.service.stop)
         self.addCleanup(self.temporary.cleanup)
@@ -63,15 +61,11 @@ class TestDeployTarget(unittest.TestCase):
         self.assertEqual(deploy.preflight("Decky Music", str(custom)), custom)
         spaced = self.root / "custom disk's homebrew" / "plugins"
         spaced.mkdir(parents=True)
-        self.properties["Environment"] = shlex.join(
-            ["PRIVILEGED_PATH=" + str(spaced.parent)]
-        )
+        self.properties["Environment"] = shlex.join(["PRIVILEGED_PATH=" + str(spaced.parent)])
         self.assertEqual(deploy.preflight("Decky Music"), spaced)
 
     def test_privileged_path_precedes_different_unprivileged_home(self):
-        self.properties["Environment"] += (
-            " UNPRIVILEGED_PATH=/home/someone-else/homebrew"
-        )
+        self.properties["Environment"] += " UNPRIVILEGED_PATH=/home/someone-else/homebrew"
         self.assertEqual(deploy.preflight("Decky Music"), self.plugins)
 
     def test_unprivileged_and_legacy_configuration(self):
@@ -95,9 +89,7 @@ class TestDeployTarget(unittest.TestCase):
             with self.subTest(values=values), patch.dict(self.properties, values):
                 with self.assertRaises(deploy.DeployError):
                     deploy.preflight("Decky Music")
-                self.assertEqual(
-                    deploy.preflight("Decky Music", str(self.plugins)), self.plugins
-                )
+                self.assertEqual(deploy.preflight("Decky Music", str(self.plugins)), self.plugins)
 
     def test_invalid_overrides_never_fall_back_to_discovered_path(self):
         file = self.root / "plugins"
@@ -121,9 +113,7 @@ class TestDeployTarget(unittest.TestCase):
 
     def test_no_system_service_fails_even_with_override(self):
         self.service.stop()
-        completed = subprocess.CompletedProcess(
-            [], 0, "LoadState=not-found\nFragmentPath=\n", ""
-        )
+        completed = subprocess.CompletedProcess([], 0, "LoadState=not-found\nFragmentPath=\n", "")
         with patch.object(deploy.subprocess, "run", return_value=completed):
             for override in (None, str(self.plugins)):
                 with (
@@ -142,9 +132,7 @@ class TestDeployTarget(unittest.TestCase):
         upload = self.root / "upload"
         upload.mkdir()
         with zipfile.ZipFile(upload / "plugin.zip", "w") as bundle:
-            bundle.writestr(
-                "Decky Music/plugin.json", json.dumps({"name": "Decky Music"})
-            )
+            bundle.writestr("Decky Music/plugin.json", json.dumps({"name": "Decky Music"}))
             bundle.writestr("Decky Music/dist/index.js", "new frontend")
             if unsafe:
                 bundle.writestr("Decky Music/../../outside", "danger")
@@ -165,13 +153,9 @@ class TestDeployTarget(unittest.TestCase):
         self.assertFalse((existing / "old").exists())
         self.assertTrue((existing / "dev_mode").is_file())
         self.assertTrue(os.access(existing / "bin/player", os.X_OK))
-        self.assertEqual(
-            (existing / "bin/qq-provider").read_bytes(), b"opaque provider archive"
-        )
+        self.assertEqual((existing / "bin/qq-provider").read_bytes(), b"opaque provider archive")
         self.assertTrue(other.is_dir())
-        run.assert_called_once_with(
-            ["systemctl", "restart", "plugin_loader.service"], check=True
-        )
+        run.assert_called_once_with(["systemctl", "restart", "plugin_loader.service"], check=True)
 
     def test_changed_target_is_rejected_before_old_plugin_deletion(self):
         upload, existing = self.make_upload()
@@ -225,39 +209,25 @@ class TestDeployTarget(unittest.TestCase):
         ):
             with self.subTest(host=host), self.assertRaises(deploy.DeployError):
                 deploy.validate_host(host)
-        self.assertEqual(
-            deploy.validate_host("operator@steamos-box"), "operator@steamos-box"
-        )
+        self.assertEqual(deploy.validate_host("operator@steamos-box"), "operator@steamos-box")
 
     def test_account_follows_service_user_not_ssh_login_or_directory_owner(self):
-        account = pwd.struct_passwd(
-            ("steamplayer", "x", 1234, 2345, "", "/home/player", "/bin/sh")
-        )
+        account = pwd.struct_passwd(("steamplayer", "x", 1234, 2345, "", "/home/player", "/bin/sh"))
         properties = {"Environment": "UNPRIVILEGED_USER=steamplayer"}
         with (
             patch.dict(os.environ, {"USER": "operator"}),
             patch.object(deploy.pwd, "getpwnam", return_value=account),
         ):
-            self.assertEqual(
-                deploy.plugin_account(properties, self.plugins).pw_name, "steamplayer"
-            )
+            self.assertEqual(deploy.plugin_account(properties, self.plugins).pw_name, "steamplayer")
 
     def test_account_home_matching_is_component_bounded_and_unambiguous(self):
         parent = self.plugins.parent.parent
         alice = pwd.struct_passwd(("alex", "x", 1234, 1234, "", str(parent), "/bin/sh"))
-        prefix = pwd.struct_passwd(
-            ("wrong", "x", 5678, 5678, "", str(parent)[:-1], "/bin/sh")
-        )
-        properties = {
-            "Environment": shlex.join(["UNPRIVILEGED_PATH=" + str(self.plugins.parent)])
-        }
+        prefix = pwd.struct_passwd(("wrong", "x", 5678, 5678, "", str(parent)[:-1], "/bin/sh"))
+        properties = {"Environment": shlex.join(["UNPRIVILEGED_PATH=" + str(self.plugins.parent)])}
         with patch.object(deploy.pwd, "getpwall", return_value=[prefix, alice]):
-            self.assertEqual(
-                deploy.plugin_account(properties, self.plugins).pw_name, "alex"
-            )
-        duplicate = pwd.struct_passwd(
-            ("duplicate", "x", 4321, 4321, "", str(parent), "/bin/sh")
-        )
+            self.assertEqual(deploy.plugin_account(properties, self.plugins).pw_name, "alex")
+        duplicate = pwd.struct_passwd(("duplicate", "x", 4321, 4321, "", str(parent), "/bin/sh"))
         for accounts in ([prefix], [alice, duplicate]):
             with (
                 self.subTest(accounts=accounts),
@@ -304,9 +274,7 @@ class TestDeployTarget(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((existing / "bin/qq-provider").is_dir())
-        self.assertEqual(
-            (existing / "py_modules/__pycache__/bridge.pyc").read_bytes(), b"cache"
-        )
+        self.assertEqual((existing / "py_modules/__pycache__/bridge.pyc").read_bytes(), b"cache")
         self.assertEqual(existing.stat().st_uid, 0)
 
     def test_shell_stops_before_download_or_build_when_target_preflight_fails(self):

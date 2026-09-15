@@ -35,7 +35,7 @@ async def _emit(*_a, **_k):
 decky_stub.emit = _emit
 sys.modules.setdefault("decky", decky_stub)
 
-import bridge as bridge_mod  # noqa: E402
+import provider_rpc
 import protocol  # noqa: E402
 from bridge import Bridge  # noqa: E402
 
@@ -72,11 +72,11 @@ class TestRespawnOnBrowse(unittest.TestCase):
             self.b.provider.writer = object()  # 重开成功 → 通道恢复
 
         self.b._ensure_provider = fake_ensure
-        self._saved_log = bridge_mod.log
-        bridge_mod.log = lambda *_a, **_k: None
+        self._saved_log = provider_rpc.log
+        provider_rpc.log = lambda *_a, **_k: None
 
     def tearDown(self):
-        bridge_mod.log = self._saved_log
+        provider_rpc.log = self._saved_log
 
     def test_dead_channel_respawns_and_retries(self):
         self.b.provider = _FakeConn([_err("timeout"), _ok({"songs": [1, 2, 3]})], writer=None)

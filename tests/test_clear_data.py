@@ -25,10 +25,12 @@ async def _emit(*_a, **_k):
 decky_stub.emit = _emit
 sys.modules.setdefault("decky", decky_stub)
 
-import bridge as bridge_mod  # noqa: E402
+from bridge import Bridge
+import ipc
+import music_settings
 
 
-class _FakeConn(bridge_mod.Conn):
+class _FakeConn(ipc.Conn):
     def __init__(self):
         super().__init__("provider")
 
@@ -37,7 +39,7 @@ class _FakeConn(bridge_mod.Conn):
 
 
 def _make_bridge(playback):
-    b = bridge_mod.Bridge()
+    b = Bridge()
     b.settings = {"provider": "qq", "accounts": {"qq": {"cookie": "x"}}, "volume": 0.3}
     b.liked_ids = {"a", "b"}
     b.provider = _FakeConn()
@@ -52,17 +54,17 @@ class TestClearData(unittest.TestCase):
         saved = []
         playback.events = events
         b = _make_bridge(playback)
-        old_save = bridge_mod.save_settings
+        old_save = music_settings.save_settings
 
         def fake_save(data):
             events.append("save")
             saved.append(dict(data))
 
-        bridge_mod.save_settings = fake_save
+        music_settings.save_settings = fake_save
         try:
             asyncio.run(b.clear_data())
         finally:
-            bridge_mod.save_settings = old_save
+            music_settings.save_settings = old_save
         return b, events, saved
 
     def test_resets_and_persists_defaults_after_queue_clear(self):
