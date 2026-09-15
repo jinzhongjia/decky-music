@@ -33,7 +33,7 @@ done < <(jq -r '.remote_binary[] | "\(.url)\t\(.sha256hash)"' package.json)
 cp package.json "$work/package.json.orig"
 scripts/cn-package.sh "$TAG" "$work/package.json.orig" > package.json
 bash scripts/decky-build.sh
-sudo chown -R "$(id -u):$(id -g)" out dist
+sudo chown -R "$(id -u):$(id -g)" out
 # decky CLI names the zip after plugin.json's name (which contains a space:
 # "Decky Music.zip"); GitHub only dots it on asset upload. Don't hardcode.
 mv "out/$(jq -r '.name' plugin.json).zip" "$work/Decky.Music.cn.zip"
