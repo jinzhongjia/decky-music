@@ -1,0 +1,179 @@
+use serde_json::{json, Value};
+
+use super::normalize;
+use super::parse::{align_translation, parse_lrc, parse_yrc, Line};
+
+fn times(l: &[Line]) -> Vec<i64> {
+    l.iter().map(|x| x.t_ms).collect()
+}
+
+fn texts(l: &[Line]) -> Vec<&str> {
+    l.iter().map(|x| x.text.as_str()).collect()
+}
+
+fn trs(l: &[Line]) -> Vec<&str> {
+    l.iter().map(|x| x.tr.as_str()).collect()
+}
+
+fn body(pairs: &[(&str, &str)]) -> Value {
+    let mut b = json!({});
+    for (k, v) in pairs {
+        b[*k] = json!({ "lyric": v });
+    }
+    b
+}
+
+#[test]
+fn lrc_times_and_skip_meta() {
+    let l = parse_lrc(
+        "[ti:x]\n[00:01.00]hello\n[00:02.5]world\n[00:03.345]!",
+        false,
+    );
+    assert_eq!(times(&l), [1000, 2500, 3345]);
+    assert_eq!(l[0].text, "hello");
+}
+
+#[test]
+fn lrc_multi_tag_line() {
+    let l = parse_lrc("[00:01.00][00:05.00]repeat", false);
+    assert_eq!(times(&l), [1000, 5000]);
+}
+
+#[test]
+fn lrc_time_tag_variants() {
+    // 无小数、冒号分隔厘秒(NCM 部分歌曲整首如此)、超过三位小数;非法标签整行跳过
+    let l = parse_lrc("[00:12]a\n[00:13:96]b\n[00:14.3456]c\n[0x:15.00]bad", false);
+    assert_eq!(times(&l), [12000, 13960, 14345]);
+    assert_eq!(texts(&l), ["a", "b", "c"]);
+}
+
+#[test]
+fn lrc_bom_and_crlf() {
+    let l = parse_lrc("\u{feff}[00:01.00]first\r\n[00:02.00]second\r\n", false);
+    assert_eq!(texts(&l), ["first", "second"]);
+}
+
+#[test]
+fn lrc_interlude_markers_set_end_and_are_dropped() {
+    let l = parse_lrc("[00:01.00]a\n[00:03.00]\n[00:05.00]//\n[00:20.00]b", false);
+    assert_eq!(texts(&l), ["a", "b"]);
+    assert_eq!(l[0].end_ms, Some(3000));
+    assert_eq!(l[1].end_ms, None); // 末行结束时间未知
+}
+
+#[test]
+fn lrc_end_is_next_distinct_time() {
+    let l = parse_lrc("[00:01.00]a\n[00:01.00]b\n[00:04.00]c", false);
+    assert_eq!((l[0].end_ms, l[1].end_ms), (Some(4000), Some(4000)));
+}
+
+#[test]
+fn lrc_merges_embedded_translation() {
+    let raw = "[00:01.00]Hello\n[00:01.00]你好\n[00:03.00]Bye\n[00:03.00]再见";
+    let l = parse_lrc(raw, true);
+    assert_eq!(texts(&l), ["Hello", "Bye"]);
+    assert_eq!(trs(&l), ["你好", "再见"]);
+    assert_eq!(l[0].end_ms, Some(3000));
+}
+
+#[test]
+fn lrc_does_not_merge_credits_or_duplicates() {
+    let raw = "[00:00.00]作词：甲\n[00:00.00]作曲：乙\n[00:05.00]la\n[00:05.00]la";
+    let l = parse_lrc(raw, true);
+    assert_eq!(texts(&l), ["作词：甲", "作曲：乙", "la", "la"]);
+    assert!(l.iter().all(|x| x.tr.is_empty()));
+}
+
+#[test]
+fn yrc_words_and_text() {
+    let l = parse_yrc("[1000,500](1000,200,0)Ha(1200,300,0)llo");
+    assert_eq!(l.len(), 1);
+    assert_eq!(l[0].t_ms, 1000);
+    assert_eq!(l[0].end_ms, Some(1500));
+    assert_eq!(l[0].text, "Hallo");
+    assert_eq!(l[0].words.len(), 2);
+    assert_eq!((l[0].words[1].t_ms, l[0].words[1].dur_ms), (1200, 300));
+}
+
+#[test]
+fn yrc_skips_json_meta() {
+    let l = parse_yrc("{\"t\":0,\"c\":[]}\n[0,100](0,100,0)x");
+    assert_eq!(texts(&l), ["x"]);
+}
+
+#[test]
+fn yrc_keeps_ascii_parentheses_in_text() {
+    let l = parse_yrc("[1000,2000](1000,300,0)Oh (1300,400,0)(love (1700,300,0)me)");
+    assert_eq!(l[0].text, "Oh (love me)");
+    let words: Vec<&str> = l[0].words.iter().map(|w| w.text.as_str()).collect();
+    assert_eq!(words, ["Oh ", "(love ", "me)"]);
+}
+
+#[test]
+fn yrc_drops_empty_trailing_word() {
+    // 真实 YRC 行尾常带一个无文本的结束标签
+    let l = parse_yrc("[3620,3870](3620,550,0)房(4170,230,0)间(7020,470,0) ");
+    assert_eq!(l[0].words.len(), 2);
+    assert_eq!(l[0].end_ms, Some(7490));
+}
+
+#[test]
+fn yrc_skips_placeholder_lines() {
+    let l = parse_yrc("[0,100](0,100,0)//\n[200,100](200,100,0)x");
+    assert_eq!(texts(&l), ["x"]);
+}
+
+#[test]
+fn align_tolerates_precision_drift() {
+    let mut l = parse_yrc("[12345,1000](12345,1000,0)hello");
+    align_translation(&mut l, &parse_lrc("[00:12.34]你好", false));
+    assert_eq!(l[0].tr, "你好");
+}
+
+#[test]
+fn align_prefers_nearest_line() {
+    // 两行主歌词都在容差内,译文只给更近的那行
+    let mut l = parse_lrc("[00:01.00]a\n[00:01.20]b", false);
+    align_translation(&mut l, &parse_lrc("[00:01.20]乙", false));
+    assert_eq!(trs(&l), ["", "乙"]);
+}
+
+#[test]
+fn align_skips_placeholder_and_out_of_range() {
+    let mut l = parse_lrc("[00:01.00]hello\n[00:02.00]world\n[00:05.00]far", false);
+    let trans = parse_lrc("[00:01.00]你好\n[00:02.00]//\n[00:05.50]远", false);
+    align_translation(&mut l, &trans);
+    assert_eq!(trs(&l), ["你好", "", ""]);
+}
+
+#[test]
+fn normalize_word_by_word_with_tlyric_fallback() {
+    let out = normalize(&body(&[
+        ("yrc", "[12345,1000](12345,1000,0)hello"),
+        ("lrc", "[00:12.34]hello"),
+        ("tlyric", "[00:12.34]你好"),
+    ]));
+    assert_eq!(out["word_by_word"], true);
+    assert_eq!(out["lines"][0]["tr"], "你好");
+    assert_eq!(out["lines"][0]["end_ms"], 13345);
+}
+
+#[test]
+fn normalize_falls_back_to_lrc_when_yrc_has_no_lines() {
+    let out = normalize(&body(&[("yrc", "{\"t\":0}"), ("lrc", "[00:01.00]a")]));
+    assert_eq!(out["word_by_word"], false);
+    assert_eq!(out["lines"][0]["text"], "a");
+    assert!(out["lines"][0].get("words").is_none());
+    assert!(out["lines"][0].get("end_ms").is_none());
+}
+
+#[test]
+fn normalize_merges_embedded_only_without_external_translation() {
+    let lrc = "[00:01.00]Hello\n[00:01.00]你好";
+    let merged = normalize(&body(&[("lrc", lrc)]));
+    assert_eq!(merged["lines"].as_array().map(Vec::len), Some(1));
+    assert_eq!(merged["lines"][0]["tr"], "你好");
+    let kept = normalize(&body(&[("lrc", lrc), ("tlyric", "[00:01.00]哈喽")]));
+    assert_eq!(kept["lines"].as_array().map(Vec::len), Some(2));
+    assert_eq!(kept["lines"][0]["tr"], "哈喽");
+}
