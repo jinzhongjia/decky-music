@@ -10,6 +10,7 @@ import { DialogButton, Focusable, GamepadButton } from "@decky/ui";
 import { RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useAsync } from "../ui/useAsync";
+import { activeLineIndex } from "../ui/lyricActive";
 import {
   FaPause,
   FaPlay,
@@ -254,12 +255,8 @@ function useLyricPosition(lyric: Lyric | null, posMs: number) {
   const activeRef = useRef<HTMLDivElement>(null);
   const manualUntil = useRef(0);
   const positionedLyric = useRef<Lyric | null>(null);
-  const lines = lyric?.lines ?? [];
-  let active = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].t_ms <= posMs) active = i;
-    else break;
-  }
+  // 长间奏 / 尾奏时 active=-1:不高亮、不滚动,停在上一句的位置
+  const active = activeLineIndex(lyric?.lines ?? [], posMs);
 
   useLayoutEffect(() => {
     if (!lyric?.lines.length) {
