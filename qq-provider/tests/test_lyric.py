@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import json
 import os
 import sys
 import unittest
@@ -12,6 +13,11 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from qq.lyric import _align_translation, _parse_lrc, get_lyric  # noqa: E402
+
+# 与 ncm-provider/src/lyric/tests.rs 共用的逐行 LRC 用例(仓库根 tests/fixtures/)
+_SHARED_CASES = os.path.join(
+    os.path.dirname(__file__), "..", "..", "tests", "fixtures", "lyric_lrc_cases.json"
+)
 
 
 def _times(lines):
@@ -24,6 +30,16 @@ def _texts(lines):
 
 def _trs(lines):
     return [ln["tr"] for ln in lines]
+
+
+def _run_get_lyric(lyric, trans):
+    resp = SimpleNamespace(lyric=lyric, trans=trans)
+
+    async def fake(mid, **kwargs):
+        return resp
+
+    q = SimpleNamespace(client=SimpleNamespace(lyric=SimpleNamespace(get_lyric=fake)))
+    return asyncio.run(get_lyric(q, "mid"))
 
 
 class TestParseLrc(unittest.TestCase):
@@ -109,25 +125,34 @@ class TestAlign(unittest.TestCase):
         trans = "[00:01.00]你好\n[00:02.00]......\n[00:05.50]远"
         self.assertEqual(self._align(main, trans), ["你好", "", ""])
 
+    def test_keeps_existing_translation(self):
+        lines = _parse_lrc("[00:01.00]Hello\n[00:01.00]你好", merge_embedded=True)
+        _align_translation(lines, _parse_lrc("[00:01.00]哈喽"))
+        self.assertEqual(_trs(lines), ["你好"])
+
 
 class TestGetLyric(unittest.TestCase):
-    def _run(self, lyric, trans):
-        resp = SimpleNamespace(lyric=lyric, trans=trans)
-
-        async def fake(mid, **kwargs):
-            return resp
-
-        q = SimpleNamespace(client=SimpleNamespace(lyric=SimpleNamespace(get_lyric=fake)))
-        return asyncio.run(get_lyric(q, "mid"))
-
     def test_embedded_merge_only_without_external_translation(self):
         raw = "[00:01.00]Hello\n[00:01.00]你好"
-        merged = self._run(raw, None)
+        merged = _run_get_lyric(raw, None)
         self.assertEqual(merged["word_by_word"], False)
         self.assertEqual(_trs(merged["lines"]), ["你好"])
-        kept = self._run(raw, "[00:01.00]哈喽")
+        kept = _run_get_lyric(raw, "[00:01.00]哈喽")
         self.assertEqual(_texts(kept["lines"]), ["Hello", "你好"])
         self.assertEqual(kept["lines"][0]["tr"], "哈喽")
+
+    def test_missing_text_gives_empty_lyric(self):
+        self.assertEqual(_run_get_lyric(None, None), {"word_by_word": False, "lines": []})
+
+    def test_shared_lrc_cases(self):
+        """与 NCM 端同一份用例:逐行 LRC + 译文的归一化输出必须逐行一致。"""
+        with open(_SHARED_CASES, encoding="utf-8") as f:
+            cases = json.load(f)["cases"]
+        self.assertTrue(cases)
+        for case in cases:
+            with self.subTest(case["name"]):
+                out = _run_get_lyric(case["lrc"], case["trans"])
+                self.assertEqual(out["lines"], case["lines"])
 
 
 if __name__ == "__main__":

@@ -177,3 +177,84 @@ fn normalize_merges_embedded_only_without_external_translation() {
     assert_eq!(kept["lines"].as_array().map(Vec::len), Some(2));
     assert_eq!(kept["lines"][0]["tr"], "哈喽");
 }
+
+/// 与 qq-provider/tests/test_lyric.py 共用同一份用例,保证两端逐行 LRC 解析一致。
+#[test]
+fn shared_lrc_cases_match_fixture() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/lyric_lrc_cases.json"))
+            .expect("fixture is valid JSON");
+    let cases = fixture["cases"].as_array().expect("cases array");
+    assert!(!cases.is_empty());
+    for case in cases {
+        let lrc = case["lrc"].as_str().unwrap_or_default();
+        let trans = case["trans"].as_str().unwrap_or_default();
+        let out = normalize(&body(&[("lrc", lrc), ("tlyric", trans)]));
+        assert_eq!(out["word_by_word"], false, "{}", case["name"]);
+        assert_eq!(out["lines"], case["lines"], "{}", case["name"]);
+    }
+}
+
+#[test]
+fn yrc_invalid_duration_has_no_end() {
+    let l = parse_yrc("[1000,x](1000,200,0)a");
+    assert_eq!(texts(&l), ["a"]);
+    assert_eq!(l[0].end_ms, None);
+}
+
+#[test]
+fn yrc_word_tag_shapes() {
+    // 两段标签可用;四段不是时间标签,按正文保留
+    let l = parse_yrc("[1000,500](1000,200)a(1200,300,0,9)b");
+    let words: Vec<&str> = l[0].words.iter().map(|w| w.text.as_str()).collect();
+    assert_eq!(words, ["a(1200,300,0,9)b"]);
+}
+
+#[test]
+fn yrc_drops_leading_text_and_sorts_lines() {
+    let l = parse_yrc("[2000,100]junk(2000,100,0)b\n[1000,100](1000,100,0)a");
+    assert_eq!(texts(&l), ["a", "b"]);
+}
+
+#[test]
+fn align_keeps_existing_translation() {
+    let mut l = parse_lrc("[00:01.00]Hello\n[00:01.00]你好", true);
+    align_translation(&mut l, &parse_lrc("[00:01.00]哈喽", false));
+    assert_eq!(trs(&l), ["你好"]);
+}
+
+#[test]
+fn normalize_picks_translation_source_by_mode() {
+    let tr = [
+        ("ytlrc", "[00:01.00]逐字译"),
+        ("tlyric", "[00:01.00]逐行译"),
+    ];
+    let yrc = normalize(&body(&[("yrc", "[1000,500](1000,500,0)a"), tr[0], tr[1]]));
+    assert_eq!(yrc["lines"][0]["tr"], "逐字译");
+    let lrc = normalize(&body(&[("lrc", "[00:01.00]a"), tr[0], tr[1]]));
+    assert_eq!(lrc["lines"][0]["tr"], "逐行译");
+}
+
+#[test]
+fn normalize_empty_body() {
+    assert_eq!(
+        normalize(&json!({})),
+        json!({ "word_by_word": false, "lines": [] })
+    );
+}
+
+#[test]
+fn parsers_never_panic_on_truncated_input() {
+    // 在每个字符边界截断(含多字节字符、半截标签、未闭合括号),只要求不 panic
+    let samples = [
+        "\u{feff}[00:01:23]你好(世界)\n[00:0",
+        "[3620,3870](3620,550,0)房(4170,230,0)间(7020,4",
+        "[1,2](1,2,0)a(b(c,d)\n{\"t\":0}",
+    ];
+    for s in samples {
+        for i in s.char_indices().map(|(i, _)| i).chain([s.len()]) {
+            parse_lrc(&s[..i], true);
+            parse_yrc(&s[..i]);
+        }
+    }
+}
