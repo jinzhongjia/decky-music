@@ -20,30 +20,51 @@ _PLACEHOLDER = set("/\\_-—~～·•….。")
 # 译文行首与主歌词行首的最大允许偏差(毫秒)
 ALIGN_TOLERANCE_MS = 300
 
+# 时间值上限:前端是 JS number,超过安全整数的标签视为非法(与 Rust 端同值)
+MAX_TIME_MS = 9_007_199_254_740_991
+
+# 空白字符取 Unicode White_Space,与 Rust 的 trim / char::is_whitespace 一致
+# (str.isspace 还含 \x1c-\x1f,不能直接用 strip())
+_WS = (
+    "\t\n\x0b\x0c\r \x85\xa0\u1680"
+    + "".join(map(chr, range(0x2000, 0x200B)))
+    + "\u2028\u2029\u202f\u205f\u3000"
+)
+
 
 def _is_placeholder(text: str) -> bool:
-    return all(c.isspace() or c in _PLACEHOLDER for c in text)
+    return all(c in _WS or c in _PLACEHOLDER for c in text)
 
 
-def _tag_ms(m: re.Match) -> int:
+def _tag_ms(m: re.Match) -> int | None:
+    """时间标签 → 毫秒;超过 MAX_TIME_MS(或数字串长到 int() 拒绝)返回 None,同 Rust 端。"""
     mm, ss, frac = m.groups()
-    return int(mm) * 60000 + int(ss) * 1000 + int(((frac or "") + "000")[:3])
+    try:
+        t = int(mm) * 60000 + int(ss) * 1000 + int(((frac or "") + "000")[:3])
+    except ValueError:
+        return None
+    return t if t <= MAX_TIME_MS else None
 
 
-def _entries(text: str) -> list[tuple[int, str]]:
-    """LRC → [(t_ms, 正文)],按时间稳定排序(同时间戳原文在前);一行多标签拆多条。
+def _entries(text: str) -> list[tuple[int, str, int, bool]]:
+    """LRC → [(t_ms, 正文, 源行序号, 源行是否单标签)],按时间稳定排序(同时间戳原文在前)。
 
-    正文为空或是占位时记为 "",作为间奏标记保留。
+    一行多标签拆多条;源行序号只计带时间标签的行,用来判断「原文 + 译文」双行是否相邻。
+    正文为空或是占位时记为 "",作为间奏标记保留。按 \\n 分行并去掉行尾 \\r,与 Rust str::lines 一致。
     """
-    out: list[tuple[int, str]] = []
-    for raw in text.splitlines():
-        rest, times = raw.lstrip("\ufeff \t"), []
-        while m := _TAG.match(rest):
-            times.append(_tag_ms(m))
+    out: list[tuple[int, str, int, bool]] = []
+    src = 0
+    for raw in text.split("\n"):
+        rest, times = raw.removesuffix("\r").lstrip("\ufeff").lstrip(_WS), []
+        while (m := _TAG.match(rest)) and (t := _tag_ms(m)) is not None:
+            times.append(t)
             rest = rest[m.end() :]
-        body = rest.strip()
+        if not times:
+            continue
+        body = rest.strip(_WS)
         body = "" if _is_placeholder(body) else body
-        out.extend((t, body) for t in times)
+        out.extend((t, body, src, len(times) == 1) for t in times)
+        src += 1
     out.sort(key=lambda e: e[0])
     return out
 
@@ -71,18 +92,24 @@ def _merge_embedded(lines: list[dict], t_ms: int, text: str) -> bool:
 def _parse_lrc(text: str, merge_embedded: bool = False) -> list[dict]:
     """LRC → [{t_ms, end_ms?, text, tr}];end_ms 取下一个时间点(含间奏标记),末行未知则缺省。
 
-    merge_embedded:合并同时间戳「原文 + 译文」(仅在没有独立译文时开启)。
+    merge_embedded:合并同时间戳「原文 + 译文」(仅在没有独立译文时开启)。只合并源文件里
+    紧挨着的两个单标签行,多标签行(副歌复用)展开后撞上同时间戳的另一句不算译文。
     """
     entries = _entries(text)
     out: list[dict] = []
-    for i, (t, body) in enumerate(entries):
-        if not body or (merge_embedded and _merge_embedded(out, t, body)):
+    prev_src = None  # 上一输出行的源行序号(仅单标签行),用于判断相邻
+    for i, (t, body, src, single) in enumerate(entries):
+        if not body:
+            continue
+        adjacent = single and prev_src is not None and prev_src + 1 == src
+        if merge_embedded and adjacent and _merge_embedded(out, t, body):
             continue
         line = {"t_ms": t, "text": body, "tr": ""}
-        end = next((n for n, _ in entries[i + 1 :] if n > t), None)
+        end = next((e[0] for e in entries[i + 1 :] if e[0] > t), None)
         if end is not None:
             line["end_ms"] = end
         out.append(line)
+        prev_src = src if single else None
     return out
 
 

@@ -103,6 +103,45 @@
       "lrc": "",
       "trans": "",
       "lines": []
+    },
+    {
+      "name": "multi_tag_line_not_merged_as_translation",
+      "lrc": "[00:05.00]B\n[00:01.00][00:05.00]A",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 5000, "text": "A", "tr": "" },
+        { "t_ms": 5000, "text": "B", "tr": "" },
+        { "t_ms": 5000, "text": "A", "tr": "" }
+      ]
+    },
+    {
+      "name": "non_adjacent_same_time_not_merged",
+      "lrc": "[00:01.00]Hello\n[00:02.00]x\n[00:01.00]World",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 2000, "text": "Hello", "tr": "" },
+        { "t_ms": 1000, "end_ms": 2000, "text": "World", "tr": "" },
+        { "t_ms": 2000, "text": "x", "tr": "" }
+      ]
+    },
+    {
+      "name": "unicode_whitespace_and_line_breaks",
+      "lrc": "\u3000[00:01.00]\u3000a\u3000\r\n[00:02.00]b\u2028c\n[00:03.00]\u001fd",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 2000, "text": "a", "tr": "" },
+        { "t_ms": 2000, "end_ms": 3000, "text": "b\u2028c", "tr": "" },
+        { "t_ms": 3000, "text": "\u001fd", "tr": "" }
+      ]
+    },
+    {
+      "name": "out_of_range_time_rejected",
+      "lrc": "[99999999999999999999:00.00]huge\n[150119987580:00.00]over\n[150119987579:00.00]max\n[00:01.00]ok",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 9007199254740000, "text": "ok", "tr": "" },
+        { "t_ms": 9007199254740000, "text": "max", "tr": "" }
+      ]
     }
   ]
 }

@@ -9,6 +9,9 @@ use serde_json::{json, Value};
 /// 译文行首与主歌词行首的最大允许偏差(毫秒):tlyric 是厘秒精度,YRC 是毫秒精度。
 pub(super) const ALIGN_TOLERANCE_MS: i64 = 300;
 
+/// 时间值上限:前端是 JS number,超过安全整数的标签视为非法(也保证运算不溢出)。
+pub(super) const MAX_TIME_MS: i64 = 9_007_199_254_740_991;
+
 /// 占位字符:QQ / NCM 用 `//` 表示空行间隔或「此行无翻译」,也有整行 `......` 的。
 const PLACEHOLDER_CHARS: &str = "/\\_-—~～·•….。";
 
@@ -55,17 +58,17 @@ fn is_digits(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// 纯数字且不超过 `MAX_TIME_MS`;两个合法值相加不会溢出 i64。
 fn num(s: &str) -> Option<i64> {
     let s = s.trim();
-    if is_digits(s) {
-        s.parse().ok()
-    } else {
-        None
+    if !is_digits(s) {
+        return None;
     }
+    s.parse().ok().filter(|&n| n <= MAX_TIME_MS)
 }
 
 /// `mm:ss` / `mm:ss.f…` / `mm:ss:f…` → 毫秒(.5→500 .34→340 .3456→345);
-/// 非数字标签(如 `ti:` / `ar:`)返回 None。
+/// 非数字标签(如 `ti:` / `ar:`)或超过 `MAX_TIME_MS` 返回 None。
 fn parse_time_tag(tag: &str) -> Option<i64> {
     let (mm, rest) = tag.split_once(':')?;
     let (ss, frac) = rest.split_once(['.', ':']).unwrap_or((rest, ""));
@@ -73,17 +76,29 @@ fn parse_time_tag(tag: &str) -> Option<i64> {
         return None;
     }
     let ms: String = frac.chars().chain("000".chars()).take(3).collect();
-    Some(
-        mm.parse::<i64>().ok()? * 60_000
-            + ss.parse::<i64>().ok()? * 1000
-            + ms.parse::<i64>().ok()?,
-    )
+    let t = mm
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(60_000)?
+        .checked_add(ss.parse::<i64>().ok()?.checked_mul(1000)?)?
+        .checked_add(ms.parse::<i64>().ok()?)?;
+    (t <= MAX_TIME_MS).then_some(t)
 }
 
-/// LRC → (时间, 正文),按时间稳定排序(同时间戳保持原文在前);一行多标签拆多条。
+/// LRC 的一个时间点。`src` 是带时间标签的源行序号,`single` 表示源行只有一个标签;
+/// 二者用来判断两条同时间戳的条目是否是相邻的「原文 + 译文」双行。
+struct Entry {
+    t_ms: i64,
+    body: String,
+    src: usize,
+    single: bool,
+}
+
+/// LRC → 条目,按时间稳定排序(同时间戳保持原文在前);一行多标签拆多条。
 /// 正文为空或是占位时记为空串,作为间奏标记保留。
-fn lrc_entries(text: &str) -> Vec<(i64, String)> {
+fn lrc_entries(text: &str) -> Vec<Entry> {
     let mut out = Vec::new();
+    let mut src = 0;
     for raw in text.lines() {
         let mut rest = raw.trim_start_matches('\u{feff}').trim_start();
         let mut times = Vec::new();
@@ -95,11 +110,21 @@ fn lrc_entries(text: &str) -> Vec<(i64, String)> {
             times.push(ms);
             rest = &inner[close + 1..];
         }
+        if times.is_empty() {
+            continue;
+        }
         let body = rest.trim();
         let body = if is_placeholder(body) { "" } else { body };
-        out.extend(times.into_iter().map(|t| (t, body.to_string())));
+        let single = times.len() == 1;
+        out.extend(times.into_iter().map(|t_ms| Entry {
+            t_ms,
+            body: body.to_string(),
+            src,
+            single,
+        }));
+        src += 1;
     }
-    out.sort_by_key(|e| e.0);
+    out.sort_by_key(|e| e.t_ms);
     out
 }
 
@@ -122,22 +147,33 @@ fn merge_embedded(prev: Option<&mut Line>, t_ms: i64, text: &str) -> bool {
 }
 
 /// 逐行 LRC → Line(无 words)。`merge_embedded`:把同时间戳「原文 + 译文」合并(仅在没有
-/// 独立译文时开启,避免把真正的同刻歌词吞成译文)。
+/// 独立译文时开启,避免把真正的同刻歌词吞成译文)。只合并源文件里紧挨着的两个单标签行,
+/// 多标签行(副歌复用)展开后撞上同时间戳的另一句不算译文。
 pub(super) fn parse_lrc(text: &str, merge_embedded_tr: bool) -> Vec<Line> {
     let entries = lrc_entries(text);
     let mut out: Vec<Line> = Vec::new();
-    for (i, (t, body)) in entries.iter().enumerate() {
-        if body.is_empty() || (merge_embedded_tr && merge_embedded(out.last_mut(), *t, body)) {
+    // 上一输出行的源行序号(仅单标签行),用于判断相邻
+    let mut prev_src: Option<usize> = None;
+    for (i, e) in entries.iter().enumerate() {
+        if e.body.is_empty() {
             continue;
         }
-        let end_ms = entries[i + 1..].iter().map(|e| e.0).find(|&n| n > *t);
+        let adjacent = e.single && prev_src.is_some_and(|p| p + 1 == e.src);
+        if merge_embedded_tr && adjacent && merge_embedded(out.last_mut(), e.t_ms, &e.body) {
+            continue;
+        }
+        let end_ms = entries[i + 1..]
+            .iter()
+            .map(|n| n.t_ms)
+            .find(|&n| n > e.t_ms);
         out.push(Line {
-            t_ms: *t,
+            t_ms: e.t_ms,
             end_ms,
-            text: body.clone(),
+            text: e.body.clone(),
             tr: String::new(),
             words: Vec::new(),
         });
+        prev_src = e.single.then_some(e.src);
     }
     out
 }
@@ -164,7 +200,7 @@ pub(super) fn parse_yrc(text: &str) -> Vec<Line> {
         }
         out.push(Line {
             t_ms: start,
-            end_ms: dur.map(|d| start + d),
+            end_ms: dur.map(|d| start + d).filter(|&e| e <= MAX_TIME_MS),
             text,
             tr: String::new(),
             words,

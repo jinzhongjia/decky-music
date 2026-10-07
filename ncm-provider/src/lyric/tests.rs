@@ -203,6 +203,16 @@ fn yrc_invalid_duration_has_no_end() {
 }
 
 #[test]
+fn yrc_out_of_range_times() {
+    // 行头超出安全整数跳过整行;行尾超出时只丢 end_ms;超大值不会溢出 panic
+    let l = parse_yrc(
+        "[99999999999999999999,1](1,1,0)skip\n[9007199254740991,10](1,1,0)a\n[1000,500](1000,500,0)b",
+    );
+    assert_eq!(texts(&l), ["b", "a"]);
+    assert_eq!((l[0].end_ms, l[1].end_ms), (Some(1500), None));
+}
+
+#[test]
 fn yrc_word_tag_shapes() {
     // 两段标签可用;四段不是时间标签,按正文保留
     let l = parse_yrc("[1000,500](1000,200)a(1200,300,0,9)b");
@@ -250,6 +260,7 @@ fn parsers_never_panic_on_truncated_input() {
         "\u{feff}[00:01:23]你好(世界)\n[00:0",
         "[3620,3870](3620,550,0)房(4170,230,0)间(7020,4",
         "[1,2](1,2,0)a(b(c,d)\n{\"t\":0}",
+        "[99999999999:99999999999.9999]x\n[9223372036854775807,9223372036854775807](9223372036854775807,1,0)y",
     ];
     for s in samples {
         for i in s.char_indices().map(|(i, _)| i).chain([s.len()]) {
