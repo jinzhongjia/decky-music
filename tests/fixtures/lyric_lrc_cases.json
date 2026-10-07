@@ -1,0 +1,147 @@
+{
+  "description": "逐行 LRC + 译文的归一化期望输出。ncm-provider/src/lyric/tests.rs 与 qq-provider/tests/test_lyric.py 共用，保证两端解析规则一致；改规则时两端与本文件同步更新。",
+  "cases": [
+    {
+      "name": "time_tag_variants",
+      "lrc": "[00:12]a\n[00:13:96]b\n[00:14.3456]c\n[0x:15.00]bad",
+      "trans": "",
+      "lines": [
+        { "t_ms": 12000, "end_ms": 13960, "text": "a", "tr": "" },
+        { "t_ms": 13960, "end_ms": 14345, "text": "b", "tr": "" },
+        { "t_ms": 14345, "text": "c", "tr": "" }
+      ]
+    },
+    {
+      "name": "bom_crlf_and_meta",
+      "lrc": "\ufeff[ti:x]\r\n[00:01.00]first\r\n[00:02.00]second\r\n",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 2000, "text": "first", "tr": "" },
+        { "t_ms": 2000, "text": "second", "tr": "" }
+      ]
+    },
+    {
+      "name": "interlude_markers",
+      "lrc": "[00:01.00]a\n[00:03.00]\n[00:05.00]//\n[00:06.00]......\n[00:20.00]b",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 3000, "text": "a", "tr": "" },
+        { "t_ms": 20000, "text": "b", "tr": "" }
+      ]
+    },
+    {
+      "name": "only_leading_tags",
+      "lrc": "[00:01.00]see [00:02.00] here",
+      "trans": "",
+      "lines": [{ "t_ms": 1000, "text": "see [00:02.00] here", "tr": "" }]
+    },
+    {
+      "name": "multi_tag_translation",
+      "lrc": "[00:01.00][00:05.00]repeat\n[00:03.00]mid",
+      "trans": "[00:01.00][00:05.00]重复\n[00:03.00]中",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 3000, "text": "repeat", "tr": "重复" },
+        { "t_ms": 3000, "end_ms": 5000, "text": "mid", "tr": "中" },
+        { "t_ms": 5000, "text": "repeat", "tr": "重复" }
+      ]
+    },
+    {
+      "name": "align_drift_and_nearest_line",
+      "lrc": "[00:01.00]a\n[00:01.20]b\n[00:10.00]c",
+      "trans": "[00:01.18]乙\n[00:10.25]丙\n[00:30.00]远",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 1200, "text": "a", "tr": "" },
+        { "t_ms": 1200, "end_ms": 10000, "text": "b", "tr": "乙" },
+        { "t_ms": 10000, "text": "c", "tr": "丙" }
+      ]
+    },
+    {
+      "name": "align_nearest_translation",
+      "lrc": "[00:05.00]x",
+      "trans": "[00:04.80]early\n[00:05.00]exact",
+      "lines": [{ "t_ms": 5000, "text": "x", "tr": "exact" }]
+    },
+    {
+      "name": "placeholder_translation",
+      "lrc": "[00:01.00]hello\n[00:02.00]world\n[00:03.00]again",
+      "trans": "[00:01.00]你好\n[00:02.00]//\n[00:03.00]。",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 2000, "text": "hello", "tr": "你好" },
+        { "t_ms": 2000, "end_ms": 3000, "text": "world", "tr": "" },
+        { "t_ms": 3000, "text": "again", "tr": "" }
+      ]
+    },
+    {
+      "name": "embedded_translation_merge",
+      "lrc": "[00:00.00]作词：甲\n[00:00.00]作曲：乙\n[00:05.00]Hello\n[00:05.00]你好\n[00:08.00]la\n[00:08.00]la",
+      "trans": "",
+      "lines": [
+        { "t_ms": 0, "end_ms": 5000, "text": "作词：甲", "tr": "" },
+        { "t_ms": 0, "end_ms": 5000, "text": "作曲：乙", "tr": "" },
+        { "t_ms": 5000, "end_ms": 8000, "text": "Hello", "tr": "你好" },
+        { "t_ms": 8000, "text": "la", "tr": "" },
+        { "t_ms": 8000, "text": "la", "tr": "" }
+      ]
+    },
+    {
+      "name": "embedded_merge_disabled_with_translation",
+      "lrc": "[00:01.00]Hello\n[00:01.00]你好",
+      "trans": "[00:01.00]哈喽",
+      "lines": [
+        { "t_ms": 1000, "text": "Hello", "tr": "哈喽" },
+        { "t_ms": 1000, "text": "你好", "tr": "" }
+      ]
+    },
+    {
+      "name": "meta_only_translation_counts_as_none",
+      "lrc": "[00:01.00]Hello\n[00:01.00]你好",
+      "trans": "[by:someone]",
+      "lines": [{ "t_ms": 1000, "text": "Hello", "tr": "你好" }]
+    },
+    {
+      "name": "empty",
+      "lrc": "",
+      "trans": "",
+      "lines": []
+    },
+    {
+      "name": "multi_tag_line_not_merged_as_translation",
+      "lrc": "[00:05.00]B\n[00:01.00][00:05.00]A",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 5000, "text": "A", "tr": "" },
+        { "t_ms": 5000, "text": "B", "tr": "" },
+        { "t_ms": 5000, "text": "A", "tr": "" }
+      ]
+    },
+    {
+      "name": "non_adjacent_same_time_not_merged",
+      "lrc": "[00:01.00]Hello\n[00:02.00]x\n[00:01.00]World",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 2000, "text": "Hello", "tr": "" },
+        { "t_ms": 1000, "end_ms": 2000, "text": "World", "tr": "" },
+        { "t_ms": 2000, "text": "x", "tr": "" }
+      ]
+    },
+    {
+      "name": "unicode_whitespace_and_line_breaks",
+      "lrc": "\u3000[00:01.00]\u3000a\u3000\r\n[00:02.00]b\u2028c\n[00:03.00]\u001fd",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 2000, "text": "a", "tr": "" },
+        { "t_ms": 2000, "end_ms": 3000, "text": "b\u2028c", "tr": "" },
+        { "t_ms": 3000, "text": "\u001fd", "tr": "" }
+      ]
+    },
+    {
+      "name": "out_of_range_time_rejected",
+      "lrc": "[99999999999999999999:00.00]huge\n[150119987580:00.00]over\n[150119987579:00.00]max\n[00:01.00]ok",
+      "trans": "",
+      "lines": [
+        { "t_ms": 1000, "end_ms": 9007199254740000, "text": "ok", "tr": "" },
+        { "t_ms": 9007199254740000, "text": "max", "tr": "" }
+      ]
+    }
+  ]
+}

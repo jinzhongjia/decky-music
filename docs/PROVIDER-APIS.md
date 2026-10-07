@@ -23,8 +23,9 @@
 
 ## 歌词 Lyric
 
-- **QQ (`lyric`)**：`get_lyric`（待暴露；含翻译 / 罗马音）。
-- **NCM**：`lyric`（已验证基础能力）、`lyric_new`（待暴露；逐字 / 翻译）、`cloud_lyric_get`。
+- **QQ (`lyric`)**：`get_lyric`（已实现逐行 + 翻译；罗马音、QRC 逐字待接）。
+- **NCM**：`lyric_new`（已实现逐字 YRC / 逐行 LRC + 翻译；罗马音待接）、`lyric`、`cloud_lyric_get`。
+- 两端归一化规则一致（时间标签变体、间奏标记与 `end_ms`、译文就近对齐、内嵌译文合并），见 `ncm-provider/src/lyric/parse.rs` 与 `qq-provider/qq/lyric.py` 文件头。
 
 ## 歌单 Playlist
 

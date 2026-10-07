@@ -111,10 +111,17 @@ export type CommentsResult = { ok: boolean; comments: Comment[]; error?: string 
 // 热搜词(P6;qq get_hotkey / ncm search_hot_detail 归一化):label hot|new|none
 export type HotKeyword = { keyword: string; label: "hot" | "new" | "none" };
 export type HotSearchResult = { ok: boolean; keywords: HotKeyword[]; error?: string };
-// 归一化歌词(provider 出,见 qq/lyric.py、ncm-provider/src/lyric.rs)。
+// 归一化歌词(provider 出,见 qq/lyric.py、ncm-provider/src/lyric/parse.rs)。
 // word_by_word=true 时 line 带 words[](逐字高亮,NCM);否则整行高亮(QQ)。tr=该行译文(可空)。
+// end_ms=该行结束时间(YRC 行时长 / LRC 下一时间点,未知则缺省),用于识别长间奏。
 export type LyricWord = { t_ms: number; dur_ms: number; text: string };
-export type LyricLine = { t_ms: number; text: string; tr?: string; words?: LyricWord[] };
+export type LyricLine = {
+  t_ms: number;
+  end_ms?: number;
+  text: string;
+  tr?: string;
+  words?: LyricWord[];
+};
 export type Lyric = { word_by_word: boolean; lines: LyricLine[] };
 export type ProviderState = { provider: Provider; loggedIn: boolean; error?: string | null };
 export type Account = {

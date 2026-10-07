@@ -10,6 +10,7 @@ import { DialogButton, Focusable, GamepadButton } from "@decky/ui";
 import { RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useAsync } from "../ui/useAsync";
+import { activeLineIndex, startedLineIndex } from "../ui/lyricActive";
 import {
   FaPause,
   FaPlay,
@@ -251,15 +252,14 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
 
 function useLyricPosition(lyric: Lyric | null, posMs: number) {
   const boxRef = useRef<HTMLDivElement>(null);
-  const activeRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const manualUntil = useRef(0);
   const positionedLyric = useRef<Lyric | null>(null);
+  // 滚动跟随 anchor(最后已开始的行),高亮跟随 active:长间奏 / 尾奏时 active=-1 不高亮,
+  // anchor 仍停在上一句,间奏中打开页面也能就位
   const lines = lyric?.lines ?? [];
-  let active = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].t_ms <= posMs) active = i;
-    else break;
-  }
+  const anchor = startedLineIndex(lines, posMs);
+  const active = activeLineIndex(lines, posMs);
 
   useLayoutEffect(() => {
     if (!lyric?.lines.length) {
@@ -267,7 +267,7 @@ function useLyricPosition(lyric: Lyric | null, posMs: number) {
       return;
     }
     const box = boxRef.current;
-    const line = activeRef.current;
+    const line = anchorRef.current;
     if (!box || !line || box.clientHeight === 0 || Date.now() < manualUntil.current) return;
     const top = line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2;
     if (positionedLyric.current !== lyric) {
@@ -278,13 +278,13 @@ function useLyricPosition(lyric: Lyric | null, posMs: number) {
       // 只有已显示歌词的正常换句才平滑跟随;不滚动外层 Steam 页面。
       box.scrollTo({ top, behavior: "smooth" });
     }
-  }, [lyric, active]);
+  }, [lyric, anchor]);
 
-  return { boxRef, activeRef, manualUntil, active };
+  return { boxRef, anchorRef, manualUntil, anchor, active };
 }
 
 function LyricView({ lyric, posMs }: { lyric: Lyric | null; posMs: number }) {
-  const { boxRef, activeRef, manualUntil, active } = useLyricPosition(lyric, posMs);
+  const { boxRef, anchorRef, manualUntil, anchor, active } = useLyricPosition(lyric, posMs);
   const lines = lyric?.lines ?? [];
   const empty = lines.length === 0;
   return (
@@ -317,7 +317,8 @@ function LyricView({ lyric, posMs }: { lyric: Lyric | null; posMs: number }) {
             key={i}
             line={line}
             active={i === active}
-            activeRef={activeRef}
+            anchor={i === anchor}
+            anchorRef={anchorRef}
             wordByWord={lyric.word_by_word}
             posMs={posMs}
           />
@@ -330,19 +331,21 @@ function LyricView({ lyric, posMs }: { lyric: Lyric | null; posMs: number }) {
 function LyricRow({
   line,
   active,
-  activeRef,
+  anchor,
+  anchorRef,
   wordByWord,
   posMs,
 }: {
   line: LyricLine;
   active: boolean;
-  activeRef: RefObject<HTMLDivElement>;
+  anchor: boolean;
+  anchorRef: RefObject<HTMLDivElement>;
   wordByWord: boolean;
   posMs: number;
 }) {
   return (
     <div
-      ref={active ? activeRef : undefined}
+      ref={anchor ? anchorRef : undefined}
       aria-current={active ? "true" : undefined}
       style={{
         textAlign: "center",
