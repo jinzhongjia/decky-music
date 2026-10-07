@@ -80,3 +80,10 @@ test("the gap threshold is exclusive of shorter breaths", () => {
   assert.equal(lyric.activeLineIndex(edge, 2000), 0);
   assert.equal(lyric.activeLineIndex(edge, 12000), -1);
 });
+
+test("the scroll anchor stays on the previous line through interludes", () => {
+  assert.equal(lyric.startedLineIndex(lines, 500), -1);
+  assert.equal(lyric.startedLineIndex(lines, 5000), 1);
+  assert.equal(lyric.startedLineIndex(lines, 17000), 2);
+  assert.equal(lyric.startedLineIndex([], 5000), -1);
+});
