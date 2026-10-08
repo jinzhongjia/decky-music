@@ -261,20 +261,12 @@ def install_remote(name, override, expected, upload):
         plugin = unpack_plugin(Path(upload) / "plugin.zip", Path(temporary), name)
         binary_dir = plugin / "bin"
         binary_dir.mkdir(exist_ok=True)
-        for source, target in (
-            ("player", "player"),
-            ("ncm-provider", "ncm-provider"),
-            ("qq-provider.tar.gz", "qq-provider"),
-        ):
-            artifact = Path(upload) / source
+        for binary in ("player", "provider"):
+            artifact = Path(upload) / binary
             if artifact.is_file():
-                destination = binary_dir / target
-                if destination.is_dir():
-                    shutil.rmtree(destination)
+                destination = binary_dir / binary
                 shutil.copyfile(artifact, destination)
-                destination.chmod(0o755 if source != "qq-provider.tar.gz" else 0o644)
-        # QQ's archive is kept verbatim, like Decky's remote_binary installer;
-        # the bridge's existing qq_exe() extracts it on first use.
+                destination.chmod(0o755)
         (plugin / "dev_mode").touch()
         set_writable_ownership(plugin, account)
         plugins = preflight(name, override, expected)
@@ -339,8 +331,7 @@ def upload_and_install(host, name, override, plugins, archive):
         artifacts = [
             (Path(archive), "plugin.zip"),
             (Path("target/release/player"), "player"),
-            (Path("target/release/ncm-provider"), "ncm-provider"),
-            (Path("qq-provider/build/qq-provider.tar.gz"), "qq-provider.tar.gz"),
+            (Path("target/release/provider"), "provider"),
         ]
         for artifact, filename in artifacts:
             if artifact.is_file():

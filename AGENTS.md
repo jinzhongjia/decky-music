@@ -4,8 +4,8 @@
 
 以下为使用的库:
 
-- https://github.com/L-1124/QQMusicApi —— QQ 音乐 provider(Python 库)
-- https://github.com/SPlayer-Dev/ncm-api-rs —— 网易云 provider(Rust 库)
+- https://github.com/jinzhongjia/QQMusicApi-rs —— QQ 音乐后端(Rust 库,L-1124/QQMusicApi 的 Rust 实现)
+- https://github.com/jinzhongjia/ncm-api-rs(`feat/sync-upstream-2026-10` 分支)—— 网易云后端(Rust 库)
 - https://github.com/SteamDeckHomebrew/decky-loader —— 插件宿主 / API 来源
 - rodio + reqwest(rustls-tls)—— player 拉流/解码/输出
 - @decky/api + @decky/ui —— 前端
@@ -13,6 +13,8 @@
 ## 架构速览
 
 UI 只跟 bridge 说话;bridge 是唯一常驻的真相源;provider / player 是插件沙盒外的独立二进制。
+provider 是**一个**常驻进程,同时承载 QQ 与网易云两个后端:请求顶层带 `provider` 字段路由,
+切换音源只换 bridge 的音源令牌(`Selection`),不再换进程。
 bridge 包含播放与队列的控制决策(`Playback`):普通队列/电台、自动切歌、失败重试和状态回灌。
 音源 API 与可播 URL 解析归 provider,拉流/解码/出声归 player;不能把队列决策移回 UI 或子进程。
 
@@ -21,7 +23,7 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
                                               │  UDS + NDJSON,bridge 作 server
                             ┌─────────────────┴─────────────────┐
                       provider 进程                          player 进程
-                 qq: Python+Nuitka / ncm: Rust                 Rust
+               Rust:qq + ncm 两个后端同进程                   Rust
                  出元数据·歌词·可播 URL                    拉流·解码·出声
 ```
 
@@ -33,8 +35,8 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
 - `py_modules/` —— bridge 实现:`bridge.py` 生命周期门面、`ipc.py` 连接与事件代次、`music_settings.py` 归一化与私有持久化、`child_process.py`/`supervision.py` 进程监督、`provider_rpc.py`/`playback_rpc.py` RPC、`playback*.py` 播放/队列/电台、`diagnostics.py`/`log.py` 安全诊断。配置模块避免使用宿主占用的 `settings` 名称；所有模块放这里才被 Decky 加进 sys.path 且被 CLI 打包。
 - `src/` —— React UI:`index.tsx`(`definePlugin` 入口)/ `QAM.tsx`(QAM 面板)/ `Page.tsx`(大屏页,导出 `ROUTE`)/ `api.ts`(前端↔bridge 唯一接口层)/ `errors.ts`+`ErrorBanner.tsx`+`Boundary.tsx`(错误纵深)/ `Footer.tsx` / `i18n.ts`
 - `player/` —— Rust,`reqwest` + `rodio`
-- `ncm-provider/` —— Rust,依赖 ncm-api-rs
-- `qq-provider/` —— Python,依赖 qqmusic_api,Nuitka `--standalone` 打包
+- `provider/` —— Rust,统一音源进程:`src/main.rs` 按请求音源路由,`src/ncm/`(ncm-api-rs)、
+  `src/qq/`(QQMusicApi-rs)两个后端,`src/lyric/` 两家共用的歌词解析
 
 ## Coding rules
 
@@ -48,14 +50,14 @@ UI (React)  ──Decky RPC(callable/emit)──  bridge (main.py)
   已有真机验收记录来自 Steam Deck;非 Deck 设备因暂缺硬件仍待验收,不得据本地检查宣称已验证。
   SSH/目录发现与显式覆盖见 `scripts/deploy.sh`。
 - bridge 跑在 Decky 冻结的 CPython 里,**只能用 stdlib**,严禁第三方依赖(编译扩展会随 Decky 升级崩)。
-- 三个二进制通过 Decky `remote_binary`(`package.json`)在安装时下载,不进插件包。
-- **改了 player / provider 代码必须先重建二进制再部署**:`deploy.sh` 只搬运 `target/release/*`
-  和 `qq-provider/build/*.tar.gz` 里**已有**的产物,不自动重建。改了 Rust/Python 后先
-  `bash scripts/build-rust.sh -p <player|ncm-provider>` / `bash scripts/build-qq-provider.sh`
-  再 deploy,否则装的是旧二进制。只改前端则 deploy 会自己 `pnpm build`。
+- player 与 provider 两个二进制通过 Decky `remote_binary`(`package.json`)在安装时下载,不进插件包。
+- **改了 player / provider 代码必须先重建二进制再部署**:`deploy.sh` 只搬运 `target/release/`
+  下**已有**的 `player` / `provider`,不自动重建。改了 Rust 后先
+  `bash scripts/build-rust.sh -p player -p provider` 再 deploy,否则装的是旧二进制。
+  只改前端则 deploy 会自己 `pnpm build`。
 - 构建镜像按 digest 固定,产物经 `scripts/check-binaries.py` 检查 x86-64/glibc ≤ 2.39
-  及 Rust 动态依赖;QQ standalone 内 ELF 一并检查。实际运行至少需要 glibc 2.39,
-  这只是 ABI 边界,不代替音频/控制器/屏幕缩放/睡眠恢复的真机验收。
+  及动态依赖白名单(player 仅多 `libasound`,provider 只允许基础 libc 运行库)。实际运行至少需要
+  glibc 2.39,这只是 ABI 边界,不代替音频/控制器/屏幕缩放/睡眠恢复的真机验收。
 
 ### Setup commands
 
@@ -68,12 +70,9 @@ DECK_HOST=user@ip bash scripts/deploy.sh  # 打包 + rsync 到 SteamOS 设备 + 
 # DECK_HOST 必填、无默认值(见 issue #48);远端 sudo 要口令时另加 DECK_PASS=<口令>
 # 首次会下载并校验固定版本 CLI 到 cli/decky；无宿主 sudo 时可设 DECKY_BUILD_SUDO=0 并传 --build-as-root
 
-cargo build --release -p player          # 各二进制单独构建(走 remote_binary,不进插件包)
-cargo build --release -p ncm-provider
+bash scripts/build-rust.sh -p player -p provider   # 发布 / 部署用:固定 digest 镜像构建并检查 ABI
+cargo build --release -p player -p provider       # 本机快速构建(glibc 可能偏新,不用于发布)
 cargo fmt --all && cargo clippy --workspace   # Rust lint(clippy + rustfmt)
-bash scripts/build-qq-provider.sh         # Nuitka standalone → tar.gz
-
-(cd qq-provider && uv run ruff check .)   # qq-provider lint(ruff);--fix 自动修,ruff format 格式化
 ```
 
 ### 真机开发 / 调试循环
@@ -135,9 +134,8 @@ dev → `logger.setLevel(DEBUG)`(debug 输出);release → `INFO`(debug 过滤,�
 - bridge:`py_modules/log.py` —— `log(source, origin, level, msg)` + `log_child_event` + `pump_stderr`。
   (放 `py_modules/` 才能被 Decky 加进 sys.path 且被 CLI 打包。)子进程的 `{"ev":"log"}` 与
   `{"ev":"error"}` 事件由 bridge 自动落日志；自由文本不受信任，只保留受控类别/错误码，stderr 仅记固定摘要，不原样落盘。
-- player / ncm-provider(Rust):`wire` crate 的 `log_json(LogLevel, place, msg)` 发
-  `{"ev":"log",...}`;player 的音频线程用 `AudioEv::Log`。
-- provider(Python):`qq-provider/log.py` —— `make_log(out)` 返回 `log(level, where, msg)` 发 `{"ev":"log",...}`。
+- player / provider(Rust):`wire` crate 的 `log_json(LogLevel, place, msg)` 发
+  `{"ev":"log",...}`;player 的音频线程用 `AudioEv::Log`。provider 的 qq / ncm 两个后端共用同一写出通道。
 - **子进程的所有诊断走 socket 结构化日志事件**;stderr 只留真正意外(panic/traceback)。
 
 **红线**:绝不记密钥类数据 —— 播放 URL(含限时 vkey)、cookie/credential 一律不进日志。
@@ -166,18 +164,19 @@ bridge 的对外接口 = `Plugin` 类的 `async` 方法(前端 `callable` 调用
 bridge ↔ provider/player 走**协议 v1**(见 issue #31)。传输仍是 UDS + NDJSON、bridge 作 server、
 每条一行 JSON。四种消息:
 
-- Request(bridge→child):`{"id":N,"cmd":C,"args":{...}}`
+- Request(bridge→child):`{"id":N,"cmd":C,"args":{...}}`;发给 provider 的请求另带顶层
+  `"provider":"qq"|"ncm"`,由 provider 进程路由到对应后端(缺失 / 未知 → `invalid_request`)
 - Response(child→bridge):`{"id":N,"ok":true,"data":{...}}` 或 `{"id":N,"ok":false,"error":{"code","message"}}`
-- Event(child→bridge):`{"ev":D,"type":T,"data":{...}}`,D ∈ `player`/`login`/`provider`
+- Event(child→bridge):`{"ev":D,"type":T,"data":{...}}`,D ∈ `player`/`login`/`provider`;provider 发的事件
+  另带顶层 `"provider"` 音源标签,bridge 只收当前音源(`Selection`)且当前连接的事件
 - Log(child→bridge):`{"ev":"log","level","where","msg"}`(独立顶层格式)
 
 **构造 / 解码集中在各自的 protocol 模块,业务代码不碰裸 JSON**:
-`py_modules/protocol.py`(bridge,typed decode;连接级分发由 `ipc.Conn` 完成)、`qq-provider/protocol.py`;
+`py_modules/protocol.py`(bridge,typed decode;连接级分发由 `ipc.Conn` 完成);
 Rust 两端共用 `wire` crate(错误码 `ErrorCode`、`LogLevel`、请求解析、响应/事件构造),
-`ncm-provider/src/protocol.rs` 与 `player/src/protocol.rs` 只留各自的命令 args struct。
-改协议时四端 + `src/api.ts` 的
-`PlayerEvent`/`LoginEvent`/`ProviderEvent` 必须同步。协议模块配套单测(`tests/`、`qq-provider/tests/`、
-Rust `#[cfg(test)]`)。
+`provider/src/ncm/protocol.rs` 与 `player/src/protocol.rs` 只留各自的命令 args struct,
+QQ 后端的参数校验在 `provider/src/qq/args.rs`。改协议时 bridge、`wire`、player、provider + `src/api.ts` 的
+`PlayerEvent`/`LoginEvent`/`ProviderEvent` 必须同步。协议模块配套单测(`tests/`、Rust `#[cfg(test)]`)。
 
 要点:
 - **request id**:bridge 递增生成,当前已支持多请求同时在途;[`Conn.request` / `_read_loop`](py_modules/ipc.py)
@@ -210,7 +209,7 @@ Rust `#[cfg(test)]`)。
 ## Release workflow
 
 - 打 tag → GitHub Release → `.github/workflows/release.yml` 用官方 Decky CLI 打包并上传 zip。
-- 三个二进制需另行构建、算 sha256、填回 `package.json` 的 `remote_binary`,并作为 Release asset 上传。
+- player / provider 两个二进制需另行构建、算 sha256、填回 `package.json` 的 `remote_binary`,并作为 Release asset 上传。
 
 ## Agent behavior
 

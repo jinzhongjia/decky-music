@@ -18,11 +18,11 @@ rewrite() {  # $1=tag  $2=file ("-" reads stdin)
 if [ "${1:-}" = "--self-test" ]; then
   sample='{"remote_binary":[
     {"name":"player","url":"https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.4/player-linux-x64","sha256hash":"aaa"},
-    {"name":"qq-provider","url":"https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.2/qq-provider-linux-x64.tar.gz","sha256hash":"bbb"}
+    {"name":"provider","url":"https://github.com/jinzhongjia/decky-music/releases/download/v1.0.0-beta.2/provider-linux-x64","sha256hash":"bbb"}
   ]}'
   out=$(printf '%s' "$sample" | rewrite vX -)
   printf '%s' "$out" | jq -e '.remote_binary[0].url == "https://dl.nvimer.org/decky_music/vX/player-linux-x64"' >/dev/null
-  printf '%s' "$out" | jq -e '.remote_binary[1].url == "https://dl.nvimer.org/decky_music/vX/qq-provider-linux-x64.tar.gz"' >/dev/null
+  printf '%s' "$out" | jq -e '.remote_binary[1].url == "https://dl.nvimer.org/decky_music/vX/provider-linux-x64"' >/dev/null
   printf '%s' "$out" | jq -e '.remote_binary[0].sha256hash == "aaa" and .remote_binary[1].sha256hash == "bbb"' >/dev/null
   echo "cn-package self-test: ok"
   exit 0

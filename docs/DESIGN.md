@@ -16,7 +16,7 @@ Decky 插件的后端**不是**独立进程,而是被 loader 用 `multiprocessin
 - 只能通过 `sys.path.append(.../py_modules)` 加载**纯 Python** 模块(`sandboxed_plugin.py:84`)。
 
 **推论:任何带编译扩展的库都不能直接进插件后端。**
-QQMusicApi 依赖 `cryptography` / `orjson` / `niquests[speedups]` / `pydantic`(Rust core)/ `paho-mqtt`,全是需精确匹配 CPython ABI + glibc 的编译 wheel —— 塞进冻结解释器必然随 Decky 版本升级而崩。这正是"受 Decky 构建环境约束 + 容易崩溃"的根因。
+QQMusicApi(Python)依赖 `cryptography` / `orjson` / `niquests[speedups]` / `pydantic`(Rust core)/ `paho-mqtt`,全是需精确匹配 CPython ABI + glibc 的编译 wheel —— 塞进冻结解释器必然随 Decky 版本升级而崩。这正是"受 Decky 构建环境约束 + 容易崩溃"的根因。(现在两个音源都改用 Rust 库,合并进一个 provider 二进制,见 §7。)
 
 **结论:业务后端必须脱离插件进程,以独立二进制运行。** 一旦 bridge `subprocess` 拉起外部二进制,该进程即带自己的运行时、脱离冻结解释器 —— 稳定性与"脱沙盒"由此达成,与二进制内部是一个还是多个无关。
 
@@ -30,7 +30,7 @@ QQMusicApi 依赖 `cryptography` / `orjson` / `niquests[speedups]` / `pydantic`(
 graph TB
   UI[前端 React UI<br/>只发事件·只收 emit]
   BR[Python bridge<br/>main.py Plugin·总线+进程管理]
-  P[provider 进程<br/>qq: Nuitka / ncm: Rust<br/>出元数据·歌词·可播 URL]
+  P[provider 进程<br/>Rust:qq + ncm 两个后端<br/>出元数据·歌词·可播 URL]
   PL[player 进程<br/>Rust<br/>拉流·解码·出声]
 
   UI <-->|① Decky RPC<br/>callable / emit| BR
@@ -53,7 +53,7 @@ graph TB
 |---|---|---|---|
 | **UI** | React (TS) | 发控制事件、收状态推送、渲染 | 不碰音频流、不碰 URL、不直连后端 |
 | **bridge** | Python (`main.py` 门面 + `py_modules` 实现) | 子进程/连接管理、请求与事件分发、账号与设置持久化;由 `Playback` 负责普通队列/电台、自动切歌、失败重试和播放态回灌 | 不实现音源 API/可播 URL 解析,不拉流、解码或输出音频 |
-| **provider** | qq: Python+Nuitka / ncm: Rust | 搜索、歌单、歌词、**解析可播 URL** | 不播放音频 |
+| **provider** | Rust(一个进程,qq / ncm 两个后端) | 搜索、歌单、歌词、**解析可播 URL**;按请求的音源标签路由 | 不播放音频 |
 | **player** | Rust | 拿 URL:HTTP 拉流、解码、seek、音量、推 PipeWire;上报进度/结束 | 不查询音乐 API |
 
 职责分离的意义:provider 崩了不影响正在播放的 player;player 崩了不影响查询;bridge 负责把崩掉的子进程重新拉起。
@@ -63,11 +63,15 @@ graph TB
 ## 4. 进程模型与生命周期
 
 - **player**:常驻。bridge `_main()` 时即 spawn。
-- **provider**:按 UI 选择的 provider 唤起(`qq` / `ncm`)。切换 provider 时先停旧进程再起新进程,同一时刻只有一个 provider 存活；同时清空当前队列并停止播放,因为 QQ/NCM Song ID 体系不兼容。
+- **provider**:一个常驻进程,同时承载 `qq` / `ncm` 两个后端;选定音源后首次需要时拉起,之后常驻。
+  切换音源**不换进程**:bridge 只换音源令牌 `Selection(provider, connection)`,之后的请求顶层带新的
+  `provider` 标签路由;旧音源若有在跑的扫码登录,bridge 发 `cancel_login` 让它在进程内收尾。
+  切换时仍清空当前队列并停止播放,因为 QQ/NCM Song ID 体系不兼容。进程崩溃或判死后由下一条命令重开,
+  重连会换新令牌并重新注入当前音源凭证。
 - **socket 拓扑**:**bridge 作 server,子进程启动后主动连入**。socket 文件放 `DECKY_PLUGIN_RUNTIME_DIR`(bridge 有写权)。好处:socket 由 bridge 先建好,崩溃重连逻辑集中在 bridge 侧。
 - **卸载**:Decky 卸载插件时调 `_unload()`,bridge 关闭两个子进程与 socket。
 - **状态归属:bridge 是唯一真相源。** 跨会话/跨 provider 的状态——provider 选择、音量、播放模式、**播放队列 + "放完切下一首"决策**、cookie/账号——全归 bridge 持有(它唯一常驻、不被替换、收得到 player 的 `ended` 事件)。**队列决策绝不放 UI**:否则用户退出播放页去打游戏、UI 卸载 → 当前歌放完就停,不续播。player 只放音、provider 只查询(无状态)、UI 只显示。
-- **持久化:bridge 落盘,单一来源。** 上述状态由 bridge 存 `DECKY_PLUGIN_SETTINGS_DIR`,启动读回恢复。UI 通过 `callable` 读写、自己不落盘(Steam CEF 不能直接写文件);provider 保持无状态,cookie 由 bridge 在 spawn 时注入,provider 不自存 → 空闲退出/切换都不丢账号。
+- **持久化:bridge 落盘,单一来源。** 上述状态由 bridge 存 `DECKY_PLUGIN_SETTINGS_DIR`,启动读回恢复。UI 通过 `callable` 读写、自己不落盘(Steam CEF 不能直接写文件);provider 保持无状态,凭证由 bridge 在选中音源 / 重连时注入,provider 不自存 → 重启 / 切换都不丢账号。
 - **持久化格式:单文件 `settings.json`(stdlib `json`)。** 被 §5.5 约束锁定——冻结解释器只能用 stdlib,`json` 又是全项目通用语,不引第二套序列化。stdlib 其余淘汰:`tomllib` 只读无写入器、`configparser` 表达不了队列 list、`sqlite3` 对小 config 过重(留作未来存大量历史/缓存的升级路径)。四个必带细节:
   - **原子写**:写临时文件 → `os.replace()` 换名。bridge 可能被 kill,半截写会损坏配置。
   - **schema 版本字段** `{"version":1,...}`:将来改结构可迁移。
@@ -85,10 +89,12 @@ sequenceDiagram
   BR->>BR: 建 player.sock (作 server)
   BR->>PL: spawn player --socket player.sock
   PL-->>BR: 连入 player.sock
-  Note over BR: 等 UI 选 provider
-  BR->>BR: 为当前 provider 会话建立新的 provider-EPOCH.sock
-  BR->>P: spawn (qq|ncm) --socket provider-EPOCH.sock
+  Note over BR: 等 UI 选音源
+  BR->>BR: 为本次拉起建 provider-EPOCH.sock (作 server)
+  BR->>P: spawn provider --socket provider-EPOCH.sock
   P-->>BR: 连入本次会话的 socket
+  BR->>P: set_credential(provider=当前音源)
+  Note over BR,P: 切换音源:只换 Selection,后续请求带新 provider 标签
   D->>BR: _unload()
   BR->>PL: 关闭
   BR->>P: 关闭
@@ -115,23 +121,26 @@ Decky 只提供两种原语,足够:
 
 | 方向 | 类型 | 形状 |
 |---|---|---|
-| bridge → child | Request | `{"id":N,"cmd":C,"args":{...}}` |
+| bridge → child | Request | `{"id":N,"cmd":C,"args":{...}}`;发给 provider 时另带顶层 `"provider":"qq"|"ncm"` |
 | child → bridge | Response ok | `{"id":N,"ok":true,"data":{...}}` |
 | child → bridge | Response error | `{"id":N,"ok":false,"error":{"code":"...","message":"..."}}` |
-| child → bridge | Domain Event | `{"ev":"player"|"login"|"provider","type":T,"data":{...}}` |
+| child → bridge | Domain Event | `{"ev":"player"|"login"|"provider","type":T,"data":{...}}`;provider 发的另带顶层 `"provider"` 音源标签 |
 | child → bridge | Log Event | `{"ev":"log","level":"debug|info|warn|error","where":"...","msg":"..."}` |
 
 实现约束:
 
-- 构造 / 解码集中在协议模块:bridge `py_modules/protocol.py`,QQ `qq-provider/protocol.py`;NCM 与 player 共用 `wire` crate(通用部分),各自的 `src/protocol.rs` 只留命令 args struct。
+- 构造 / 解码集中在协议模块:bridge `py_modules/protocol.py`;player 与 provider 共用 `wire` crate(通用部分),`player/src/protocol.rs`、`provider/src/ncm/protocol.rs` 只留命令 args struct,QQ 后端参数校验在 `provider/src/qq/args.rs`。
+- provider 进程按请求顶层 `provider` 分发到 qq / ncm 后端,缺失或未知音源一律 `invalid_request`;两个后端各自持有凭证与登录任务,共用单一写出通道。
 - request id 由 bridge 递增生成。当前 [`Conn.request` / `_read_loop`](../py_modules/ipc.py) 允许多请求同时在途,
   用 `pending[id] -> Future` 匹配响应,不依赖响应顺序,无主的迟到响应丢弃;写锁只保护单帧写入。
   domain 事件另由 `_events` / `_pump_events` 按到达顺序消费,避免事件处理中的回调请求堵住读循环。
   子进程的响应/事件写回仍经单一 out queue 串行写帧;这不等于把整个请求生命周期串行化。
 - 连接来源通过内部 `ConnectionOrigin(epoch, provider)` 绑定：监听会话与每条接入连接都分配进程内不复用的身份。
-  provider 会话使用独立 `provider-EPOCH.sock`，通过原有 `--socket` 参数传给子进程；诊断脚本不得假定固定路径。
-  读循环、事件队列、请求提交及凭证持久化均复核来源；切源先失效旧会话，并取消正在等待的旧事件回调。
-  登录凭证写入来源身份对应的账号槽位，不按消费时的 `settings.provider` 猜测；旧 EOF 不得拆除新连接。
+  provider 每次拉起使用独立 `provider-EPOCH.sock`（通过 `--socket` 传入），迟迟未退出的旧进程连不进新会话；
+  诊断脚本不得假定固定路径。旧 EOF 不得拆除新连接。
+  音源另由 `Selection(provider, connection)` 令牌表示：切换音源或重连都会换新令牌。登出、凭证刷新、
+  红心种子等跨 await 的流程只在令牌仍是当前时提交；事件只接收当前令牌所在连接、且音源标签一致的，
+  切源时取消正在等待的旧事件回调。登录凭证写入令牌对应的账号槽位，不按消费时的 `settings.provider` 猜测。
 - 播放侧通过内部 `is_current` 守卫把意图代次带到 `Conn.request` 的按需启动之后、写锁内实际 write 之前及超时判死之前。
   过期请求在本地取消，不新增 wire 错误码；已写出请求的旧响应不得回灌状态或无条件停止新播放。
   source 选择另有意图代次，旧清空完成后不能覆盖更新的选择；清空等待期间不提前改写旧 provider 的账号槽位。
@@ -144,7 +153,7 @@ Decky 只提供两种原语,足够:
 - 子进程诊断走 `Log Event`，producer 不输出秘密；bridge 对不受控日志正文和 stderr 只保留受控类别/错误码或固定摘要，不原样落盘。
 - 每端在 JSON 解码前以字节数强制 1 MiB 上限:超限入站帧立即断开,bridge 拒绝超限 request(`invalid_request`),子进程停止向该连接写入。不得为诊断把原始帧写日志。
 
-> 关于 provider 包裹:ncm-api-rs 与 QQMusicApi **都作为库使用**,由我们各写一层 wrapper 暴露上述 NDJSON-over-UDS 协议(不用它们自带的 axum / FastAPI HTTP server)。两个 provider 因此协议一致,bridge 统一对待。
+> 关于 provider 包裹:ncm-api-rs 与 QQMusicApi-rs **都作为库使用**,在同一个 Rust 二进制里各写一层后端,暴露上述 NDJSON-over-UDS 协议(不用 ncm-api-rs 自带的 axum HTTP server)。两个后端协议一致,bridge 统一对待。
 
 ### 5.3 一次"播放"的完整流转(协议 v1)
 
@@ -196,7 +205,7 @@ UI 全程拿不到 URL、碰不到音频流,一切经 bridge。
 |---|---|---|---|
 | UI ↔ bridge | JSON | Decky 底层已定 | `callable`/`emit` 走 websocket JSON,无选择权 |
 | bridge ↔ 子进程 | NDJSON | **Python: stdlib `json`** | **硬约束**:bridge 跑在冻结解释器,`orjson`/`msgpack`/`protobuf` 皆编译扩展,不能可靠加载(同 §1 的 C 扩展坑)。bridge 必须零第三方依赖 |
-| 子进程侧 | NDJSON | Rust: `serde_json`;qq: stdlib `json` | serde_json 随 ncm-api-rs 进来,纯 Rust 静态无碍;qq 的 Nuitka 自带运行时不受约束但无必要上 orjson |
+| 子进程侧 | NDJSON | Rust: `serde_json` | player 与 provider 都是纯 Rust,serde_json 随依赖进来,静态无碍 |
 
 **性能真正的着力点(与序列化无关):**
 
@@ -326,7 +335,21 @@ Steam Deck 无鼠标,**每个可交互元素必须可被手柄焦点树导航**,
 
 ## 7. 技术选型
 
-### 7.1 网易云 provider — ncm-api-rs(Rust)
+### 7.0 统一 provider — 一个 Rust 二进制承载两个音源
+
+provider 是一个 Rust 二进制(`provider/`):`src/main.rs` 只做连 socket、单写出和按请求 `provider`
+标签分发;`src/ncm/`、`src/qq/` 是两个后端,`src/lyric/` 是两家共用的歌词解析。
+
+- **一个进程、一次启动**:切换音源只是换路由,不再停旧进程、起新进程(以前 QQ 端还要冷启动
+  Nuitka 打包的 CPython)。两个后端的凭证、设备身份、登录任务同时在内存里,互不干扰。
+- **包体**:release 二进制约 12 MB,取代原来 ~4 MB 的 ncm-provider + ~58 MB 的 QQ Nuitka 压缩包
+  (解压后更大),也不再需要 bridge 首次运行时自解包。
+- **依赖边界**:两个后端都走 rustls(QQ 用纯 Rust 的 graviola provider),NEEDED 只有基础 libc
+  运行库,`scripts/check-binaries.py` 对 provider 执行与 player 同样严格的动态依赖白名单。
+- **兼容**:QQ 凭证仍是原来的 snake_case JSON(QQMusicApi-rs 兼容同名字段与 camelCase 别名),
+  设备档案仍存 `qq-device.json` 且字段一致,升级后不用重新登录、也不会被当成新设备。
+
+### 7.1 网易云后端 — ncm-api-rs(Rust)
 
 选它而非 Node 版 api-enhanced 的理由:
 
@@ -337,14 +360,17 @@ Steam Deck 无鼠标,**每个可交互元素必须可被手柄焦点树导航**,
 | TLS | — | `rustls-tls`,**不碰系统 OpenSSL**(`Cargo.toml:16`) |
 | 接口 | 基准 | 与 Node 版 1:1 |
 
-作为库使用:`create_client(cookie)` + `Query` 链式传参(README 示例:`cloudsearch` / `song_detail` / `lyric` / `song_url_v1`)。我们在其上包一层 UDS server。
+作为库使用:`create_client(cookie)` + `Query` 链式传参(README 示例:`cloudsearch` / `song_detail` / `lyric` / `song_url_v1`)。
+依赖 fork 的 `feat/sync-upstream-2026-10` 分支(`jinzhongjia/ncm-api-rs`),由 Cargo.lock 固定提交。
 
-### 7.2 QQ 音乐 provider — QQMusicApi(Python)+ Nuitka
+### 7.2 QQ 音乐后端 — QQMusicApi-rs(Rust)
 
-- 作为库使用(`qqmusic_api`,异步),我们包一层 UDS server。
-- 用 **Nuitka `--standalone`** 打包(目录形态,自带 CPython + C 扩展)。**不用 `--onefile`**:onefile 每次启动都解压到 /tmp,而 provider 会被反复启停(§13 空闲退出),重复解压是纯开销。standalone 目录打包成**一个压缩档**分发(契合 `remote_binary` 单文件模型),**安装时解压一次**,之后启动零解压。
-- 形态上不静态,但同样**独立进程、脱沙盒、不吃 Decky 环境约束**。
-- 现状不对称是可接受的:QQ 无现成 Rust 库,自行移植加密逻辑成本过高;两个 provider 对 bridge 呈现同一 UDS 协议即可。
+- [QQMusicApi-rs](https://github.com/jinzhongjia/QQMusicApi-rs) 是 L-1124/QQMusicApi 的 Rust 实现,
+  协议与上游一致(zzc 签名、QIMEI 设备指纹、扫码登录、QRC 解密等),作为库使用。
+- 取播放 URL 用库的 bypass 音质阶梯:一次请求问所选上限及以下全部档位,`ct` 由设备 guid 稳定派生
+  (同设备稳定、不同安装分散),等价于原 Python 版的做法;URL / vkey 不进日志。
+- 历史:此前 QQ 端是 Python QQMusicApi + Nuitka `--standalone` 目录包(tar.gz 分发、bridge 首用自解),
+  每次切换音源都要冷启动一个 CPython 运行时;改用 Rust 库后与网易云合并为同一个二进制。
 
 ### 7.3 player — Rust,rodio + reqwest
 
@@ -411,19 +437,18 @@ player 额外托管标准 **MPRIS2** D-Bus 服务(`org.mpris.MediaPlayer2` + `.P
 ```json
 {
   "remote_binary": [
-    { "name": "ncm-provider", "url": "https://.../ncm-provider-linux-x64", "sha256hash": "..." },
-    { "name": "qq-provider",  "url": "https://.../qq-provider-linux-x64",  "sha256hash": "..." },
-    { "name": "player",       "url": "https://.../player-linux-x64",       "sha256hash": "..." }
+    { "name": "player",   "url": "https://.../player-linux-x64",   "sha256hash": "..." },
+    { "name": "provider", "url": "https://.../provider-linux-x64", "sha256hash": "..." }
   ]
 }
 ```
 
-- 对外分发物是插件包 + 三个从 Release 拉取的二进制,各自带 hash 校验。
+- 对外分发物是插件包 + 两个从 Release 拉取的二进制,各自带 hash 校验。
 - 若坚持"单一文件"分发,可另写 launcher 用 `include_bytes!` 嵌入 —— 但当前不需要,`remote_binary` 数组已够。
 
 ### 8.1 双通道:普通版(GitHub)+ CN 版(Cloudflare R2)
 
-普通版依赖走 GitHub Release(现状不变)。CN 版把三个二进制与插件 zip 全部镜像到作者的
+普通版依赖走 GitHub Release(现状不变)。CN 版把两个二进制与插件 zip 全部镜像到作者的
 Cloudflare R2(自定义域名 `dl.nvimer.org`),给国内用户更稳的下载。
 
 两个 zip 唯一差异 = `remote_binary[].url` 的主机名;二进制字节一致、sha256 不变。CN 版
@@ -446,17 +471,18 @@ CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/
 | [`py_modules/bridge.py`](../py_modules/bridge.py) | 生命周期门面与任务/持久化回调，组合监督与 RPC 职责 |
 | [`py_modules/ipc.py`](../py_modules/ipc.py) | `Conn` 并发 demux、来源代次、事件顺序消费及连接清理 |
 | [`py_modules/music_settings.py`](../py_modules/music_settings.py) | 配置归一化、队列白名单、原子写与 0600 权限；使用专用名称避免与冻结宿主的 `settings` 冲突 |
-| [`child_process.py`](../py_modules/child_process.py) / [`supervision.py`](../py_modules/supervision.py) | 环境、二进制解包与启动、子进程自愈、凭证启动注入 |
+| [`child_process.py`](../py_modules/child_process.py) / [`supervision.py`](../py_modules/supervision.py) | 环境与启动、子进程自愈、音源令牌 `Selection` 与凭证注入 |
 | [`provider_rpc.py`](../py_modules/provider_rpc.py) / [`playback_rpc.py`](../py_modules/playback_rpc.py) | 内容/账号与播放控制的外部 callable，保持唯一契约 |
 | [`py_modules/protocol.py`](../py_modules/protocol.py) | 协议 v1 request 构造、response/event/log 严格解码与消息分类;不管理在途请求 |
 | [`playback.py`](../py_modules/playback.py) / [`playback_queue.py`](../py_modules/playback_queue.py) / [`playback_radio.py`](../py_modules/playback_radio.py) | 播放意图、同曲重试与恢复；普通队列与电台职责分离，仍由 bridge 持有真相 |
 | `src/api.ts` | 前端唯一接口层:callable 声明、事件类型、运行时 guard |
-| `qq-provider/protocol.py` | QQ provider 协议 v1 构造/解码 |
-| `wire/src/lib.rs` | 协议 v1 Rust 侧共用:错误码 / 日志 / 请求解析 / 响应·事件构造 |
-| `ncm-provider/src/protocol.rs` | NCM provider 的命令 args struct |
+| `wire/src/lib.rs` | 协议 v1 Rust 侧共用:错误码 / 日志 / 请求解析(含 `provider` 路由字段)/ 响应·事件构造 |
+| `provider/src/main.rs` | 统一 provider:连 socket、单写出、按请求音源分发到 qq / ncm 后端 |
+| `provider/src/ncm/protocol.rs` | 网易云后端的命令 args struct |
 | `player/src/protocol.rs` | player 的命令 args struct |
-| `qq-provider/commands/` / `qq-provider/qq/paging.py` | 按职责分组命令；固定 50 条上游窗口、跨页合并裁剪 |
-| `ncm-provider/src/deadline.rs` / `provider_commands/playlists.rs` | 25s 命令预算；按会话/uid/变更版本隔离的有界歌单元数据缓存 |
+| `provider/src/qq/` | QQ 后端:认证代次、按职责分组命令;`paging.rs` 固定 50 条上游窗口、跨页合并裁剪 |
+| `provider/src/ncm/deadline.rs` / `provider_commands/playlists.rs` | 25s 命令预算；按会话/uid/变更版本隔离的有界歌单元数据缓存 |
+| `provider/src/lyric/parse.rs` | 两个音源共用的 LRC / YRC 解析、间奏 `end_ms` 与译文对齐 |
 | `player/src/loading.rs` / `stream/{buffer,http}.rs` | latest-wins 加载所有权、可取消 HTTP 与有界同步读缓冲 |
 | `player/src/mpris.rs` | player 侧 MPRIS2 D-Bus 服务(now-playing 展示 + 控制上送 bridge;zbus 纯 Rust,§7.5) |
 
@@ -474,7 +500,7 @@ CI(`release.yml`)在普通版出包后追加:镜像二进制到 R2 → `scripts/
 跨层改动规则:
 
 1. 改 bridge callable 或 emit 事件 → 同步改 `src/api.ts`。
-2. 改 bridge ↔ child 协议字段 → 同步改四端 protocol 模块与测试。
+2. 改 bridge ↔ child 协议字段 → 同步改 bridge、`wire`、player、provider 的 protocol 模块与测试。
 3. 子进程错误必须返回稳定 `error.code`;日志和错误消息不得包含 URL/cookie/credential。
 
 ---
@@ -563,10 +589,8 @@ music-plugin/
 │   └── src/
 │       ├── index.tsx           # QAM 面板(provider 无关,§6.2)
 │       └── ProviderPage.tsx    # 大屏路由页(provider 相关,§6.3)
-├── ncm-provider/               # Rust:依赖 ncm-api-rs 库 + UDS wrapper
+├── provider/                   # Rust:一个二进制,qq(QQMusicApi-rs)+ ncm(ncm-api-rs)两个后端
 │   └── Cargo.toml
-├── qq-provider/                # Python:依赖 qqmusic_api 库 + UDS wrapper,Nuitka 打包
-│   └── build.sh                # nuitka --onefile
 └── player/                     # Rust:reqwest + rodio,gnu 目标
     └── Cargo.toml
 ```
@@ -582,8 +606,7 @@ music-plugin/
 | 项 | 做法 | 代价/旋钮 |
 |---|---|---|
 | **进程调度让游戏赢 CPU** | bridge spawn player/provider 时降优先级(`os.nice()` / `SCHED_BATCH`),游戏永远赢争用 | 重负载下音频可能偶发卡顿 → 用**大音频缓冲**吸收,而非给音频上 RT(RT 会跟游戏抢)。nice 值 + 缓冲大小设为**可调旋钮**,由实测定 |
-| **qq-provider 空闲退出** | 纯听歌阶段 provider 空闲;idle-timeout(如 60s 无查询)自动退出,释放几十 MB Python RSS;player 常驻(在放音) | 下次查询冷启动延迟 → 故用 idle-timeout 而非立即退。ncm(Rust ~5MB)可不退,收益小 |
-| **Nuitka `--standalone` 免解压** | 见 §7.2:standalone 目录打包成压缩档,安装解压一次,启动零解压 | 与 `--onefile` 取舍已定,standalone 纯赚 |
+| **统一 Rust provider 常驻** | 见 §7.0:两个音源同一进程,切换只换路由;不再有几十 MB 的 Python RSS 与 Nuitka 冷启动 / 首次解包 | 原先的「QQ provider 空闲退出」不再必要,常驻 Rust 进程空闲时几乎不占 CPU |
 | **默认中等码率** | 无损(FLAC)设 opt-in | 手持机无损 = 更多网络+解码 CPU+电;省码率直接省续航 |
 | **流式解码(边下边播)** | player 首次 `GET Range: bytes=0-` 判断 CDN 是否支持 byte range;producer 线程按 Range 预取到 4MiB 有界 ring buffer(`low=1MiB/high=3MiB`),rodio 解码线程从 buffer 读;seek 跳出窗口时重置 producer 并重新发 `Range: bytes=N-` | 控内存上限(整首 FLAC ~30-40MB;手持机内存与 VRAM 共享,省的归游戏)+ 首音更快+抗网络抖动。不支持 byte range 时保顺序播放;跳出当前缓冲窗口的 seek 会失败并上报 `seek_failed` |
 
@@ -603,7 +626,7 @@ music-plugin/
 
 ### 13.3 已内建(设计里已有,无需另做)
 
-client 端进度插值(§5.5)、全链路事件驱动(仅 pause 的一次性 30s deadline)、前端零重计算(§6.5)、同一时刻单 provider 存活(§4)、ncm Rust ~5MB。
+client 端进度插值(§5.5)、全链路事件驱动(仅 pause 的一次性 30s deadline)、前端零重计算(§6.5)、单个常驻 Rust provider 承载两个音源(§4、§7.0)。
 
 ---
 
@@ -617,7 +640,7 @@ client 端进度插值(§5.5)、全链路事件驱动(仅 pause 的一次性 30s
 | Rust/Python 是否 FFI 合并成一进程 | **否** | 摧毁崩溃隔离、二者无互调关系、绑定工作量大而无收益 |
 | 单进程 vs 多进程 | **多进程**(provider 与 player 分离) | 崩溃隔离,用户核心诉求 |
 | 网易云库 | ncm-api-rs(Rust) | 轻量、rustls、静态、1:1 接口 |
-| QQ 音乐库 | QQMusicApi(Python)+ Nuitka standalone | 无 Rust 替代,接受不对称;standalone 免每次解压(§13) |
+| QQ 音乐库 | QQMusicApi-rs(Rust),与 ncm-api-rs 合并为一个 provider 二进制 | 早期为 Python QQMusicApi + Nuitka standalone(无 Rust 替代时的取舍);有了 Rust 实现后合并,省掉冷启动、首次解包与 ~58 MB 包体(§7.0) |
 | UI↔bridge 通信 | Decky RPC(callable/emit) | Decky 唯一原语 |
 | bridge↔子进程通信 | UDS + NDJSON,bridge 作 server | 用户要求 UDS/不跨桥;帧格式对齐 Decky `localsocket.py` |
 | 通信编码 | NDJSON;bridge 用 stdlib `json`,Rust 侧 `serde_json` | 冻结解释器不能用编译扩展序列化库;控制面流量微小,JSON 够快 |
@@ -633,6 +656,6 @@ client 端进度插值(§5.5)、全链路事件驱动(仅 pause 的一次性 30s
 | 封面图取图 | 直连 CDN 缩略图(方案 A),不经 bridge | 静态资源非业务数据,图裂不威胁隔离;红线精确化(§6.3) |
 | **状态归属 + 持久化** | bridge 是唯一真相源(provider 选择/音量/队列/cookie),存 `SETTINGS_DIR`;UI 经 `callable` 读写、provider 无状态；provider 切换时清空队列 | 唯一常驻不被替换;队列/账号不能放会卸载的 UI 或会退出的 provider;QQ/NCM Song ID 体系不兼容(§4) |
 | 持久化格式 | 单文件 `settings.json`(stdlib `json`)+ 原子写 + version 字段 + cookie 0600 | 冻结解释器只能 stdlib;json 全项目通用;sqlite 留升级路径(§4) |
-| 登录 | 统一扫码(QR);cookie 由 bridge 存并 spawn 时注入 provider | 手柄无文本输入友好;§7.4 |
+| 登录 | 统一扫码(QR);凭证由 bridge 存,选中音源 / 重连时注入 provider | 手柄无文本输入友好;§7.4 |
 | 不可用歌曲 | 直接报告用户,不支持代理 / real_ip | 海外/受限网络可用性非本项目目标;§7.4 |
 

@@ -82,7 +82,7 @@ Steam UI。
 - Steam client `1784934043` 及更新版本需要 Decky Loader `v3.2.8-pre1` 或更高版本；`v3.2.6`
   会在导入插件前崩溃，表现为 Decky 快捷菜单与左侧「音乐」入口同时消失。
 - 安装时可访问下载源：普通版走 GitHub、CN 版走 Cloudflare 镜像，Decky 会下载并按 SHA-256
-  校验 player、QQ provider 和网易云 provider 三个二进制。full 离线版已自带这三个二进制，
+  校验 player 和 provider（同时承载 QQ 音乐与网易云）两个二进制。full 离线版已自带这两个二进制，
   安装期间不再下载。
 
 ### 手动安装
@@ -99,17 +99,17 @@ Decky 当前的手动安装器只接受 ZIP 的 URL，详见
 
 ### 国内(CN)安装
 
-国内网络访问 GitHub 较慢/不稳时，使用 CN 版：插件包与三个依赖二进制全部走 Cloudflare 镜像。
+国内网络访问 GitHub 较慢/不稳时，使用 CN 版：插件包与两个依赖二进制全部走 Cloudflare 镜像。
 
 1. 在 Decky 设置的 **Manual Plugin Install** 中，粘贴：
    `https://dl.nvimer.org/decky_music/decky-music-cn.zip`
-2. 安装后与普通版完全一致；三个二进制会从同一镜像自动下载并按 SHA-256 校验。
+2. 安装后与普通版完全一致；两个二进制会从同一镜像自动下载并按 SHA-256 校验。
 
 > CN 版与普通版功能相同，仅下载源不同（Cloudflare vs GitHub）；二进制字节一致。
 
 ### 离线安装（full 包）
 
-网络受限、或不希望 Decky 在安装时联网拉二进制时，用 `Decky.Music.full.zip`：三个二进制已
+网络受限、或不希望 Decky 在安装时联网拉二进制时，用 `Decky.Music.full.zip`：两个二进制已
 打进 `bin/`，`remote_binary` 已从 `package.json` 剥离，安装过程零下载。装法与普通版相同
 （Manual Plugin Install 粘贴该资产的下载链接）。代价是包体更大，且二进制不随 Decky 的
 远端校验更新——升级时请整包重装。
@@ -139,8 +139,7 @@ Decky 当前的手动安装器只接受 ZIP 的 URL，详见
 ```mermaid
 graph LR
   UI[React UI<br/>QAM + /music] <-->|Decky callable / emit| BR[Python bridge<br/>唯一真相源]
-  BR <-->|UDS + NDJSON v1| QQ[QQ provider<br/>Python + Nuitka]
-  BR <-->|UDS + NDJSON v1| NCM[网易云 provider<br/>Rust]
+  BR <-->|UDS + NDJSON v1| PROVIDER[provider<br/>Rust：QQ 音乐 + 网易云]
   BR <-->|UDS + NDJSON v1| PLAYER[player<br/>Rust]
   PLAYER -->|reqwest + rodio| AUDIO[ALSA / PipeWire]
   PLAYER <-->|MPRIS2 D-Bus| MEDIA[系统媒体控件<br/>蓝牙耳机按键]
@@ -149,12 +148,13 @@ graph LR
 - UI 只通过 `src/api.ts` 与 bridge 通信，不接触播放 URL 或音频流。
 - `main.py` 是 Decky callable 门面：`CALLABLES` 白名单 + `__getattr__` 转发给 bridge；
   `py_modules/bridge.py` 组合 IPC、配置持久化、进程监督及 RPC 模块，播放/队列/电台仍由 bridge 持有。
-- 同一时间只运行一个 provider；player 独立常驻，直接拉流、解码并输出到系统音频栈。
+- provider 是一个常驻进程，同时承载 QQ 音乐与网易云两个后端；请求带音源标签路由，切换音源不重启进程。
+  player 独立常驻，直接拉流、解码并输出到系统音频栈。
 - bridge 运行在 Decky 冻结的 CPython 中，因此只使用 Python 标准库。
 - bridge 与子进程使用 Unix domain socket 和 NDJSON 协议 v1，不开放本地 TCP 端口；Rust 两端
   共用 `wire` crate 实现协议。
 - MPRIS 只由 player 暴露；外部控制动作全部上送 bridge 处理，bridge 仍是唯一真相源。
-- 三个外部程序通过 Decky `remote_binary` 下载，并由 `package.json` 中的 SHA-256 校验
+- 两个外部程序（player、provider）通过 Decky `remote_binary` 下载，并由 `package.json` 中的 SHA-256 校验
   （full 离线包例外：二进制随包分发）。
 
 更完整的约束、协议和技术选型见 [`docs/DESIGN.md`](docs/DESIGN.md)。
@@ -189,33 +189,30 @@ pnpm build
 | `python3 -m unittest discover -s tests` | 运行 bridge/protocol Python 测试 |
 | `cargo test --workspace` | 运行 Rust workspace 测试 |
 | `cargo fmt --all && cargo clippy --workspace` | Rust 格式与静态检查 |
-| `(cd qq-provider && uv run ruff check .)` | QQ provider 静态检查 |
 
 ### 构建 SteamOS 二进制
 
 发布和真机部署使用 Docker 内的兼容工具链，避免本机 glibc 版本高于 SteamOS：
 
 ```bash
-bash scripts/build-rust.sh -p player
-bash scripts/build-rust.sh -p ncm-provider
-bash scripts/build-qq-provider.sh
+bash scripts/build-rust.sh -p player -p provider
 ```
 
-产物分别位于 `target/release/` 和 `qq-provider/build/qq-provider.tar.gz`。
+产物位于 `target/release/player` 与 `target/release/provider`。
 
 构建镜像固定到 digest，构建脚本自动运行 `scripts/check-binaries.py`：检查 x86-64 ELF、
-glibc 需求不超过 2.39，以及 Rust 可执行文件的动态依赖；QQ standalone 包内的 ELF 也必须通过。
+glibc 需求不超过 2.39，以及两个可执行文件的动态依赖白名单。
 此检查只能证明二进制 ABI 边界，不能代替音频、手柄、屏幕缩放和睡眠恢复的真机验收。
 
 ### 自动检查与固定构建工具
 
-PR 和分支 push 会运行 [Checks](.github/workflows/checks.yml)：stdlib bridge 单测、真实依赖环境中的
-QQ 单测/lint、pnpm 9/11 两套 UI 测试/类型检查/构建，以及 Rust fmt/test/clippy。
+PR 和分支 push 会运行 [Checks](.github/workflows/checks.yml)：stdlib bridge 单测、
+pnpm 9/11 两套 UI 测试/类型检查/构建，以及 Rust fmt/test/clippy（含 provider 的 QQ / 网易云后端）。
 运行时和第三方 Actions 使用固定版本或提交；工作流失败不会被忽略，不自动修改分支保护规则。
 
 插件打包统一使用 `bash scripts/decky-build.sh`。它校验固定版本 Decky CLI 的 SHA-256，
 从固定 digest 准备官方 builder，并使用 Git 可见的当前工作区源码建立临时输入目录：
-未提交的新源码仍会纳入，`target/`、Nuitka 产物、虚拟环境及被忽略的密钥文件不会被复制进构建输入。
+未提交的新源码仍会纳入，`target/` 与被忽略的密钥文件不会被复制进构建输入。
 默认使用 Docker + sudo；已有 rootless Podman 时可用
 `DECKY_BUILD_SUDO=0 DECKY_BUILD_ENGINE=podman bash scripts/decky-build.sh --build-as-root`。
 
@@ -226,14 +223,14 @@ DECK_HOST=<user>@<steamos-ip> bash scripts/deploy.sh
 ```
 
 `scripts/deploy.sh` 会构建前端、打包插件、复制已有二进制并重启 `plugin_loader`。它**不会重新构建**
-player/provider；修改 `player/`、`ncm-provider/` 或 `qq-provider/` 后，必须先运行上面的对应构建命令。
+player/provider；修改 `player/`、`provider/` 或 `wire/` 后，必须先运行上面的构建命令。
 
 `DECK_HOST` 必填，SSH 登录用户不必名为 `deck`。脚本在构建前从远端 `plugin_loader` 服务配置
 发现实际插件目录；无法可靠发现时停止，不猜测 `/home/deck`。可用
 `DECK_PLUGIN_PATH=/absolute/path/to/plugins` 显式指定，目录仍须通过安全检查。
 写权限按服务的 `UNPRIVILEGED_USER` 配置（或可唯一对应的用户 home）设置，不使用 SSH 登录用户。
 目录覆盖不能替代账号解析；使用间接环境文件或无法确定账号时，需要先明确服务的非特权用户配置。
-侧载前须备齐三个预构建二进制；脚本会先检查 ABI，再开始打包。
+侧载前须备齐两个预构建二进制；脚本会先检查 ABI，再开始打包。
 远端 sudo 如需口令，通过环境变量 `DECK_PASS` 提供，勿写入脚本或仓库。
 
 兼容性验收须分别记录：实际用户名/UID 与安装目录、SteamOS/Steam/Decky 版本、内置与外接音频、
@@ -248,9 +245,8 @@ player/provider；修改 `player/`、`ncm-provider/` 或 `qq-provider/` 后，�
 | `main.py` | Decky `Plugin` facade：`CALLABLES` 白名单 + `__getattr__` 转发给 bridge |
 | `py_modules/` | bridge、播放队列、协议和日志实现，只使用 Python 标准库 |
 | `player/` | Rust 音频 player，负责流式拉取、解码、播放、控制与 MPRIS |
-| `wire/` | bridge ↔ 子进程协议 v1 的 Rust 实现，player 与 ncm-provider 共用 |
-| `ncm-provider/` | 基于 `ncm-api-rs` 的网易云音乐 Rust provider |
-| `qq-provider/` | 基于 `QQMusicApi`、由 Nuitka 打包的 QQ 音乐 provider |
+| `wire/` | bridge ↔ 子进程协议 v1 的 Rust 实现，player 与 provider 共用 |
+| `provider/` | 统一 Rust 音源进程：`QQMusicApi-rs` 的 QQ 音乐后端 + `ncm-api-rs` 的网易云后端 |
 | `tests/` | bridge、协议、设置和前端行为测试 |
 | `docs/` | 架构、路线图、队列语义、provider 能力和 UI 规格 |
 | `scripts/` | SteamOS 兼容构建、真机部署，以及 full / CN 发布打包 |
@@ -279,7 +275,8 @@ player/provider；修改 `player/`、`ncm-provider/` 或 `qq-provider/` 后，�
 ## 致谢
 
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
-- [QQMusicApi](https://github.com/L-1124/QQMusicApi)
+- [QQMusicApi](https://github.com/L-1124/QQMusicApi) 与其 Rust 实现
+  [QQMusicApi-rs](https://github.com/jinzhongjia/QQMusicApi-rs)
 - [ncm-api-rs](https://github.com/SPlayer-Dev/ncm-api-rs)
 - [rodio](https://github.com/RustAudio/rodio) 与
   [reqwest](https://github.com/seanmonstar/reqwest)

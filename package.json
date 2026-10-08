@@ -26,14 +26,9 @@
       "sha256hash": "3ca15d1200ceafe71ebfd563397fe0347a99b90c7028b384bb767ff1159e72cc"
     },
     {
-      "name": "ncm-provider",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.9/ncm-provider-linux-x64",
-      "sha256hash": "328bfdbf75039f5ac0ed461fa497ffd2cf989e2c62ffbc0d4c969bcabee63957"
-    },
-    {
-      "name": "qq-provider",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.0.9/qq-provider-linux-x64.tar.gz",
-      "sha256hash": "c91163464207a931a534de01f122bfc55a18fc94830e58c2b8ac178cab723575"
+      "name": "provider",
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.1.0/provider-linux-x64",
+      "sha256hash": "aff944d32da8eb10315ab5d3a134690ce4ed53ebc7a43ef951a773e99d1fc79c"
     }
   ],
   "dependencies": {

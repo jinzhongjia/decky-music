@@ -96,8 +96,9 @@ navigation.
   crashes before importing plugins, which removes both the Decky Quick Access tab and the left-side
   **Music** entry.
 - Access to the download source during installation — GitHub for the normal build, a Cloudflare
-  mirror for the CN build. Decky downloads and SHA-256 verifies the player, QQ provider, and NetEase
-  provider binaries. The offline "full" build bundles all three, so it downloads nothing.
+  mirror for the CN build. Decky downloads and SHA-256 verifies two binaries: the player and the
+  provider (which serves both QQ Music and NetEase). The offline "full" build bundles both, so it
+  downloads nothing.
 
 ### Install Manually
 
@@ -114,11 +115,11 @@ Decky's manual installer currently accepts only a ZIP URL. See the
 ### China (CN) install
 
 If GitHub is slow or unreliable on your network, use the CN build — the plugin zip
-and all three dependency binaries are served from a Cloudflare mirror.
+and both dependency binaries are served from a Cloudflare mirror.
 
 1. In Decky's **Manual Plugin Install**, paste:
    `https://dl.nvimer.org/decky_music/decky-music-cn.zip`
-2. After install it behaves exactly like the normal build; the three binaries are
+2. After install it behaves exactly like the normal build; both binaries are
    downloaded and SHA-256 verified from the same mirror.
 
 > The CN build is functionally identical to the normal build — only the download
@@ -127,7 +128,7 @@ and all three dependency binaries are served from a Cloudflare mirror.
 ### Offline install (full build)
 
 When the network is restricted, or you would rather Decky not fetch binaries during installation,
-use `Decky.Music.full.zip`: all three binaries ship inside `bin/` and `remote_binary` is stripped
+use `Decky.Music.full.zip`: both binaries ship inside `bin/` and `remote_binary` is stripped
 from `package.json`, so installation performs zero downloads. Install it exactly like the normal
 build (paste that asset's URL into Manual Plugin Install). The trade-off is a larger download, and
 binaries that are not refreshed by Decky's remote verification — reinstall the whole zip to upgrade.
@@ -166,8 +167,7 @@ binaries that are not refreshed by Decky's remote verification — reinstall the
 ```mermaid
 graph LR
   UI[React UI<br/>QAM + /music] <-->|Decky callable / emit| BR[Python bridge<br/>Single source of truth]
-  BR <-->|UDS + NDJSON v1| QQ[QQ provider<br/>Python + Nuitka]
-  BR <-->|UDS + NDJSON v1| NCM[NetEase provider<br/>Rust]
+  BR <-->|UDS + NDJSON v1| PROVIDER[provider<br/>Rust: QQ Music + NetEase]
   BR <-->|UDS + NDJSON v1| PLAYER[player<br/>Rust]
   PLAYER -->|reqwest + rodio| AUDIO[ALSA / PipeWire]
   PLAYER <-->|MPRIS2 D-Bus| MEDIA[System media widgets<br/>Bluetooth headset keys]
@@ -177,14 +177,15 @@ graph LR
   audio streams.
 - `main.py` is the Decky callable facade: a `CALLABLES` allowlist plus `__getattr__` forwarding to
   the bridge. `py_modules/bridge.py` manages state, persistence, events, and child processes.
-- Only one provider runs at a time. The player stays in its own process and directly streams,
-  decodes, and outputs audio through the system audio stack.
+- One resident provider process serves both QQ Music and NetEase; requests carry a source tag, so
+  switching sources never restarts a process. The player stays in its own process and directly
+  streams, decodes, and outputs audio through the system audio stack.
 - The bridge runs inside Decky's frozen CPython runtime, so it uses only the Python standard library.
 - The bridge and child processes use Unix domain sockets and NDJSON protocol v1 without opening a
   local TCP port; both Rust binaries share the `wire` crate for the protocol.
 - Only the player exposes MPRIS; external control actions are forwarded to the bridge, which remains
   the single source of truth.
-- Decky downloads the three external programs through `remote_binary` and verifies them with the
+- Decky downloads the two external programs (player, provider) through `remote_binary` and verifies them with the
   SHA-256 hashes in `package.json` (except for the full offline build, which ships them inside the
   zip).
 
@@ -220,7 +221,6 @@ pnpm build
 | `python3 -m unittest discover -s tests` | Run bridge/protocol Python tests |
 | `cargo test --workspace` | Run Rust workspace tests |
 | `cargo fmt --all && cargo clippy --workspace` | Run Rust formatting and static checks |
-| `(cd qq-provider && uv run ruff check .)` | Run QQ provider static checks |
 
 ### Build SteamOS Binaries
 
@@ -228,16 +228,14 @@ Release and device deployment use compatible toolchains inside Docker to avoid b
 newer glibc than SteamOS:
 
 ```bash
-bash scripts/build-rust.sh -p player
-bash scripts/build-rust.sh -p ncm-provider
-bash scripts/build-qq-provider.sh
+bash scripts/build-rust.sh -p player -p provider
 ```
 
-Artifacts are written to `target/release/` and `qq-provider/build/qq-provider.tar.gz`.
+Artifacts are written to `target/release/player` and `target/release/provider`.
 
 Build images are pinned by digest. The build scripts automatically run `scripts/check-binaries.py`
-to check x86-64 ELF files, glibc requirements no newer than 2.39, and the Rust executables' dynamic
-dependencies. ELF files bundled inside the QQ standalone package must pass too.
+to check x86-64 ELF files, glibc requirements no newer than 2.39, and both executables' dynamic
+dependency allowlists.
 These checks establish ABI boundaries, not on-device audio, controller, scaling, or suspend/resume compatibility.
 
 ### Deploy to a SteamOS Development Device
@@ -247,8 +245,8 @@ DECK_HOST=<user>@<steamos-ip> bash scripts/deploy.sh
 ```
 
 `scripts/deploy.sh` builds the frontend, packages the plugin, copies existing binaries, and restarts
-`plugin_loader`. It **does not rebuild** the player or providers. After changing `player/`,
-`ncm-provider/`, or `qq-provider/`, run the corresponding build command above before deploying.
+`plugin_loader`. It **does not rebuild** the player or provider. After changing `player/`,
+`provider/`, or `wire/`, run the build command above before deploying.
 
 `DECK_HOST` is required; the SSH login does not have to be named `deck`. Before building, the script
 discovers the installed plugins directory from the remote `plugin_loader` service configuration.
@@ -257,7 +255,7 @@ If it cannot reliably discover it, it stops rather than guessing `/home/deck`. O
 Writable directories belong to the service's `UNPRIVILEGED_USER` (or the uniquely matching user home),
 not the SSH login. A directory override does not override account resolution: indirect environment
 files or an ambiguous account require explicit, literal service configuration first.
-All three prebuilt binaries must be present; ABI checks run before packaging.
+Both prebuilt binaries must be present; ABI checks run before packaging.
 If remote sudo needs a password, provide it through the `DECK_PASS` environment variable, never in scripts or the repository.
 
 Record compatibility checks separately: actual user/UID and install path, SteamOS/Steam/Decky versions,
@@ -273,9 +271,8 @@ no such device is currently available.
 | `main.py` | Decky `Plugin` facade: `CALLABLES` allowlist plus `__getattr__` forwarding to the bridge |
 | `py_modules/` | Standard-library-only bridge, playback queue, protocol, and logging code |
 | `player/` | Rust audio player for streaming, decoding, playback, controls, and MPRIS |
-| `wire/` | Rust implementation of bridge↔child protocol v1, shared by player and ncm-provider |
-| `ncm-provider/` | Rust NetEase Cloud Music provider built on `ncm-api-rs` |
-| `qq-provider/` | QQ Music provider built on `QQMusicApi` and packaged with Nuitka |
+| `wire/` | Rust implementation of bridge↔child protocol v1, shared by player and provider |
+| `provider/` | Unified Rust source process: QQ Music backend on `QQMusicApi-rs` + NetEase backend on `ncm-api-rs` |
 | `tests/` | Bridge, protocol, settings, and frontend behavior tests |
 | `docs/` | Architecture, roadmap, queue semantics, provider capabilities, and UI specifications |
 | `scripts/` | SteamOS-compatible builds, device deployment, and full / CN release packaging |
@@ -306,7 +303,8 @@ constraints:
 ## Acknowledgments
 
 - [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader)
-- [QQMusicApi](https://github.com/L-1124/QQMusicApi)
+- [QQMusicApi](https://github.com/L-1124/QQMusicApi) and its Rust port
+  [QQMusicApi-rs](https://github.com/jinzhongjia/QQMusicApi-rs)
 - [ncm-api-rs](https://github.com/SPlayer-Dev/ncm-api-rs)
 - [rodio](https://github.com/RustAudio/rodio) and
   [reqwest](https://github.com/seanmonstar/reqwest)

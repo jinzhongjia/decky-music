@@ -17,9 +17,8 @@ NAME=$(python3 -c 'import json; print(json.load(open("plugin.json"))["name"])')
 PLUGINS=$(python3 scripts/deploy_target.py preflight --name "$NAME")
 printf 'Deploy target: %s:%s/%s\n' "$DECK_HOST" "$PLUGINS" "$NAME"
 
-# 侧载不执行 remote_binary 下载；三个预构建产物必须齐全并满足发布 ABI。
-python3 scripts/check-binaries.py \
-  target/release/player target/release/ncm-provider qq-provider/build/qq-provider.tar.gz
+# 侧载不执行 remote_binary 下载；两个预构建产物必须齐全并满足发布 ABI。
+python3 scripts/check-binaries.py target/release/player target/release/provider
 
 # CLI 以 root 构建；清理上次产物与 CLI 留下的临时目录。
 sudo rm -rf out dist /tmp/decky
@@ -34,6 +33,6 @@ if [ "${#archives[@]}" -ne 1 ]; then
 fi
 
 # helper 使用独立远端临时目录；删除旧插件前重新 preflight，失败透传。
-# Rust/QQ 只搬运已有产物；QQ tar.gz 与 remote_binary 一样保留给 bridge 自解包。
+# player / provider 只搬运 target/release 下已有产物，不自动重建。
 python3 scripts/deploy_target.py install --name "$NAME" --plugins "$PLUGINS" --zip "${archives[0]}"
 printf 'Deployed %s\n' "$NAME"

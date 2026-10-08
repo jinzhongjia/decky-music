@@ -4,7 +4,6 @@ import contextlib
 import importlib.util
 import io
 import subprocess
-import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -57,9 +56,9 @@ class TestElfRequirements(unittest.TestCase):
 
     def test_main_requires_entry_point(self):
         with self.assertRaises(checker.CheckError):
-            checker.inspect_output(readelf_output().replace("0x1000", "0x0"), "qq-provider")
+            checker.inspect_output(readelf_output().replace("0x1000", "0x0"), "provider")
 
-    def test_player_and_ncm_dynamic_dependency_boundaries(self):
+    def test_player_and_provider_dynamic_dependency_boundaries(self):
         self.assertEqual(
             checker.inspect_output(
                 readelf_output(needed=("libc.so.6", "libasound.so.2")), "player"
@@ -69,8 +68,8 @@ class TestElfRequirements(unittest.TestCase):
         for role, library in (
             ("player", "libpulse.so.0"),
             ("player", "libssl.so.3"),
-            ("ncm-provider", "libasound.so.2"),
-            ("ncm-provider", "libcrypto.so.3"),
+            ("provider", "libasound.so.2"),
+            ("provider", "libcrypto.so.3"),
         ):
             with (
                 self.subTest(role=role, library=library),
@@ -79,16 +78,15 @@ class TestElfRequirements(unittest.TestCase):
                 checker.inspect_output(readelf_output(needed=(library,)), role)
 
 
-class TestPackageGate(unittest.TestCase):
+class TestReleaseGate(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
     def make_elf(self, path, version="GLIBC_2.39"):
-        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"\x7fELF" + version.encode())
-        path.chmod(0o755)
+        path.chmod(0o644)  # Downloaded release assets are not executable yet.
 
     def readelf(self, command, **kwargs):
         version = Path(command[-1]).read_bytes()[4:].decode()
@@ -104,41 +102,27 @@ class TestPackageGate(unittest.TestCase):
             status = checker.main([str(path)])
         return status, errors.getvalue()
 
-    def make_archive(self, path, entries):
-        with tarfile.open(path, "w:gz") as archive:
-            for name, data, mode in entries:
-                member = tarfile.TarInfo(name)
-                member.size = len(data)
-                member.mode = mode
-                archive.addfile(member, io.BytesIO(data))
+    def test_known_names_pass_and_glibc_ceiling_applies(self):
+        for name in ("player", "provider", "player-linux-x64", "provider-linux-x64"):
+            with self.subTest(name=name):
+                binary = self.root / name
+                self.make_elf(binary)
+                self.assertEqual(self.cli(binary)[0], 0)
+                self.make_elf(binary, "GLIBC_2.40")
+                self.assertEqual(self.cli(binary)[0], 1)
 
-    def test_empty_directory_and_library_only_package_fail(self):
+    def test_unknown_names_directories_and_non_elf_fail(self):
+        unknown = self.root / "qq-provider"
+        self.make_elf(unknown)
+        self.assertEqual(self.cli(unknown)[0], 1)
         self.assertEqual(self.cli(self.root)[0], 1)
-        self.make_elf(self.root / "libpython.so")
-        status, _ = self.cli(self.root)
-        self.assertEqual(status, 1)
-
-    def test_directory_checks_bundled_extension_not_only_main(self):
-        self.make_elf(self.root / "qq-provider")
-        library = self.root / "extensions" / "module.so"
-        self.make_elf(library, "GLIBC_2.40")
-        status, errors = self.cli(self.root)
-        self.assertEqual(status, 1)
-        self.assertIn("module.so", errors)
-        self.make_elf(library, "GLIBC_2.28")
-        self.assertEqual(self.cli(self.root)[0], 0)
-
-    def test_executable_mode_required_for_package_not_download(self):
-        main = self.root / "qq-provider"
-        self.make_elf(main)
-        main.chmod(0o644)
-        self.assertEqual(self.cli(main)[0], 0)
-        status, _ = self.cli(self.root)
-        self.assertEqual(status, 1)
+        text = self.root / "provider"
+        text.write_text("not an elf")
+        self.assertEqual(self.cli(text)[0], 1)
 
     def test_release_filenames_keep_dependency_policy(self):
         result = subprocess.CompletedProcess([], 0, readelf_output(needed=("libssl.so.3",)), "")
-        for name in ("player-linux-x64", "ncm-provider-linux-x64"):
+        for name in ("player-linux-x64", "provider-linux-x64"):
             with (
                 self.subTest(name=name),
                 patch.object(self, "readelf", return_value=result),
@@ -147,58 +131,6 @@ class TestPackageGate(unittest.TestCase):
                 self.make_elf(binary)
                 status, _ = self.cli(binary)
                 self.assertEqual(status, 1)
-
-    def test_unreadable_subdirectory_does_not_silently_pass(self):
-        self.make_elf(self.root / "qq-provider")
-
-        (self.root / "private").mkdir()
-
-        def walk(root, *, followlinks, onerror):
-            yield str(root), ["private"], ["qq-provider"]
-            onerror(PermissionError("private"))
-
-        with patch.object(checker.os, "walk", side_effect=walk):
-            status, _ = self.cli(self.root)
-        self.assertEqual(status, 1)
-
-    def test_archive_checks_all_elf_and_requires_main(self):
-        archive = self.root / "qq-provider.tar.gz"
-        main = ("qq-provider/qq-provider", b"\x7fELFGLIBC_2.39", 0o755)
-        library = ("qq-provider/extensions/module.so", b"\x7fELFGLIBC_2.40", 0o644)
-        self.make_archive(archive, [main, library])
-        status, errors = self.cli(archive)
-        self.assertEqual(status, 1)
-        self.assertIn("module.so", errors)
-        self.make_archive(archive, [library])
-        self.assertEqual(self.cli(archive)[0], 1)
-        self.make_archive(archive, [main])
-        self.assertEqual(self.cli(archive)[0], 0)
-
-    def test_archive_rejects_traversal_and_duplicate_members(self):
-        archive = self.root / "qq-provider.tar.gz"
-        main = ("qq-provider/qq-provider", b"\x7fELFGLIBC_2.39", 0o755)
-        for entries in ([main, ("../escape", b"bad", 0o644)], [main, main]):
-            with self.subTest(entries=entries):
-                self.make_archive(archive, entries)
-                self.assertEqual(self.cli(archive)[0], 1)
-
-    def test_archive_rejects_escaping_symlink(self):
-        archive_path = self.root / "qq-provider.tar.gz"
-        with tarfile.open(archive_path, "w:gz") as archive:
-            link = tarfile.TarInfo("qq-provider/libevil.so")
-            link.type = tarfile.SYMTYPE
-            link.linkname = "../../outside.so"
-            archive.addfile(link)
-        status, _ = self.cli(archive_path)
-        self.assertEqual(status, 1)
-
-    def test_directory_rejects_external_symlink(self):
-        directory = self.root / "package"
-        self.make_elf(directory / "qq-provider")
-        self.make_elf(self.root / "external.so")
-        (directory / "external.so").symlink_to(self.root / "external.so")
-        status, _ = self.cli(directory)
-        self.assertEqual(status, 1)
 
 
 if __name__ == "__main__":
