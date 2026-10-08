@@ -1,0 +1,314 @@
+//! Provider command handlers for NCM. Boundary parsing stays here so bad args
+//! return invalid_request before any upstream call.
+
+use std::future::Future;
+
+use ncm_api_rs::{ApiResponse, NcmError, Query};
+use serde_json::Value;
+
+use crate::ncm::protocol::{self, ErrorCode};
+use crate::ncm::state::{with_timeout, State};
+
+mod comments;
+mod details;
+mod library;
+pub(crate) mod playlists;
+mod radio;
+mod search;
+
+pub use comments::comments;
+pub use details::{album_detail, artist_detail};
+pub use library::{
+    add_to_playlist, fav_playlist, fav_songs, like_song, liked_ids, listen_rank, user_assets,
+};
+pub use playlists::{created_playlists, fav_playlists};
+pub use radio::{fm_trash, radio_fetch};
+pub use search::{search_albums, search_artists, search_hot, search_playlists, search_songs};
+
+const DEFAULT_LIMIT: i64 = 30;
+const DEFAULT_OFFSET: i64 = 0;
+const MAX_LIMIT: i64 = 50;
+
+/// 上游调用统一三态:成功给响应,库错误 → provider_error,超时 → timeout。
+/// Err 即协议错误响应串,String 返回的命令 match 后直接 return,Result 命令用 `?`。
+pub(crate) async fn call<F: Future<Output = Result<ApiResponse, NcmError>>>(
+    fut: F,
+    id: u64,
+) -> Result<ApiResponse, String> {
+    match with_timeout(fut).await {
+        Ok(Ok(r)) => Ok(r),
+        Ok(Err(_)) => Err(protocol::err(
+            id,
+            ErrorCode::ProviderError,
+            "provider_error",
+        )),
+        Err(_) => Err(protocol::err(
+            id,
+            ErrorCode::UpstreamTimeout,
+            "upstream_timeout",
+        )),
+    }
+}
+
+pub(crate) async fn fetch<F: Future<Output = Result<ApiResponse, NcmError>>>(
+    fut: F,
+    id: u64,
+    pick: impl FnOnce(&Value) -> Value,
+) -> String {
+    match call(fut, id).await {
+        Ok(r) => protocol::ok(id, pick(&r.body)),
+        Err(e) => e,
+    }
+}
+
+pub(crate) fn invalid(id: u64) -> String {
+    protocol::err(id, ErrorCode::InvalidRequest, "invalid_request")
+}
+
+pub(crate) fn string_arg(args: &Value, name: &str) -> Result<String, ()> {
+    args.get(name)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .ok_or(())
+}
+
+fn bool_arg(args: &Value, name: &str) -> Result<bool, ()> {
+    args.get(name).and_then(Value::as_bool).ok_or(())
+}
+
+fn optional_i64(args: &Value, name: &str, default: i64) -> Result<i64, ()> {
+    match args.get(name) {
+        Some(v) => v.as_i64().filter(|n| *n >= 0).ok_or(()),
+        None => Ok(default),
+    }
+}
+
+fn optional_limit(args: &Value, default: i64) -> Result<i64, ()> {
+    match args.get("limit") {
+        Some(v) => v
+            .as_i64()
+            .filter(|n| *n > 0)
+            .map(|n| n.min(MAX_LIMIT))
+            .ok_or(()),
+        None => Ok(default.min(MAX_LIMIT)),
+    }
+}
+
+pub(crate) fn paging(args: &Value) -> Result<(usize, usize), ()> {
+    let limit = optional_limit(args, DEFAULT_LIMIT)? as usize;
+    let offset = optional_i64(args, "offset", DEFAULT_OFFSET)? as usize;
+    Ok((limit, offset))
+}
+
+fn optional_string(args: &Value, name: &str, default: &str) -> Result<String, ()> {
+    match args.get(name) {
+        Some(v) => v
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .ok_or(()),
+        None => Ok(default.to_string()),
+    }
+}
+
+fn paged_query(args: &Value, type_id: &str) -> Result<Query, ()> {
+    let keyword = string_arg(args, "keyword")?;
+    let limit = optional_limit(args, DEFAULT_LIMIT)?.to_string();
+    let offset = optional_i64(args, "offset", DEFAULT_OFFSET)?.to_string();
+    Ok(Query::new()
+        .param("keywords", &keyword)
+        .param("type", type_id)
+        .param("limit", &limit)
+        .param("offset", &offset))
+}
+
+/// `State::cookie()` 现在恒为 `Some`(未登录也带设备锚点,见 state.rs),这里的 `None`
+/// 分支只是保留签名不改 21 处调用点。
+pub(crate) fn maybe_cookie(mut q: Query, cookie: Option<String>) -> Query {
+    if let Some(c) = cookie {
+        q = q.cookie(&c);
+    }
+    q
+}
+
+async fn current_uid(state: &State, id: u64) -> Result<(String, String), String> {
+    let session = state.session();
+    if session.credential.is_none() {
+        return Err(protocol::err(id, ErrorCode::NotLoggedIn, "not_logged_in"));
+    }
+    let cookie = state.cookie().await.unwrap_or_default();
+    let uid = resolve_uid(&session, id, async {
+        let q = Query::new().cookie(&cookie);
+        let status = call(state.client.login_status(&q), id).await?;
+        Ok(id_string(&status.body["profile"]["userId"]))
+    })
+    .await?;
+    if !state.is_current(&session) {
+        return Err(protocol::err(id, ErrorCode::Superseded, "superseded"));
+    }
+    Ok((uid, cookie))
+}
+
+pub(crate) async fn resolve_uid<F>(
+    session: &crate::ncm::state::Session,
+    id: u64,
+    fetch: F,
+) -> Result<String, String>
+where
+    F: Future<Output = Result<String, String>>,
+{
+    // Single-flight only the uid lookup; unrelated upstream work remains concurrent.
+    let mut cached = session.uid.lock().await;
+    if let Some(uid) = cached.as_ref() {
+        return Ok(uid.clone());
+    }
+    let uid = fetch.await?;
+    if uid.is_empty() {
+        return Err(protocol::err(id, ErrorCode::NotLoggedIn, "not_logged_in"));
+    }
+    *cached = Some(uid.clone());
+    Ok(uid)
+}
+
+fn id_string(v: &Value) -> String {
+    v.as_i64()
+        .map(|i| i.to_string())
+        .or_else(|| v.as_str().filter(|s| !s.is_empty()).map(str::to_owned))
+        .unwrap_or_default()
+}
+
+pub(crate) fn map_arr(v: &Value, f: fn(&Value) -> Value) -> Vec<Value> {
+    v.as_array()
+        .map(|a| a.iter().map(f).collect())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn upstream_diagnostics_never_reach_error_responses() {
+        let secret = "SENTINEL https://synthetic.invalid/?token=secret cookie=synthetic";
+        for error in [
+            NcmError::Unknown(secret.into()),
+            NcmError::AuthRequired(secret.into()),
+            NcmError::Api {
+                code: 500,
+                msg: secret.into(),
+            },
+            NcmError::InvalidParam(secret.into()),
+            NcmError::Timeout(secret.into()),
+        ] {
+            let response = call(async { Err(error) }, 7).await.unwrap_err();
+            assert!(!response.contains("SENTINEL"));
+            assert!(!response.contains("synthetic.invalid"));
+            let response: Value = serde_json::from_str(&response).unwrap();
+            assert_eq!(response["error"]["code"], "provider_error");
+            assert_eq!(response["error"]["message"], "provider_error");
+        }
+    }
+
+    use serde_json::json;
+
+    #[test]
+    fn search_args_require_keyword_and_numeric_paging() {
+        assert!(paged_query(&json!({}), "1").is_err());
+        assert!(paged_query(&json!({"keyword":"x","limit":"30"}), "1").is_err());
+        assert!(paged_query(&json!({"keyword":"x","offset":-1}), "1").is_err());
+        let q = paged_query(&json!({"keyword":"x","limit":2,"offset":3}), "1000").unwrap();
+        assert_eq!(q.get_or("keywords", ""), "x");
+        assert_eq!(q.get_or("type", ""), "1000");
+        assert_eq!(q.get_or("limit", ""), "2");
+        assert_eq!(q.get_or("offset", ""), "3");
+    }
+
+    #[test]
+    fn list_paging_is_numeric_positive_and_clamped() {
+        assert!(paging(&json!({"limit":"30"})).is_err());
+        assert!(paging(&json!({"limit":0})).is_err());
+        assert!(paging(&json!({"offset":-1})).is_err());
+        assert_eq!(paging(&json!({"limit":99,"offset":3})).unwrap(), (50, 3));
+    }
+
+    #[test]
+    fn action_args_require_bool_not_truthy_string() {
+        assert_eq!(string_arg(&json!({"id":"7"}), "id").unwrap(), "7");
+        assert!(string_arg(&json!({"id":""}), "id").is_err());
+        assert!(bool_arg(&json!({"on":"true"}), "on").is_err());
+        assert!(bool_arg(&json!({"on":true}), "on").unwrap());
+    }
+
+    #[test]
+    fn mappers_normalize_shared_shapes() {
+        let song = crate::ncm::commands::song_brief(&json!({
+            "id": 1,
+            "name": "s",
+            "artists": [{"name":"a"}],
+            "album": {"name":"al", "picUrl":"p"},
+            "duration": 32000,
+            "fee": 4
+        }));
+        assert_eq!(
+            song,
+            json!({
+                "mid":"1", "name":"s", "singer":"a", "album":"al", "duration":32,
+                "cover":"p", "vip":true, "media_mid":""
+            })
+        );
+
+        assert_eq!(
+            details::album_brief(
+                &json!({"id":2,"name":"al","picUrl":"p","artist":{"name":"ar"},"size":9})
+            ),
+            json!({"id":"2","name":"al","cover":"p","artist":"ar","count":9})
+        );
+        assert_eq!(
+            details::artist_brief(&json!({"id":3,"name":"ar","img1v1Url":"a"})),
+            json!({"id":"3","name":"ar","avatar":"a"})
+        );
+        assert_eq!(
+            comments::comment_brief(
+                &json!({"commentId":4,"user":{"nickname":"u","avatarUrl":"av"},"content":"c","likedCount":5,"time":6})
+            ),
+            json!({"id":"4","user":"u","avatar":"av","content":"c","likes":5})
+        );
+        assert_eq!(
+            search::hot_keyword(&json!({"searchWord":"k","iconType":1})),
+            json!({"keyword":"k","label":"hot"})
+        );
+        assert_eq!(
+            search::hot_keyword(&json!({"searchWord":"k","iconType":5})),
+            json!({"keyword":"k","label":"new"})
+        );
+        assert_eq!(
+            search::hot_keyword(&json!({"searchWord":"k"})),
+            json!({"keyword":"k","label":"none"})
+        );
+        // 搜索专辑/歌手命中高亮 <em>(可带属性)剥除
+        assert_eq!(
+            search::album_brief_clean(&json!({
+                "id":5,"name":"<em class=\"s-fc7\">海</em>屿你","picUrl":"p",
+                "artist":{"name":"<em>白</em>允"},"size":1
+            })),
+            json!({"id":"5","name":"海屿你","cover":"p","artist":"白允","count":1})
+        );
+        assert_eq!(
+            library::user_assets_data(
+                "42".to_string(),
+                &json!({"createdPlaylistCount":2,"subPlaylistCount":3,"cloudCount":4}),
+                9
+            ),
+            json!({"uid":"42","fav_songs":9,"listen_rank":0,"created_playlists":2,"fav_playlists":3})
+        );
+    }
+
+    #[test]
+    fn invalid_request_shape_is_stable() {
+        let v: Value = serde_json::from_str(&invalid(9)).unwrap();
+        assert_eq!(
+            v,
+            json!({"id":9,"ok":false,"error":{"code":"invalid_request","message":"invalid_request"}})
+        );
+    }
+}

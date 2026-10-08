@@ -1,5 +1,5 @@
 {
-  "description": "逐行 LRC + 译文的归一化期望输出。ncm-provider/src/lyric/tests.rs 与 qq-provider/tests/test_lyric.py 共用，保证两端解析规则一致；改规则时两端与本文件同步更新。",
+  "description": "逐行 LRC + 译文的归一化期望输出。provider 的 ncm 与 qq 后端单测共用（provider/src/ncm/lyric/tests.rs、provider/src/qq/tests.rs），保证两个音源解析规则一致；改规则时与本文件同步更新。",
   "cases": [
     {
       "name": "time_tag_variants",
