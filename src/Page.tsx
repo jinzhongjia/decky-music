@@ -5,6 +5,7 @@ import { ErrorBanner } from "./ErrorBanner";
 import { NCMApp } from "./apps/ncm/NCMApp";
 import { QQApp } from "./apps/qq/QQApp";
 import { t } from "./i18n";
+import { onProviderChanged } from "./providerChange";
 import { theme } from "./ui/theme";
 
 // 注入的大屏路由;QAM / index / steamMenu 都从这里引,避免与入口文件循环依赖
@@ -18,10 +19,16 @@ export function Page() {
   const [provider, setProvider] = useState<Provider | undefined>(undefined); // undefined = 加载中
 
   useEffect(() => {
+    let changed = false; // QAM 已经广播过新音源时,迟到的初始读取不能把它覆盖回旧值
+    const off = onProviderChanged((p) => {
+      changed = true;
+      setProvider(p);
+    });
     api
       .getProvider()
-      .then((st) => setProvider(st.provider))
-      .catch(() => setProvider(null));
+      .then((st) => changed || setProvider(st.provider))
+      .catch(() => changed || setProvider(null));
+    return off;
   }, []);
 
   return (

@@ -32,36 +32,6 @@ jobs:
       - name: Run complete bridge suite
         run: python -m unittest discover -s tests -p 'test_*.py' -v
 
-  qq:
-    name: QQ (locked Python 3.11)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: qq-provider
-    env:
-      UV_PYTHON_DOWNLOADS: never
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.11.16"
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-        with:
-          version: "0.12.13"
-          checksum: "745765a3b6e360ad76743599ae5c42e9278c7edf8bbff9fc76d05bf2623a04dd"
-          enable-cache: false
-      - name: Install actual provider and lint dependencies
-        run: uv sync --locked --python 3.11.16 --group dev
-      - name: Require actual upstream packages
-        run: uv run --locked --no-sync python -c 'import qqmusic_api, curl_cffi'
-      - name: Run complete QQ suite
-        run: uv run --locked --no-sync python -m unittest discover -s tests -p 'test_*.py' -v
-      - name: Lint QQ
-        run: uv run --locked --no-sync ruff check .
-
   ui:
     name: UI (pnpm ${{ matrix.pnpm }})
     runs-on: ubuntu-24.04

@@ -20,6 +20,7 @@ import { ErrorBanner } from "./ErrorBanner";
 import { Footer } from "./Footer";
 import { guard, reportError } from "./errors";
 import { t } from "./i18n";
+import { announceProvider } from "./providerChange";
 import { setProviderSelected } from "./steamMenu";
 
 // QAM 单面板状态机:loading 初始拉取 → pick 选源 → (qq)qqmethod 选登录方式 → qr 扫码 → account 已登录。
@@ -138,6 +139,7 @@ export function QAM() {
       setView("loading"); // 切源要 spawn 新进程,拉完前先显示加载中
       await api.setProvider(p);
       setProviderSelected(true); // 已选源 → 左侧菜单「音乐」入口可显示
+      announceProvider(p); // 已打开的大屏页随之换成新音源的 app
       const st = await api.getProvider(); // 当前已切到 p,读它的登录态
       if (st.loggedIn) return showAccount();
       if (p === "qq") setView("qqmethod");
@@ -201,6 +203,7 @@ export function QAM() {
     setAccount(null);
     setProvider(null);
     setProviderSelected(false);
+    announceProvider(null);
     setView("pick");
   };
 

@@ -1,8 +1,8 @@
 import { Focusable, Navigation } from "@decky/ui";
 import { FaGithub, FaTag } from "react-icons/fa";
 
-// TODO: 这里后续处理一下，能够根据真正的 tag 变动
-const VERSION = "1.0.0";
+// 构建时由 rollup.config.js 从 package.json 注入,发版改版本号即自动跟上
+import VERSION from "decky-music:version";
 const REPO = "https://github.com/jinzhongjia/decky-music";
 const REPO_SHORT = REPO.split(".com/")[1];
 

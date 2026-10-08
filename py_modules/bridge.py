@@ -20,13 +20,15 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
         self._tasks: set[asyncio.Task] = set()
         self._volume_persist_task: asyncio.Task | None = None
         self._provider_change_gen = 0
+        # 当前音源令牌(Selection):统一 provider 进程常驻,切换音源只换令牌、不换进程
+        self.selection = None
 
     async def start(self):
         self.settings = music_settings.load_settings()
         self.provider = Conn("provider")
         self.player = Conn("player")
         self.provider_proc: asyncio.subprocess.Process | None = None
-        self.provider_which: str | None = None  # 当前已 spawn 的 provider
+        self.provider.route = lambda: self.selection.provider if self.selection else None
         self.provider_lock = asyncio.Lock()  # 串行化 _ensure_provider,保证幂等不重复 spawn
         self.player_proc: asyncio.subprocess.Process | None = None
         self.player_lock = asyncio.Lock()  # 串行化 _ensure_player,同上
@@ -49,6 +51,7 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
         self.provider.on_event = self._on_provider_event
         self.provider.on_dead = self._provider_unresponsive
         self.player.on_missing = self._ensure_player  # 崩了之后下一条命令把它拉回来
+        self.provider.on_missing = self._provider_missing  # 同上:含播放链路的 song_url
         self.player.on_lost = self._player_connection_lost
         log("bridge", "own", "info", f"started (dev={DEV})")
         # player 常驻:启动时即 spawn(注入 XDG_RUNTIME_DIR,见 _child_env)
@@ -57,8 +60,8 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
         )
         await self._spawn_player()
         await self._sync_player_volume()  # 否则 UI 滑块与实际输出对不上(见该方法注释)
-        # 预设了 provider 就在加载时后台预拉起(不阻塞启动),省去 UI 首次 get_provider 的
-        # spawn+连接延迟,避免面板闪一下"选源"再跳账号态。
+        # 预设了音源就在加载时后台拉起 provider 并选中(不阻塞启动),省去 UI 首次
+        # get_provider 的 spawn+连接延迟,避免面板闪一下"选源"再跳账号态。
         if self.settings.get("provider"):
             self._track_task(self._ensure_provider(self.settings["provider"]))
         self._track_task(self._credential_refresh_loop())
@@ -110,16 +113,18 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
     async def clear_data(self) -> None:
         """恢复出厂:登出当前源 → 停播清队列 → settings 归默认并落盘。
         不碰 bin/(那是程序不是数据,删了不可恢复)。凭证/URL 不进日志(红线)。"""
-        origin = self.provider.origin
-        which = self.settings.get("provider")
-        if which:
-            try:  # best-effort:drop provider 进程内存里的凭证
+        sel = self._selected()
+        if sel is not None:
+            try:  # best-effort:登出当前源,并清掉 provider 进程内两个音源的凭证
                 await self.provider.request("logout")
-                if self.provider.is_current(origin):
-                    await self.provider.request("set_credential", {"cred": None})
+                for which in ("qq", "ncm"):
+                    if self._is_selected(sel):
+                        await self.provider.request(
+                            "set_credential", {"cred": None}, provider=which
+                        )
             except Exception:
                 log("bridge", "own", "warn", "clear_data logout skipped")
-        self.provider.end_session()
+        self._select(None)
         try:  # 停 player + 清队列(会落盘,随后被覆盖);player 未连时 stop 会抛,不能挡住数据清除
             await self.playback.queue_clear()
         except Exception:

@@ -2,7 +2,46 @@
 
 本文件是 P4+ 的**总规划**:每个阶段给出完整竖切契约(provider 命令 wire 形状 -> bridge callable/事件 -> `src/api.ts` 类型 -> UI 绘制清单)+ 可观测验收。页面视觉/按键规格见 `ui-design/specs/`;队列语义见 `QUEUE-BEHAVIOR.md`;库能力对照见 `PROVIDER-APIS.md`。
 
-原则不变:**只做现有后端能填的**;每阶段独立部署验收;QQ / NCM 两套产品,共享层之上各铺特色页;改协议时四端 + `src/api.ts` 同步。
+原则不变:**只做现有后端能填的**;每阶段独立部署验收;QQ / NCM 两套产品,共享层之上各铺特色页;改协议时 bridge、`wire`、player、provider + `src/api.ts` 同步。
+
+---
+
+## 统一 Rust provider（QQ + 网易云同进程，已真机验证）
+
+- `ncm-provider` 与 Python `qq-provider` 合并为一个 Rust 二进制 `provider/`：QQ 改用
+  [QQMusicApi-rs](https://github.com/jinzhongjia/QQMusicApi-rs)，网易云改用 ncm-api-rs fork 的
+  `feat/sync-upstream-2026-10` 分支；两家歌词共用 `provider/src/lyric/parse.rs`。
+- 协议 v1 扩展：provider 请求带顶层 `provider` 路由，事件带音源标签。bridge 只启动一个常驻 provider，
+  切换音源只换 `Selection` 令牌并让旧音源 `cancel_login`，不再停旧进程、起新进程；前端契约不变。
+- 发布物从三个二进制减为两个（`player`、`provider`），provider release 约 12 MB，取代 ~58 MB 的
+  QQ Nuitka 压缩包与首次自解包；`check-binaries.py` 只剩 ELF 检查，provider 适用严格依赖白名单。
+- fork 分支的 `login_qr_key` 把 unikey 包进 `data`（与 Node 版一致），导致网易云扫码报 `empty unikey`；
+  已改为新旧两种形状都认并补单测，真实网络下 QR + waiting 轮询恢复。
+- 真机（Steam Deck，dev 侧载）：Python 时期保存的 QQ 凭证与 `qq-device.json` 直接沿用，免重新登录、
+  红心种子 317 首与旧版一致；QQ 登录态 3 首歌 × 无损 / 高品 / 标准均拿到对应档位 URL 并实际出声；
+  QQ↔网易云切换各约 13ms、provider PID 全程不变；kill provider 后下一条命令自动重开并重注凭证；
+  红心与收藏歌单开关往返后服务器集合恢复原状；网易云逐字歌词、每日推荐、私人 FM、QQ 猜你喜欢、
+  自然播完切下一首、两端正在播放页截图正常。provider 常驻 RSS 约 26 MB。
+- 故障注入发现：歌曲将结束时 provider 被杀，自动切歌的 `song_url` 直接得到 `timeout` 而停播
+  （浏览类命令原本有重开路径，播放链路没有）。现在 provider 连接也装 `on_missing`，任何请求发现进程
+  不在会先拉起再发；拉起 / 引导中不重入，避免锁内自死锁。补回归后真机复测：重开后切到下一首继续播放。
+- 第二轮真机（用户扫码完成 QQ / 网易云登录与登出）：`add_to_playlist`（两端，经取消红心还原）、
+  `fm_trash`、`qq_radar`、`listen_rank`、`clear_data`（两端凭证清除、设置归默认）均通过；界面逐页点击
+  两端全部标签、歌单 / 专辑 / 歌手详情、热评与 QAM 切源无报错；断网 60s 请求立即失败、缓冲播完后按断点
+  恢复，恢复联网后搜索与播放正常；连续播放 30 分钟 10 首自动切歌，provider RSS 稳定约 27 MB、player 约 50 MB。
+- 包体与资源对比（v1.0.9 → 统一 provider）：full 包 63.8 MB → 10.0 MB；安装时下载 71.1 MB → 22.1 MB；
+  安装后磁盘 198.7 MB（QQ Nuitka 解包 185.4 MB）→ 22.1 MB。同机同批匿名请求：QQ 启动 ~250 ms → ~2 ms，
+  内存 98 / 120 MB（空闲 / 请求后）→ 7 / 16 MB，QQ 批量 CPU 0.54 s → 0.04 s；两家同进程请求后 22 MB。
+- 已知性能退化（暂不处理）：ncm-api-rs fork 的 `src/request.rs` 用 `pool_max_idle_per_host(0)` 关闭连接复用
+  （为修复复用失效连接的偶发发送失败），每个网易云请求都重新做 TCP + TLS 握手，单条请求多约 0.4–0.5 s，
+  歌单曲目等多段请求约慢一倍。可选改法：改为短 `pool_idle_timeout`，或保留复用并在失效连接时重试一次。
+- 已知边界：匿名身份短时间并发大量搜索时，网易云可能返回 `-462` 风控验证（新库比旧版更容易触发，
+  表现为 `provider_error`）；登录态同样并发 3 轮全部成功。睡眠唤醒、蓝牙 / 外接音频、正式安装
+  （remote_binary 下载）与非 Deck 设备未验证。
+- 顺带修复两个既有问题：QAM 切源 / 清除数据后经 `src/providerChange.ts` 广播，已打开的大屏页随之换成
+  对应 app（原先 `Page` 只在挂载时读一次 provider）；QAM 页脚版本号改由 `rollup.config.js` 的虚拟模块
+  `decky-music:version` 从 `package.json` 注入（原先写死 `1.0.0`）。真机验证：大屏页开着时 QQ↔网易云
+  双向切源布局即时切换，页脚显示 1.0.9；仓库无 QAM 实机截图，现有截图场景外观不变。
 
 ---
 

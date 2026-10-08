@@ -2,8 +2,6 @@
 
 import asyncio
 import os
-import shutil
-import tarfile
 import decky
 from log import DEV, log, pump_stderr
 from session_env import audio_environment
@@ -17,39 +15,10 @@ def BIN(name: str) -> str:
     return os.path.join(decky.DECKY_PLUGIN_DIR, "bin", name)
 
 
-def qq_exe() -> str:
-    """qq-provider 可执行路径,必要时自解包。
-
-    Nuitka standalone 是目录包(tar.gz);remote_binary 安装时 Decky 只把资产原样存成
-    bin/qq-provider 文件、不解包(侧载则由 deploy.sh 解),首次用到时在这里自解。
-    归档经 remote_binary 的 sha256 校验,内容可信;bin/ 由安装器创建、deck 可写。
-    阻塞(~秒级),调用方走 asyncio.to_thread。"""
-    bin_dir = os.path.join(decky.DECKY_PLUGIN_DIR, "bin")
-    exe = os.path.join(bin_dir, "qq-provider", "qq-provider")
-    if os.path.isfile(exe):
-        return exe
-    tarball = os.path.join(bin_dir, "qq-provider")
-    if not os.path.isfile(tarball):
-        return exe  # 归档也缺失:让 spawn 报自然错误
-    tmp = os.path.join(bin_dir, ".qq-unpack")
-    shutil.rmtree(tmp, ignore_errors=True)
-    with tarfile.open(tarball) as tf:
-        tf.extractall(tmp)  # 顶层即 qq-provider/ 目录
-    os.chmod(os.path.join(tmp, "qq-provider", "qq-provider"), 0o755)
-    # 目录顶掉同名 tar 文件:先挪开,目录就位后再删,中途失败不丢归档
-    aside = tarball + ".tar.gz"
-    os.rename(tarball, aside)
-    os.rename(os.path.join(tmp, "qq-provider"), os.path.join(bin_dir, "qq-provider"))
-    os.remove(aside)
-    os.rmdir(tmp)
-    log("bridge", "own", "info", "qq-provider unpacked")
-    return exe
-
-
 def _child_env() -> dict:
     # 保留有效的用户音频会话,否则按实际有效 UID 查找;不假定 deck/1000。
     env = audio_environment()
-    # provider 持久化自己的设备身份用(qq 的伪造安卓机档案)。不持久化的话每次重启
+    # provider 持久化自己的设备身份用(QQ 后端的伪造安卓机档案)。不持久化的话每次重启
     # 都是一台新设备,同账号同 IP 冒出大量新设备正是风控特征,见 issue #44。
     env["DECKY_MUSIC_STATE_DIR"] = decky.DECKY_PLUGIN_SETTINGS_DIR
     if DEV:

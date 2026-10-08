@@ -35,6 +35,7 @@ class ChildEvent:
     ev: str
     type: str
     data: JsonObject
+    provider: str | None = None  # 统一 provider 进程给事件打的音源标签;player 事件为 None
 
 
 @dataclass(frozen=True)
@@ -47,8 +48,14 @@ class LogEvent:
 # ---- 构造(bridge → child) ----
 
 
-def request(id: int, cmd: str, args: JsonObject | None = None) -> JsonObject:
-    return {"id": id, "cmd": cmd, "args": args or {}}
+def request(
+    id: int, cmd: str, args: JsonObject | None = None, provider: str | None = None
+) -> JsonObject:
+    # provider:统一 provider 进程据此路由到 qq / ncm 后端;发给 player 的请求不带
+    msg = {"id": id, "cmd": cmd, "args": args or {}}
+    if provider is not None:
+        msg["provider"] = provider
+    return msg
 
 
 # ---- 解码(child → bridge) ----
@@ -94,7 +101,10 @@ def _decode_event(raw: dict) -> ChildEvent:
     data = raw.get("data", {})
     if not isinstance(data, dict):
         raise ProtocolError("event data is not an object")
-    return ChildEvent(ev, typ, data)
+    provider = raw.get("provider")
+    if provider is not None and not (isinstance(provider, str) and provider):
+        raise ProtocolError("event provider must be a non-empty string")
+    return ChildEvent(ev, typ, data, provider)
 
 
 def _decode_log(raw: dict) -> LogEvent:

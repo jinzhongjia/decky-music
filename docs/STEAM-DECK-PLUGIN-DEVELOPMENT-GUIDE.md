@@ -73,7 +73,6 @@ For a new plugin, use the current upstream Decky development conventions and ins
 git clone https://github.com/jinzhongjia/decky-music.git
 cd decky-music
 pnpm install --frozen-lockfile
-(cd qq-provider && uv sync --locked --python 3.11.16 --group dev)
 ```
 
 Install the runtime versions declared by [Checks](../.github/workflows/checks.yml), rather than copying an old version list into a new machine setup. The repository also requires Git, SSH, rsync, a Rust toolchain, and an appropriate Docker or rootless Podman environment for compatible builds.
@@ -153,7 +152,7 @@ Use deterministic barriers to test the dangerous ordering: hold an old result, p
 
 We found that an upstream Python timeout implementation could handle its own cancellation while leaving the task's cancellation counter set. Treating that counter as proof of user cancellation silently discarded valid QR results.
 
-The current [QQ login implementation](../qq-provider/qq/login.py) runs upstream awaits in separate tasks. Internal timeout bookkeeping stays in the upstream task, while the authentication task still propagates genuine external cancellation. Generation checks remain necessary when a dependency consumes cancellation and returns a late result.
+Our former Python QQ login ran upstream awaits in separate tasks so internal timeout bookkeeping stayed out of the authentication task. The current Rust [QQ backend](../provider/src/qq/auth.rs) aborts the login task on cancellation and still checks an authentication generation before publishing any late result, because cancellation alone does not stop a request that has already completed upstream.
 
 Do not fix this by indiscriminately clearing cancellation counters or swallowing every `CancelledError`.
 
@@ -239,17 +238,13 @@ All commands below run from the repository root.
 
 ```bash
 # Rebuild every runtime whose code or dependencies changed.
-bash scripts/build-rust.sh -p player
-bash scripts/build-rust.sh -p ncm-provider
-bash scripts/build-qq-provider.sh
+bash scripts/build-rust.sh -p player -p provider
 
-# Explicit artifact checks; build scripts also run their applicable checks.
-python3 scripts/check-binaries.py \
-  target/release/player target/release/ncm-provider \
-  qq-provider/build/qq-provider.tar.gz
+# Explicit artifact checks; the build script also runs them.
+python3 scripts/check-binaries.py target/release/player target/release/provider
 ```
 
-The current project ABI gate checks x86-64 ELF, a glibc requirement no newer than 2.39, and allowed dynamic dependencies, including ELF files inside the QQ archive. The plugin's stated runtime boundary is glibc 2.39 or newer. These are project constraints, not a promise about every SteamOS release.
+The current project ABI gate checks x86-64 ELF, a glibc requirement no newer than 2.39, and allowed dynamic dependencies (the unified provider may only need basic libc runtime libraries). The plugin's stated runtime boundary is glibc 2.39 or newer. These are project constraints, not a promise about every SteamOS release.
 
 For the player, the application-specific native dependency is `libasound`; normal platform libraries such as libc, libm, and libgcc may also be present. ABI checks do not prove audio routing or audible output.
 
@@ -263,7 +258,7 @@ DECKY_BUILD_SUDO=0 DECKY_BUILD_ENGINE=podman \
   bash scripts/decky-build.sh --build-as-root
 ```
 
-The helper verifies cached/downloaded CLI bytes and the builder digest. It stages Git-visible working-tree files, including uncommitted source, instead of copying `target/`, Nuitka output, virtual environments, and ignored secret files into the build input. This avoided multi-gigabyte scratch copies and quota failures in our development loop. It is not a secret scanner: never commit secrets in the first place.
+The helper verifies cached/downloaded CLI bytes and the builder digest. It stages Git-visible working-tree files, including uncommitted source, instead of copying `target/` and ignored secret files into the build input. This avoided multi-gigabyte scratch copies and quota failures in our development loop. It is not a secret scanner: never commit secrets in the first place.
 
 ### Authorized deployment sequence
 
@@ -284,7 +279,7 @@ bash scripts/deploy.sh
 
 If remote sudo needs a password, provide `DECK_PASS` through the authentication environment, not a source file or a literal command recorded in history. `DECK_PLUGIN_PATH` is an explicit override for an existing plugins directory, not a substitute for correct account discovery.
 
-**Important:** `deploy.sh` copies existing runtime artifacts; it does not rebuild them. All three must be available. It also clears local `out/`, `dist/`, and `/tmp/decky`, and restarts `plugin_loader`. Do not store hand-authored data in those build locations, and remember that restarting the service affects other loaded plugins too. The full deploy script still uses host sudo; the rootless packaging example is not a rootless deployment command.
+**Important:** `deploy.sh` copies existing runtime artifacts; it does not rebuild them. Both the player and the provider must be available. It also clears local `out/`, `dist/`, and `/tmp/decky`, and restarts `plugin_loader`. Do not store hand-authored data in those build locations, and remember that restarting the service affects other loaded plugins too. The full deploy script still uses host sudo; the rootless packaging example is not a rootless deployment command.
 
 Never infer the install directory from the SSH user's home. Our deploy helper discovers it from service configuration and validates the plugin's sandbox owner. Keep the plugin root read-only; grant only the access required by the installation layout, such as archive extraction under `bin/`. Do not use `chmod 777` as a repair strategy.
 
@@ -402,8 +397,6 @@ Use the repository's current commands and keep tests deterministic:
 
 ```bash
 python3 -m unittest discover -s tests
-(cd qq-provider && uv run --locked python -m unittest discover -s tests)
-(cd qq-provider && uv run --locked ruff check .)
 pnpm test:ui
 pnpm lint
 pnpm build

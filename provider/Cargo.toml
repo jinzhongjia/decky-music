@@ -1,0 +1,23 @@
+[package]
+name = "provider"
+version = "1.0.9"
+edition = "2021"
+
+[[bin]]
+name = "provider"
+path = "src/main.rs"
+
+[dependencies]
+# 两个音源都作为库使用,在其上包一层 UDS server。网易云不用它自带的 axum HTTP server。
+# QQ:默认 graviola TLS(纯 Rust,不需要 C 编译器);关掉 App 扫码(MQTT)登录不用的依赖。
+qqmusic-api = { git = "https://github.com/jinzhongjia/QQMusicApi-rs", default-features = false, features = ["reqwest-transport", "tls-graviola"] }
+ncm-api-rs = { git = "https://github.com/jinzhongjia/ncm-api-rs", branch = "feat/sync-upstream-2026-10" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
+wire = { path = "../wire" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] } # login_qr_create 只给 qrurl,自己渲染二维码
+base64 = "0.22"           # 二维码 SVG → base64 发给 UI
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }

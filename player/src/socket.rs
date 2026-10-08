@@ -178,6 +178,7 @@ mod tests {
                 id,
                 cmd: cmd.to_string(),
                 args,
+                provider: None,
             },
         )
         .await;

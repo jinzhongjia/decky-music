@@ -2,11 +2,11 @@
 
 两个 provider 库的可用接口，按功能类目对照。用于规划 P3+ 差异化功能。
 
-- **QQ**：`qqmusic-api-python`，按 `client.<module>.<method>` 列。
+- **QQ**：`QQMusicApi-rs`（Python 版 QQMusicApi 的 Rust 实现，模块与方法同名），按 `client.<module>().<method>` 列。
 - **NCM**：`ncm-api-rs`，按 endpoint 名列。
 - “已实现”表示当前 provider/bridge 已经暴露给前端可用；“provider 已实现”表示 provider 协议命令已接好，UI/Plugin callable 可后续接入；“待暴露”表示底层库有能力，但还需要 provider/bridge/api/UI 胶水。
 
-> QQ 播放 URL 调用 `client.song.get_song_urls(...)`；NCM 播放 URL 调用 `client.song_url_v1(&query)`。两库都是“一个方法 / endpoint = 一个官方 API”，provider 只负责包协议。
+> QQ 播放 URL 调用 `client.song().playable_url(...)`（bypass 音质阶梯，一次请求问全部档位）；NCM 播放 URL 调用 `client.song_url_v1(&query)`。两库都是“一个方法 / endpoint = 一个官方 API”，provider 只负责包协议。
 
 ---
 
@@ -25,7 +25,7 @@
 
 - **QQ (`lyric`)**：`get_lyric`（已实现逐行 + 翻译；罗马音、QRC 逐字待接）。
 - **NCM**：`lyric_new`（已实现逐字 YRC / 逐行 LRC + 翻译；罗马音待接）、`lyric`、`cloud_lyric_get`。
-- 两端归一化规则一致（时间标签变体、间奏标记与 `end_ms`、译文就近对齐、内嵌译文合并），见 `ncm-provider/src/lyric/parse.rs` 与 `qq-provider/qq/lyric.py` 文件头。
+- 两端归一化规则一致（时间标签变体、间奏标记与 `end_ms`、译文就近对齐、内嵌译文合并），两个后端共用 `provider/src/lyric/parse.rs`，规则见其文件头。
 
 ## 歌单 Playlist
 

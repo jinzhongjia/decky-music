@@ -1,4 +1,4 @@
-//! bridge ↔ child 协议 v1 的 Rust 侧实现,player 与 ncm-provider 共用。
+//! bridge ↔ child 协议 v1 的 Rust 侧实现,player 与 provider 共用。
 //! wire 格式见 issue #31:request{id,cmd,args} / response{id,ok,data|error} /
 //! event{ev,type,data} / log{ev:"log",level,where,msg}。
 //!
@@ -125,12 +125,15 @@ pub enum LogLevel {
 }
 
 /// bridge → child 请求。args 先收成 Value,再由各命令 parse_args 解成对应 struct。
+/// `provider`:统一 provider 进程按它路由到 qq / ncm 后端;player 不用,缺省为 None。
 #[derive(Debug, Deserialize)]
 pub struct Request {
     pub id: u64,
     pub cmd: String,
     #[serde(default)]
     pub args: serde_json::Value,
+    #[serde(default)]
+    pub provider: Option<String>,
 }
 
 pub fn parse_request(line: &str) -> Result<Request, ProtocolError> {
@@ -173,6 +176,8 @@ struct Event<'a, T: Serialize> {
     ev: &'a str,
     #[serde(rename = "type")]
     typ: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<&'a str>,
     data: T,
 }
 
@@ -195,7 +200,25 @@ pub fn err(id: u64, code: ErrorCode, message: &str) -> String {
 
 /// 事件(child 主动上报,无 id)。ev = 域(player/login/provider),typ = 域内类型。
 pub fn event<T: Serialize>(ev: &str, typ: &str, data: T) -> String {
-    serde_json::to_string(&Event { ev, typ, data }).unwrap_or_default()
+    serde_json::to_string(&Event {
+        ev,
+        typ,
+        provider: None,
+        data,
+    })
+    .unwrap_or_default()
+}
+
+/// 带音源标签的事件:统一 provider 进程同时承载 qq / ncm,bridge 据此丢弃非当前音源的事件。
+pub fn provider_event<T: Serialize>(provider: &str, ev: &str, typ: &str, data: T) -> String {
+    let provider = Some(provider);
+    serde_json::to_string(&Event {
+        ev,
+        typ,
+        provider,
+        data,
+    })
+    .unwrap_or_default()
 }
 
 /// 一条日志事件的 NDJSON(独立顶层格式)。见 AGENTS.md「Logging rules」。
@@ -249,6 +272,26 @@ mod tests {
             parse_request(r#"{"id":6,"cmd":"load","args":{"url":"u","media_mid":"x"}}"#).unwrap();
         let a: LoadArgs = parse_args(&r).unwrap();
         assert_eq!(a.url, "u");
+    }
+
+    #[test]
+    fn parse_request_reads_optional_provider() {
+        let r = parse_request(r#"{"id":1,"cmd":"lyric","provider":"qq","args":{}}"#).unwrap();
+        assert_eq!(r.provider.as_deref(), Some("qq"));
+        let r = parse_request(r#"{"id":1,"cmd":"load","args":{}}"#).unwrap();
+        assert!(r.provider.is_none());
+    }
+
+    #[test]
+    fn provider_event_carries_tag_and_plain_event_does_not() {
+        let v: Value =
+            serde_json::from_str(&provider_event("ncm", "login", "qr", json!({}))).unwrap();
+        assert_eq!(
+            v,
+            json!({"ev":"login","type":"qr","provider":"ncm","data":{}})
+        );
+        let v: Value = serde_json::from_str(&event("player", "paused", json!({}))).unwrap();
+        assert!(v.get("provider").is_none());
     }
 
     #[test]

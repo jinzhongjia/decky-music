@@ -1,5 +1,5 @@
 //! bridge ↔ player 协议 v1。通用部分(请求解析 / 响应·事件·日志构造 / 错误码)在 `wire`
-//! crate,与 ncm-provider 共用;这里只留 player 自己的命令 args struct。
+//! crate,与 provider 共用;这里只留 player 自己的命令 args struct。
 
 pub use wire::*;
 

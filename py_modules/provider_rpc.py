@@ -14,15 +14,15 @@ class ProviderRPC:
     async def _refresh_credential(self) -> bool:
         """重注入当前凭证触发 provider 侧过期检测/刷新(QQ musickey 有效期撑不过长会话;
         NCM 无刷新概念,幂等无害)。返回是否真的刷新了(供播放失败重试判断值不值得再试)。"""
-        origin = self.provider.origin
-        if not self.provider.is_current(origin):
+        sel = self._selected()
+        if sel is None:
             return False
-        which = origin.provider
+        which = sel.provider
         cred = (self.settings.get("accounts") or {}).get(which)
         if not cred:
             return False
         r = await self.provider.request("set_credential", {"cred": cred})
-        if not self.provider.is_current(origin):
+        if not self._is_selected(sel):
             return False
         new_cred = r.data.get("refreshed") if r.ok else None
         if new_cred:
@@ -45,14 +45,14 @@ class ProviderRPC:
     def _kick_seed_liked(self):
         # 红心种子(P6):后台拉服务器已收藏 id 全集灌 liked_ids,跨会话点亮与服务器一致。
         # 双端 liked_ids 命令:NCM likelist 全量;QQ get_fav_song 大 num 一发拉全(quaverq 实证)。
-        origin = self.provider.origin
+        sel = self._selected()
 
         async def seed():
-            if not self.provider.is_current(origin):
+            if not self._is_selected(sel):
                 return
             try:
                 r = await self.provider.request("liked_ids")
-                if not self.provider.is_current(origin):
+                if not self._is_selected(sel):
                     return
                 if r.ok:
                     ids = {str(i) for i in r.data.get("ids", []) if i}
@@ -71,7 +71,7 @@ class ProviderRPC:
         self._provider_change_gen += 1
         gen = self._provider_change_gen
         if self.settings.get("provider") != which:
-            self.provider.end_session()
+            # 统一 provider 进程常驻:切换只换音源令牌(见 _ensure_provider),不杀进程
             self.liked_ids.clear()  # 两家 id 体系不通用
             await self.playback.queue_clear()
         if gen != self._provider_change_gen:
@@ -82,7 +82,7 @@ class ProviderRPC:
         await self._ensure_provider(which)
 
     async def get_provider(self) -> dict:
-        # 读回当前 provider + 是否已登录(bridge 是真相源),并幂等拉起其进程:
+        # 读回当前 provider + 是否已登录(bridge 是真相源),并幂等拉起 provider 进程、选中音源:
         # 解决"settings 预设了 provider、首次加载 UI 拿到了但进程没起"的问题。
         which = self.settings.get("provider")
         await self._ensure_provider(which)
@@ -94,17 +94,17 @@ class ProviderRPC:
         await self.provider.request("login", {"type": login_type})
 
     async def logout(self):
-        origin = self.provider.origin
-        if not self.provider.is_current(origin):
+        sel = self._selected()
+        if sel is None:
             return
-        which = origin.provider
+        which = sel.provider
         await self.provider.request("logout")
-        if not self.provider.is_current(origin):
+        if not self._is_selected(sel):
             return
         (self.settings.get("accounts") or {}).pop(which, None)
         music_settings.save_settings(self.settings)
         await self.provider.request("set_credential", {"cred": None})
-        if not self.provider.is_current(origin):
+        if not self._is_selected(sel):
             return
         log("bridge", "own", "info", f"{which} logged out")
 
@@ -336,14 +336,16 @@ class ProviderRPC:
         }
 
     async def _on_provider_event(self, ev: protocol.ChildEvent, origin: ConnectionOrigin):
-        if not self.provider.is_current(origin):
+        sel = self._selected()
+        # 统一 provider 同时承载两个音源:只收当前音源、当前连接的事件,切走的旧音源迟到事件丢弃
+        if sel is None or sel.connection is not origin or ev.provider != sel.provider:
             return
         ev = safe_event(ev)
         if ev is None:
             return
         # 登录成功:credential 只落 bridge(单一真相源),绝不下发 UI;其余状态/QR 转发给 UI
         if ev.ev == "login" and ev.type == "done":
-            which = origin.provider
+            which = sel.provider
             self.settings.setdefault("accounts", {})[which] = ev.data.get("cred")
             music_settings.save_settings(self.settings)
             log("bridge", "own", "info", f"{which} login success, credential persisted")

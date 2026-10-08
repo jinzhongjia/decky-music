@@ -30,9 +30,10 @@ class TestDiagnosticSafety(unittest.IsolatedAsyncioTestCase):
             emitted.append((channel, payload))
 
         with tempfile.TemporaryDirectory() as directory, patch.object(ipc, "RUNTIME", directory):
-            await bridge.provider.listen("qq")
+            await bridge.provider.listen()
             reader, writer = await asyncio.open_unix_connection(bridge.provider.path)
             await asyncio.wait_for(bridge.provider.connected.wait(), 1)
+            bridge._select("qq")
             with (
                 patch.object(decky, "emit", emit),
                 self.assertLogs(decky.logger, level="DEBUG") as records,
@@ -50,6 +51,7 @@ class TestDiagnosticSafety(unittest.IsolatedAsyncioTestCase):
                     {
                         "ev": "login",
                         "type": "error",
+                        "provider": "qq",
                         "data": {"code": SECRET, "message": SECRET, "detail": SECRET},
                     },
                 ]

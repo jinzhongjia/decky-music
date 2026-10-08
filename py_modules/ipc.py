@@ -40,6 +40,9 @@ class Conn:
             None  # 发请求时子进程不在:先把它拉起来再发(player 装;provider 走 _ensure_provider)
         )
         self.on_lost = None  # 连接真的断了(子进程崩溃/被杀)时回调,由 Bridge 装
+        # 请求路由:统一 provider 进程按请求顶层 provider 分发到 qq / ncm;由 Bridge 装,
+        # 返回当前选中的音源。player 不装,请求不带该字段。
+        self.route: Callable[[], str | None] | None = None
         self.pending: dict[int, asyncio.Future] = {}  # 在途请求:id → Future(响应按 id demux)
         self.connected: asyncio.Event = asyncio.Event()  # 子进程连入后置位
         self._next_id = 0
@@ -53,6 +56,11 @@ class Conn:
     def is_current(self, origin: ConnectionOrigin | None) -> bool:
         return origin is not None and self.origin is origin and self.writer is not None
 
+    def cancel_active_event(self):
+        """作废正在处理的事件回调(如切走音源时还在发布的旧音源登录事件);消费者继续。"""
+        if self._active_event:
+            self._active_event.cancel()
+
     def end_session(self):
         """Invalidate before teardown can yield; old listener callbacks cannot rebind."""
         self.session = None
@@ -60,7 +68,9 @@ class Conn:
             self.server.close()
         self.disconnect()
 
-    async def listen(self, provider: str | None = None):
+    async def listen(self, provider: str | None = None, *, fresh_path: bool = False):
+        """开一个监听会话。fresh_path(或指定 provider)时每个会话用独立 `name-EPOCH.sock`,
+        让迟迟未退出的旧进程无法连入新会话;player 用固定路径。"""
         self.end_session()
         session = ConnectionOrigin(next(_connection_epochs), provider)
         self.session = session
@@ -68,7 +78,7 @@ class Conn:
             os.unlink(self.path)
         except FileNotFoundError:
             pass
-        if provider is not None:
+        if provider is not None or fresh_path:
             self.path = os.path.join(RUNTIME, f"{self.name}-{session.epoch}.sock")
         self.server = await asyncio.start_unix_server(
             lambda reader, writer: self._accept(reader, writer, session),
@@ -181,7 +191,12 @@ class Conn:
             self.on_lost()
 
     async def request(
-        self, cmd: str, args: dict | None = None, *, is_current: Callable[[], bool] | None = None
+        self,
+        cmd: str,
+        args: dict | None = None,
+        *,
+        is_current: Callable[[], bool] | None = None,
+        provider: str | None = None,
     ) -> protocol.ChildResponse:
         # 当前已实现协议 v1 的并发 demux:多请求可同时在途,响应按 id 匹配。
         # 写锁只保护一帧,慢请求不占住整个请求周期;事件顺序消费见 _pump_events。
@@ -195,7 +210,9 @@ class Conn:
             raise asyncio.CancelledError
         if self.writer is None:  # 子进程已经没了(见 disconnect),别等满 30s 再说
             return protocol.ChildResponse(rid, False, {}, protocol.ErrorBody("timeout", "timeout"))
-        payload = json.dumps(protocol.request(rid, cmd, args)).encode()
+        # 显式 provider 只用于发给非当前音源的收尾命令(如切走时取消其扫码登录)
+        route = provider if provider is not None else (self.route() if self.route else None)
+        payload = json.dumps(protocol.request(rid, cmd, args, route)).encode()
         if len(payload) > protocol.MAX_FRAME_BYTES:
             return protocol.ChildResponse(
                 rid, False, {}, protocol.ErrorBody("invalid_request", "frame too large")

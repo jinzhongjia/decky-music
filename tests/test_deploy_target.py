@@ -137,13 +137,13 @@ class TestDeployTarget(unittest.TestCase):
             if unsafe:
                 bundle.writestr("Decky Music/../../outside", "danger")
         (upload / "player").write_bytes(b"new player")
-        (upload / "qq-provider.tar.gz").write_bytes(b"opaque provider archive")
+        (upload / "provider").write_bytes(b"new provider")
         existing = self.plugins / "Decky Music"
         existing.mkdir()
         (existing / "old").write_text("keep unless installation succeeds")
         return upload, existing
 
-    def test_install_replaces_only_named_plugin_and_preserves_qq_archive(self):
+    def test_install_replaces_only_named_plugin_and_installs_binaries(self):
         upload, existing = self.make_upload()
         other = self.plugins / "Another Plugin"
         other.mkdir()
@@ -153,7 +153,8 @@ class TestDeployTarget(unittest.TestCase):
         self.assertFalse((existing / "old").exists())
         self.assertTrue((existing / "dev_mode").is_file())
         self.assertTrue(os.access(existing / "bin/player", os.X_OK))
-        self.assertEqual((existing / "bin/qq-provider").read_bytes(), b"opaque provider archive")
+        self.assertTrue(os.access(existing / "bin/provider", os.X_OK))
+        self.assertEqual((existing / "bin/provider").read_bytes(), b"new provider")
         self.assertTrue(other.is_dir())
         run.assert_called_once_with(["systemctl", "restart", "plugin_loader.service"], check=True)
 
@@ -258,8 +259,8 @@ class TestDeployTarget(unittest.TestCase):
             deploy.install_remote("Decky Music", None, str(self.plugins), str(upload))
         code = (
             "from pathlib import Path; import sys; p=Path(sys.argv[1]); "
-            "(p/'bin/qq-provider').rename(p/'bin/qq-provider.tar.gz'); "
-            "(p/'bin/qq-provider').mkdir(); "
+            "(p/'bin/provider').rename(p/'bin/provider.old'); "
+            "(p/'bin/provider').mkdir(); "
             "(p/'py_modules/__pycache__').mkdir(); "
             "(p/'py_modules/__pycache__/bridge.pyc').write_bytes(b'cache')"
         )
@@ -273,7 +274,7 @@ class TestDeployTarget(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue((existing / "bin/qq-provider").is_dir())
+        self.assertTrue((existing / "bin/provider").is_dir())
         self.assertEqual((existing / "py_modules/__pycache__/bridge.pyc").read_bytes(), b"cache")
         self.assertEqual(existing.stat().st_uid, 0)
 

@@ -11,31 +11,29 @@ description: 发布 decky-music 新版本(pre-release 或正式)。当用户说"
 
 ## 0. 判定发布类型
 
-- **full**:player / ncm-provider / qq-provider 代码或依赖有变 → 需重建二进制、更新指纹
+- **full**:player / provider(含 wire、QQMusicApi-rs、ncm-api-rs 依赖)代码或依赖有变 → 需重建二进制、更新指纹
 - **zip-only**:只有 bridge(py_modules)/ 前端(src)/ 文档变 → 二进制沿用上个 tag 的资产,
   `remote_binary` 的 URL 和 sha256 **保持指向旧 tag 不动**(内容没变,不重复上传)
 
-## 1. 版本号(四处 + 锁文件)
+## 1. 版本号(三处 + 锁文件)
 
 新版本号记为 `X`(如 `1.0.0-beta.3`),tag 为 `vX`:
 
 ```bash
 sed -i 's/"version": "旧"/"version": "X"/' package.json
-sed -i 's/^version = "旧"/version = "X"/' player/Cargo.toml ncm-provider/Cargo.toml qq-provider/pyproject.toml
-cargo update -p player -p ncm-provider --offline          # 同步 Cargo.lock
-(cd qq-provider && uv lock)                               # 同步 uv.lock
+sed -i 's/^version = "旧"/version = "X"/' player/Cargo.toml provider/Cargo.toml
+cargo update -p player -p provider --offline              # 同步 Cargo.lock
 ```
 
 ## 2. full 才做:重建二进制 + 指纹
 
 ```bash
-bash scripts/build-rust.sh -p player && bash scripts/build-rust.sh -p ncm-provider
-bash scripts/build-qq-provider.sh     # Nuitka,慢(约 7 分钟);别用 unittest discover 预检(登录用例联网挂死)
-ldd target/release/player             # 命门:除基础 libc 外只允许 libasound
+bash scripts/build-rust.sh -p player -p provider
+ldd target/release/player             # 命门:除基础 libc 外只允许 libasound(provider 一个都不许多)
 ```
 
 资产名固定(Decky 按 `remote_binary[].name` 存文件):`player-linux-x64`、
-`ncm-provider-linux-x64`、`qq-provider-linux-x64.tar.gz`。算 sha256 填回
+`provider-linux-x64`。算 sha256 填回
 `package.json` 的 `remote_binary[].sha256hash`,URL 改成 **tag 钉死**:
 `releases/download/vX/<asset>`(pre-release 不能用 `latest`,会 404)。
 
@@ -49,7 +47,7 @@ git push && git tag vX && git push origin vX
 ## 4. GitHub Release
 
 ```bash
-# pre-release 加 --prerelease;full 上传三个二进制资产,zip-only 不带资产
+# pre-release 加 --prerelease;full 上传两个二进制资产,zip-only 不带资产
 gh release create vX [--prerelease] --title "vX" --notes-file <notes.md> [assets...]
 ```
 
@@ -73,14 +71,14 @@ gh release download vX -p "Decky.Music.zip" -D <tmpdir> && cd <tmpdir> && unzip 
 ```
 
 抽验清单:
-- `package.json` 里版本 = X;`remote_binary` 三条 URL 指向预期 tag、指纹与本地构建一致
+- `package.json` 里版本 = X;`remote_binary` 两条 URL 指向预期 tag、指纹与本地构建一致
 - **无 `dev_mode` 文件**(有 = 日志级别错,zip 不该含它)
 - 本次发布的关键改动在包里(grep 一两个新符号)
-- **CN 版**:R2 上 `curl -fI https://dl.nvimer.org/decky_music/vX/<三个资产>` 与
+- **CN 版**:R2 上 `curl -fI https://dl.nvimer.org/decky_music/vX/<两个资产>` 与
   `.../decky_music/decky-music-cn.zip` 均 200;解包 `Decky.Music.cn.zip`,其 `remote_binary`
-  三条 URL 以 `https://dl.nvimer.org/decky_music/vX/` 开头、sha256 与普通版逐一相等
+  两条 URL 以 `https://dl.nvimer.org/decky_music/vX/` 开头、sha256 与普通版逐一相等
 - **full 版**:release 资产有 `Decky.Music.full.zip`;解包后 `package.json` **无 `remote_binary`**;
-  `bin/player`、`bin/ncm-provider`、`bin/qq-provider` 三个文件都在,且三者 sha256 与普通版
+  `bin/player`、`bin/provider` 两个文件都在,且 sha256 与普通版
   `remote_binary[].sha256hash` 逐一相等(证明内置的就是校验过的那份)
 
 ## 6. 每次正式发布后强制交付三个包到 Steam Deck
@@ -127,7 +125,7 @@ rsync -av --protect-args \
 待用户补齐后继续；不得静默跳过或把整次正式发布描述为已全部完成。
 
 **仅交付文件，不自动安装、不重启 `plugin_loader`，也不删除下载目录里的旧版本。**
-只有实际安装才能覆盖安装器下载、sha256 校验和 QQ provider 首次解包；文件交付和侧载都不能冒充安装验收。
+只有实际安装才能覆盖安装器下载与 sha256 校验；文件交付和侧载都不能冒充安装验收。
 
 国内用户仍可使用稳定入口：
 `https://dl.nvimer.org/decky_music/decky-music-cn.zip`。CN 版由 `release.yml` 生成并上传 R2。
@@ -135,8 +133,8 @@ rsync -av --protect-args \
 ## 已踩过的坑
 
 - pre-release 的 `releases/latest/...` 404 → URL 必须钉 tag
-- `remote_binary` 下载**不解包**:qq-provider tar.gz 靠 bridge `qq_exe()` 首用自解(beta.2 事故)
+- `remote_binary` 下载**不解包**:资产必须是可直接执行的单文件(曾经的 QQ Nuitka tar.gz 靠 bridge 首用自解,
+  beta.2 事故;统一 Rust provider 后已无归档资产)
 - `dist/` 可能被 sudo 跑的 decky CLI 写成 root 属主 → `pnpm build` EACCES,`chown` 回来
-- qq-provider 预检只跑目标测试模块,`unittest discover` 会撞联网登录用例挂死
 - CN zip 的 `mv` 别硬编码 `Decky.Music.zip`:decky CLI 产物名 = plugin.json 的 `name`(含空格 `Decky Music.zip`),
   GitHub 只在上传资产时才把空格转点。用 `out/$(jq -r .name plugin.json).zip`(beta.7 CN 步首跑事故)

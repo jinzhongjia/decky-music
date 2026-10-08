@@ -176,7 +176,10 @@ class TestConnFrameLimit(unittest.TestCase):
 
 
 class TestStaleDisconnect(unittest.TestCase):
-    """切 provider 时旧连接的 EOF 晚到,不得把刚连上的新 provider 判死。
+    """provider 重连时旧连接的 EOF 晚到,不得把刚连上的新 provider 判死。
+
+    现在统一 provider 常驻,切换音源不再换进程;该窗口只在进程判死重开时出现。以下为
+    当年按音源分进程时的真机复现记录:
 
     真机复现(1.0.0 发布前):QQ→网易云 每次必现。新旧子进程共用同一个 provider.sock,
     ncm-provider 启动仅几毫秒,先连上并发出 liked_ids;旧 qq 连接的 EOF 这才到达,

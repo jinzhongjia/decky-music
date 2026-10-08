@@ -101,7 +101,7 @@ class TestProviderSpawn(unittest.TestCase):
 
     def test_spawn_fail_sets_error_and_get_provider_relays(self):
         async def boom(*_a, **_k):
-            raise FileNotFoundError("bin/ncm-provider")
+            raise FileNotFoundError("bin/provider")
 
         child_process.spawn = boom
         child_process.BIN = lambda name: "/nonexistent/" + name
