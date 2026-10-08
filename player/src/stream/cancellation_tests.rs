@@ -111,6 +111,7 @@ fn request(id: u64, url: String) -> protocol::Request {
         id,
         cmd: "load".into(),
         args: json!({"url": url}),
+        provider: None,
     }
 }
 
