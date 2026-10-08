@@ -110,5 +110,6 @@ def safe_event(event):
         code = safe_code(
             event.data.get("code"), "play_failed" if event.ev == "player" else "provider_error"
         )
-        return protocol.ChildEvent(event.ev, event.type, {"code": code, "message": code})
+        data = {"code": code, "message": code}
+        return protocol.ChildEvent(event.ev, event.type, data, getattr(event, "provider", None))
     return event

@@ -1,4 +1,8 @@
-"""Provider messages belong to their accepted connection, not the selected UI source."""
+"""Provider messages belong to the selected source on its accepted connection.
+
+The unified provider process stays resident across source switches; only a respawn
+(after death or an unresponsive kill) replaces the connection.
+"""
 
 import asyncio
 import copy
@@ -72,7 +76,8 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         self.b = Bridge()
         self.b.settings = {"provider": None, "accounts": {}}
         self.b.provider = Conn("provider")
-        self.b.provider_proc = self.b.provider_which = None
+        self.b.provider.route = lambda: self.b.selection.provider if self.b.selection else None
+        self.b.provider_proc = None
         self.b.provider_lock = asyncio.Lock()
         self.b.provider_error = None
 
@@ -92,7 +97,6 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         for module, name, value in (
             (ipc, "RUNTIME", self.temp.name),
             (child_process, "spawn", spawn),
-            (child_process, "qq_exe", lambda: "/fabricated/qq-provider"),
             (music_settings, "save_settings", lambda data: self.saved.append(copy.deepcopy(data))),
             (ipc, "log", lambda *args: self.logs.append(args)),
             (provider_rpc, "log", lambda *args: self.logs.append(args)),
@@ -123,6 +127,17 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(*(peer[2] for peer in self.peers), return_exceptions=True)
         await asyncio.gather(*self.b._tasks, return_exceptions=True)
 
+    async def respawn(self):
+        """Simulate an unresponsive kill followed by the next command's respawn."""
+        self.b._provider_unresponsive()
+        await self.b._ensure_provider(self.b.settings["provider"])
+
+    async def login(self, reader, typ, data, which="qq"):
+        await reader.send({"ev": "login", "type": typ, "provider": which, "data": data})
+        # readline returning only means the frame was read; let the read loop queue it.
+        for _ in range(2):
+            await asyncio.sleep(0)
+
     async def pause_consumer(self):
         task = self.b.provider._ev_task
         task.cancel()
@@ -141,7 +156,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
             ("qr", {"url": "fabricated-qr"}),
             ("error", {"code": "fabricated_old_error"}),
         ):
-            await reader.send({"ev": "login", "type": typ, "data": data})
+            await self.login(reader, typ, data)
         await self.b.set_provider("ncm")
         before = copy.deepcopy(self.saved)
         await self.resume_consumer()
@@ -149,15 +164,69 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.saved, before)
         self.assertEqual(self.emitted, [])
         self.assertNotIn("fabricated_old_error", repr(self.logs))
-        self.assertNotEqual(self.paths[0], self.paths[1])
+        # Switching sources reuses the resident process instead of spawning another.
+        self.assertEqual(len(self.paths), 1)
+
+    async def test_switch_cancels_the_old_source_login_inside_the_same_process(self):
+        _reader, writer, _task = self.peers[-1]
+        await self.b.set_provider("ncm")
+        frames = []
+        while not writer.frames.empty():
+            frames.append(writer.frames.get_nowait())
+        await asyncio.gather(*self.b._tasks, return_exceptions=True)
+        while not writer.frames.empty():
+            frames.append(writer.frames.get_nowait())
+        cancels = [f for f in frames if f["cmd"] == "cancel_login"]
+        self.assertEqual([f.get("provider") for f in cancels], ["qq"])
+        self.assertEqual(len(self.paths), 1)
+
+    async def test_requests_are_routed_to_the_selected_source(self):
+        _reader, writer, _task = self.peers[-1]
+        await self.b.provider.request("account")
+        frame = await asyncio.wait_for(writer.frames.get(), 1)
+        self.assertEqual((frame["cmd"], frame["provider"]), ("account", "qq"))
+        await self.b.set_provider("ncm")
+        await self.b.provider.request("account")
+        frames = []
+        while not writer.frames.empty():
+            frames.append(writer.frames.get_nowait())
+        self.assertEqual([f["provider"] for f in frames if f["cmd"] == "account"], ["ncm"])
+
+    async def test_playback_request_respawns_a_dead_provider_first(self):
+        self.b.provider.on_missing = self.b._provider_missing
+        self.b._provider_unresponsive()
+        self.assertIsNone(self.b.provider.writer)
+        response = await asyncio.wait_for(self.b.provider.request("song_url", {"id": "x"}), 2)
+        self.assertTrue(response.ok)
+        self.assertEqual(len(self.paths), 2)
+        writer = self.peers[-1][1]
+        frames = []
+        while not writer.frames.empty():
+            frames.append(writer.frames.get_nowait())
+        song_url = [f for f in frames if f["cmd"] == "song_url"]
+        self.assertEqual([f["provider"] for f in song_url], ["qq"])
+
+    async def test_missing_hook_does_not_reenter_while_starting(self):
+        self.b.provider.on_missing = self.b._provider_missing
+        self.b._provider_unresponsive()
+        async with self.b.provider_lock:
+            response = await asyncio.wait_for(self.b.provider.request("song_url"), 1)
+        self.assertFalse(response.ok)
+        self.assertEqual(response.error.code, "timeout")
+        self.assertEqual(len(self.paths), 1)
+
+    async def test_untagged_or_other_source_events_are_dropped(self):
+        reader = self.peers[-1][0]
+        await reader.send({"ev": "login", "type": "qr", "data": {"url": "untagged"}})
+        await self.login(reader, "qr", {"url": "other"}, which="ncm")
+        await asyncio.wait_for(self.b.provider._events.join(), 1)
+        self.assertEqual(self.emitted, [])
 
     async def test_current_login_commits_only_origin_and_strips_credentials(self):
         for which in ("qq", "ncm"):
             await self.b.set_provider(which)
             reader, _writer, _task = self.peers[-1]
-            await reader.send(
-                {"ev": "login", "type": "done", "data": {"cred": "fabricated-" + which}}
-            )
+            await self.login(reader, "done", {"cred": "fabricated-" + which}, which)
             await asyncio.wait_for(self.b.provider._events.join(), 1)
             self.assertEqual(self.b.settings["accounts"][which], "fabricated-" + which)
         self.assertEqual(
@@ -170,7 +239,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
 
     async def test_old_reader_response_and_eof_do_not_reset_new_request(self):
         old_reader, _old_writer, old_task = self.peers[-1]
-        await self.b.set_provider("ncm")
+        await self.respawn()
         reader, writer, _task = self.peers[-1]
         writer.hold.add("account")
         request = asyncio.create_task(self.b.provider.request("account"))
@@ -186,7 +255,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
 
     async def test_late_old_eof_preserves_new_reader_and_inflight_request(self):
         old_reader, _old_writer, old_task = self.peers[-1]
-        await self.b.set_provider("ncm")
+        await self.respawn()
         reader, writer, _task = self.peers[-1]
         writer.hold.add("account")
         request = asyncio.create_task(self.b.provider.request("account"))
@@ -206,7 +275,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         )
         while not self.b.provider.pending:
             await asyncio.sleep(0)
-        await self.b.set_provider("ncm")
+        await self.respawn()
         writer = self.b.provider.writer
         self.b.provider._wlock.release()
         self.assertFalse((await asyncio.wait_for(request, 1)).ok)
@@ -214,7 +283,10 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
 
     async def test_old_listener_callback_cannot_rebind_after_replacement(self):
         old_session = self.b.provider.session
-        await self.b.set_provider("ncm")
+        await self.respawn()
+        # A respawn listens on a fresh per-session path; a lingering old process cannot connect.
+        self.assertEqual(len(self.paths), 2)
+        self.assertNotEqual(self.paths[0], self.paths[1])
         current = self.b.provider.writer
         writer = Writer(Reader())
         await self.b.provider._accept(writer.reader, writer, old_session)
@@ -234,13 +306,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
             self.emitted.append((channel, event))
 
         with patch.object(decky, "emit", delayed_emit):
-            await self.peers[-1][0].send(
-                {
-                    "ev": "login",
-                    "type": "done",
-                    "data": {"cred": "fabricated-current-qq"},
-                }
-            )
+            await self.login(self.peers[-1][0], "done", {"cred": "fabricated-current-qq"})
             await asyncio.wait_for(entered.wait(), 1)
             await self.b.set_provider("ncm")
             await asyncio.wait_for(cancelled.wait(), 1)
@@ -249,7 +315,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.emitted, [])
         self.assertEqual(self.b.settings["accounts"], {"qq": "fabricated-current-qq"})
         # Cancelling one callback must not kill the single ordered consumer.
-        await self.peers[-1][0].send({"ev": "login", "type": "qr", "data": {"url": "current-qr"}})
+        await self.login(self.peers[-1][0], "qr", {"url": "current-qr"}, which="ncm")
         await asyncio.wait_for(self.b.provider._events.join(), 1)
         self.assertEqual(self.emitted[-1][1]["type"], "qr")
 
@@ -275,8 +341,8 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
         entered, release = asyncio.Event(), asyncio.Event()
         request = self.b.provider.request
 
-        async def completed_response(cmd, args=None):
-            response = await request(cmd, args)
+        async def completed_response(cmd, args=None, **kwargs):
+            response = await request(cmd, args, **kwargs)
             if cmd == "set_credential":
                 entered.set()
                 await release.wait()
@@ -287,7 +353,7 @@ class TestProviderEventLifecycle(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(self.b.provider, "request", completed_response):
             operation = (
-                self.b._bootstrap_provider(self.b.provider.session)
+                self.b._bootstrap_provider(self.b.selection)
                 if bootstrap
                 else self.b._refresh_credential()
             )

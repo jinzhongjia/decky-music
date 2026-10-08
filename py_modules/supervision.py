@@ -1,7 +1,7 @@
 """Child startup, reconnection and credential bootstrap lifetimes."""
 
 import asyncio
-import tarfile
+from dataclasses import dataclass
 import decky
 import child_process
 import music_settings
@@ -9,6 +9,14 @@ from ipc import ConnectionOrigin
 from log import log
 
 PLAYER_CONNECT_TIMEOUT = 5
+
+
+@dataclass(frozen=True, eq=False)
+class Selection:
+    """当前音源的一次生命期:按身份比较。切换音源或 provider 重连都会换新令牌。"""
+
+    provider: str
+    connection: ConnectionOrigin  # 选中时所在的 provider 连接
 
 
 class Supervision:
@@ -103,84 +111,113 @@ class Supervision:
         child_process.stop_child(self.provider_proc, hard=True)
         self.provider_proc = None
 
+    async def _provider_missing(self):
+        """provider 请求发现进程不在时先拉起(含播放链路的 song_url / 自动切歌)。
+
+        已在拉起 / 引导中(锁被占)时不重入:引导自身也会发请求,锁内再等锁就是自死锁;
+        这种情况下本次请求按通道不可用返回,由调用方原有的错误分类处理。
+        """
+        if self.provider_lock.locked():
+            return
+        await self._ensure_provider(self.settings.get("provider"))
+
+    def _selected(self) -> "Selection | None":
+        """当前音源令牌;provider 未连上或令牌所在连接已失效时为 None。"""
+        sel = self.selection
+        if sel is None or not self.provider.is_current(sel.connection):
+            return None
+        return sel
+
+    def _is_selected(self, sel: "Selection | None") -> bool:
+        return sel is not None and sel is self.selection and self.provider.is_current(sel.connection)
+
     async def _ensure_provider(self, which: str | None):
-        """Serialize spawn; both listener and bootstrap belong to one source lifetime."""
+        """确保统一 provider 进程在跑、已连上,且当前音源已选中并完成凭证引导。
+
+        切换音源只换令牌(不再换进程);进程崩溃 / 被判死后的重连也会换令牌并重新引导,
+        让跨越旧连接的在途流程(登出、凭证刷新、红心种子)自然作废。
+        """
         music_settings.require_provider(which)
         async with self.provider_lock:
             if which != self.settings.get("provider"):
                 return
-            alive = self.provider_proc is not None and self.provider_proc.returncode is None
-            if (
-                which
-                and self.provider_which == which
-                and alive
-                and self.provider.connected.is_set()
-            ):
-                return
-            self.provider.end_session()
-            child_process.stop_child(self.provider_proc)
-            self.provider_proc = None
-            self.provider_which = which
-            self.provider_error = None
             if which is None:
+                self._select(None)
                 return
-            gen = self._provider_change_gen
-            await self.provider.listen(which)
-            session = self.provider.session
-            if session is None or gen != self._provider_change_gen:
+            alive = self.provider_proc is not None and self.provider_proc.returncode is None
+            if not (alive and self.provider.connected.is_set()) and not await self._spawn_provider():
                 return
-            try:
-                binpath = (
-                    await asyncio.to_thread(child_process.qq_exe)
-                    if which == "qq"
-                    else child_process.BIN("ncm-provider")
-                )
-                if self.provider.session is not session:
-                    return
-                proc = await child_process.spawn(
-                    "provider", binpath, "--socket", self.provider.path
-                )
-                if self.provider.session is not session:
-                    child_process.stop_child(proc)
-                    return
-                self.provider_proc = proc
-            except (OSError, tarfile.TarError):
-                await self._provider_start_error(session, "provider_start_failed")
+            sel = self.selection
+            if sel is not None and sel.provider == which and self.provider.is_current(sel.connection):
                 return
-            await self._bootstrap_provider(session)
+            self._select(which)
+            await self._bootstrap_provider(self.selection)
+
+    def _select(self, which: str | None):
+        """换音源令牌;切走的旧音源若有在跑的扫码登录,让它在 provider 内收尾。"""
+        old = self.selection
+        origin = self.provider.origin
+        self.selection = Selection(which, origin) if which and origin else None
+        if old is not None and old.provider != which:
+            self.provider.cancel_active_event()
+            if self.provider.is_current(origin):
+                self._track_task(self._cancel_login(old.provider))
+
+    async def _cancel_login(self, which: str):
+        try:
+            await self.provider.request("cancel_login", provider=which)
+        except Exception:  # Best-effort cleanup must not escape the task.
+            log("bridge", "own", "debug", "cancel_login skipped")
+
+    async def _spawn_provider(self) -> bool:
+        """拉起统一 provider 进程并等它连入;失败时报稳定错误码并返回 False。"""
+        self.provider.end_session()
+        child_process.stop_child(self.provider_proc)
+        self.provider_proc = None
+        self.provider_error = None
+        await self.provider.listen(fresh_path=True)
+        session = self.provider.session
+        try:
+            proc = await child_process.spawn(
+                "provider", child_process.BIN("provider"), "--socket", self.provider.path
+            )
+        except OSError:
+            await self._provider_start_error(session, "provider_start_failed")
+            return False
+        if self.provider.session is not session:
+            child_process.stop_child(proc)
+            return False
+        self.provider_proc = proc
+        try:
+            await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
+        except asyncio.TimeoutError:
+            await self._provider_start_error(session, "provider_start_timeout")
+            return False
+        return self.provider.session is session
 
     async def _provider_start_error(self, session: ConnectionOrigin, code: str):
         if self.provider.session is not session:
             return
         self.provider_error = code
-        log("bridge", "own", "error", f"provider {session.provider}: {code}")
+        log("bridge", "own", "error", f"provider {code}")
         await decky.emit(
             "provider", {"ev": "provider", "type": "error", "data": {"code": code, "message": code}}
         )
 
-    async def _bootstrap_provider(self, session: ConnectionOrigin):
-        try:
-            await asyncio.wait_for(self.provider.connected.wait(), timeout=10)
-        except asyncio.TimeoutError:
-            await self._provider_start_error(session, "provider_start_timeout")
-            return
-        if self.provider.session is not session:
-            return
-        origin = self.provider.origin
-        if not self.provider.is_current(origin):
+    async def _bootstrap_provider(self, sel: "Selection | None"):
+        if not self._is_selected(sel):
             return
         self.provider_error = None
-        which = origin.provider
-        cred = (self.settings.get("accounts") or {}).get(which)
+        cred = (self.settings.get("accounts") or {}).get(sel.provider)
         if cred:
             r = await self.provider.request("set_credential", {"cred": cred})
-            if not self.provider.is_current(origin):
+            if not self._is_selected(sel):
                 return
             new_cred = r.data.get("refreshed") if r.ok else None
             if new_cred:
-                self.settings.setdefault("accounts", {})[which] = new_cred
+                self.settings.setdefault("accounts", {})[sel.provider] = new_cred
                 music_settings.save_settings(self.settings)
-                log("bridge", "own", "info", f"{which} credential auto-refreshed, persisted")
+                log("bridge", "own", "info", f"{sel.provider} credential auto-refreshed, persisted")
             self._kick_seed_liked()
 
     async def _stop_process(self, proc):
