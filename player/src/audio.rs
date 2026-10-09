@@ -164,9 +164,21 @@ const DEVICE_BUFFER_FRAMES: u32 = 8192;
 /// 先按大缓冲开默认设备;设备不接受该缓冲大小时退回 rodio 的默认打开流程。
 fn open_device() -> Result<rodio::MixerDeviceSink, rodio::DeviceSinkError> {
     rodio::DeviceSinkBuilder::from_default_device()
-        .map(|b| b.with_buffer_size(rodio::cpal::BufferSize::Fixed(DEVICE_BUFFER_FRAMES)))
+        .map(|b| {
+            b.with_buffer_size(rodio::cpal::BufferSize::Fixed(DEVICE_BUFFER_FRAMES))
+                .with_error_callback(stream_error)
+        })
         .and_then(|b| b.open_stream())
         .or_else(|_| rodio::DeviceSinkBuilder::open_default_sink())
+}
+
+/// 音频流错误回调。快进跨出已缓冲窗口时解码要等网络按 Range 取数,回调会欠载一下 ——
+/// 这是预期内的短暂停顿,不该被 bridge 当成「意外 stderr」告警;其余错误(设备丢失等)
+/// 仍照 rodio 默认行为写 stderr,由 bridge 以固定摘要记录。
+fn stream_error(err: rodio::cpal::StreamError) {
+    if !matches!(err, rodio::cpal::StreamError::BufferUnderrun) {
+        eprintln!("audio stream error: {err}");
+    }
 }
 
 fn ensure_device(state: &mut AudioState, ev: &AudioEvents) -> bool {
@@ -208,6 +220,19 @@ fn notify_finished(
     }
 }
 
+/// 流支持 Range 且知道总长时声明可随机访问:否则 symphonia 只允许向前 seek,
+/// 往回跳(连按快进时 UI 按略旧的进度算目标、落在当前位置之前)报 RandomAccessNotSupported。
+pub(crate) fn build_decoder(
+    stream: HttpRangeReader,
+) -> Result<rodio::Decoder<HttpRangeReader>, rodio::decoder::DecoderError> {
+    let len = stream.seekable_len();
+    let builder = rodio::Decoder::builder().with_data(stream);
+    match len {
+        Some(len) => builder.with_byte_len(len).with_seekable(true).build(),
+        None => builder.build(),
+    }
+}
+
 fn load_stream(
     state: &mut AudioState,
     stream: HttpRangeReader,
@@ -222,7 +247,7 @@ fn load_stream(
     if probe.cancelled() {
         return;
     }
-    match rodio::Decoder::new(stream) {
+    match build_decoder(stream) {
         Ok(decoder) => attach_decoder(state, decoder, probe, generation, cmd_tx, ev),
         Err(_) if probe.cancelled() => {}
         Err(_) => {

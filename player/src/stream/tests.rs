@@ -216,6 +216,23 @@ fn rodio_decoder_accepts_http_range_reader() {
     assert!(decoder.next().is_some());
 }
 
+/// 连按快进时 UI 按略旧的进度算目标,可能落在当前位置之前(往回 seek)。
+/// 默认解码器只允许向前 seek,会报 RandomAccessNotSupported → UI 弹「播放失败」。
+#[test]
+fn decoder_from_range_stream_seeks_backward() {
+    use rodio::Source;
+    let (url, _starts) = range_server(wav_bytes(80_000));
+
+    let mut plain = rodio::Decoder::new(open_reader(&url)).unwrap();
+    plain.try_seek(StdDuration::from_secs(4)).unwrap();
+    assert!(plain.try_seek(StdDuration::from_secs(1)).is_err());
+
+    let mut decoder = crate::audio::build_decoder(open_reader(&url)).unwrap();
+    decoder.try_seek(StdDuration::from_secs(4)).unwrap();
+    decoder.try_seek(StdDuration::from_secs(1)).unwrap();
+    assert!(decoder.next().is_some());
+}
+
 #[test]
 fn truncation_stress_no_early_eof() {
     // 回归压测:反复截断+续传下必须逐字节完整,不许提前 EOF。
