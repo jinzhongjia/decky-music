@@ -6,6 +6,21 @@
 
 ---
 
+## 快进 / 快退报「播放失败」（v1.1.0 后，已真机验证）
+
+- 根因：解码器用 `rodio::Decoder::new` 创建，未声明可随机访问，symphonia 只允许向前 seek。连按快进时 UI 按略旧的
+  进度算目标，后一次可能落在当前位置之前；快退本身也是往回 seek。二者都报 `RandomAccessNotSupported` →
+  `seek_failed` → 横幅「播放失败，请重试」。真机经调试版 player 抓到该错误。
+- 修复：流支持 Range 且知道总长时用 `Decoder::builder().with_byte_len(len).with_seekable(true)`；不支持 Range 的流保持原行为。
+  另注册音频流错误回调，跨出缓冲窗口取数时的预期欠载不再写 stderr（原先每次快进都让 bridge 记一条「意外 stderr」告警）。
+- 回归：Range 流上先向前再往回 seek，旧构建报错、新构建成功。真机 5 首歌开头连按 6 次快进 + 连按 6 次快退：
+  修复前 18 次里多次 `seek_failed`，修复后 `seek_failed` 0、告警 0。
+- 测试中另遇 Deck 事故（与本插件无关）：第三方插件 decky-steamgriddb 的旧代残留进程泄漏到 10.5 GB 并占住 Decky 的
+  1337 端口，`plugin_loader` 重启后绑定失败反复崩溃、Steam UI 跟着循环重启，各插件进程随之堆积内存直至系统近 OOM。
+  清理 `plugin_loader` cgroup 残留进程、待游戏模式会话重启后再启动 Decky 恢复正常（整组约 210 MB）。
+
+---
+
 ## 资源占用优化（体积 / 线程 / 优先级 / Steam UI 空转，已真机验证）
 
 - 体积：release 改 `opt-level="z"` + `codegen-units=1`；player 的 reqwest 改用 ring（`rustls-no-provider`，建 client 前装默认
