@@ -342,7 +342,7 @@ provider 是一个 Rust 二进制(`provider/`):`src/main.rs` 只做连 socket、
 
 - **一个进程、一次启动**:切换音源只是换路由,不再停旧进程、起新进程(以前 QQ 端还要冷启动
   Nuitka 打包的 CPython)。两个后端的凭证、设备身份、登录任务同时在内存里,互不干扰。
-- **包体**:release 二进制约 12 MB,取代原来 ~4 MB 的 ncm-provider + ~58 MB 的 QQ Nuitka 压缩包
+- **包体**:release 二进制约 5.3 MB(体积优化见 §13.1),取代原来 ~4 MB 的 ncm-provider + ~58 MB 的 QQ Nuitka 压缩包
   (解压后更大),也不再需要 bridge 首次运行时自解包。
 - **依赖边界**:两个后端都走 rustls(QQ 用纯 Rust 的 graviola provider),NEEDED 只有基础 libc
   运行库,`scripts/check-binaries.py` 对 provider 执行与 player 同样严格的动态依赖白名单。
@@ -605,7 +605,10 @@ music-plugin/
 
 | 项 | 做法 | 代价/旋钮 |
 |---|---|---|
-| **进程调度让游戏赢 CPU** | bridge spawn player/provider 时降优先级(`os.nice()` / `SCHED_BATCH`),游戏永远赢争用 | 重负载下音频可能偶发卡顿 → 用**大音频缓冲**吸收,而非给音频上 RT(RT 会跟游戏抢)。nice 值 + 缓冲大小设为**可调旋钮**,由实测定 |
+| **进程调度让游戏赢 CPU** | 子进程在 main 开头经 `wire::lower_priority` 降优先级(provider nice 10、player nice 5),之后建的线程全部继承 | 不给音频上 RT(会跟游戏抢),改用**大音频缓冲**吸收:设备缓冲 8192 帧(48 kHz 约 170 ms,rodio 默认约 50 ms)。真机 8 核满载压测 PipeWire 节点 ERR 保持 0、进度按真实时间推进 |
+| **线程与内存** | player / provider 都用 tokio 单线程运行时(原按核数开 worker,Deck 上各 8 个);bridge 给子进程注入 `MALLOC_ARENA_MAX=2` | 真机线程 player 14→7、provider 9→1;连续播放 20 分钟 player 稳定在 21–26 MB(原来会涨到 50 MB),provider 17–18 MB |
+| **二进制体积** | release `opt-level="z"` + `codegen-units=1` + LTO + strip;两个二进制都用 ring 作 rustls 加密实现(去掉 aws-lc / graviola 两份重复);rodio 只开播放与实际收到的格式 | player 9.7→5.0 MB、provider 12.5→5.3 MB;按体积优化编译后真机播放 CPU 未上升。不用 `panic="abort"`:任务内 panic 会变成整进程退出 |
+| **Steam UI 侧不空转** | 正在播放 / 沉浸页的进度定时器在所属窗口失焦(回到游戏、QAM 盖住)时跳过重绘(`usePlayingTick`;插件跑在 SharedJSContext,须用组件 DOM 的 `ownerDocument` 判断焦点);左侧菜单注入的每秒重试在已包裹且仍挂载时走微秒级快路径 | 原先每秒扫一遍 DOM + 深搜约 3000 个 fiber(约 2 ms),游戏中也一直跑 |
 | **统一 Rust provider 常驻** | 见 §7.0:两个音源同一进程,切换只换路由;不再有几十 MB 的 Python RSS 与 Nuitka 冷启动 / 首次解包 | 原先的「QQ provider 空闲退出」不再必要,常驻 Rust 进程空闲时几乎不占 CPU |
 | **默认中等码率** | 无损(FLAC)设 opt-in | 手持机无损 = 更多网络+解码 CPU+电;省码率直接省续航 |
 | **流式解码(边下边播)** | player 首次 `GET Range: bytes=0-` 判断 CDN 是否支持 byte range;producer 线程按 Range 预取到 4MiB 有界 ring buffer(`low=1MiB/high=3MiB`),rodio 解码线程从 buffer 读;seek 跳出窗口时重置 producer 并重新发 `Range: bytes=N-` | 控内存上限(整首 FLAC ~30-40MB;手持机内存与 VRAM 共享,省的归游戏)+ 首音更快+抗网络抖动。不支持 byte range 时保顺序播放;跳出当前缓冲窗口的 seek 会失败并上报 `seek_failed` |
