@@ -1,6 +1,6 @@
 {
   "name": "decky-music",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "SteamOS 游戏模式音乐插件(QQ音乐 + 网易云)",
   "type": "module",
   "packageManager": "pnpm@11.3.0",
@@ -22,13 +22,13 @@
   "remote_binary": [
     {
       "name": "player",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.1.0/player-linux-x64",
-      "sha256hash": "d576c63219f943e16ee6043e37613cdda38cf1c04fbab4693d6123cec12707d2"
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.1.1/player-linux-x64",
+      "sha256hash": "5237e3c4af7ee54db3d05a0c2965e2cf89fab124c949fd7037d2fbc8525e3ff8"
     },
     {
       "name": "provider",
-      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.1.0/provider-linux-x64",
-      "sha256hash": "cc6e40633d132aa8de620b6acc1ca96c5d52e33289e390ad0ba79b686ecb36da"
+      "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.1.1/provider-linux-x64",
+      "sha256hash": "ddd93bff5aef024837e08efea7fc186947e39f3fa1f1584766b80a45904d00e2"
     }
   ],
   "dependencies": {
