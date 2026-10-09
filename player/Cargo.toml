@@ -15,7 +15,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # 解码 + 输出:内置 symphonia 解码 + cpal 输出;动态链 libasound
 # 只开播放与实际会收到的格式(QQ:FLAC/MP3/OGG;网易云:MP3/FLAC,个别 M4A);不要录音、WAV、抖动噪声。
 rodio = { version = "0.22", default-features = false, features = ["playback", "flac", "mp3", "mp4", "vorbis"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
+tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "sync", "time"] }
 wire = { path = "../wire" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

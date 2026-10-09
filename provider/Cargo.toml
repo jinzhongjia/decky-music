@@ -13,7 +13,7 @@ path = "src/main.rs"
 # 关掉 App 扫码(MQTT)登录不用的依赖。
 qqmusic-api = { git = "https://github.com/jinzhongjia/QQMusicApi-rs", default-features = false, features = ["reqwest-transport", "tls-ring"] }
 ncm-api-rs = { git = "https://github.com/jinzhongjia/ncm-api-rs", branch = "feat/sync-upstream-2026-10" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
+tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "sync", "time"] }
 wire = { path = "../wire" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

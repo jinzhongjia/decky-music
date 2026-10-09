@@ -23,6 +23,9 @@ def _child_env() -> dict:
     env["DECKY_MUSIC_STATE_DIR"] = decky.DECKY_PLUGIN_SETTINGS_DIR
     if DEV:
         env["DECKY_MUSIC_DEBUG"] = "1"  # 子进程据此决定是否发 debug 日志(release 省 IPC)
+    # glibc 默认按线程数开 malloc arena(最多 8×核数),各自保留空闲内存不还系统;
+    # 两个子进程线程都很少,封顶 2 个 arena 能压住常驻内存随时间上涨。
+    env["MALLOC_ARENA_MAX"] = "2"
     return env
 
 

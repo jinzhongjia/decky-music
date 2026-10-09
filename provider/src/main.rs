@@ -18,9 +18,20 @@ mod qq;
 /// 单写出通道:响应、事件、日志都汇到这里,由一个任务按行写 socket,避免并发写乱帧。
 pub type Out = mpsc::UnboundedSender<String>;
 
-#[tokio::main]
-async fn main() {
-    if run().await.is_err() {
+/// provider 的 nice 值:只做网络查询,游戏或播放争 CPU 时它最该让路。
+const NICENESS: i32 = 10;
+
+fn main() {
+    wire::lower_priority(NICENESS);
+    // 单线程运行时:工作是网络 IO 与消息转发,不需要按核数开 worker(原来 Deck 上 8 个)。
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build();
+    let Ok(runtime) = runtime else {
+        eprintln!("provider runtime failed");
+        return;
+    };
+    if runtime.block_on(run()).is_err() {
         eprintln!("provider transport failed");
     }
 }
