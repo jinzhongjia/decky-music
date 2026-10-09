@@ -6,6 +6,20 @@
 
 ---
 
+## 资源占用优化（体积 / 线程 / 优先级 / Steam UI 空转，已真机验证）
+
+- 体积：release 改 `opt-level="z"` + `codegen-units=1`；player 的 reqwest 改用 ring（`rustls-no-provider`，建 client 前装默认
+  provider），QQ 改 `tls-ring`，两个二进制都不再带 aws-lc / graviola；rodio 关掉录音、WAV、抖动噪声。
+  player 9.65→4.96 MB、provider 12.46→5.26 MB（provider GLIBC 需求降到 2.34），full 包预计约 5.5 MB。
+- 运行时：player / provider 改 tokio 单线程运行时并在启动时降优先级（nice 5 / 10），设备缓冲 8192 帧，
+  bridge 注入 `MALLOC_ARENA_MAX=2`。真机播放 QQ 无损：player 唤醒 61→23 次/秒、线程 14→7、内存 25→19 MB，
+  CPU 1.3%→1.2%；provider 线程 9→1、内存 24→17 MB；8 核满载压测 PipeWire ERR 为 0；20 分钟连播 player 稳定在 21–26 MB。
+- Steam UI 侧：进度定时器在窗口失焦时跳过重绘（首版误用 SharedJSContext 的 `document.hasFocus()` 恒为 false 导致
+  进度停住，真机发现后改为组件 DOM 的 `ownerDocument`）；左侧菜单注入的每秒重试在已包裹时走快路径。
+- 未复测：网易云登录态播放（`clear_data` 后网易云尚未重新登录，匿名取 URL 恒为 `no_playable`，与旧版一致）。
+
+---
+
 ## 统一 Rust provider（QQ + 网易云同进程，已真机验证）
 
 - `ncm-provider` 与 Python `qq-provider` 合并为一个 Rust 二进制 `provider/`：QQ 改用

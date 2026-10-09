@@ -21,6 +21,8 @@ pub(crate) async fn open_http_stream(url: String) -> Result<HttpRangeReader, Ope
         .acquire()
         .await
         .map_err(|_| OpenError::Network)?;
+    // reqwest 用 rustls-no-provider:建 client 前确保 ring 已装为默认;已装过返回 Err,忽略。
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let client = Client::builder()
         .connect_timeout(HEADER_TIMEOUT)
         .pool_max_idle_per_host(0)

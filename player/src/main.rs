@@ -17,7 +17,16 @@ mod util;
 use socket::socket_loop;
 use util::arg;
 
+/// player 的 nice 值:比 provider 高(要按时喂音频),但仍低于前台游戏。
+/// 音频缓冲足够大(见 audio::DEVICE_BUFFER_FRAMES),轻度让路不会断音。
+const NICENESS: i32 = 5;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = arg("--socket").expect("--socket <path> required");
-    tokio::runtime::Runtime::new()?.block_on(socket_loop(&socket))
+    wire::lower_priority(NICENESS);
+    // 单线程运行时:控制面、HTTP 拉流与 MPRIS 都是 IO;解码出声在独立音频线程。
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(socket_loop(&socket))
 }

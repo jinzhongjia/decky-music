@@ -28,7 +28,7 @@
     {
       "name": "provider",
       "url": "https://github.com/jinzhongjia/decky-music/releases/download/v1.1.0/provider-linux-x64",
-      "sha256hash": "aff944d32da8eb10315ab5d3a134690ce4ed53ebc7a43ef951a773e99d1fc79c"
+      "sha256hash": "13ff35801871ca289b6db1d0da2f63afc53214fae9e1dad432ed3d5de528e49a"
     }
   ],
   "dependencies": {

@@ -88,6 +88,16 @@ pub async fn read_frame<R: AsyncBufRead + Unpin>(
         .map_err(|_| FrameReadError::InvalidUtf8)
 }
 
+/// 把当前进程降到 `niceness`(正数 = 更低优先级),让游戏在 CPU 争用时先跑。
+/// Linux 的 setpriority 只作用于调用线程,之后创建的线程继承它,所以须在 main 开头、
+/// 建运行时 / 起任何线程之前调用。失败(如已被外部调得更低)静默忽略,不影响功能。
+pub fn lower_priority(niceness: i32) {
+    // SAFETY: setpriority 只读参数、不涉及内存;who = 0 表示调用者自身。
+    unsafe {
+        libc::setpriority(libc::PRIO_PROCESS, 0, niceness);
+    }
+}
+
 /// 稳定错误码(两端并集)。序列化即 wire 上的 error.code,前端据此 i18n。
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]

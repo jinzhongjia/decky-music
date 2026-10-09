@@ -157,11 +157,23 @@ fn fade_out_playing(sink: &Option<rodio::Player>, volume: f32) {
     }
 }
 
+/// 设备缓冲帧数:48 kHz 下约 170 ms(rodio 默认约 50 ms)。音乐播放不在乎这点延迟,
+/// 换来的是音频回调频率降到约 1/3 —— 唤醒更少、更不怕被游戏抢 CPU 时断音。
+const DEVICE_BUFFER_FRAMES: u32 = 8192;
+
+/// 先按大缓冲开默认设备;设备不接受该缓冲大小时退回 rodio 的默认打开流程。
+fn open_device() -> Result<rodio::MixerDeviceSink, rodio::DeviceSinkError> {
+    rodio::DeviceSinkBuilder::from_default_device()
+        .map(|b| b.with_buffer_size(rodio::cpal::BufferSize::Fixed(DEVICE_BUFFER_FRAMES)))
+        .and_then(|b| b.open_stream())
+        .or_else(|_| rodio::DeviceSinkBuilder::open_default_sink())
+}
+
 fn ensure_device(state: &mut AudioState, ev: &AudioEvents) -> bool {
     if state.device_sink.is_some() {
         return true;
     }
-    match rodio::DeviceSinkBuilder::open_default_sink() {
+    match open_device() {
         Ok(mut device_sink) => {
             device_sink.log_on_drop(false);
             state.device_sink = Some(device_sink);
