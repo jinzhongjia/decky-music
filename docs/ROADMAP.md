@@ -16,7 +16,7 @@
   CPU 1.3%→1.2%；provider 线程 9→1、内存 24→17 MB；8 核满载压测 PipeWire ERR 为 0；20 分钟连播 player 稳定在 21–26 MB。
 - Steam UI 侧：进度定时器在窗口失焦时跳过重绘（首版误用 SharedJSContext 的 `document.hasFocus()` 恒为 false 导致
   进度停住，真机发现后改为组件 DOM 的 `ownerDocument`）；左侧菜单注入的每秒重试在已包裹时走快路径。
-- 未复测：网易云登录态播放（`clear_data` 后网易云尚未重新登录，匿名取 URL 恒为 `no_playable`，与旧版一致）。
+- 网易云登录态播放由用户重新登录后确认正常（`clear_data` 后匿名取 URL 恒为 `no_playable`，与旧版一致）。
 
 ---
 
