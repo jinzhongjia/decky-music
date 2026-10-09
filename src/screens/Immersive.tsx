@@ -13,6 +13,7 @@ import { t } from "../i18n";
 import { nextTrack, togglePlay, usePlayer } from "../player/usePlayer";
 import { usePlaybackShortcuts } from "../ui/AppShell";
 import { fmtTime, theme } from "../ui/theme";
+import { usePlayingTick } from "../ui/usePlayingTick";
 
 export const RADIO_ROUTE = "/music-radio";
 
@@ -81,7 +82,8 @@ export function RadioPage() {
 export function Immersive({ title, trash }: { title: string; trash: boolean }) {
   const { current, playing, posSec, wallMs, queueMode } = usePlayer();
   const [liked, setLiked] = useState(false); // 会话级真实红心态(bridge like_state)
-  const [, tick] = useState(0);
+  // 同 NowPlaying:播放时定时刷新进度,窗口失焦跳过(见 usePlayingTick)
+  const tickRef = usePlayingTick<HTMLDivElement>(playing, 500);
 
   // 换曲/重进:拉当前曲红心态点亮(bridge 会话记忆;跨会话种子同步 P6)
   useEffect(() => {
@@ -97,11 +99,6 @@ export function Immersive({ title, trash }: { title: string; trash: boolean }) {
       alive = false;
     };
   }, [current?.id]);
-  useEffect(() => {
-    if (!playing) return;
-    const id = setInterval(() => tick((x) => x + 1), 500);
-    return () => clearInterval(id);
-  }, [playing]);
 
   // 红心开关:已红心再按 = 取消
   const like = () =>
@@ -123,6 +120,7 @@ export function Immersive({ title, trash }: { title: string; trash: boolean }) {
 
   return (
     <Focusable
+      ref={tickRef as never}
       onOptionsButton={like}
       onOptionsActionDescription={liked ? t("unlike") : t("like")}
       onSecondaryButton={forward}

@@ -163,8 +163,22 @@ function ieWrapperFor(OrigIe: any): any {
 let timer: ReturnType<typeof setInterval> | null = null;
 let patched: { fiber: any; original: any } | null = null;
 
+// 已包裹的 fe fiber 仍挂在 React 树上(沿 return 能走到 HostRoot)→ 本轮无事可做。
+// 定时器每秒都跑,包括游戏中:这个快路径只沿父链走几十步(微秒级),免得每秒扫一遍 DOM
+// 再深搜几千个 fiber(约 2ms)。菜单 remount 时旧 fiber 被摘下(return 链断开),回到全量查找。
+const HOST_ROOT = 3;
+function stillPatched(): boolean {
+  const fe = patched?.fiber;
+  if (!fe || !(fe.type as any)?.__deckyMusic) return false;
+  for (let f = fe, n = 0; f && n < 1000; f = f.return, n++) {
+    if (f.tag === HOST_ROOT) return true;
+  }
+  return false;
+}
+
 function tryPatch(): void {
   try {
+    if (stillPatched()) return;
     const root = rootFiber();
     if (!root) return;
     const fe = findFiber(root, isFeFiber);

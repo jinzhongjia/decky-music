@@ -34,6 +34,7 @@ import {
   usePlayer,
 } from "../player/usePlayer";
 import { usePageAutoFocus } from "../ui/AppShell";
+import { usePlayingTick } from "../ui/usePlayingTick";
 import { fmtTime, theme } from "../ui/theme";
 import { CommentsView } from "./Comments";
 
@@ -109,7 +110,8 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
   const { current, playing, posSec, wallMs, mode, queueMode, volume } = usePlayer();
   const initialFocus = usePageAutoFocus();
   const [pane, setPane] = useState<"lyric" | "comments">("lyric");
-  const [, tick] = useState(0);
+  // 播放时定时刷新(驱动歌词滚动/逐字);暂停不跑,窗口失焦跳过(见 usePlayingTick)
+  const tickRef = usePlayingTick<HTMLDivElement>(playing, 300);
 
   // 换曲回到歌词面(热评是"当前曲"语境)
   useEffect(() => setPane("lyric"), [current?.id]);
@@ -119,13 +121,6 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
     () => (current ? api.getLyric(current.id) : Promise.resolve(null)),
     [current?.id]
   );
-
-  // 播放时定时刷新(驱动歌词滚动/逐字);暂停不跑
-  useEffect(() => {
-    if (!playing) return;
-    const id = setInterval(() => tick((x) => x + 1), 300);
-    return () => clearInterval(id);
-  }, [playing]);
 
   if (!current) {
     return <div style={{ margin: "auto", color: theme.textDim }}>{t("nothingPlaying")}</div>;
@@ -139,6 +134,7 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
     // 否则整体按内容塌缩,右侧留大片空白(与 AppShell 根同类坑)。
     // X = 歌词/热评切换(仅 NCM 传 comments;图例文案随当前面同帧切换)
     <Focusable
+      ref={tickRef as never}
       onSecondaryButton={
         comments ? () => setPane(pane === "lyric" ? "comments" : "lyric") : undefined
       }
