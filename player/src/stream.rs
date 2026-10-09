@@ -31,6 +31,13 @@ impl HttpRangeReader {
         self.shared.state.lock().range_supported
     }
 
+    /// 可随机访问时的总字节数:服务端支持 Range 且给了总长度。解码器据此开启双向 seek;
+    /// 否则只能向前 seek(往回跳超出缓冲窗口的位置无法重新请求)。
+    pub(crate) fn seekable_len(&self) -> Option<u64> {
+        let state = self.shared.state.lock();
+        state.content_length.filter(|_| state.range_supported)
+    }
+
     pub(crate) fn control(&self) -> StreamControl {
         StreamControl {
             shared: Arc::downgrade(&self.shared),
