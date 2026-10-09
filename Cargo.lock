@@ -1618,7 +1618,7 @@ dependencies = [
 [[package]]
 name = "ncm-api-rs"
 version = "0.1.0"
-source = "git+https://github.com/jinzhongjia/ncm-api-rs?branch=feat%2Fsync-upstream-2026-10#5f8ba5261c286112c2e87d577c699920d530b0de"
+source = "git+https://github.com/jinzhongjia/ncm-api-rs?branch=feat%2Fsync-upstream-2026-10#4d6267cd8f5f743e8b542cfc4a2508c9014c25aa"
 dependencies = [
  "aes 0.8.4",
  "aes-gcm",
