@@ -5,3 +5,7 @@ members = ["wire", "player", "provider"]
 [profile.release]
 strip = true
 lto = true
+# 体积优先:两个二进制都是 remote_binary 下载、常驻 Deck 内存;单一 codegen unit 让 LTO 去重更彻底。
+# 不用 panic = "abort":任务内 panic 现在只影响该任务,abort 会让整个进程(含正在出声的 player)退出。
+codegen-units = 1
+opt-level = "z"

@@ -9,12 +9,19 @@ path = "src/main.rs"
 
 [dependencies]
 # 拉流:纯 Rust TLS;异步 HTTP producer 向有界缓冲供数,供 rodio 同步 Read/Seek。
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "webpki-roots"] }
+# TLS 用 ring(与 provider 同一套,不带 aws-lc 的大块代码与静态表),启动时在 main 里装为默认 provider。
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 # 解码 + 输出:内置 symphonia 解码 + cpal 输出;动态链 libasound
-rodio = "0.22"
+# 只开播放与实际会收到的格式(QQ:FLAC/MP3/OGG;网易云:MP3/FLAC,个别 M4A);不要录音、WAV、抖动噪声。
+rodio = { version = "0.22", default-features = false, features = ["playback", "flac", "mp3", "mp4", "vorbis"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"] }
 wire = { path = "../wire" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 parking_lot = "0.12"
 mpris-server = { version = "0.10.0", features = ["tokio"] }
+
+[dev-dependencies]
+# 测试用 WAV 构造流;dev 依赖的特性不会进 release 构建(resolver 2)
+rodio = { version = "0.22", default-features = false, features = ["wav"] }
