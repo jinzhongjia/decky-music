@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="https://decky-music.nvimer.org/?lang=en"><strong>Website</strong></a> ·
   <a href="https://github.com/jinzhongjia/decky-music/releases">Releases</a> ·
   <a href="docs/DESIGN.md">Architecture</a> ·
   <a href="docs/ROADMAP.md">Roadmap</a> ·
