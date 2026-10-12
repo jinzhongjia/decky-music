@@ -250,6 +250,7 @@ player/provider；修改 `player/`、`provider/` 或 `wire/` 后，必须先运�
 | `tests/` | bridge、协议、设置和前端行为测试 |
 | `docs/` | 架构、路线图、队列语义、provider 能力和 UI 规格 |
 | `scripts/` | SteamOS 兼容构建、真机部署，以及 full / CN 发布打包 |
+| `website/` | 项目官网（Steam 商店页风格，Cloudflare Workers 部署），见 `website/README.md` |
 
 ## 设计与开发文档
 

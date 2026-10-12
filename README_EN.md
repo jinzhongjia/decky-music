@@ -276,6 +276,7 @@ no such device is currently available.
 | `tests/` | Bridge, protocol, settings, and frontend behavior tests |
 | `docs/` | Architecture, roadmap, queue semantics, provider capabilities, and UI specifications |
 | `scripts/` | SteamOS-compatible builds, device deployment, and full / CN release packaging |
+| `website/` | Project website (Steam store-page style, deployed on Cloudflare Workers); see `website/README.md` |
 
 ## Design and Development Documentation
 
