@@ -1,0 +1,453 @@
+/* 商店页下半部:侧栏、介绍、画廊、性能、架构、系统需求、更新、灯箱、响应式 */
+
+/* ---------- 区块标题(Steam 下划渐变线) ---------- */
+.sec {
+  margin: 0 0 12px;
+  padding-bottom: 4px;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--white);
+  background: linear-gradient(to right, #3b6e8c 0%, transparent 100%) bottom / 100% 1px no-repeat;
+}
+.sub {
+  margin: 28px 0 10px;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--white);
+}
+.sec-note {
+  margin: -4px 0 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.sec-note.small {
+  margin-top: -6px;
+  font-size: 12px;
+}
+.block {
+  margin-top: 46px;
+}
+.fine {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-mute);
+}
+.more {
+  margin: 14px 0 0;
+  font-size: 13px;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+.dot.qq {
+  background: var(--qq);
+}
+.dot.ncm {
+  background: var(--ncm);
+}
+
+/* ---------- 侧栏 ---------- */
+.col-side {
+  display: grid;
+  gap: 12px;
+}
+.sblock {
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+}
+.sblock h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.cats {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.cats li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  color: var(--link);
+  background: rgba(103, 193, 245, 0.08);
+}
+.cats i {
+  width: 18px;
+  text-align: center;
+  font-style: normal;
+  color: #a3cfec;
+}
+.langs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.langs th {
+  font-weight: 400;
+  color: var(--text-mute);
+  text-align: center;
+  padding: 2px 4px;
+}
+.langs td {
+  padding: 3px 4px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  color: var(--link);
+}
+.langs td:first-child {
+  text-align: left;
+  color: var(--text);
+}
+.details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+.details dt {
+  color: var(--text-mute);
+}
+.details dd {
+  margin: 0;
+}
+.links {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+}
+.links a {
+  padding: 7px 10px;
+  color: var(--link);
+  background: rgba(103, 193, 245, 0.12);
+  border-radius: 2px;
+}
+.links a::after {
+  content: " ›";
+}
+.links a:hover {
+  color: var(--white);
+  background: linear-gradient(-60deg, #417a9b 5%, #67c1f5 95%);
+}
+
+/* ---------- 介绍 ---------- */
+.lead {
+  margin: 0 0 18px;
+  font-size: 14.5px;
+  color: #acb2b8;
+}
+.feat {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 18px;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 14px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.08));
+}
+.feat.rev {
+  grid-template-columns: 1fr 260px;
+}
+.feat.rev img {
+  order: 2;
+}
+.feat img {
+  width: 100%;
+  border-radius: 3px;
+  cursor: zoom-in;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.feat h3 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--white);
+}
+.feat p {
+  margin: 0;
+  color: #acb2b8;
+}
+.matrix {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.matrix th,
+.matrix td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.matrix thead th {
+  color: var(--white);
+  font-weight: 400;
+  background: rgba(0, 0, 0, 0.25);
+}
+.matrix tbody th {
+  font-weight: 400;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.matrix .both {
+  text-align: center;
+}
+.pad {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pad li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+}
+.pad kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 12px;
+  color: #0e141b;
+  background: #e6e9ec;
+}
+.b-sh {
+  padding: 0 6px;
+  border-radius: 6px 6px 3px 3px;
+}
+.b-face {
+  border-radius: 50%;
+}
+.b-pill {
+  padding: 0 10px;
+  border-radius: 13px;
+}
+
+/* ---------- 画廊 ---------- */
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.tabs button {
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 2px 2px 0 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.tabs button[aria-selected="true"] {
+  color: var(--white);
+  background: linear-gradient(to bottom, #2a475e, #1b2838);
+}
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.gallery[hidden] {
+  display: none;
+}
+.shot {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: #000;
+  border-radius: 2px;
+}
+.shot img {
+  width: 100%;
+  aspect-ratio: 1280 / 800;
+  object-fit: cover;
+  transition:
+    transform 0.3s ease,
+    opacity 0.3s;
+  opacity: 0.88;
+}
+.shot span {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 18px 10px 7px;
+  font-size: 12px;
+  color: var(--white);
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+}
+.shot:hover img {
+  transform: scale(1.04);
+  opacity: 1;
+}
+
+/* ---------- 性能 ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.stat {
+  padding: 16px 14px;
+  background: linear-gradient(135deg, rgba(58, 150, 207, 0.18), rgba(0, 0, 0, 0.25));
+  border-top: 2px solid var(--bar-after);
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.45;
+}
+.stat b {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 30px;
+  font-weight: 300;
+  color: var(--white);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.stat small {
+  font-size: 15px;
+  color: var(--text-dim);
+}
+.stat em {
+  font-style: normal;
+  color: var(--text-mute);
+}
+.cmp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.legend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.sw {
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+}
+.sw.before {
+  background: var(--bar-before);
+}
+.sw.after {
+  background: var(--bar-after);
+}
+.cmp-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.cmp {
+  padding: 12px 14px 6px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.cmp h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) 118px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 12.5px;
+}
+.bar .lbl {
+  color: var(--text);
+}
+.bar .val {
+  text-align: right;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bar .val b {
+  color: var(--white);
+  font-weight: 600;
+}
+/* 两根细条:上为优化前(恒满),下为现在;中间 2px 间隙,端部 4px 圆角 */
+.track {
+  display: grid;
+  gap: 2px;
+}
+.track i {
+  height: 7px;
+  border-radius: 0 4px 4px 0;
+}
+.track .b {
+  width: 100%;
+  background: var(--bar-before);
+}
+.track .a {
+  width: var(--w);
+  min-width: 4px;
+  background: var(--bar-after);
+}
+.bar:hover .lbl {
+  color: var(--white);
+}
+.bar::after {
+  position: absolute;
+  left: 104px;
+  bottom: calc(100% - 2px);
+  z-index: 5;
+  max-width: 300px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #c6d4df;
+  background: #3d4450;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+html:not(:lang(en)) .bar::after {
+  content: attr(data-tip-zh);
+}
+html:lang(en) .bar::after {
+  content: attr(data-tip-en);
+}
+.bar:hover::after {
+  opacity: 1;
+}
+.src {
+  margin-top: 12px;
+}

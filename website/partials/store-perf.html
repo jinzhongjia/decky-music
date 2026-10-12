@@ -1,0 +1,210 @@
+<section class="block" id="perf">
+  <h2 class="sec">
+    <span class="zh">性能与资源占用</span><span class="en">Performance &amp; footprint</span>
+  </h2>
+  <p class="sec-note">
+    <span class="zh"
+      >打游戏时，音乐插件应该是「隐形」的。以下数字来自 Steam Deck 真机与本地实测记录。</span
+    >
+    <span class="en"
+      >While you game, a music plugin should be invisible. Figures below come from on-device Steam
+      Deck and local measurements.</span
+    >
+  </p>
+
+  <div class="stats">
+    <div class="stat">
+      <b data-total-download>≈ 10.9 <small>MB</small></b>
+      <span class="zh">安装时总下载量<br /><em>插件包 + 两个后端二进制</em></span>
+      <span class="en">Total install download<br /><em>package + both backend binaries</em></span>
+    </div>
+    <div class="stat">
+      <b>≈ 18 <small>MB</small></b>
+      <span class="zh">provider 常驻内存<br /><em>QQ + 网易云同进程 · 单线程</em></span>
+      <span class="en"
+        >Provider resident memory<br /><em>QQ + NetEase in one process · 1 thread</em></span
+      >
+    </div>
+    <div class="stat">
+      <b>1.2 <small>%</small></b>
+      <span class="zh">播放无损时 player CPU<br /><em>Steam Deck · QQ 无损</em></span>
+      <span class="en"
+        >Player CPU while playing lossless<br /><em>Steam Deck · QQ lossless</em></span
+      >
+    </div>
+    <div class="stat">
+      <b>≈ 2 <small>ms</small></b>
+      <span class="zh">QQ 后端冷启动<br /><em>原 Python 实现约 250 ms</em></span>
+      <span class="en">QQ backend cold start<br /><em>was ~250 ms in Python</em></span>
+    </div>
+  </div>
+
+  <div class="cmp-head">
+    <h3 class="sub"><span class="zh">优化前后对比</span><span class="en">Before vs. now</span></h3>
+    <div class="legend" aria-hidden="true">
+      <span
+        ><i class="sw before"></i><span class="zh">优化前</span><span class="en">Before</span></span
+      >
+      <span><i class="sw after"></i><span class="zh">现在</span><span class="en">Now</span></span>
+    </div>
+  </div>
+  <p class="sec-note small">
+    <span class="zh">每一行按各自的最大值缩放，越短越好。悬停查看测量条件。</span
+    ><span class="en"
+      >Each row is scaled to its own maximum — shorter is better. Hover for test conditions.</span
+    >
+  </p>
+
+  <div class="cmp-grid">
+    <div class="cmp">
+      <h4><span class="zh">包体</span><span class="en">Package size</span></h4>
+      <div
+        class="bar"
+        style="--w: 8.8%"
+        data-tip-zh="v1.0.9 → v1.1.2 的 Decky.Music.full.zip"
+        data-tip-en="Decky.Music.full.zip, v1.0.9 → v1.1.2"
+      >
+        <span class="lbl"
+          ><span class="zh">离线完整包</span><span class="en">Offline bundle</span></span
+        >
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">63.8 → <b>5.6 MB</b></span>
+      </div>
+      <div
+        class="bar"
+        style="--w: 15.3%"
+        data-tip-zh="插件包 + player + provider，v1.0.9 → v1.1.2"
+        data-tip-en="Package + player + provider, v1.0.9 → v1.1.2"
+      >
+        <span class="lbl"
+          ><span class="zh">安装时下载</span><span class="en">Install download</span></span
+        >
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">71.1 → <b>10.9 MB</b></span>
+      </div>
+    </div>
+
+    <div class="cmp">
+      <h4>
+        <span class="zh">QQ 后端：Python → Rust</span
+        ><span class="en">QQ backend: Python → Rust</span>
+      </h4>
+      <div
+        class="bar"
+        style="--w: 1.5%"
+        data-tip-zh="同机同批匿名请求"
+        data-tip-en="Same machine, same anonymous request batch"
+      >
+        <span class="lbl"><span class="zh">冷启动</span><span class="en">Cold start</span></span>
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">~250 → <b>~2 ms</b></span>
+      </div>
+      <div
+        class="bar"
+        style="--w: 7.1%"
+        data-tip-zh="空闲常驻内存，同机同批"
+        data-tip-en="Idle resident memory, same machine"
+      >
+        <span class="lbl"><span class="zh">空闲内存</span><span class="en">Idle memory</span></span>
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">98 → <b>7 MB</b></span>
+      </div>
+      <div
+        class="bar"
+        style="--w: 7.4%"
+        data-tip-zh="同一批请求消耗的 CPU 时间"
+        data-tip-en="CPU time for the same request batch"
+      >
+        <span class="lbl"
+          ><span class="zh">批量请求 CPU</span><span class="en">Batch CPU time</span></span
+        >
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">0.54 → <b>0.04 s</b></span>
+      </div>
+    </div>
+
+    <div class="cmp">
+      <h4>
+        <span class="zh">播放时资源（Steam Deck · QQ 无损）</span
+        ><span class="en">While playing (Steam Deck · QQ lossless)</span>
+      </h4>
+      <div
+        class="bar"
+        style="--w: 37.7%"
+        data-tip-zh="tokio 单线程运行时 + 8192 帧设备缓冲"
+        data-tip-en="Single-threaded tokio runtime + 8192-frame device buffer"
+      >
+        <span class="lbl"
+          ><span class="zh">player 唤醒</span><span class="en">Player wakeups</span></span
+        >
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">61 → <b>23 /s</b></span>
+      </div>
+      <div
+        class="bar"
+        style="--w: 76%"
+        data-tip-zh="20 分钟连播稳定在 21–26 MB"
+        data-tip-en="Stays at 21–26 MB over 20 minutes of playback"
+      >
+        <span class="lbl"
+          ><span class="zh">player 内存</span><span class="en">Player memory</span></span
+        >
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">25 → <b>19 MB</b></span>
+      </div>
+      <div
+        class="bar"
+        style="--w: 11.1%"
+        data-tip-zh="provider 改为单线程运行时并降低调度优先级"
+        data-tip-en="Provider moved to a single-threaded runtime at lower priority"
+      >
+        <span class="lbl"
+          ><span class="zh">provider 线程</span><span class="en">Provider threads</span></span
+        >
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">9 → <b>1</b></span>
+      </div>
+    </div>
+
+    <div class="cmp">
+      <h4>
+        <span class="zh">网易云连接复用</span><span class="en">NetEase connection reuse</span>
+      </h4>
+      <div
+        class="bar"
+        style="--w: 72.8%"
+        data-tip-zh="Steam Deck 真机 A/B，同一登录态顺序发 12 个请求，3 轮中位数"
+        data-tip-en="On-device A/B, 12 sequential requests on one login, median of 3 rounds"
+      >
+        <span class="lbl"
+          ><span class="zh">12 个连续请求</span><span class="en">12 sequential requests</span></span
+        >
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">10.79 → <b>7.86 s</b></span>
+      </div>
+      <div
+        class="bar"
+        style="--w: 50.6%"
+        data-tip-zh="间隔 ≤ 3 秒的请求，Steam Deck 真机"
+        data-tip-en="Requests ≤ 3 s apart, on Steam Deck"
+      >
+        <span class="lbl"
+          ><span class="zh">榜单曲目</span><span class="en">Chart tracks</span></span
+        >
+        <span class="track"><i class="b"></i><i class="a"></i></span>
+        <span class="val">1852 → <b>938 ms</b></span>
+      </div>
+    </div>
+  </div>
+
+  <p class="fine src">
+    <span class="zh"
+      >来源：<a href="/docs/roadmap">路线图与验收记录</a
+      >。数值随网络、账号与上游服务状态变化，仅代表记录时的测量结果。</span
+    >
+    <span class="en"
+      >Source: <a href="/docs/roadmap">roadmap &amp; verification log</a>. Results vary with
+      network, account and upstream service state; they reflect the recorded runs only.</span
+    >
+  </p>
+</section>

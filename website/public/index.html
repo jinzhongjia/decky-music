@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <!-- @include head -->
+    <title>Decky Music · SteamOS 游戏模式里的 QQ 音乐与网易云音乐</title>
+    <meta
+      name="description"
+      content="Decky Music 是 SteamOS 游戏模式的 Decky 插件：QQ 音乐 + 网易云音乐双音源、扫码登录、手柄优先的大屏界面、后台连续播放与系统媒体控制。免费开源。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Decky Music" />
+    <meta
+      property="og:description"
+      content="在 SteamOS 游戏模式中享受 QQ 音乐与网易云音乐 · Play QQ Music & NetEase Cloud Music in SteamOS Game Mode."
+    />
+    <meta property="og:image" content="https://decky-music.nvimer.org/brand/og.jpg" />
+    <meta property="og:url" content="https://decky-music.nvimer.org/" />
+    <link rel="canonical" href="https://decky-music.nvimer.org/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preload" as="image" href="/media/renders/qq-05-nowplaying.webp" />
+    <link rel="stylesheet" href="/assets/store.css" />
+    <link rel="stylesheet" href="/assets/sections.css" />
+    <link rel="stylesheet" href="/assets/store-tail.css" />
+  </head>
+  <body class="store">
+    <!-- @include nav -->
+    <div class="page-bg" aria-hidden="true"></div>
+
+    <div class="subnav">
+      <div class="wrap subnav-in">
+        <nav aria-label="Sections">
+          <a href="#overview"><span class="zh">概览</span><span class="en">Overview</span></a>
+          <a href="#about"><span class="zh">关于</span><span class="en">About</span></a>
+          <a href="#media"><span class="zh">截图</span><span class="en">Screenshots</span></a>
+          <a href="#perf"><span class="zh">性能</span><span class="en">Performance</span></a>
+          <a href="#arch"><span class="zh">工作原理</span><span class="en">How it works</span></a>
+          <a href="#reqs"><span class="zh">系统需求</span><span class="en">Requirements</span></a>
+          <a href="#news"><span class="zh">更新日志</span><span class="en">Updates</span></a>
+        </nav>
+        <span class="subnav-ver" data-rel="tag">v{{version}}</span>
+      </div>
+    </div>
+
+    <main class="wrap">
+      <!-- @include store-hero -->
+      <!-- @include store-install -->
+      <!-- @include store-media -->
+      <!-- @include store-perf -->
+      <!-- @include store-arch -->
+      <!-- @include store-reqs -->
+    </main>
+
+    <div class="lightbox" id="lightbox" hidden>
+      <button class="lb-close" type="button" aria-label="Close">×</button>
+      <button class="lb-nav prev" type="button" aria-label="Previous">‹</button>
+      <figure>
+        <img alt="" />
+        <figcaption></figcaption>
+      </figure>
+      <button class="lb-nav next" type="button" aria-label="Next">›</button>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <!-- @include footer -->
+    <script src="/assets/store.js" defer></script>
+  </body>
+</html>

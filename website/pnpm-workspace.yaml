@@ -1,0 +1,6 @@
+# 网站是独立 pnpm 根:不进插件本体的 workspace,也不进 Decky 插件包。
+packages:
+  - "."
+allowBuilds:
+  esbuild: true
+  workerd: true

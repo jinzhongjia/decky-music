@@ -1,0 +1,139 @@
+<section class="block" id="reqs">
+  <h2 class="sec"><span class="zh">系统需求</span><span class="en">System requirements</span></h2>
+  <div class="reqs-tabs"><span class="on">SteamOS</span></div>
+  <div class="reqs">
+    <div>
+      <h4><span class="zh">最低配置：</span><span class="en">Minimum:</span></h4>
+      <ul>
+        <li>
+          <b><span class="zh">操作系统：</span><span class="en">OS:</span></b>
+          <span class="zh">SteamOS 游戏模式（gamescope 会话）</span
+          ><span class="en">SteamOS Game Mode (gamescope session)</span>
+        </li>
+        <li>
+          <b><span class="zh">处理器：</span><span class="en">Processor:</span></b> x86_64
+        </li>
+        <li>
+          <b><span class="zh">运行库：</span><span class="en">Runtime:</span></b> glibc 2.39+
+        </li>
+        <li>
+          <b><span class="zh">插件宿主：</span><span class="en">Host:</span></b>
+          <a href="https://github.com/SteamDeckHomebrew/decky-loader" target="_blank" rel="noopener"
+            >Decky Loader</a
+          ><span class="zh">（Steam 客户端 1784934043+ 需 v3.2.8-pre1+）</span
+          ><span class="en"> (v3.2.8-pre1+ for Steam client 1784934043+)</span>
+        </li>
+        <li>
+          <b><span class="zh">音频：</span><span class="en">Audio:</span></b>
+          <span class="zh">用户会话 PipeWire、ALSA 兼容层与 libasound.so.2</span
+          ><span class="en"
+            >PipeWire in the user session, ALSA compatibility and libasound.so.2</span
+          >
+        </li>
+        <li>
+          <b><span class="zh">网络：</span><span class="en">Network:</span></b>
+          <span class="zh">宽带互联网连接</span
+          ><span class="en">Broadband Internet connection</span>
+        </li>
+        <li>
+          <b><span class="zh">存储空间：</span><span class="en">Storage:</span></b>
+          <span class="zh">两个后端二进制合计约 10 MB，另加插件本体</span
+          ><span class="en">About 10 MB for both backend binaries, plus the plugin itself</span>
+        </li>
+      </ul>
+    </div>
+    <div>
+      <h4><span class="zh">推荐配置：</span><span class="en">Recommended:</span></h4>
+      <ul>
+        <li>
+          <b><span class="zh">设备：</span><span class="en">Device:</span></b>
+          <span class="zh">Steam Deck（已完成真机验收）</span
+          ><span class="en">Steam Deck (verified on device)</span>
+        </li>
+        <li>
+          <b><span class="zh">插件宿主：</span><span class="en">Host:</span></b>
+          <span class="zh">最新版 Decky Loader</span><span class="en">Latest Decky Loader</span>
+        </li>
+        <li>
+          <b><span class="zh">账号：</span><span class="en">Account:</span></b>
+          <span class="zh">QQ 音乐需扫码登录；网易云部分歌曲可匿名播放，推荐与私人资产需登录</span
+          ><span class="en"
+            >QQ Music requires QR login; some NetEase tracks play anonymously, personal features
+            need login</span
+          >
+        </li>
+        <li>
+          <b><span class="zh">音质：</span><span class="en">Quality:</span></b>
+          <span class="zh">对应平台会员可解锁高品质 / 无损</span
+          ><span class="en">A membership on the service unlocks High / Lossless</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <details class="limits">
+    <summary><span class="zh">已知限制</span><span class="en">Known limitations</span></summary>
+    <ul>
+      <li>
+        <span class="zh"
+          >歌曲是否可播、能拿到哪档音质，取决于账号权益、版权、地区与服务端状态；项目不提供代理或地区绕过能力。</span
+        ><span class="en"
+          >Playability and quality depend on account entitlements, licensing, region and service
+          state; the project provides no proxy or region bypass.</span
+        >
+      </li>
+      <li>
+        <span class="zh">切换 QQ 音乐与网易云会停止播放并清空当前队列（两端歌曲 ID 不兼容）。</span
+        ><span class="en"
+          >Switching between QQ Music and NetEase stops playback and clears the queue (song IDs are
+          incompatible).</span
+        >
+      </li>
+      <li>
+        <span class="zh">电台内容不跨会话保存；普通队列会恢复，但插件重启后不会自动开始播放。</span
+        ><span class="en"
+          >Radio isn’t persisted across sessions; the normal queue is restored but won’t auto-play
+          after a restart.</span
+        >
+      </li>
+      <li>
+        <span class="zh">不做本地音频缓存，每次播放都重新拉流。</span
+        ><span class="en">No local audio cache — every play streams afresh.</span>
+      </li>
+      <li>
+        <span class="zh"
+          >已有真机验收记录来自 Steam Deck；非 Deck 的 SteamOS
+          设备、ARM、桌面模式及其他发行版尚未验证。</span
+        ><span class="en"
+          >Device verification so far is on Steam Deck only; non-Deck SteamOS hardware, ARM, Desktop
+          Mode and other distros are unverified.</span
+        >
+      </li>
+    </ul>
+  </details>
+</section>
+
+<section class="block" id="news">
+  <h2 class="sec"><span class="zh">最近更新</span><span class="en">Recent updates</span></h2>
+  <div class="news" id="news-list">
+    <article class="ev">
+      <div class="ev-tag">v{{version}}</div>
+      <h4><span class="zh">网易云浏览更快</span><span class="en">Faster NetEase browsing</span></h4>
+      <ul>
+        <li>
+          <span class="zh"
+            >连续请求复用网络连接，不再每次重新握手，在 Steam Deck
+            上连续浏览时整体耗时约减少四分之一。</span
+          ><span class="en"
+            >Back-to-back requests now reuse connections instead of re-handshaking, cutting total
+            browsing time on Steam Deck by about a quarter.</span
+          >
+        </li>
+      </ul>
+    </article>
+  </div>
+  <p class="more">
+    <a href="https://github.com/jinzhongjia/decky-music/releases" target="_blank" rel="noopener"
+      ><span class="zh">查看全部发布说明 ›</span><span class="en">See all release notes ›</span></a
+    >
+  </p>
+</section>

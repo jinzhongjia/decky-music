@@ -1,0 +1,430 @@
+/* 商店页:背景、子导航、标题、媒体轮播、右侧信息、安装框、侧栏、介绍区 */
+.page-bg {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 900px;
+  z-index: -1;
+  background:
+    linear-gradient(to bottom, rgba(27, 40, 56, 0.55), var(--bg) 92%),
+    url("/media/bg.webp") center top / cover no-repeat;
+  filter: blur(28px) saturate(1.1);
+  transform: scale(1.12);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.store {
+  position: relative;
+}
+
+/* ---------- 子导航(Steam「您的商店」蓝条) ---------- */
+.subnav {
+  margin-top: 20px;
+}
+.subnav-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 36px;
+  padding: 0 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(62, 103, 150, 0.92) 11.38%,
+    rgba(58, 120, 177, 0.8) 25.23%,
+    rgb(15, 33, 110) 100%
+  );
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.4);
+}
+.subnav nav {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.subnav nav a {
+  color: #e5e5e5;
+  font-size: 13px;
+  padding: 0 12px;
+  line-height: 36px;
+  white-space: nowrap;
+}
+.subnav nav a:hover {
+  color: var(--white);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
+}
+.subnav-ver {
+  font-size: 12px;
+  color: #b8d8f0;
+  padding: 2px 8px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+}
+
+/* ---------- 标题区 ---------- */
+.apphead {
+  padding-top: 18px;
+}
+.crumbs {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 2px 0 12px;
+}
+.title-row h1 {
+  margin: 0;
+  color: var(--white);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+.btn-hub {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 2px;
+  background: rgba(103, 193, 245, 0.2);
+  color: var(--link);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.btn-hub svg {
+  width: 15px;
+  height: 15px;
+}
+.btn-hub:hover {
+  color: var(--white);
+  background: linear-gradient(-60deg, #417a9b 5%, #67c1f5 95%);
+}
+
+/* ---------- 高亮区:左轮播 + 右信息 ---------- */
+.highlight {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 324px;
+  gap: 16px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+}
+.hl-media {
+  min-width: 0;
+}
+.viewer {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  overflow: hidden;
+}
+.slide {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+.slide.is-on {
+  opacity: 1;
+}
+.slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.slide figcaption {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  padding: 3px 10px;
+  border-radius: 2px;
+  font-size: 12px;
+  color: var(--white);
+  background: rgba(0, 0, 0, 0.55);
+}
+.viewer .nav {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  width: 40px;
+  height: 64px;
+  border: 0;
+  font-size: 34px;
+  line-height: 1;
+  color: var(--white);
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.viewer:hover .nav,
+.viewer .nav:focus-visible {
+  opacity: 1;
+}
+.viewer .prev {
+  left: 0;
+}
+.viewer .next {
+  right: 0;
+}
+.strip {
+  display: flex;
+  gap: 4px;
+  padding: 6px 0 4px;
+  overflow-x: auto;
+  scrollbar-color: #4f94bc #1a2635;
+  scroll-snap-type: x mandatory;
+}
+.thumb {
+  flex: 0 0 116px;
+  padding: 0;
+  border: 2px solid transparent;
+  background: #000;
+  opacity: 0.55;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: opacity 0.2s;
+}
+.thumb:hover,
+.thumb.is-on {
+  opacity: 1;
+}
+.thumb.is-on {
+  border-color: var(--white);
+}
+.thumb img {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  object-fit: cover;
+}
+
+.hl-info {
+  padding: 0 14px 14px 0;
+  font-size: 13px;
+}
+.capsule {
+  width: 100%;
+  aspect-ratio: 460 / 215;
+  object-fit: cover;
+  background: #1f2130;
+}
+.hl-desc {
+  margin: 12px 0;
+  color: #c6d4df;
+  line-height: 1.55;
+}
+.hl-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+}
+.hl-meta dt {
+  color: var(--text-mute);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 20px;
+}
+.hl-meta dd {
+  margin: 0;
+  line-height: 20px;
+  color: var(--text-dim);
+}
+.hl-meta .free {
+  color: #a4d007;
+}
+.tags-label {
+  color: var(--text-mute);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tags li {
+  padding: 0 7px;
+  line-height: 19px;
+  font-size: 11px;
+  border-radius: 2px;
+  color: var(--link);
+  background: var(--tag-bg);
+}
+
+/* ---------- 队列条 ---------- */
+.queuebar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0 22px;
+  padding: 10px 12px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.1));
+}
+.qbtn {
+  padding: 6px 14px;
+  border-radius: 2px;
+  font-size: 13px;
+  color: var(--link);
+  background: rgba(103, 193, 245, 0.2);
+}
+.qbtn:hover {
+  color: var(--white);
+  background: linear-gradient(-60deg, #417a9b 5%, #67c1f5 95%);
+}
+.qbtn-hl {
+  margin-left: auto;
+  color: var(--white);
+  background: linear-gradient(to right, var(--blue-1) 5%, var(--blue-2) 60%);
+}
+
+/* ---------- 两栏 ---------- */
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 308px;
+  gap: 24px;
+  align-items: start;
+}
+
+/* 安装框:仿 Steam 购买区,价格条压在框底边 */
+.buy {
+  position: relative;
+  margin-bottom: 34px;
+  padding: 16px 16px 30px;
+  border-radius: 4px;
+  background: linear-gradient(-60deg, rgba(226, 244, 255, 0.3) 5%, rgba(84, 107, 115, 0.3) 95%);
+}
+.buy-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.buy h2 {
+  margin: 0 0 8px;
+  font-size: 21px;
+  font-weight: 400;
+  color: var(--white);
+}
+.os {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 2px;
+  color: #b0aeac;
+  background: rgba(0, 0, 0, 0.35);
+}
+.buy p {
+  margin: 0;
+  max-width: 560px;
+  color: #acdbf5;
+  font-size: 13px;
+}
+.size:not(:empty) {
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.size:not(:empty)::before {
+  content: " · ";
+}
+.buy-act {
+  position: absolute;
+  right: 16px;
+  bottom: -17px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 2px;
+  background: #000;
+}
+.price {
+  padding: 0 12px;
+  font-size: 13px;
+  color: #c6d4df;
+}
+.btn-green,
+.btn-dl {
+  border: 0;
+  border-radius: 2px;
+  padding: 0 15px;
+  line-height: 30px;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.btn-green {
+  color: var(--green-text);
+  background: linear-gradient(to right, var(--green-1) 5%, var(--green-2) 95%);
+}
+.btn-green:hover {
+  color: var(--white);
+  background: linear-gradient(to right, #8ed629 5%, #6aa621 95%);
+}
+.btn-dl {
+  font-size: 12px;
+  color: var(--link);
+  background: rgba(103, 193, 245, 0.2);
+}
+.btn-dl:hover {
+  color: var(--white);
+  background: #417a9b;
+}
+
+.howto {
+  margin: 4px 0 30px;
+  padding: 16px 18px;
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 3px solid var(--link);
+}
+.howto h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--white);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.howto ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.howto li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.howto li > b {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  color: var(--bg-deep);
+  background: var(--link);
+}
+.howto code,
+.howto kbd {
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--white);
+  background: rgba(255, 255, 255, 0.1);
+}
+.note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #d9b45b;
+}

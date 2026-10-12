@@ -1,0 +1,130 @@
+<section class="block" id="arch">
+  <h2 class="sec"><span class="zh">工作原理</span><span class="en">How it works</span></h2>
+  <p class="sec-note">
+    <span class="zh"
+      >界面只跟 bridge 说话；bridge 是唯一的状态真相源；联网和出声交给插件沙盒外的两个 Rust
+      进程。</span
+    >
+    <span class="en"
+      >The UI only talks to the bridge; the bridge owns all state; networking and audio live in two
+      Rust processes outside the plugin sandbox.</span
+    >
+  </p>
+  <figure class="diagram">
+    <svg viewBox="0 0 960 340" role="img" aria-labelledby="arch-t">
+      <title id="arch-t">React UI ↔ Python bridge ↔ provider / player (Rust)</title>
+      <defs>
+        <marker
+          id="ah"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0 0 10 5 0 10z" fill="#66c0f4" />
+        </marker>
+      </defs>
+      <rect class="zone" x="578" y="12" width="214" height="296" rx="10" />
+      <text class="zone-t zh" x="685" y="330" text-anchor="middle">插件沙盒外 · 独立进程</text>
+      <text class="zone-t en" x="685" y="330" text-anchor="middle">
+        Outside the sandbox · own processes
+      </text>
+
+      <g class="edge">
+        <path d="M212 160H296" marker-start="url(#ah)" marker-end="url(#ah)" />
+        <path d="M512 140C556 140 556 75 596 75" marker-start="url(#ah)" marker-end="url(#ah)" />
+        <path d="M512 180C556 180 556 245 596 245" marker-start="url(#ah)" marker-end="url(#ah)" />
+        <path d="M772 75H812" marker-end="url(#ah)" />
+        <path d="M772 245H812" marker-start="url(#ah)" marker-end="url(#ah)" />
+      </g>
+      <text class="elabel" x="254" y="150" text-anchor="middle">Decky RPC</text>
+      <text class="elabel" x="524" y="160">UDS</text>
+      <text class="elabel" x="524" y="176">NDJSON</text>
+
+      <g class="node ui">
+        <rect x="20" y="110" width="190" height="100" rx="8" />
+        <text class="nt" x="115" y="148" text-anchor="middle">React UI</text>
+        <text class="ns zh" x="115" y="174" text-anchor="middle">快捷菜单 + /music 大屏</text>
+        <text class="ns en" x="115" y="174" text-anchor="middle">QAM + /music page</text>
+      </g>
+      <g class="node core">
+        <rect x="300" y="95" width="210" height="130" rx="8" />
+        <text class="nt" x="405" y="136" text-anchor="middle">Python bridge</text>
+        <text class="ns zh" x="405" y="162" text-anchor="middle">唯一真相源 · 仅标准库</text>
+        <text class="ns en" x="405" y="162" text-anchor="middle">Single source of truth</text>
+        <text class="ns zh" x="405" y="186" text-anchor="middle">队列 · 电台 · 重试 · 监督</text>
+        <text class="ns en" x="405" y="186" text-anchor="middle">
+          queue · radio · retry · supervise
+        </text>
+      </g>
+      <g class="node rust">
+        <rect x="600" y="30" width="170" height="90" rx="8" />
+        <text class="nt" x="685" y="66" text-anchor="middle">provider · Rust</text>
+        <text class="ns zh" x="685" y="92" text-anchor="middle">QQ + 网易云 · 歌词 · URL</text>
+        <text class="ns en" x="685" y="92" text-anchor="middle">QQ + NetEase · lyrics · URLs</text>
+      </g>
+      <g class="node rust">
+        <rect x="600" y="200" width="170" height="90" rx="8" />
+        <text class="nt" x="685" y="236" text-anchor="middle">player · Rust</text>
+        <text class="ns zh" x="685" y="262" text-anchor="middle">拉流 · 解码 · 出声</text>
+        <text class="ns en" x="685" y="262" text-anchor="middle">stream · decode · output</text>
+      </g>
+      <g class="node ext">
+        <rect x="816" y="45" width="128" height="60" rx="8" />
+        <text class="ns zh" x="880" y="80" text-anchor="middle">音乐服务 API</text>
+        <text class="ns en" x="880" y="80" text-anchor="middle">Music services</text>
+      </g>
+      <g class="node ext">
+        <rect x="816" y="215" width="128" height="60" rx="8" />
+        <text class="ns" x="880" y="241" text-anchor="middle">PipeWire</text>
+        <text class="ns" x="880" y="261" text-anchor="middle">MPRIS2 D-Bus</text>
+      </g>
+    </svg>
+  </figure>
+
+  <div class="pillars">
+    <div>
+      <h4><span class="zh">不拖垮 Steam</span><span class="en">Never takes Steam down</span></h4>
+      <p>
+        <span class="zh"
+          >网络请求、解码与后端异常都在独立进程里，插件内降级为错误态；子进程崩了由 bridge
+          自动拉起。</span
+        ><span class="en"
+          >Network calls, decoding and backend faults stay in separate processes and degrade to an
+          in-plugin error state; crashed children are restarted by the bridge.</span
+        >
+      </p>
+    </div>
+    <div>
+      <h4><span class="zh">不开放端口</span><span class="en">No open ports</span></h4>
+      <p>
+        <span class="zh"
+          >bridge 与子进程走 Unix 域套接字 + NDJSON 协议 v1，不监听任何 TCP 端口；Rust 两端共用
+          <code>wire</code> crate。</span
+        ><span class="en"
+          >The bridge talks to its children over a Unix domain socket with NDJSON protocol v1 — no
+          TCP listener at all. Both Rust sides share the <code>wire</code> crate.</span
+        >
+      </p>
+    </div>
+    <div>
+      <h4><span class="zh">不泄露凭证</span><span class="en">No leaked secrets</span></h4>
+      <p>
+        <span class="zh"
+          >播放 URL、Cookie 与凭证从不写入日志或发给界面；二进制安装时按 SHA-256 校验。</span
+        ><span class="en"
+          >Play URLs, cookies and credentials never reach logs or the UI; binaries are SHA-256
+          verified at install.</span
+        >
+      </p>
+    </div>
+  </div>
+  <p class="more">
+    <a href="/docs/design"
+      ><span class="zh">阅读完整的架构设计与协议 ›</span
+      ><span class="en">Read the full architecture &amp; protocol ›</span></a
+    >
+  </p>
+</section>

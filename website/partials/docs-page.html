@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <!-- @include head -->
+    <title>{{title}}</title>
+    <meta name="description" content="Decky Music 开发文档 / developer documentation" />
+    <link rel="stylesheet" href="/assets/docs.css" />
+  </head>
+  <body class="docs">
+    <!-- @include nav -->
+    <div class="docs-bar">
+      <div class="docs-bar-in">
+        <span class="crumb"
+          ><a href="/docs/"><span class="zh">开发文档</span><span class="en">Docs</span></a> ›
+          {{heading}}</span
+        >
+        <button class="docs-menu" type="button" aria-expanded="false" aria-controls="docs-side">
+          <span class="zh">目录</span><span class="en">Contents</span>
+        </button>
+      </div>
+    </div>
+    <div class="docs-wrap">
+      <aside class="docs-side" id="docs-side">{{sidebar}}</aside>
+      <main class="docs-main">
+        <article class="md">{{content}}</article>
+        <p class="docs-src">
+          <a href="{{source}}" target="_blank" rel="noopener"
+            ><span class="zh">在 GitHub 上查看 / 编辑此文档</span
+            ><span class="en">View or edit this page on GitHub</span> ↗</a
+          >
+        </p>
+      </main>
+      <nav class="docs-toc" aria-label="On this page">{{toc}}</nav>
+    </div>
+    <!-- @include footer -->
+    <script src="/assets/docs.js" defer></script>
+  </body>
+</html>

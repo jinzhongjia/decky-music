@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "decky-music-site",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    // 只有 /api/* 走 Worker,其余全部由静态资源直接响应
+    "run_worker_first": ["/api/*"],
+  },
+  // Custom Domain:部署时自动建 DNS 记录与证书(nvimer.org 须在同一 Cloudflare 账号)
+  "routes": [{ "pattern": "decky-music.nvimer.org", "custom_domain": true }],
+  "observability": { "enabled": true },
+  // 必需:wrangler secret put GITHUB_TOKEN —— 匿名访问 GitHub API 会被共享出口 IP 的限额拖垮(只读公开仓库即可)
+}

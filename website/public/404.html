@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <!-- @include head -->
+    <title>页面不存在 · Decky Music</title>
+    <style>
+      .nf {
+        min-height: 60vh;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 48px 16px;
+      }
+      .nf b {
+        display: block;
+        font-size: 72px;
+        font-weight: 200;
+        color: var(--link);
+        line-height: 1;
+      }
+      .nf p {
+        color: var(--text-dim);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- @include nav -->
+    <main class="nf">
+      <div>
+        <b>404</b>
+        <p>
+          <span class="zh">这首歌不在播放队列里。</span
+          ><span class="en">This track isn’t in the queue.</span>
+        </p>
+        <a class="btn-install" href="/"
+          ><span class="zh">回到商店页</span><span class="en">Back to the store page</span></a
+        >
+      </div>
+    </main>
+    <!-- @include footer -->
+  </body>
+</html>

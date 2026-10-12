@@ -1,0 +1,211 @@
+<section class="about" id="about">
+  <h2 class="sec"><span class="zh">关于这款插件</span><span class="en">About this plugin</span></h2>
+  <p class="lead">
+    <span class="zh"
+      >Decky Music 把一整套音乐 App 装进了 SteamOS 游戏模式。它不是网页套壳：界面按 Steam Deck
+      的大屏与手柄重新设计，音乐服务、播放队列和音频输出跑在独立的 Rust
+      进程里——网络慢、解码忙、后端出错，都不会卡住你的 Steam。</span
+    >
+    <span class="en"
+      >Decky Music puts a complete music app inside SteamOS Game Mode. It isn’t a wrapped web page:
+      the UI is designed for the Deck’s screen and controller, while music services, the play queue
+      and audio output run in separate Rust processes — slow networks, busy decoders or backend
+      errors never freeze Steam.</span
+    >
+  </p>
+
+  <div class="feat">
+    <img
+      src="/media/shots/qq/18-nowplaying.thumb.webp"
+      data-full="/media/shots/qq/18-nowplaying.webp"
+      alt=""
+      width="400"
+      height="250"
+      loading="lazy"
+    />
+    <div>
+      <h3>
+        <span class="zh">两大曲库，一个播放器</span
+        ><span class="en">Two libraries, one player</span>
+      </h3>
+      <p>
+        <span class="zh"
+          >QQ 音乐与网易云音乐同时支持，在快捷菜单里一键切换。推荐、榜单、分类搜索、歌单 / 专辑 /
+          歌手详情、我喜欢与收藏歌单都在；正在播放页有同步歌词与翻译，网易云还支持逐字歌词和热评。</span
+        >
+        <span class="en"
+          >Both QQ Music and NetEase Cloud Music, switchable from the Quick Access menu.
+          Recommendations, charts, categorised search, playlist / album / artist pages, liked songs
+          and saved playlists — plus synced, translated lyrics, with word-by-word lyrics and hot
+          comments on NetEase.</span
+        >
+      </p>
+    </div>
+  </div>
+
+  <div class="feat rev">
+    <img
+      src="/media/shots/ncm/17-radio-immersive.thumb.webp"
+      data-full="/media/shots/ncm/17-radio-immersive.webp"
+      alt=""
+      width="400"
+      height="250"
+      loading="lazy"
+    />
+    <div>
+      <h3>
+        <span class="zh">边打游戏边听，不打扰</span
+        ><span class="en">Keeps playing while you game</span>
+      </h3>
+      <p>
+        <span class="zh"
+          >离开插件、进入游戏后继续连续播放。私人
+          FM、猜你喜欢、雷达推荐等电台无限续播；蓝牙耳机按键和系统媒体控件（MPRIS）可直接控制；播放出错时会弹
+          Steam 系统通知，玩游戏时也看得到。</span
+        >
+        <span class="en"
+          >Playback continues after you leave the plugin and launch a game. Endless radio (Personal
+          FM, Guess-you-like, Radar), headset buttons and system media controls via MPRIS, and a
+          Steam toast if something goes wrong — even mid-game.</span
+        >
+      </p>
+    </div>
+  </div>
+
+  <div class="feat">
+    <img
+      src="/media/shots/ncm/19-queue-normal.thumb.webp"
+      data-full="/media/shots/ncm/19-queue-normal.webp"
+      alt=""
+      width="400"
+      height="250"
+      loading="lazy"
+    />
+    <div>
+      <h3>
+        <span class="zh">稳，是第一需求</span><span class="en">Built to be boring-reliable</span>
+      </h3>
+      <p>
+        <span class="zh"
+          >后端崩了会自动拉起并重注登录态；网络断了，下次按播放键从中断处接着放；上游超时先原地重试，不会悄悄跳歌。音质可选标准
+          / 高品质 / 无损三档上限，拿不到就逐档降级。</span
+        >
+        <span class="en"
+          >Crashed backends restart and re-apply your login. Lost the network? Press play and it
+          resumes where it stopped. Upstream timeouts retry in place instead of silently skipping.
+          Choose a Standard / High / Lossless quality cap with graceful fallback.</span
+        >
+      </p>
+    </div>
+  </div>
+
+  <h3 class="sub"><span class="zh">双平台能力一览</span><span class="en">Feature matrix</span></h3>
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th></th>
+          <th>
+            <i class="dot qq"></i><span class="zh">QQ 音乐</span><span class="en">QQ Music</span>
+          </th>
+          <th>
+            <i class="dot ncm"></i><span class="zh">网易云音乐</span
+            ><span class="en">NetEase Cloud Music</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th><span class="zh">扫码登录</span><span class="en">QR login</span></th>
+          <td>
+            <span class="zh">手机 QQ 或微信扫码</span><span class="en">Mobile QQ or WeChat</span>
+          </td>
+          <td>
+            <span class="zh">网易云音乐 App 扫码</span
+            ><span class="en">NetEase Cloud Music app</span>
+          </td>
+        </tr>
+        <tr>
+          <th><span class="zh">推荐与发现</span><span class="en">Discover</span></th>
+          <td>
+            <span class="zh">推荐歌单、新歌首发、猜你喜欢、雷达推荐、榜单</span
+            ><span class="en">Playlists, new releases, Guess-you-like, Radar, charts</span>
+          </td>
+          <td>
+            <span class="zh">每日推荐、推荐歌单、私人 FM、榜单</span
+            ><span class="en">Daily picks, playlists, Personal FM, charts</span>
+          </td>
+        </tr>
+        <tr>
+          <th><span class="zh">搜索</span><span class="en">Search</span></th>
+          <td colspan="2" class="both">
+            <span class="zh">热搜；歌曲 / 歌单 / 专辑 / 歌手分类搜索与分页</span
+            ><span class="en">Trending; songs / playlists / albums / artists with paging</span>
+          </td>
+        </tr>
+        <tr>
+          <th><span class="zh">我的音乐</span><span class="en">Library</span></th>
+          <td>
+            <span class="zh">喜欢的歌曲、自建歌单、收藏歌单</span
+            ><span class="en">Liked songs, created &amp; saved playlists</span>
+          </td>
+          <td>
+            <span class="zh">喜欢的歌曲、听歌排行、自建歌单、收藏歌单</span
+            ><span class="en">Liked songs, listening rank, created &amp; saved playlists</span>
+          </td>
+        </tr>
+        <tr>
+          <th><span class="zh">电台</span><span class="en">Radio</span></th>
+          <td>
+            <span class="zh">猜你喜欢、雷达推荐</span><span class="en">Guess-you-like, Radar</span>
+          </td>
+          <td>
+            <span class="zh">私人 FM（红心 / 垃圾桶）</span
+            ><span class="en">Personal FM (like / trash)</span>
+          </td>
+        </tr>
+        <tr>
+          <th><span class="zh">歌词</span><span class="en">Lyrics</span></th>
+          <td>
+            <span class="zh">同步歌词与翻译</span><span class="en">Synced + translation</span>
+          </td>
+          <td>
+            <span class="zh">逐字歌词、翻译与热评</span
+            ><span class="en">Word-synced, translation, hot comments</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub">
+    <span class="zh">手柄就是遥控器</span><span class="en">Your controller is the remote</span>
+  </h3>
+  <ul class="pad">
+    <li>
+      <kbd class="b-sh">L1</kbd><kbd class="b-sh">R1</kbd><span class="zh">切换顶层页面</span
+      ><span class="en">Switch top tabs</span>
+    </li>
+    <li>
+      <kbd class="b-sh">L2</kbd><kbd class="b-sh">R2</kbd><span class="zh">切换二级页签</span
+      ><span class="en">Switch sub-tabs</span>
+    </li>
+    <li>
+      <kbd class="b-face">A</kbd><span class="zh">选择 / 播放</span
+      ><span class="en">Select / play</span>
+    </li>
+    <li><kbd class="b-face">B</kbd><span class="zh">返回</span><span class="en">Back</span></li>
+    <li>
+      <kbd class="b-face">X</kbd><span class="zh">上下文菜单：红心、加入歌单</span
+      ><span class="en">Context menu: like, add to playlist</span>
+    </li>
+    <li>
+      <kbd class="b-face">Y</kbd><span class="zh">打开播放队列</span
+      ><span class="en">Open the queue</span>
+    </li>
+    <li>
+      <kbd class="b-pill">☰</kbd><span class="zh">全局暂停 / 继续</span
+      ><span class="en">Global play / pause</span>
+    </li>
+  </ul>
+</section>

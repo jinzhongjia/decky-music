@@ -1,0 +1,20 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#171a21" />
+<link rel="icon" type="image/png" href="/brand/favicon.png" />
+<link rel="apple-touch-icon" href="/brand/icon.png" />
+<link rel="stylesheet" href="/assets/base.css" />
+<script>
+  // 语言在首帧前确定,避免中英文闪烁;偏好只是便利项,存储不可用时按浏览器语言
+  (function () {
+    var l = (location.search.match(/[?&]lang=(zh|en)\b/) || [])[1];
+    try {
+      if (l) localStorage.setItem("lang", l);
+      else l = localStorage.getItem("lang");
+    } catch (e) {}
+    if (l !== "zh" && l !== "en") {
+      l = /^zh/i.test(navigator.language || "") ? "zh" : "en";
+    }
+    document.documentElement.lang = l === "zh" ? "zh-CN" : "en";
+  })();
+</script>

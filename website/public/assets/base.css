@@ -1,0 +1,255 @@
+/* 全站基础:Steam 商店配色、全局导航、页脚、按钮、中英切换 */
+:root {
+  --bg: #1b2838;
+  --bg-deep: #171a21;
+  --panel: #16202d;
+  --panel-2: rgba(0, 0, 0, 0.2);
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #c6d4df;
+  --text-dim: #8f98a0;
+  --text-mute: #556772;
+  --white: #ffffff;
+  --link: #66c0f4;
+  --link-hover: #ffffff;
+  --tag-bg: rgba(103, 193, 245, 0.2);
+  --green-1: #75b022;
+  --green-2: #588a1b;
+  --green-text: #d2efa9;
+  --blue-1: #47bfff;
+  --blue-2: #1a44c2;
+  --qq: #31c27c;
+  --ncm: #e60026;
+  --bar-before: #5c6b7a;
+  --bar-after: #3a96cf;
+  --font:
+    "Motiva Sans", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 72px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.6 var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--link-hover);
+}
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+code,
+kbd {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+/* 中英切换:由 head 中的脚本在首帧前设置 html[lang] */
+html:lang(en) .zh,
+html:not(:lang(en)) .en {
+  display: none !important;
+}
+
+.wrap {
+  width: min(1040px, 100% - 32px);
+  margin-inline: auto;
+}
+
+/* ---------- 全局导航 ---------- */
+.gnav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg-deep);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+.gnav-in {
+  width: min(1040px, 100% - 32px);
+  margin-inline: auto;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--white);
+  letter-spacing: 0.08em;
+  font-size: 17px;
+  white-space: nowrap;
+}
+.brand img {
+  border-radius: 6px;
+}
+.brand b {
+  font-weight: 700;
+  margin-left: 0.35em;
+  color: var(--link);
+}
+.gmenu {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+.gmenu a {
+  color: #dcdedf;
+  text-transform: uppercase;
+  font-size: 13.5px;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  border-bottom: 3px solid transparent;
+}
+.gmenu a:hover {
+  color: var(--white);
+  border-bottom-color: var(--link);
+}
+.gtools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.lang {
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 6px 4px;
+}
+.lang:hover {
+  color: var(--white);
+}
+.btn-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 2px;
+  background: #5c7e10;
+  background: linear-gradient(to right, var(--green-1) 5%, var(--green-2) 95%);
+  color: var(--green-text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.btn-install svg {
+  width: 15px;
+  height: 15px;
+}
+.btn-install:hover {
+  color: var(--white);
+  background: linear-gradient(to right, #8ed629 5%, #6aa621 95%);
+}
+
+/* ---------- 页脚 ---------- */
+.gfoot {
+  margin-top: 64px;
+  background: var(--bg-deep);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.gfoot-in {
+  width: min(1040px, 100% - 32px);
+  margin-inline: auto;
+  padding: 28px 0 40px;
+}
+.gfoot-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #363c44;
+}
+.gfoot-top .brand {
+  font-size: 14px;
+}
+.gfoot-top nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+}
+.gfoot-top nav a {
+  color: var(--text-dim);
+}
+.gfoot-top nav a:hover {
+  color: var(--white);
+}
+.gfoot p {
+  margin: 16px 0 0;
+  max-width: 820px;
+  line-height: 1.7;
+}
+
+/* ---------- 窄屏 ---------- */
+@media (max-width: 820px) {
+  html {
+    scroll-padding-top: 112px;
+  }
+  .gnav-in {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding-top: 10px;
+  }
+  .gtools {
+    margin-left: auto;
+  }
+  .gmenu {
+    order: 3;
+    flex-basis: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .gmenu a {
+    padding: 6px 10px 8px;
+    white-space: nowrap;
+  }
+}
+@media (max-width: 420px) {
+  .brand span {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

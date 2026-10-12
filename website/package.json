@@ -1,0 +1,14 @@
+{
+  "name": "decky-music-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build/build.mjs",
+    "dev": "node build/build.mjs && wrangler dev",
+    "deploy": "node build/build.mjs && wrangler deploy"
+  },
+  "devDependencies": {
+    "marked": "^15.0.12",
+    "wrangler": "^4.149.0"
+  }
+}
