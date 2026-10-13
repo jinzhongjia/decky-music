@@ -31,16 +31,16 @@ export const SCENES = [
 ];
 
 export const RENDERS = [
-  ["qq", "05-nowplaying", "QQ 音乐 · 正在播放", "QQ Music · Now playing"],
-  ["ncm", "04-radio", "网易云 · 私人 FM", "NetEase · Personal FM"],
+  ["qq", "18-nowplaying", "QQ 音乐 · 正在播放", "QQ Music · Now playing"],
+  ["ncm", "17-radio-immersive", "网易云 · 私人 FM", "NetEase · Personal FM"],
   ["qq", "01-home", "QQ 音乐 · 推荐", "QQ Music · For you"],
-  ["ncm", "05-nowplaying", "网易云 · 逐字歌词", "NetEase · Word-synced lyrics"],
-  ["qq", "02-search", "QQ 音乐 · 搜索", "QQ Music · Search"],
+  ["ncm", "18-nowplaying", "网易云 · 逐字歌词", "NetEase · Word-synced lyrics"],
+  ["qq", "05-search-songs", "QQ 音乐 · 搜索", "QQ Music · Search"],
   ["ncm", "01-home", "网易云 · 发现", "NetEase · Discover"],
-  ["qq", "03-my-music", "QQ 音乐 · 我的音乐", "QQ Music · My music"],
-  ["ncm", "02-search", "网易云 · 搜索", "NetEase · Search"],
-  ["qq", "04-radio", "QQ 音乐 · 智能电台", "QQ Music · Smart radio"],
-  ["ncm", "03-my-music", "网易云 · 我的", "NetEase · My music"],
+  ["qq", "12-my-fav", "QQ 音乐 · 我的音乐", "QQ Music · My music"],
+  ["ncm", "05-search-songs", "网易云 · 搜索", "NetEase · Search"],
+  ["qq", "17-radio-immersive", "QQ 音乐 · 智能电台", "QQ Music · Smart radio"],
+  ["ncm", "12-my-fav", "网易云 · 我的", "NetEase · My music"],
 ];
 
 const ASSETS = "docs/ui-design/assets";
@@ -67,7 +67,7 @@ export function buildMedia(root, cacheDir, outDir) {
     jobs.push([src, `renders/${p}-${id}.thumb.webp`, 240, 72]);
   }
   // 页面背景:极小图 + CSS 模糊,几 KB 就能铺满
-  jobs.push([join(root, ASSETS, "device-renders", "qq", "05-nowplaying.png"), "bg.webp", 160, 60]);
+  jobs.push([join(root, ASSETS, "device-renders", "qq", "18-nowplaying.png"), "bg.webp", 160, 60]);
 
   let made = 0;
   for (const [src, rel, width, q] of jobs) {
