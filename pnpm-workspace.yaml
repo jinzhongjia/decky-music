@@ -21,5 +21,5 @@ supportedArchitectures:
 # ^1.1.16 / ^2.1.2 就是这样在 CVE-2026-14257 绕过那两条通告出来后变成"钉住了漏洞版本"。
 # 改下限时记得 pnpm install 刷锁文件,再 pnpm audit 复核。
 overrides:
-  brace-expansion@1: ^1.1.18
-  brace-expansion@2: ^2.1.4
+  brace-expansion@1: ^1.1.21
+  brace-expansion@2: ^2.1.7
