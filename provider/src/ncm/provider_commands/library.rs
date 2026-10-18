@@ -96,6 +96,8 @@ pub async fn fav_songs(state: &State, id: u64, args: &Value) -> String {
     .await
 }
 
+/// 听歌排行:先取最近一周(type=1 → weekData),本周没听过歌时周榜为空,
+/// 退回所有时间(type=0 → allData),与网易云 App 的两档一致。
 pub async fn listen_rank(state: &State, id: u64, args: &Value) -> String {
     let Ok((limit, offset)) = paging(args) else {
         return invalid(id);
@@ -104,29 +106,36 @@ pub async fn listen_rank(state: &State, id: u64, args: &Value) -> String {
         Ok(v) => v,
         Err(e) => return e,
     };
-    let q = Query::new()
-        .param("uid", &uid)
-        .param("type", "1")
-        .cookie(&cookie);
-    fetch(state.client.user_record(&q), id, |b| {
-        let list = if b["weekData"].is_array() {
-            &b["weekData"]
-        } else {
-            &b["allData"]
-        };
-        let songs = list
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .skip(offset)
-                    .take(limit)
-                    .map(|x| song_brief(&x["song"]))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        json!({ "songs": songs })
-    })
-    .await
+    let record = |kind: &str| {
+        let q = Query::new()
+            .param("uid", &uid)
+            .param("type", kind)
+            .cookie(&cookie);
+        async move { call(state.client.user_record(&q), id).await.map(|r| r.body) }
+    };
+    let body = match record("1").await {
+        Ok(week) if !rank_entries(&week).is_empty() => week,
+        Ok(_) => match record("0").await {
+            Ok(all) => all,
+            Err(e) => return e,
+        },
+        Err(e) => return e,
+    };
+    let songs = rank_entries(&body)
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .map(|x| song_brief(&x["song"]))
+        .collect::<Vec<_>>();
+    protocol::ok(id, json!({ "songs": songs }))
+}
+
+/// user_record 响应里的排行条目:周榜在 weekData,总榜在 allData。
+pub(super) fn rank_entries(body: &Value) -> &[Value] {
+    ["weekData", "allData"]
+        .iter()
+        .find_map(|key| body[*key].as_array())
+        .map_or(&[], Vec::as_slice)
 }
 
 fn like_response(id: u64, response: Result<ApiResponse, String>) -> String {

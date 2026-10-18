@@ -304,6 +304,17 @@ mod tests {
     }
 
     #[test]
+    fn listen_rank_entries_follow_record_type() {
+        let week = json!({"code":200,"weekData":[{"song":{"id":1}}]});
+        assert_eq!(library::rank_entries(&week).len(), 1);
+        // 本周没听歌:weekData 是空数组,调用方据此退回总榜
+        assert!(library::rank_entries(&json!({"code":200,"weekData":[]})).is_empty());
+        let all = json!({"code":200,"allData":[{"song":{"id":1}},{"song":{"id":2}}]});
+        assert_eq!(library::rank_entries(&all).len(), 2);
+        assert!(library::rank_entries(&json!({"code":200})).is_empty());
+    }
+
+    #[test]
     fn invalid_request_shape_is_stable() {
         let v: Value = serde_json::from_str(&invalid(9)).unwrap();
         assert_eq!(
