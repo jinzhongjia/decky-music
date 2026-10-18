@@ -127,6 +127,7 @@ fn temporary_shortage_and_spurious_wakeup_wait_for_refill() {
 
 #[test]
 fn http_range_reader_reopens_stream_after_seek() {
+    let _serial = STREAM_TESTS.blocking_lock();
     let target = (BUFFER_HIGH_WATER + BUFFER_CHUNK) as u64;
     let data: Vec<u8> = (0..=255).cycle().take(target as usize + 512).collect();
     let (url, starts) = range_server(data.clone());
@@ -150,6 +151,7 @@ fn http_range_reader_reopens_stream_after_seek() {
 
 #[test]
 fn http_reader_falls_back_when_range_is_unsupported() {
+    let _serial = STREAM_TESTS.blocking_lock();
     let target = (BUFFER_HIGH_WATER + BUFFER_CHUNK) as u64;
     let data: Vec<u8> = (0..=255).cycle().take(target as usize + 512).collect();
     let (url, _starts) = http_server_impl(data.clone(), false, usize::MAX);
@@ -165,6 +167,7 @@ fn http_reader_falls_back_when_range_is_unsupported() {
 #[test]
 fn resumes_when_server_truncates_mid_stream() {
     // 服务端每次最多回 64KB 就掐连接(声明完整长度)→ 客户端应 Range 续传拼出全量
+    let _serial = STREAM_TESTS.blocking_lock();
     let data: Vec<u8> = (0..=255).cycle().take(300_000).collect();
     let (url, starts) = http_server_impl(data.clone(), true, 64 * 1024);
     let mut reader = open_reader(&url);
@@ -185,6 +188,7 @@ fn resumes_when_server_truncates_mid_stream() {
 fn mid_stream_death_errors_instead_of_silent_eof() {
     // 声明全量长度但只发一半,之后拒绝一切连接:read 必须报错(经退避重试判死),
     // probe 暴露死因。曾经这里静默 EOF → 被音频线程误判"正常播完"提前切歌。
+    let _serial = STREAM_TESTS.blocking_lock();
     let data: Vec<u8> = (0..=255).cycle().take(200_000).collect();
     let (url, _starts) = http_server_dying(data.clone(), 100_000);
     let mut reader = open_reader(&url);
@@ -197,6 +201,7 @@ fn mid_stream_death_errors_instead_of_silent_eof() {
 
 #[test]
 fn clean_eof_leaves_probe_unfailed() {
+    let _serial = STREAM_TESTS.blocking_lock();
     let data: Vec<u8> = (0..=255).cycle().take(50_000).collect();
     let (url, _starts) = range_server(data.clone());
     let mut reader = open_reader(&url);
@@ -209,6 +214,7 @@ fn clean_eof_leaves_probe_unfailed() {
 
 #[test]
 fn rodio_decoder_accepts_http_range_reader() {
+    let _serial = STREAM_TESTS.blocking_lock();
     let (url, _starts) = range_server(wav_bytes(80_000));
     let reader = open_reader(&url);
     let mut decoder = rodio::Decoder::new(reader).unwrap();
@@ -221,6 +227,7 @@ fn rodio_decoder_accepts_http_range_reader() {
 #[test]
 fn decoder_from_range_stream_seeks_backward() {
     use rodio::Source;
+    let _serial = STREAM_TESTS.blocking_lock();
     let (url, _starts) = range_server(wav_bytes(80_000));
 
     let mut plain = rodio::Decoder::new(open_reader(&url)).unwrap();
@@ -238,6 +245,7 @@ fn truncation_stress_no_early_eof() {
     // 回归压测:反复截断+续传下必须逐字节完整,不许提前 EOF。
     // 曾因 read() 先判 eof 后排空缓冲,下载完成瞬间丢弃未消费尾巴(调度相关,
     // 单次跑难复现)—— 即"歌曲没播放完就切下一曲"的根因。
+    let _serial = STREAM_TESTS.blocking_lock();
     for round in 0..10 {
         let data: Vec<u8> = (0..=255).cycle().take(300_000).collect();
         let (url, _starts) = http_server_impl(data.clone(), true, 64 * 1024);

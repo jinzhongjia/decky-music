@@ -4,6 +4,11 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 
+/// Opening a stream takes a permit from the process-wide `ACTIVE_LOADS` (2 permits), which
+/// parallel tests share: stall / retry tests can hold both for seconds while short-deadline
+/// cancellation tests wait for one. Every test that opens a stream holds this for its whole body.
+pub(super) static STREAM_TESTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 pub(super) fn open_reader(url: &str) -> HttpRangeReader {
     static RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
     RUNTIME

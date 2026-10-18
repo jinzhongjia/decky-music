@@ -1,3 +1,4 @@
+use super::test_support::STREAM_TESTS;
 use super::*;
 use crate::loading::Loads;
 use crate::protocol;
@@ -117,6 +118,7 @@ fn request(id: u64, url: String) -> protocol::Request {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn repeated_loads_cancel_headers_before_retry_and_newest_starts_promptly() {
+    let _serial = STREAM_TESTS.lock().await;
     let server = Server::start().await;
     let mut loads = Loads::new();
     let (cmd, commands) = std::sync::mpsc::channel();
@@ -166,6 +168,7 @@ async fn repeated_loads_cancel_headers_before_retry_and_newest_starts_promptly()
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn partial_body_drop_closes_connection_and_reclaims_task_and_buffer() {
+    let _serial = STREAM_TESTS.lock().await;
     let server = Server::start().await;
     let reader = open_http_stream(format!("{}/partial", server.url))
         .await
@@ -192,6 +195,7 @@ async fn partial_body_drop_closes_connection_and_reclaims_task_and_buffer() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stalled_body_is_cancelled_and_same_position_seek_restarts_failed_stream() {
+    let _serial = STREAM_TESTS.lock().await;
     let server = Server::start().await;
     let mut reader = open_http_stream(format!("{}/partial", server.url))
         .await
@@ -215,6 +219,7 @@ async fn stalled_body_is_cancelled_and_same_position_seek_restarts_failed_stream
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn replacement_load_joins_pending_headers_without_waiting_for_timeout() {
+    let _serial = STREAM_TESTS.lock().await;
     let server = Server::start().await;
     let mut loads = Loads::new();
     let (cmd, commands) = std::sync::mpsc::channel();
@@ -255,6 +260,7 @@ async fn replacement_load_joins_pending_headers_without_waiting_for_timeout() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stop_unblocks_decoder_read_and_reclaims_buffer_before_reader_drop() {
+    let _serial = STREAM_TESTS.lock().await;
     let server = Server::start().await;
     let mut reader = open_http_stream(format!("{}/partial", server.url))
         .await
