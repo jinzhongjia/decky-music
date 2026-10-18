@@ -70,8 +70,9 @@ DECK_HOST=user@ip bash scripts/deploy.sh  # 打包 + rsync 到 SteamOS 设备 + 
 # DECK_HOST 必填、无默认值(见 issue #48);远端 sudo 要口令时另加 DECK_PASS=<口令>
 # 首次会下载并校验固定版本 CLI 到 cli/decky；无宿主 sudo 时可设 DECKY_BUILD_SUDO=0 并传 --build-as-root
 
-bash scripts/build-rust.sh -p player -p provider   # 发布 / 部署用:固定 digest 镜像构建并检查 ABI
-cargo build --release -p player -p provider       # 本机快速构建(glibc 可能偏新,不用于发布)
+bash scripts/build-rust.sh -p player -p provider   # 发布 / 部署用:固定 digest 镜像逐包构建并检查 ABI
+cargo build --release -p player && cargo build --release -p provider  # 本机快速构建(glibc 可能偏新,不用于发布)
+# 两个二进制必须分开构建:同一次 cargo 调用里的多个 -p 会合并依赖特性,player 会多链接 provider 的 reqwest 特性
 cargo fmt --all && cargo clippy --workspace   # Rust lint(clippy + rustfmt)
 ```
 
