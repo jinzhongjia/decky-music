@@ -8,7 +8,7 @@ const { version } = JSON.parse(readFileSync("package.json", "utf-8"));
 const VERSION_MODULE = "decky-music:version";
 const RESOLVED = "\0" + VERSION_MODULE;
 
-export default deckyPlugin({
+const config = deckyPlugin({
   plugins: [
     {
       name: "decky-music-version",
@@ -17,3 +17,10 @@ export default deckyPlugin({
     },
   ],
 });
+
+// 体积:不随包发 sourcemap。模板默认的 sourcemap 内嵌全部源码(含整份 react-icons/fa,约 1.7MB),
+// 占插件 zip 的八成以上;运行时只有打开 DevTools 才会去请求它。bundle 本身未压缩,可直接阅读。
+// deckyPlugin 合并时以模板默认值为准,传参覆盖不了,只能改返回的配置。
+config.output.sourcemap = false;
+
+export default config;
