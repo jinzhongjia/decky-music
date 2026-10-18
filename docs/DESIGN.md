@@ -342,9 +342,9 @@ provider 是一个 Rust 二进制(`provider/`):`src/main.rs` 只做连 socket、
 
 - **一个进程、一次启动**:切换音源只是换路由,不再停旧进程、起新进程(以前 QQ 端还要冷启动
   Nuitka 打包的 CPython)。两个后端的凭证、设备身份、登录任务同时在内存里,互不干扰。
-- **包体**:release 二进制约 5.3 MB(体积优化见 §13.1),取代原来 ~4 MB 的 ncm-provider + ~58 MB 的 QQ Nuitka 压缩包
+- **包体**:release 二进制约 4.7 MB(体积优化见 §13.1),取代原来 ~4 MB 的 ncm-provider + ~58 MB 的 QQ Nuitka 压缩包
   (解压后更大),也不再需要 bridge 首次运行时自解包。
-- **依赖边界**:两个后端都走 rustls(QQ 用纯 Rust 的 graviola provider),NEEDED 只有基础 libc
+- **依赖边界**:两个后端都走 rustls + ring,并共用同一版 reqwest / RustCrypto / rand(不再各带一份),NEEDED 只有基础 libc
   运行库,`scripts/check-binaries.py` 对 provider 执行与 player 同样严格的动态依赖白名单。
 - **兼容**:QQ 凭证仍是原来的 snake_case JSON(QQMusicApi-rs 兼容同名字段与 camelCase 别名),
   设备档案仍存 `qq-device.json` 且字段一致,升级后不用重新登录、也不会被当成新设备。
@@ -607,7 +607,7 @@ music-plugin/
 |---|---|---|
 | **进程调度让游戏赢 CPU** | 子进程在 main 开头经 `wire::lower_priority` 降优先级(provider nice 10、player nice 5),之后建的线程全部继承 | 不给音频上 RT(会跟游戏抢),改用**大音频缓冲**吸收:设备缓冲 8192 帧(48 kHz 约 170 ms,rodio 默认约 50 ms)。真机 8 核满载压测 PipeWire 节点 ERR 保持 0、进度按真实时间推进 |
 | **线程与内存** | player / provider 都用 tokio 单线程运行时(原按核数开 worker,Deck 上各 8 个);bridge 给子进程注入 `MALLOC_ARENA_MAX=2` | 真机线程 player 14→7、provider 9→1;连续播放 20 分钟 player 稳定在 21–26 MB(原来会涨到 50 MB),provider 17–18 MB |
-| **二进制体积** | release `opt-level="z"` + `codegen-units=1` + LTO + strip;两个二进制都用 ring 作 rustls 加密实现(去掉 aws-lc / graviola 两份重复);rodio 只开播放与实际收到的格式 | player 9.7→5.0 MB、provider 12.5→5.3 MB;按体积优化编译后真机播放 CPU 未上升。不用 `panic="abort"`:任务内 panic 会变成整进程退出 |
+| **二进制体积** | release `opt-level="z"` + `codegen-units=1` + LTO + strip;两个二进制都用 ring 作 rustls 加密实现(去掉 aws-lc / graviola 两份重复);rodio 只开播放与实际收到的格式;两个包分开构建(同一次 cargo 调用会把 provider 的 reqwest 特性并进 player);symphonia 的 lazy_static 大表改走 spin 实现,未初始化的表落进 `.bss` 而非 `.data`;idna 不带 Unicode 后端;ncm-api-rs 与 qqmusic-api 共用同一版 reqwest / RustCrypto / rand | player 9.7→5.0→4.35 MB、provider 12.5→5.3→4.65 MB;按体积优化编译后真机播放 CPU 未上升。不用 `panic="abort"`:任务内 panic 会变成整进程退出。idna 只接受 ASCII 域名(两家音源域名均为 ASCII) |
 | **Steam UI 侧不空转** | 正在播放 / 沉浸页的进度定时器在所属窗口失焦(回到游戏、QAM 盖住)时跳过重绘(`usePlayingTick`;插件跑在 SharedJSContext,须用组件 DOM 的 `ownerDocument` 判断焦点);左侧菜单注入的每秒重试在已包裹且仍挂载时走微秒级快路径 | 原先每秒扫一遍 DOM + 深搜约 3000 个 fiber(约 2 ms),游戏中也一直跑 |
 | **统一 Rust provider 常驻** | 见 §7.0:两个音源同一进程,切换只换路由;不再有几十 MB 的 Python RSS 与 Nuitka 冷启动 / 首次解包 | 原先的「QQ provider 空闲退出」不再必要,常驻 Rust 进程空闲时几乎不占 CPU |
 | **默认中等码率** | 无损(FLAC)设 opt-in | 手持机无损 = 更多网络+解码 CPU+电;省码率直接省续航 |
@@ -623,7 +623,7 @@ music-plugin/
 | **watchdog 用信号不轮询** | 子进程退出用 SIGCHLD / asyncio child watcher,不 `poll()` 循环 | 轮询=周期性唤醒 CPU;信号=平时睡、真死才醒。同 §5.5 event-driven |
 | **大屏页代码分割懒加载** | `React.lazy` + `WithSuspense`,进路由才加载平板 UI | QAM 秒开;减小注入 Steam 的初始 JS 与内存(Decky 原生用法) |
 | **播放完成/位置锚点走 source 事件** | decoder EOF 的 `EmptyCallback` 和实际音频样本消耗的 `periodic_access` 写回音频命令队列 | 活跃 player 阻塞等待命令/事件，不再每 250ms 唤醒检查 `sink.empty()`；缓冲停摆也不产生假位置 |
-| **暂停久了释放音频 sink / player 崩溃** | player 只在 pause 后等待一个 30s deadline，超时 drop sink；bridge 收到 `unloaded` 或 player 连接断开后将已载入状态置空，并向 UI 发 `paused` | PipeWire 节点不再常驻；恢复播放按需重拉 player，重载流并 seek 回中断位置（失败才从头播）；UI 不会停在“正在播放”而把下一次按键误作 pause |
+| **暂停久了释放音频 sink / player 崩溃** | player 只在 pause 后等待一个 30s deadline，超时 drop sink；bridge 收到 `unloaded` 或 player 连接断开后将已载入状态置空，并向 UI 发 `paused`；冷态下拖动进度由 bridge 记为接续点（见 QUEUE-BEHAVIOR §3.3） | PipeWire 节点不再常驻；恢复播放按需重拉 player，重载流并 seek 回中断位置或用户拖到的位置（失败才从头播）；UI 不会停在“正在播放”而把下一次按键误作 pause |
 | **读停摆与加载取消（#58/#64）** | 空缓冲等待 30s 后记录失败；新 load/stop/drop 取消并回收旧首开/正文任务 | 首开 10s × 2 + 1s 退避，正文没有整曲总时限；活动加载上限 2。failure probe 保持可见，旧代次 EOF/error 不发到当前播放，正常失败沿用 `fetch_failed` 与断点恢复 |
 | **封面图缩略图 + 虚拟列表**(P3) | 请求 CDN 缩略图尺寸(如 `?param=200y200`,非原图);歌单只渲染视口内封面,离屏不请求;按 songId/URL 缓存 | 缩略图省 ~25× 纹理内存;`<img>` 直连 CDN(§6.3 方案 A),失败 `onError` 占位不崩溃 |
 

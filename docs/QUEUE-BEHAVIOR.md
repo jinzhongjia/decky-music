@@ -71,6 +71,16 @@ bridge 必须处理 player 的 `ended` 事件以决定下一首。协议 v1 事�
 音频层通过 failure probe 发 `fetch_failed`，不发 `ended`，因此不会自动跳到下一首。
 bridge 保留当前曲与 `_resume_at`，`resume()` 重载后尝试 seek 回断点，seek 失败才按既有规则从头播放。
 
+### 3.3 拖动进度
+
+- **已加载**：bridge 把 seek 转给 player。player 对当前音源 seek 后，无论成败都按当前状态回报一次实际位置：
+  暂停中发 `paused`，播放中发 `playing`（失败时先发 `seek_failed`，回报 seek 前的位置，不回报目标值）。
+  bridge 与 UI 的进度只从这两类事件更新，所以暂停中拖动也立即同步，不必等恢复播放。
+- **冷态**（重启回灌后未开播、暂停超过 30 秒释放了 sink、断流、player 崩溃）：player 里没有音源，seek 会被忽略。
+  bridge 不再转发，而是把目标记为 `_resume_at`、同步进度并向 UI 发 `paused`；下次 `resume()` 重载后从这里播。
+- `_resume_at` 在加载完成时才取用并清零：冷加载途中拖的进度同样生效；取 URL 失败后再按播放仍从接续点开始。
+- 换歌（`_play_index` 默认起点 0）与清队列照旧把接续点清零。
+
 ## 4. UI 队列浮层
 
 普通大屏页面按 `Y` 打开队列浮层。QQ 智能电台、NCM 私人 FM 等专属沉浸页可按各自 UI 规格覆盖 `Y` 键，队列入口改由页面按钮或不展示未来队列。

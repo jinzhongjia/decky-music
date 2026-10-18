@@ -6,6 +6,71 @@
 
 ---
 
+## 暂停中拖动进度不同步、冷态拖动丢失（已真机验证）
+
+- 现象一（瘦身轮真机测试中发现）：暂停中 seek 后 `get_playback` 仍是旧进度，要到恢复播放才更新；
+  MPRIS 已是新位置，两边不一致。UI 自己拖动时有乐观更新，但前端重载回灌、MPRIS 发起的 seek 都会看到旧进度。
+- 现象二（同一条链路，更严重）：暂停超过 30 秒释放 sink、插件重启后还没开播、断流或 player 崩溃后拖动进度，
+  按播放键会回到旧位置，拖的进度直接丢失。
+- 根因：player seek 成功后只在播放中补发 `playing`，暂停中只有给 MPRIS 的 `Seeked`；player 没有音源时 seek
+  静默忽略，bridge 也没记，`resume()` 冷加载仍跳回旧的 `_resume_at`。
+- 修复：player 对当前音源 seek 后无论成败都按状态回报 `paused` / `playing`（失败回报 seek 前位置，rodio 失败时
+  `get_pos` 也会变成目标值）；bridge 新增 `Playback.seek`，冷态记为 `_resume_at` 并向 UI 发 `paused`；
+  `_resume_at` 改为加载完成时才取用，冷加载途中的拖动和取 URL 失败后的重试都保留接续点。协议与前端不变。
+- 回归：player 单测覆盖暂停 / 播放 / 失败三种 seek 的事件序列；bridge 单测覆盖久暂停、重启回灌、冷加载途中、
+  无当前曲、取 URL 失败重试。旧实现下这些用例分别失败。
+- 真机（Steam Deck 侧载，2026-10-18，QQ 无损）：
+  - 插件重启后未开播时拖到 60s：`get_playback` 立即为 60，按播放从 60s 起播（修复前从头播）。
+  - 暂停中拖到 120s：`get_playback` 立即为 120，MPRIS 同为 120s / Paused；恢复后从 120s 接着播。
+  - 暂停 31s 后 player 在 139.3s 释放 sink，再拖到 30s：进度立即为 30，按播放从 30s 起播（修复前回到 139.3s）。
+  - 暂停中经 MPRIS `Seek` 快进 20s：`get_playback` 与 MPRIS 均为 65.03s，正在播放页显示 1:05。
+  - 全程 WARNING / ERROR 0 条、stderr 0 条。
+
+---
+
+## 二进制与安装包瘦身（已真机验证；full 包离线安装待验）
+
+- 构建：`build-rust.sh` 改为每个 `-p` 单独一次 `cargo build`。合在一次调用里时 cargo 会合并两个包的依赖特性，
+  player 白白链接 provider 才用的 reqwest http2 / brotli / gzip / deflate / stream（约 500 KB）。
+- player：symphonia 用 lazy_static 声明 FFT 旋转因子等大表，std 实现的 `Once` 初始态非零，尚未计算的整张表会以全零字节
+  写进 `.data`（约 590 KB，最大一张 256 KB）；lazy_static 的 spin 实现初始态全零，表落进不占文件的 `.bss`。
+  旧版合并构建时由 provider 链上 num-bigint-dig 顺带开启了该特性；本轮 ncm 去掉 rsa 后它不再存在，改由 player 显式声明。
+- 两个二进制：固定 `idna_adapter =1.0.0`，idna 不带 ICU Unicode 数据（约 120 KB），只接受 ASCII 域名
+  （两家音源的 API / CDN / 图片域名均为 ASCII，路径与查询里的中文走百分号编码，不经过 IDNA）。
+- provider：ncm-api-rs（`feat/sync-upstream-2026-10` → `5a5ced0`）与 qqmusic-api（main → `e5580e1`）对齐依赖，
+  不再各带一份 reqwest 0.12 / 0.13、hyper 客户端实例、两代 RustCrypto 与 rand：ncm 的 rsa 换成 num-bigint，去掉未用的
+  reqwest cookies，tokio 收窄为 rt + sync；QQ 去掉未用的 reqwest charset（统一 reqwest 后它会让 ncm 的 `text()`
+  带上 encoding_rs 编码表，约 170 KB）。ncm 客户端自带 ring + webpki-roots 的 rustls 配置，保持原有 HTTP/1.1、
+  ALPN http/1.1、不自动解压的请求行为；QQ 的 brotli / http2 经实测服务端在用（`u.y.qq.com` 回 br、走 h2），保留。
+- 插件包：rollup 不再输出 sourcemap（模板默认内嵌全部源码，含整份 react-icons/fa，约 1.7 MB，压缩后占 zip 八成以上）。
+- 体积（官方固定镜像构建，对比 v1.1.2 发布资产）：player 4,991,024→4,348,840（−12.9%）、provider 5,269,320→4,650,432
+  （−11.7%）、插件 zip 600,004→97,062（−84%，官方 CLI 实际打包）、full 包 5,554,466→约 4,474,000（−19.5%）；
+  首次安装下载合计约 10.86→9.10 MB。
+- 本地验证：ncm-api-rs 加密输出与升级前逐字节一致（新增 11 项已知答案测试，期望值经 Python 标准库 / openssl 独立复核），
+  其联网集成测试通过；新旧 provider 对同一组真实 QQ / 网易云请求（搜索、歌词、榜单、搜歌单、匿名取播放链接）结果一致；
+  workspace fmt / clippy / 测试通过。
+- 测试稳定性：player 两个取消时序用例在并行跑时偶发 2 秒超时（HEAD 上约三分之二概率）。根因是同进程的测试共享
+  `ACTIVE_LOADS` 的 2 个许可，卡顿 / 重试类流测试会长时间占满，取消用例的新加载排不上队；生产环境只有一个 `Loads`，
+  不存在这种争抢。改为凡开流的测试都持同一把测试锁串行，整套并行 25 次、全核满载 8 次均 0 失败。
+- 评估后未做：terser 压缩前端（zip 只再省约 19 KB，报错堆栈难读）；lld `--icf=all`（约 0.8%，可能打破函数地址唯一性，
+  `--icf=safe` 无收益）；去掉 QQ 的 brotli / http2（服务端在用，会增大传输）；UPX（启动要解压、页面不能共享）；
+  编译期关闭 log / tracing（几乎无收益）。
+- 待办：mpris-server 没关 zbus 默认特性，player 被迫带上 async-io 执行器与 blocking API；去掉可再小约 140 KB，
+  需要 fork 该库，或直接用 zbus 实现两个 MPRIS 接口。
+- 真机（Steam Deck 侧载 dev 模式，2026-10-18）：player 只动态依赖 libasound、provider 只依赖基础 libc，启动日志干净。
+  - QQ（已登录）：只读接口全部正常；无损 / 高品质 / 标准三档起播、进度约 1.0×、快进快退、暂停恢复、上下首、歌词、
+    「猜你喜欢」「雷达推荐」电台；MPRIS 读状态 / 标题 / 进度，`PlayPause`、`Next` 经 bridge 生效。
+  - 网易云（已登录）：账号、资产、热搜、发现、每日推荐、榜单、收藏、听歌排行、搜索、评论、歌词；三档起播、快进快退、
+    下一首、私人 FM。
+  - UI：`/music` 推荐页与正在播放页渲染正常，进度与歌词滚动正常（未改 UI 代码，设备截图无需更新）。
+  - 起播耗时 A/B（同机同批，v1.1.2 与新版 player 轮换交替各 15 次，QQ 无损）：中位数 52 / 51 ms，无差异；
+    新版 player 不再协商 HTTP/2 与压缩，对单连接 Range 拉流没有影响。
+  - 全程 stderr 0 条；WARNING 只来自 A/B 时主动结束 player，以及探针在 QQ 端调用网易云专属的听歌排行。
+  - 未覆盖：full 包离线安装（需经 Decky 开发者模式装 zip）。实际容器格式不对外暴露，按音质档位覆盖，
+    未能刻意触发 M4A；解码器版本与 v1.1.2 相同，spin 版 lazy_static 也已在 v1.1.2 的合并构建里随包发布。
+
+---
+
 ## 网易云请求提速：恢复连接复用（已真机验证）
 
 - 根因：ncm-api-rs fork 为规避 #2（服务端约 5 秒空闲回收、偶发重置复用连接）用 `pool_max_idle_per_host(0)` 完全关闭复用，

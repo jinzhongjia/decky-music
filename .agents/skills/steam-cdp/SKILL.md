@@ -103,3 +103,8 @@ only proves the current tree exists.
 - After a Steam restart (desktop-mode round trip) the `bp` target gets a **new id** — re-resolve
   targets instead of reusing an id, or you read a dead window.
 - Overlay targets (`qam`, `mainmenu`) only render while the overlay is open on-device.
+- **All-black `bp` screenshots (~3 KB PNG) while the DOM is fine** = Steam's idle screensaver is up
+  (a `Screensaver_uid2` target appears in `targets`). `systemd-inhibit` does not stop it, and CDP
+  keys/clicks don't count as user input. Bump gamescope's input counter, which Steam reads as
+  activity, right before each screenshot:
+  `ssh "$DECK_HOST" 'export DISPLAY=:0; c=$(xprop -root GAMESCOPE_INPUT_COUNTER | awk "{print \$3}"); xprop -root -f GAMESCOPE_INPUT_COUNTER 32c -set GAMESCOPE_INPUT_COUNTER $((c+1))'`
