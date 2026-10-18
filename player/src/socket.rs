@@ -64,7 +64,7 @@ pub(crate) async fn socket_loop(socket: &str) -> Result<(), Box<dyn std::error::
                     AudioEv::Log { .. } => {}
                 }
             }
-            // Seeked / Volume 仅供 MPRIS,不回传 bridge(bridge 已知或不关心)
+            // Seeked / Volume 仅供 MPRIS:seek 落点随后经 playing / paused 回报 bridge,音量以 bridge 为准
             if matches!(e, AudioEv::Seeked { .. } | AudioEv::Volume { .. }) {
                 continue;
             }

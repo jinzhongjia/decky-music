@@ -337,24 +337,33 @@ fn set_volume(state: &mut AudioState, value: f32, ev: &AudioEvents) {
     let _ = ev.send(AudioEv::Volume { val: state.volume });
 }
 
+/// seek 后无论成败都按当前播放态回报位置:bridge 只从 playing / paused 更新进度,
+/// 暂停中 seek 若不回报,get_playback 会停在旧位置直到恢复播放。
 fn seek(state: &mut AudioState, sec: f64, ev: &AudioEvents) {
-    if let Some(sink) = &state.sink {
-        if sink
-            .try_seek(Duration::from_secs_f64(sec.max(0.0)))
-            .is_err()
-        {
+    let Some(sink) = &state.sink else {
+        return;
+    };
+    // 失败时 rodio 也把 get_pos 设成目标值(下一次周期回调才校正),只能用 seek 前的位置
+    let before = sink.get_pos().as_secs_f64();
+    let pos = match sink.try_seek(Duration::from_secs_f64(sec.max(0.0))) {
+        Ok(()) => {
+            let pos = sink.get_pos().as_secs_f64();
+            let _ = ev.send(AudioEv::Seeked { pos });
+            pos
+        }
+        Err(_) => {
             let _ = ev.send(AudioEv::Error {
                 code: ErrorCode::SeekFailed,
                 message: "seek failed".into(),
             });
-        } else {
-            let pos = sink.get_pos().as_secs_f64();
-            let _ = ev.send(AudioEv::Seeked { pos });
-            if !sink.is_paused() {
-                state.last_anchor = std::time::Instant::now();
-                let _ = ev.send(AudioEv::Playing { pos });
-            }
+            before
         }
+    };
+    if sink.is_paused() {
+        let _ = ev.send(AudioEv::Paused { pos });
+    } else {
+        state.last_anchor = std::time::Instant::now();
+        let _ = ev.send(AudioEv::Playing { pos });
     }
 }
 
