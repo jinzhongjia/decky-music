@@ -1,8 +1,9 @@
 """Playback recovery and retry regressions."""
 
+import asyncio
 import types
 import unittest
-from tests.playback_support import FakeConn, item, run
+from tests.playback_support import FakeConn, item, run, _capture_events
 from playback import Playback
 
 
@@ -121,3 +122,129 @@ class TestResumeAfterStreamDeath(unittest.TestCase):
         pb = self._died_at(player)
         run(pb.queue_clear())
         self.assertEqual(pb._resume_at, 0.0)
+
+
+class GatedLoadConn(SeekTrackingConn):
+    """load 挂起到 release,用来在加载途中插入操作。"""
+
+    def __init__(self):
+        super().__init__()
+        self.load_started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def request(self, cmd, args=None, *, is_current=None):
+        if cmd == "load":
+            self.load_started.set()
+            await self.release.wait()
+        return await super().request(cmd, args, is_current=is_current)
+
+
+class FlakyUrlConn(FakeConn):
+    """前 failures 次 song_url 失败(fetch_failed 不触发重试)。"""
+
+    def __init__(self, failures=1):
+        super().__init__()
+        self.failures = failures
+
+    async def request(self, cmd, args=None, *, is_current=None):
+        if cmd == "song_url" and self.failures:
+            self.failures -= 1
+            self.calls.append(cmd)
+            err = types.SimpleNamespace(code="fetch_failed", message="fetch_failed")
+            return types.SimpleNamespace(ok=False, data={}, error=err)
+        return await super().request(cmd, args, is_current=is_current)
+
+
+class TestSeekWhileNotPlaying(unittest.TestCase):
+    """暂停 / 冷态下拖进度。player 里没有音源(重启回灌未开播、久暂停释放 sink、断流、崩溃)时
+    seek 会被静默忽略;此前 bridge 也不记,按播放键回到旧位置,拖的进度直接丢了。"""
+
+    def _released_at(self, player, pos=42.5):
+        pb = Playback(player, FakeConn())
+        pb.queue = [item(c) for c in "abc"]
+        pb.index = 1
+        pb._loaded = True
+        pb.pos = pos
+        run(
+            pb.on_player_event(
+                types.SimpleNamespace(ev="player", type="unloaded", data={"pos": pos})
+            )
+        )
+        return pb
+
+    def test_cold_seek_becomes_resume_point(self):
+        player = SeekTrackingConn()
+        pb = self._released_at(player)
+        events = _capture_events(pb.seek(100.0))
+        self.assertEqual(player.calls, [])  # player 里没有音源,发过去只会被忽略
+        self.assertEqual((pb._resume_at, pb.snapshot()["pos"]), (100.0, 100.0))
+        self.assertEqual(events, [{"ev": "player", "type": "paused", "data": {"pos": 100.0}}])
+
+        run(pb.resume())
+        self.assertIn("load", player.calls)
+        self.assertEqual(player.seeks, [100.0])  # 从拖到的位置播,不是久暂停时的 42.5
+
+    def test_seek_before_first_play_after_restore(self):
+        player = SeekTrackingConn()
+        pb = Playback(player, FakeConn())
+        pb.restore({"items": [item("a"), item("b")], "index": 1})
+        run(pb.seek(30.0))
+        self.assertEqual(player.calls, [])  # 重启回灌后 player 里还没有音源
+        run(pb.resume())
+        self.assertEqual(player.seeks, [30.0])
+        self.assertGreater(player.calls.index("seek"), player.calls.index("load"))
+
+    def test_seek_during_cold_load_applies_once_loaded(self):
+        player = GatedLoadConn()
+        pb = Playback(player, FakeConn())
+        pb.queue = [item(c) for c in "abc"]
+        pb.index, pb._resume_at = 1, 42.5
+
+        async def scenario():
+            resuming = asyncio.create_task(pb.resume())
+            await player.load_started.wait()
+            await pb.seek(100.0)
+            player.release.set()
+            await resuming
+
+        run(scenario())
+        self.assertEqual(player.seeks, [100.0])  # 以加载完成时的接续点为准
+        self.assertEqual(pb.pos, 100.0)
+        self.assertEqual(pb._resume_at, 0.0)  # 用过即清,别让之后的冷启动再跳一次
+
+    def test_loaded_seek_goes_to_player_and_tracks_its_report(self):
+        player = SeekTrackingConn()
+        pb = Playback(player, FakeConn())
+        pb.queue = [item(c) for c in "abc"]
+        pb.index, pb._loaded, pb.pos = 1, True, 42.5
+        events = _capture_events(pb.seek(100.0))
+        self.assertEqual(player.seeks, [100.0])
+        self.assertEqual(events, [])  # 落点以 player 回报为准,bridge 不抢先改
+        self.assertEqual(pb._resume_at, 0.0)  # 流还活着,不是重载接续点
+
+        # audio.rs::seek 暂停中成功后回报 paused
+        run(
+            pb.on_player_event(
+                types.SimpleNamespace(ev="player", type="paused", data={"pos": 100.0})
+            )
+        )
+        self.assertEqual(pb.snapshot()["pos"], 100.0)
+
+    def test_seek_without_current_track_is_ignored(self):
+        player = SeekTrackingConn()
+        pb = Playback(player, FakeConn())
+        events = _capture_events(pb.seek(10.0))
+        self.assertEqual((player.calls, events, pb._resume_at), ([], [], 0.0))
+
+    def test_failed_cold_resume_keeps_resume_point(self):
+        """取 URL 失败后再按播放键仍从中断处接上(此前 _play_index 一进来就把它清零)。"""
+        player = SeekTrackingConn()
+        pb = Playback(player, FlakyUrlConn())
+        pb.queue = [item(c) for c in "abc"]
+        pb.index, pb._resume_at = 1, 42.5
+        run(pb.resume())
+        self.assertNotIn("load", player.calls)
+        self.assertEqual(pb._resume_at, 42.5)
+
+        run(pb.resume())
+        self.assertEqual(player.seeks, [42.5])

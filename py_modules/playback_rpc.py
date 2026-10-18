@@ -73,7 +73,7 @@ class PlaybackRPC:
     async def seek(self, sec: float):
         if not music_settings.finite_number(sec, maximum=music_settings.MAX_SEEK_SECONDS):
             raise ValueError("invalid_request")
-        await self.player.request("seek", {"sec": sec})
+        await self.playback.seek(sec)
 
     async def volume(self, val: float):
         if not music_settings.finite_number(val, maximum=1):

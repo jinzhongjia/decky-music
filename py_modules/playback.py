@@ -40,7 +40,8 @@ class Playback(PlaybackQueue, PlaybackRadio):
         self.wall = 0  # 该位置对应墙钟(ms),UI 插值用
         self.last_error = ""  # 最近一次 _play_index 失败的错误码(自动切歌熔断判据)
         self._loaded = False  # 本次 player 进程内是否 load 成功过(restore 回灌不开播 → False)
-        # 断流中断处:player 报 error 后按播放键从这里接上,而不是从头重放。
+        # 当前曲(重新)加载后的起播位置:断流 / 久暂停释放 sink / player 崩溃记中断处,
+        # 冷态 seek 记用户拖到的位置;加载完成时才取用并清零,加载途中拖的进度也算数。
         # 换歌 / 清队列必须清零,否则下一首会莫名跳到中间。
         self._resume_at = 0.0
         self._persist = persist  # bridge 注入的落盘回调 (items, index) -> None;None = 不持久化
@@ -73,6 +74,18 @@ class Playback(PlaybackQueue, PlaybackRadio):
             await self._play_index(self.index, seek_to=self._resume_at)
             return
         await self.player.request("resume")
+
+    async def seek(self, sec: float):
+        """拖动进度。已加载时交给 player,落点由它随后的 playing / paused 事件同步;
+        冷态(重启回灌未开播、久暂停释放了 sink、断流、player 崩溃)player 里没有音源,
+        seek 会被静默忽略 —— 记成接续点并告诉 UI,否则按播放键会回到旧位置。"""
+        if self._loaded:
+            await self.player.request("seek", {"sec": sec})
+            return
+        if not 0 <= self.index < len(self.queue):
+            return
+        self._resume_at = self.pos = sec
+        await self._emit("paused", {"pos": sec})
 
     async def prev_track(self):
         if self.mode == "radio":
@@ -148,7 +161,7 @@ class Playback(PlaybackQueue, PlaybackRadio):
         self._play_gen += 1
         gen = self._play_gen
         self.index = i
-        self._resume_at = 0.0
+        self._resume_at = seek_to
         item = self.queue[i]
         try:
             r = await self._resolve_url(item, gen)
@@ -160,7 +173,7 @@ class Playback(PlaybackQueue, PlaybackRadio):
                     await self._emit("error", {"code": self.last_error, "message": message})
                     self._check_current(gen)
                 return False
-            return await self._load_track(item, gen, r.data["url"], quiet, seek_to)
+            return await self._load_track(item, gen, r.data["url"], quiet)
         except asyncio.CancelledError:
             if not self._superseded(gen):
                 raise
@@ -186,7 +199,7 @@ class Playback(PlaybackQueue, PlaybackRadio):
             r = await self._request_current(self.provider, gen, "song_url", args)
         return r
 
-    async def _load_track(self, item: dict, gen: int, url: str, quiet: bool, seek_to: float):
+    async def _load_track(self, item: dict, gen: int, url: str, quiet: bool):
         pr = await self._request_current(self.player, gen, "load", {"url": url})
         if not pr.ok:
             self.last_error = safe_code(pr.error.code, "play_failed") if pr.error else "play_failed"
@@ -201,6 +214,7 @@ class Playback(PlaybackQueue, PlaybackRadio):
         self.last_error = ""
         self._loaded = True
         self.playing, self.pos, self.wall = True, 0.0, now_ms()
+        seek_to, self._resume_at = self._resume_at, 0.0
         if seek_to > 0:
             sr = await self._request_current(self.player, gen, "seek", {"sec": seek_to})
             if sr.ok:
