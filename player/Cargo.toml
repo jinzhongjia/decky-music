@@ -21,6 +21,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 parking_lot = "0.12"
 mpris-server = { version = "0.10.0", features = ["tokio"] }
+# 体积:symphonia 用 lazy_static 声明 FFT 旋转因子等大表(最大一张 256KB)。std 实现的 Once 初始态非零,
+# 整张尚未计算的表会以全零字节写进 .data(约 590KB);spin 实现初始态全零,落进不占文件的 .bss。
+# 表照旧在首次使用时计算,之后的访问同样只是一次原子读。
+lazy_static = { version = "1.5", features = ["spin_no_std"] }
+# 体积:idna 不带 Unicode 后端(省约 120KB ICU 数据),只接受 ASCII 域名。拉流 URL 都是音源 CDN 的
+# ASCII 域名;路径 / 查询里的中文走百分号编码,不经过 IDNA。
+idna_adapter = "=1.0.0"
 
 [dev-dependencies]
 # 测试用 WAV 构造流;dev 依赖的特性不会进 release 构建(resolver 2)
