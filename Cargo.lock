@@ -1707,8 +1707,8 @@ dependencies = [
 
 [[package]]
 name = "qqmusic-api"
-version = "0.0.3"
-source = "git+https://github.com/jinzhongjia/QQMusicApi-rs#e5580e1856277099bfafc4fd6baa505131c07857"
+version = "0.0.4"
+source = "git+https://github.com/jinzhongjia/QQMusicApi-rs#4a6ade11f57a93e2552f7ce9f4a2976ab331d622"
 dependencies = [
  "aes",
  "async-trait",
@@ -1737,8 +1737,8 @@ dependencies = [
 
 [[package]]
 name = "qqmusic-api-derive"
-version = "0.0.3"
-source = "git+https://github.com/jinzhongjia/QQMusicApi-rs#e5580e1856277099bfafc4fd6baa505131c07857"
+version = "0.0.4"
+source = "git+https://github.com/jinzhongjia/QQMusicApi-rs#4a6ade11f57a93e2552f7ce9f4a2976ab331d622"
 dependencies = [
  "proc-macro2",
  "quote",
