@@ -1,12 +1,10 @@
 use ncm_api_rs::{ApiResponse, CryptoType, Query, RequestOption};
 use serde_json::{json, Value};
 
-use crate::ncm::commands::song_brief;
+use crate::ncm::commands::{song_brief, song_briefs};
 use crate::ncm::protocol;
 
-use super::{
-    bool_arg, call, current_uid, fetch, id_string, invalid, map_arr, paging, string_arg, State,
-};
+use super::{bool_arg, call, current_uid, fetch, id_string, invalid, paging, string_arg, State};
 
 pub(super) fn user_assets_data(uid: String, sub: &Value, fav_songs: usize) -> Value {
     json!({
@@ -91,7 +89,7 @@ pub async fn fav_songs(state: &State, id: u64, args: &Value) -> String {
     fetch(
         state.client.song_detail(&q),
         id,
-        |b| json!({ "songs": map_arr(&b["songs"], song_brief) }),
+        |b| json!({ "songs": song_briefs(b) }),
     )
     .await
 }

@@ -19,13 +19,16 @@ pub struct IdArgs {
     pub id: String,
 }
 
-// song_url:{id, quality}。quality 缺失/无效时由 commands::ladder 退回默认档。
-#[derive(Debug, Deserialize)]
+// song_url:{id, quality, max_quality}。quality 缺失/无效时由 commands::ladder 退回默认档;
+// max_quality 是列表元数据给的可播档位提示(见 commands::song_brief),缺失 = 未知。
+#[derive(Debug, Default, Deserialize)]
 pub struct SongUrlArgs {
     #[serde(default)]
     pub id: String,
     #[serde(default)]
     pub quality: String,
+    #[serde(default)]
+    pub max_quality: String,
 }
 
 #[cfg(test)]

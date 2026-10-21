@@ -253,7 +253,7 @@ mod tests {
             song,
             json!({
                 "mid":"1", "name":"s", "singer":"a", "album":"al", "duration":32,
-                "cover":"p", "vip":true, "media_mid":""
+                "cover":"p", "vip":true, "media_mid":"", "max_quality":""
             })
         );
 

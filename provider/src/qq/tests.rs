@@ -1,3 +1,5 @@
+use qqmusic_api::models::base::File;
+use qqmusic_api::modules::song::Quality::{High, Lossless, Standard};
 use serde_json::json;
 
 use super::paging::window;
@@ -7,6 +9,43 @@ use super::{args, brief, media, Fail};
 fn clean_strips_highlight_tags() {
     assert_eq!(brief::clean("<em class=\"x\">晴</em>天"), "晴天");
     assert_eq!(brief::clean("plain"), "plain");
+}
+
+/// 只认阶梯里有的档:伴唱分轨(size_new[5])不算无损,OGG 320(size_new[3])不算 320k。
+#[test]
+fn max_quality_follows_existing_files_not_accompaniment() {
+    let file = |flac, mp3_320, ogg_320, mp3_128, accom| File {
+        size_flac: flac,
+        size_320mp3: mp3_320,
+        size_128mp3: mp3_128,
+        size_new: vec![0, 0, 0, ogg_320, 0, accom],
+        ..File::default()
+    };
+    assert_eq!(brief::max_quality(&file(9, 9, 9, 9, 0)), "lossless");
+    assert_eq!(brief::max_quality(&file(0, 9, 9, 9, 9)), "high");
+    assert_eq!(brief::max_quality(&file(0, 0, 9, 9, 9)), "standard");
+    assert_eq!(brief::max_quality(&File::default()), "");
+}
+
+/// 从上限与元数据提示中较低的那档起问,往下全兜底;任何组合都不问 O801(伴唱分轨)和 O800。
+#[test]
+fn ladder_starts_at_lower_of_cap_and_hint_and_never_asks_ogg() {
+    let codes = |cap, hint| -> Vec<String> {
+        media::ladder(cap, hint)
+            .iter()
+            .map(|(_, t)| t.code.to_string())
+            .collect()
+    };
+    assert_eq!(codes(Lossless, None), ["F000", "M800", "M500"]);
+    assert_eq!(codes(Lossless, Some(High)), ["M800", "M500"]);
+    assert_eq!(codes(High, Some(Lossless)), ["M800", "M500"]);
+    assert_eq!(codes(Lossless, Some(Standard)), ["M500"]);
+    assert_eq!(codes(Standard, None), ["M500"]);
+    for cap in [Lossless, High, Standard] {
+        for hint in [None, Some(Lossless), Some(High), Some(Standard)] {
+            assert!(!codes(cap, hint).iter().any(|c| c.starts_with('O')));
+        }
+    }
 }
 
 #[test]

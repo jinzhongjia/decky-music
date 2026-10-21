@@ -4,7 +4,7 @@
 use ncm_api_rs::Query;
 use serde_json::{json, Value};
 
-use crate::ncm::commands::song_brief;
+use crate::ncm::commands::{song_brief, song_briefs};
 use crate::ncm::protocol::{self, ErrorCode};
 use crate::ncm::provider_commands::{fetch, invalid, map_arr, maybe_cookie, paging, string_arg};
 use crate::ncm::state::{with_timeout, State};
@@ -58,7 +58,7 @@ pub async fn playlist_songs(state: &State, id: u64, args: &Value) -> String {
     fetch(
         state.client.playlist_track_all(&q),
         id,
-        |b| json!({ "songs": map_arr(&b["songs"], song_brief) }),
+        |b| json!({ "songs": song_briefs(b) }),
     )
     .await
 }

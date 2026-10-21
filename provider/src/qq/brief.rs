@@ -1,6 +1,6 @@
 //! 上游模型 → 共享形状(Song / Playlist / Album / Artist,见 src/api.ts)。
 
-use qqmusic_api::models::base::{Singer, Song, SongList};
+use qqmusic_api::models::base::{File, Singer, Song, SongList};
 use serde_json::{json, Value};
 
 /// 登录态搜索把命中词包进 `<em ...>`;名称类字段不存在合法尖括号,通用剥标签。
@@ -60,7 +60,23 @@ pub fn song(s: &Song) -> Value {
         "cover": album_cover(&s.album.mid),
         "vip": s.pay.pay_play != 0,
         "media_mid": s.file.media_mid,
+        "max_quality": max_quality(&s.file),
     })
+}
+
+/// 这首歌最高有哪档:只看文件是否存在,有没有权限要到取链时才知道;各档大小全为 0 时给空串(未知)。
+/// 只看取链阶梯里有的档(见 media::LADDER):`size_new[5]` 是伴唱用的 4 声道分轨(O801,#81),
+/// `size_new[3]` 是 CDN 上常缺的 OGG 320,都不算。
+pub fn max_quality(f: &File) -> &'static str {
+    if f.size_flac > 0 {
+        "lossless"
+    } else if f.size_320mp3 > 0 {
+        "high"
+    } else if f.size_128mp3 > 0 {
+        "standard"
+    } else {
+        ""
+    }
 }
 
 pub fn songs(list: &[Song]) -> Vec<Value> {
