@@ -10,6 +10,8 @@ SETTINGS = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 PROVIDERS = (None, "qq", "ncm")
 PLAY_MODES = ("list_loop", "single_loop", "shuffle")
 QUALITIES = ("standard", "high", "lossless")
+# 列表元数据给的「这首最高能取到哪档」(provider 出,none = 当前账号放不了);其余值一律按未知存空串
+QUALITY_HINTS = QUALITIES + ("none",)
 DEFAULT_QUALITY = "high"
 # Rust Duration stores u64 seconds. The next lower f64 stays representable after
 # JSON/f64 decoding; even integer 2**64 - 1 would otherwise round up and panic.
@@ -38,7 +40,12 @@ def queue_item(value):
         item[key] = value.get(key) if isinstance(value.get(key), str) else ""
     duration = value.get("duration", 0)
     item["duration"] = duration if finite_number(duration) else 0
+    item["max_quality"] = quality_hint(value.get("max_quality"))
     return item
+
+
+def quality_hint(value) -> str:
+    return value if isinstance(value, str) and value in QUALITY_HINTS else ""
 
 
 def normalize_queue(value):

@@ -66,6 +66,8 @@ export type Song = {
   vip: boolean; // 是否需 VIP/付费:QQ=pay.pay_play>0;网易云=fee∈{1,4}
   // ---- QQ 特有(可选:非该 provider 时可能缺省)----
   media_mid?: string; // 取播放链接(vkey filename)用;网易云不需要
+  // ---- 取链提示(可选)----
+  max_quality?: QualityHint; // 列表元数据给的这首最高档,随队列项交给 bridge 取链
 };
 // 歌曲列表结果通用形状(search / playlist_songs / daily_songs);失败可带稳定 error code 供本地化
 export type SearchResult = { ok: boolean; songs?: Song[]; error?: string };
@@ -200,6 +202,7 @@ export const api = {
 export type QueueItem = {
   id: string;
   media_mid?: string;
+  max_quality?: QualityHint;
   name: string;
   singer: string;
   cover: string;
@@ -214,10 +217,13 @@ export type TrackInfo = {
   duration: number;
 };
 export type PlayMode = "list_loop" | "single_loop" | "shuffle";
-// 音质**上限**:provider 从这档往下逐档试,拿不到就降,保证无版权/非会员的歌仍能播。
+// 音质**上限**:provider 从这档往下取,拿不到就降,保证无版权/非会员的歌仍能播。
 // 两端各自映射(QQ → F000/M800/M500 前缀,NCM → lossless/exhigh/standard level)。
 export type Quality = "standard" | "high" | "lossless";
 export const QUALITIES: Quality[] = ["standard", "high", "lossless"];
+// 列表元数据给的这首最高档:QQ 按文件是否存在,网易云按当前账号可播档(none = 放不了);
+// 空串 = 未知。provider 取链时从「上限」与它中较低的那档起问,不逐档试探。
+export type QualityHint = Quality | "none" | "";
 // get_playback 快照:bridge 是播放真相源,前端挂载回灌
 export type PlaybackState = {
   current: TrackInfo | null;

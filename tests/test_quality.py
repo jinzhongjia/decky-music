@@ -94,6 +94,38 @@ class TestPlaybackSendsQuality(unittest.TestCase):
         asyncio.run(pb._play_index(0))
         self.assertEqual(provider.calls[0][1]["quality"], "")
 
+    def test_song_url_carries_metadata_hint(self):
+        # 列表元数据给的这首最高档随 song_url 下发;旧存档队列项没有这个字段 → 空串(未知)
+        for stored, sent in (("high", "high"), ("none", "none"), (None, "")):
+            provider, player = _FakeConn(), _FakeConn()
+            pb = Playback(player, provider, quality=lambda: "lossless")
+            item = {"id": "abc", "media_mid": "m", "name": "n", "singer": "s", "duration": 1}
+            if stored is not None:
+                item["max_quality"] = stored
+            pb.queue = [music_settings.queue_item(item)]
+            asyncio.run(pb._play_index(0))
+            self.assertEqual(provider.calls[0][1]["max_quality"], sent, f"stored={stored!r}")
+
+
+class TestQualityHintNormalization(unittest.TestCase):
+    """队列项只保留受控的档位提示:前端/存档/电台送来的其他值一律按未知。"""
+
+    def test_queue_item_keeps_only_known_hints(self):
+        base = {"id": "1", "name": "n"}
+        for value in ("lossless", "high", "standard", "none"):
+            item = music_settings.queue_item({**base, "max_quality": value})
+            self.assertEqual(item["max_quality"], value)
+        for bad in ("hires", "LOSSLESS", 3, None, ["high"]):
+            item = music_settings.queue_item({**base, "max_quality": bad})
+            self.assertEqual(item["max_quality"], "", f"bad={bad!r}")
+        self.assertEqual(music_settings.queue_item(base)["max_quality"], "")
+
+    def test_radio_songs_keep_the_hint(self):
+        from queue_items import songs_to_items  # noqa: PLC0415
+
+        items = songs_to_items([{"mid": "9", "name": "n", "max_quality": "standard"}])
+        self.assertEqual(items[0]["max_quality"], "standard")
+
 
 if __name__ == "__main__":
     unittest.main()

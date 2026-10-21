@@ -151,6 +151,7 @@ function action(fn: () => Promise<unknown>) {
 export const toQueueItem = ({
   mid,
   media_mid,
+  max_quality,
   name,
   singer,
   cover,
@@ -158,6 +159,7 @@ export const toQueueItem = ({
 }: Song): QueueItem => ({
   id: mid,
   media_mid,
+  max_quality,
   name,
   singer,
   cover,

@@ -5,7 +5,7 @@ import random
 import decky
 from log import log
 from diagnostics import safe_code, safe_event
-from music_settings import PLAY_MODES
+from music_settings import PLAY_MODES, quality_hint
 from playback_state import public_item, now_ms
 from playback_queue import PlaybackQueue
 from playback_radio import PlaybackRadio
@@ -184,6 +184,8 @@ class Playback(PlaybackQueue, PlaybackRadio):
             "id": item.get("id", ""),
             "media_mid": item.get("media_mid", ""),
             "quality": self._quality(),
+            # 列表元数据给的这首最高档:provider 据此起问,不再逐档试探
+            "max_quality": item.get("max_quality", ""),
         }
         r = await self._request_current(self.provider, gen, "song_url", args)
         if not r.ok and r.error and safe_code(r.error.code) == "no_playable" and self._auth_retry:
@@ -197,6 +199,11 @@ class Playback(PlaybackQueue, PlaybackRadio):
             self._check_current(gen)
             log("bridge", "own", "info", "retry song_url after upstream timeout")
             r = await self._request_current(self.provider, gen, "song_url", args)
+        if r.ok:
+            # 子进程日志正文不落盘;实际命中档位由 bridge 按受控取值记一行(不含 URL)
+            values = (r.data.get("quality"), args["quality"], args["max_quality"])
+            got, cap, hint = (quality_hint(v) or "unknown" for v in values)
+            log("bridge", "own", "debug", f"song_url resolved={got} cap={cap} hint={hint}")
         return r
 
     async def _load_track(self, item: dict, gen: int, url: str, quiet: bool):
