@@ -6,7 +6,7 @@
 - **NCM**：`ncm-api-rs`，按 endpoint 名列。
 - “已实现”表示当前 provider/bridge 已经暴露给前端可用；“provider 已实现”表示 provider 协议命令已接好，UI/Plugin callable 可后续接入；“待暴露”表示底层库有能力，但还需要 provider/bridge/api/UI 胶水。
 
-> QQ 播放 URL 调用 `client.song().playable_url(...)`（bypass 音质阶梯，一次请求问全部档位）；NCM 播放 URL 调用 `client.song_url_v1(&query)`。两库都是“一个方法 / endpoint = 一个官方 API”，provider 只负责包协议。
+> QQ 播放 URL 调用 `client.song().playable_url_with_ladder(...)`（bypass 取链，阶梯 FLAC → MP3 320 → MP3 128 由 provider 定义，不含伴唱 `O801` 与 CDN 常缺的 `O800`，一次请求问全部要问的档位）；NCM 播放 URL 调用 `client.song_url_v1(&query)`（按上限一次请求，服务端自动降档）。两库都是“一个方法 / endpoint = 一个官方 API”，provider 只负责包协议。
 
 ---
 

@@ -61,8 +61,8 @@ navigation.
 - **Complete playback controls:** background continuous playback, queue management, previous/next,
   pause/resume, seeking, volume, list loop, single-track loop, and shuffle.
 - **Selectable quality:** Standard 128k / High 320k / Lossless caps with automatic step-down (tracks
-  without rights or requiring a subscription still play at a lower quality). Applies from the next
-  track.
+  without rights or requiring a subscription still play at a lower quality). Lossless means FLAC;
+  tracks without a lossless file play at 320k. Applies from the next track.
 - **System media controls:** the player exposes an MPRIS2 D-Bus service, so Bluetooth headset buttons
   and desktop media widgets control playback. Every external control action is routed back through
   the bridge, so state never forks.

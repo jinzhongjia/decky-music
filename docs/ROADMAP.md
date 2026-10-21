@@ -6,6 +6,36 @@
 
 ---
 
+## QQ 无损只剩人声、取链改按列表元数据起问（#81，已真机验证）
+
+- 现象：音质上限选无损时，部分没有 FLAC 的歌只有人声；同一首选 320k 正常。
+- 根因（真机实测）：无损阶梯在 FLAC 之后兜底 `O801`（库里叫 `OGG_640`「SQ 无损」）。对有伴唱的歌，
+  无论文件名怎么拼、`songtype` 填什么，取链服务端都下发 `O801{vs[9]}.ogg`，大小即 `size_new[5]`：
+  4 声道 Vorbis，ch0/1 人声、ch2/3 伴奏（前奏段 ch0/1 低至 −70 ~ −94 dBFS）。rodio 输出到双声道设备时
+  丢弃多余声道，只剩人声。issue 中「`songtype=0` 取到伴奏」「文件名重复拼 `media_mid`」均不是原因
+  （服务端会把文件名规范化成 `{code}{media_mid}`）。
+- 验证中另发现：OGG 320（`O800`）服务端照样给 purl，CDN 上却常是 404（热歌榜 15 首里 7 首，MP3 320 为 15/15）；
+  网易云 `song_url_v1` 会在一次请求里自动降档，provider 却上报请求档（拿到 320k 也标 lossless）。
+- 修复：
+  - QQ 阶梯改由 provider 定义：FLAC → MP3 320 → MP3 128（去掉 `O801` / `O800`），走 `playable_url_with_ladder`。
+  - 每首歌带 `max_quality`：QQ 由 `size_flac / size_320mp3 / size_128mp3` 得出（文件存在），网易云由
+    `privilege.plLevel` 得出（当前账号可播，`none` = 放不了；歌单 / 详情的平行 `privileges` 按 id 配对）。
+    经 `src/api.ts` 的 `Song` / `QueueItem`、bridge 队列项、`song_url` 参数贯通；旧队列项按未知处理。
+  - 取链：QQ 从「上限」与 `max_quality` 中较低的档起问，一次请求；网易云按上限一次请求、上报 `data[0].level`
+    对应的实际档位，拿不到 URL 时 `none` 到此为止，未知或与实际不符才逐档兜底。
+  - bridge 记 `song_url resolved=… cap=… hint=…`（受控取值，不含 URL）；子进程日志正文本就不落盘。
+  - 上游 QQMusicApi-rs 同步：`DEFAULT_LADDER` 去掉 `O801` / `O800`，取链文件名改用 `SongFileType::filename`。
+- 回归：provider 单测覆盖两家档位映射、平行 privileges 配对、阶梯起点（任何组合都不问 `O801` / `O800`）、
+  `none` 停止逐档；bridge 单测覆盖队列项只保留受控提示、`song_url` 下发提示、电台队列保留提示。
+- 真机（Steam Deck 侧载，2026-10-22）：
+  - QQ 无损上限：issue 三首搜索结果 `max_quality=high`，播放均 `resolved=high`；334s 对照版 `lossless` →
+    `resolved=lossless`（FLAC）；不带提示的旧队列项 `hint=unknown` 也落到 `high`。五首均加载成功。
+  - 网易云：《晴天》上限 lossless → `resolved=lossless`，改上限 high 后 → `resolved=high`；《稻香》`hint=none`
+    只请求一次即 `no_playable`（约 0.43s，原先串行三档）。
+  - 全程仅《稻香》预期内的 `no_playable` 一条 WARNING；Steam 控制台无本插件报错。
+
+---
+
 ## 网易云听歌排行为空（已真机验证）
 
 - 根因：只请求最近一周（`user_record` type=1）；本周没听过歌时 `weekData` 为空数组，也不会回退。

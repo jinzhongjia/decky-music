@@ -164,7 +164,7 @@ sequenceDiagram
   participant P as provider
   participant PL as player
   UI->>BR: callable("play_queue", items, startIndex)
-  BR->>P: {"id":1,"cmd":"song_url","args":{"id":"...","media_mid":"..."}}
+  BR->>P: {"id":1,"cmd":"song_url","args":{"id":"...","media_mid":"...","quality":"lossless","max_quality":"high"}}
   P-->>BR: {"id":1,"ok":true,"data":{"url":"https://..."}}
   BR->>PL: {"id":2,"cmd":"load","args":{"url":"https://..."}}
   PL-->>BR: {"id":2,"ok":true,"data":{}}
@@ -361,14 +361,27 @@ provider 是一个 Rust 二进制(`provider/`):`src/main.rs` 只做连 socket、
 | 接口 | 基准 | 与 Node 版 1:1 |
 
 作为库使用:`create_client(cookie)` + `Query` 链式传参(README 示例:`cloudsearch` / `song_detail` / `lyric` / `song_url_v1`)。
+
+取链:`song_url_v1` 按所选上限请求一次即可 —— 服务端在同一次请求里降到账号能放的最高档,返回的
+`data[0].level` 才是实际档位(上报它,不报请求档)。每首歌的 `max_quality` 来自 `privilege.plLevel`
+(按拉列表时的账号算;歌单 / 歌曲详情的 `privileges` 是平行数组,按 id 配对),只决定拿不到 URL 时
+是否继续逐档兜底:`none`(当前账号放不了)到此为止,未知或与实际不符时照旧往下试。
 依赖 fork 的 `feat/sync-upstream-2026-10` 分支(`jinzhongjia/ncm-api-rs`),由 Cargo.lock 固定提交。
 
 ### 7.2 QQ 音乐后端 — QQMusicApi-rs(Rust)
 
 - [QQMusicApi-rs](https://github.com/jinzhongjia/QQMusicApi-rs) 是 L-1124/QQMusicApi 的 Rust 实现,
   协议与上游一致(zzc 签名、QIMEI 设备指纹、扫码登录、QRC 解密等),作为库使用。
-- 取播放 URL 用库的 bypass 音质阶梯:一次请求问所选上限及以下全部档位,`ct` 由设备 guid 稳定派生
-  (同设备稳定、不同安装分散),等价于原 Python 版的做法;URL / vkey 不进日志。
+- 取播放 URL 用库的 bypass 取链(`playable_url_with_ladder`),阶梯由 provider 自己定义:FLAC → MP3 320 →
+  MP3 128,一次请求问起问档及以下全部档位;`ct` 由设备 guid 稳定派生(同设备稳定、不同安装分散),
+  等价于原 Python 版的做法;URL / vkey 不进日志。
+- **无损只认 FLAC(#81)。** `O801`(库里叫 `OGG_640`「SQ 无损」)实测是伴唱用的 4 声道分轨:对有伴唱的歌,
+  无论文件名怎么拼、`songtype` 填什么,取链服务端都下发 `O801{vs[9]}.ogg`,大小即 `size_new[5]`;
+  ch0/1 为人声、ch2/3 为伴奏,rodio 输出到双声道设备时丢弃多余声道,只剩人声。没有 FLAC 的歌降到 320k。
+  OGG 320(`O800`)也不放:服务端照样给 purl,CDN 上却常是 404(热歌榜 15 首里 7 首;MP3 320 为 15/15)。
+- **列表元数据给起问档。** 每首歌的 `max_quality` 由 `file.size_flac / size_320mp3 / size_128mp3` 是否存在
+  得出(只代表文件存在,权限仍以取链为准),取链从「上限」与它中较低的档起问,更低档留在同一次请求里
+  兜底权限不足,不增加往返。
 - 历史:此前 QQ 端是 Python QQMusicApi + Nuitka `--standalone` 目录包(tar.gz 分发、bridge 首用自解),
   每次切换音源都要冷启动一个 CPython 运行时;改用 Rust 库后与网易云合并为同一个二进制。
 
