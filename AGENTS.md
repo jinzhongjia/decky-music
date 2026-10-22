@@ -199,7 +199,10 @@ QQ 后端的参数校验在 `provider/src/qq/args.rs`。改协议时 bridge、`w
   bridge 收到 player error 会置 `_loaded=False` 并记下 `_resume_at`,下次 `resume()` 重新加载
   并 seek 回中断处。seek 失败降级从头播,绝不让「按播放键」变成报错。
 - **可取消拉流**：player 首开每次最多 10s、最多两次加 1s 退避；正文无整曲总时限。新 load/stop/drop 取消并回收旧 HTTP 任务，活动加载上限为 2；旧代次的音频事件不得更新当前状态。
-- **store 生命周期**：`startPlayer`/`stopPlayer` 由插件初始化/卸载调用，退订事件、清除音量 timer，并失效在途 hydrate/错误回调。
+- **store 生命周期**：`startPlayer`/`stopPlayer` 由插件初始化/卸载调用，退订事件、清除音量与进度提交 timer，并失效在途 hydrate/错误回调。
+- **拖动进度只提交一次**：手柄左右键只在前端移动目标(`scrubBy`),停手 500ms 或离开进度条 / 页面时才发一次 `seek`。
+  提交前出现第二步即视为持续拖动：先暂停，提交时 seek 后续播；单次快进不暂停。提交后 5s 内与目标相差超过 2s 的
+  位置回报是 seek 之前的旧位置，不回写进度条(`src/player/usePlayer.ts`)。
 - **播放错误双通道上报**:插件 UI 内的 `ErrorBanner` + Steam 系统 toast。播放出错时用户
   多半不在插件界面(在玩游戏),只有横幅等于没提示。见 `src/player/usePlayer.ts`。
 

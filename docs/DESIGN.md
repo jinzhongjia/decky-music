@@ -214,9 +214,13 @@ UI 全程拿不到 URL、碰不到音频流,一切经 bridge。
 2. **全链路 event-driven,禁止轮询忙等。** bridge 阻塞在 `asyncio` `readline` 上,无消息即睡。
 3. **解码效率交给 rodio/symphonia**(原生码,压缩流解码 ~1-2% 单核),已由 §7.3 解决。
 4. **播放器 store 有明确生命周期。** 插件入口调用 `startPlayer`，卸载调用幂等 `stopPlayer`；
-   保存并执行事件退订，清除音量 debounce timer，以代次/修订号拒绝旧 hydrate 和异步错误。宿主替换 listener map 不等于清理这些 timer/promise。
+   保存并执行事件退订，清除音量 debounce 与拖动进度提交 timer，以代次/修订号拒绝旧 hydrate 和异步错误。宿主替换 listener map 不等于清理这些 timer/promise。
 5. **窗口化几何一致。** 歌曲内容行高 64px（48px 封面 + 上下各 8px）、行间距 6.4px，使用统一 stride；外层不再额外施加 gap。
    首尾 spacer 与可见行共用同一总高度模型，包含底部部分可见行；布局变化时测量实际 stride，避免 CEF 缩放下分数间距的累计取整偏差。
+6. **拖动进度只发一次 seek。** player 对 seek 入队即应答、在音频线程里逐个执行，跳到未缓冲处还要重新发 Range 请求；
+   按住方向键时每次连发都 seek,会排出一串请求，执行完逐个回报旧目标，把进度条拽回去。前端改为本地移动目标，
+   停手 500ms(或离开进度条 / 页面)才提交一次；持续拖动期间暂停、提交后从目标续播，单次快进不打断播放；
+   提交后 5s 内与目标不符的位置回报视为 seek 前的旧值，不回写。
 
 **何时才换二进制格式(YAGNI 闸门):** 仅当 profiling 实测 JSON 成为瓶颈——对纯控制面流量不会发生。现在上 msgpack/protobuf 是纯负债:bridge 侧还用不了(编译扩展),白白牺牲可调试性。
 
