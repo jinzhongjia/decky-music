@@ -3,6 +3,8 @@ use std::cell::Cell;
 
 struct FakeUpstream {
     lists: Vec<Value>,
+    // 网易云第一页在 WINDOW 之外额外附带的「我喜欢的音乐」(不占偏移)
+    liked: Option<Value>,
     requests: Cell<usize>,
     bytes: Cell<usize>,
 }
@@ -19,15 +21,29 @@ impl FakeUpstream {
                     })
                 })
                 .collect(),
+            liked: None,
             requests: Cell::new(0),
             bytes: Cell::new(0),
+        }
+    }
+
+    fn with_liked(count: usize) -> Self {
+        let liked = json!({
+            "id": 1_000_000, "name": "liked", "specialType": LIKED_SPECIAL_TYPE,
+            "creator": { "userId": 42 }, "trackCount": 2906, "playCount": 0,
+        });
+        Self {
+            liked: Some(liked),
+            ..Self::new(count)
         }
     }
 
     async fn fetch(&self, offset: usize) -> Result<Window, String> {
         tokio::task::yield_now().await;
         let end = (offset + WINDOW).min(self.lists.len());
-        let body = json!({ "playlist": &self.lists[offset.min(end)..end], "more": end < self.lists.len() });
+        let extra = self.liked.iter().filter(|_| offset == 0);
+        let page: Vec<&Value> = extra.chain(&self.lists[offset.min(end)..end]).collect();
+        let body = json!({ "playlist": page, "more": end < self.lists.len() });
         self.requests.set(self.requests.get() + 1);
         self.bytes
             .set(self.bytes.get() + serde_json::to_vec(&body).unwrap().len());
@@ -35,8 +51,9 @@ impl FakeUpstream {
     }
 
     fn expected(&self, created: bool, offset: usize, limit: usize) -> Vec<Value> {
-        self.lists
+        self.liked
             .iter()
+            .chain(&self.lists)
             .filter(|p| (p["creator"]["userId"] == 42) == created)
             .skip(offset)
             .take(limit)
@@ -218,4 +235,36 @@ async fn concurrent_classified_requests_share_the_same_windows() {
     assert_eq!(created, upstream.expected(true, 0, 30));
     assert_eq!(favorite, upstream.expected(false, 0, 30));
     assert_eq!(upstream.requests.get(), 1);
+}
+
+/// 歌单满一窗口的账号:第一页是「我喜欢的音乐」+ WINDOW 条普通歌单(实测 101 条),
+/// 它归入自建,翻页不重复也不遗漏(修复前整页判为异常，自建 / 收藏都报「音乐源出错」)。
+#[tokio::test]
+async fn extra_liked_playlist_on_the_first_page_keeps_paging_aligned() {
+    let upstream = FakeUpstream::with_liked(257);
+    let mut cache = PlaylistCache::default();
+    for (created, offset) in [(true, 0), (true, 50), (false, 0), (false, 100), (true, 80)] {
+        assert_eq!(
+            cache
+                .page(created, offset, 50, |at| upstream.fetch(at))
+                .await
+                .unwrap(),
+            upstream.expected(created, offset, 50)
+        );
+    }
+    let first = cache.page(true, 0, 1, |at| upstream.fetch(at)).await;
+    assert_eq!(first.unwrap()[0]["name"], "liked");
+    assert_eq!(upstream.requests.get(), 3);
+}
+
+#[test]
+fn only_more_regular_playlists_than_a_window_is_an_invalid_page() {
+    let regular = |id: usize| json!({ "id": id, "creator": { "userId": 42 } });
+    let liked = json!({ "id": 0, "specialType": LIKED_SPECIAL_TYPE, "creator": { "userId": 42 } });
+    let with_liked: Vec<Value> = std::iter::once(liked)
+        .chain((1..=WINDOW).map(regular))
+        .collect();
+    assert!(Window::from_body(&json!({ "playlist": with_liked, "more": true }), "42").is_ok());
+    let overflow: Vec<Value> = (1..=WINDOW + 1).map(regular).collect();
+    assert!(Window::from_body(&json!({ "playlist": overflow, "more": true }), "42").is_err());
 }

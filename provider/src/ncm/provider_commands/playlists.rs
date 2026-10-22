@@ -18,6 +18,8 @@ pub(super) const WINDOW: usize = 100;
 const MAX_WINDOWS: usize = 32;
 const MAX_BYTES: usize = 2 * 1024 * 1024;
 const TTL: Duration = Duration::from_secs(60);
+/// 网易云在第一页的 limit 之外额外附上用户自己的「我喜欢的音乐」,它不占分页偏移。
+const LIKED_SPECIAL_TYPE: i64 = 5;
 
 struct Entry {
     created: bool,
@@ -33,7 +35,12 @@ pub(super) struct Window {
 impl Window {
     fn from_body(body: &Value, uid: &str) -> Result<Self, ()> {
         let raw = body["playlist"].as_array().ok_or(())?;
-        if raw.len() > WINDOW {
+        // 只数普通歌单:歌单满一窗口的账号第一页是 WINDOW + 1 条,不是上游无视 limit 的异常页
+        let regular = raw
+            .iter()
+            .filter(|p| p["specialType"] != LIKED_SPECIAL_TYPE)
+            .count();
+        if regular > WINDOW {
             return Err(());
         }
         let entries: Arc<[Entry]> = raw
