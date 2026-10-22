@@ -21,6 +21,8 @@ type State = {
   playing: boolean;
   posSec: number;
   wallMs: number;
+  // Uncommitted gamepad scrub target; the bar shows it instead of the live position.
+  scrubTarget: number | null;
   mode: PlayMode;
   queueMode: QueueMode;
   volume: number;
@@ -30,6 +32,7 @@ const initialState: State = {
   playing: false,
   posSec: 0,
   wallMs: 0,
+  scrubTarget: null,
   mode: "list_loop",
   queueMode: "normal",
   volume: 0.8,
@@ -39,7 +42,17 @@ const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((listener) => listener());
 const TOAST_THROTTLE_MS = 30_000;
 const VOLUME_DEBOUNCE_MS = 150;
+// A held direction repeats faster than the player can seek a stream: preview locally and send
+// one seek once input pauses. Afterwards, reports far from the target predate the seek.
+const SEEK_COMMIT_MS = 500;
+const SEEK_SETTLE_MS = 5000;
+const SEEK_TOLERANCE_S = 2;
 let volumeTimer: number | undefined;
+let seekTimer: number | undefined;
+// Scrubbing while committedAt is unset; then the sent seek until a report confirms it.
+// paused: the scrub turned continuous and paused playback, so committing resumes it.
+let scrub: { trackId: string; target: number; committedAt?: number; paused?: boolean } | null =
+  null;
 let unsubscribe: (() => void) | undefined;
 let active = false;
 let generation = 0;
@@ -59,15 +72,41 @@ function toastError(code: string, body: string) {
   }
 }
 
+const livePos = () =>
+  state.playing ? state.posSec + (Date.now() - state.wallMs) / 1000 : state.posSec;
+
+// Reports queued before the seek ran (earlier seeks, periodic anchors) would drag the bar back.
+function predatesSeek(pos: number) {
+  if (!scrub) return false;
+  if (scrub.committedAt === undefined) return true;
+  const elapsed = Date.now() - scrub.committedAt;
+  const expected = scrub.target + (state.playing ? elapsed / 1000 : 0);
+  if (elapsed < SEEK_SETTLE_MS && Math.abs(pos - expected) > SEEK_TOLERANCE_S) return true;
+  scrub = null; // the seek landed (or never will): follow the player again
+  return false;
+}
+
+// The target belongs to a track that is gone: never commit it, never hold reports for it.
+function dropScrub() {
+  clearTimeout(seekTimer);
+  seekTimer = undefined;
+  scrub = null;
+  state.scrubTarget = null;
+}
+
 function receivePlayer(e: PlayerEvent) {
   if (e.type === "playing" || e.type === "paused" || e.type === "unloaded") {
     revisions.playback++;
     state.playing = e.type === "playing";
-    state.posSec = e.data.pos;
-    if (e.type === "playing") state.wallMs = e.data.wall_ms;
+    if (!predatesSeek(e.data.pos)) {
+      state.posSec = e.data.pos;
+      if (e.type === "playing") state.wallMs = e.data.wall_ms;
+    }
   } else if (e.type === "ended" || e.type === "error") {
     revisions.playback++;
     state.playing = false;
+    // A failed or finished seek: every later report is the real position again.
+    if (scrub?.committedAt !== undefined) scrub = null;
     if (e.type === "error") {
       const message = errorText(e.data.code) || t("playError");
       reportError(message);
@@ -75,6 +114,7 @@ function receivePlayer(e: PlayerEvent) {
     }
   } else if (e.type === "track") {
     revisions.track++;
+    if (e.data.song?.id !== state.current?.id) dropScrub();
     state.current = e.data.song;
     if (!e.data.song) {
       revisions.playback++;
@@ -122,6 +162,7 @@ export function startPlayer() {
   active = true;
   const epoch = ++generation;
   Object.assign(state, initialState);
+  scrub = null;
   lastToast = { code: "", at: 0 };
   unsubscribe = onPlayer((event) => {
     if (active && generation === epoch) receivePlayer(event);
@@ -136,6 +177,7 @@ export function stopPlayer() {
   generation++;
   clearTimeout(volumeTimer);
   volumeTimer = undefined;
+  dropScrub();
   hydrating = false;
   unsubscribe?.();
   unsubscribe = undefined;
@@ -186,13 +228,58 @@ export const nextTrack = () => action(() => api.nextTrack());
 export const prevTrack = () => action(() => api.prevTrack());
 export const togglePlay = () => action(() => (state.playing ? api.pause() : api.resume()));
 
-export function seek(sec: number) {
+/** Explicit jump: optimistic position, one seek, then hold reports that predate it. */
+export function seek(sec: number, resume = false) {
   if (!active) return;
+  clearTimeout(seekTimer);
+  seekTimer = undefined;
+  scrub = { trackId: state.current?.id ?? "", target: sec, committedAt: Date.now() };
+  state.scrubTarget = null;
   revisions.playback++;
   state.posSec = sec;
   state.wallMs = Date.now();
   notify();
-  void action(() => api.seek(sec));
+  void action(async () => {
+    await api.seek(sec);
+    if (resume) await api.resume();
+  });
+}
+
+/** Gamepad scrub step: moves a local target (accumulated, never re-based on a lagging report)
+ * and commits a single seek once input pauses for SEEK_COMMIT_MS. A single tap keeps playing;
+ * a second step before the commit means the direction is held, so playback pauses until the
+ * commit seeks and resumes at the target. */
+export function scrubBy(deltaSec: number) {
+  const track = state.current;
+  if (!active || !track || !(track.duration > 0)) return;
+  const s = scrub;
+  const held = s !== null && s.committedAt === undefined && s.trackId === track.id;
+  const from = held ? s.target : livePos();
+  const target = Math.max(0, Math.min(track.duration, from + deltaSec));
+  const paused = held && (s.paused || (state.playing && pauseForScrub()));
+  scrub = { trackId: track.id, target, paused };
+  state.scrubTarget = target;
+  notify();
+  clearTimeout(seekTimer);
+  const epoch = generation;
+  seekTimer = setTimeout(() => {
+    seekTimer = undefined;
+    if (active && generation === epoch) commitScrub();
+  }, SEEK_COMMIT_MS);
+}
+
+function pauseForScrub() {
+  void action(() => api.pause());
+  return true;
+}
+
+/** Commit a pending scrub now (input paused, focus left the bar, page left). */
+export function commitScrub() {
+  const s = scrub;
+  if (!active || !s || s.committedAt !== undefined) return;
+  if (state.current?.id === s.trackId) return seek(s.target, s.paused);
+  dropScrub();
+  notify();
 }
 
 export function setVolume(val: number) {

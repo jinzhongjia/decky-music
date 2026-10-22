@@ -25,10 +25,11 @@ import {
 import { Lyric, LyricLine, PlayMode, api } from "../api";
 import { t } from "../i18n";
 import {
+  commitScrub,
   cycleMode,
   nextTrack,
   prevTrack,
-  seek,
+  scrubBy,
   setVolume,
   togglePlay,
   usePlayer,
@@ -39,6 +40,7 @@ import { fmtTime, theme } from "../ui/theme";
 import { CommentsView } from "./Comments";
 
 const MANUAL_SCROLL_HOLD_MS = 4000; // 手动滚歌词后,恢复自动跟随的静默期
+const SEEK_STEP_SEC = 5; // 进度条每按一下左右的步长
 
 const modeIcon = (m: PlayMode) =>
   m === "shuffle" ? <FaRandom /> : m === "single_loop" ? <FaRedo /> : <FaRetweet />;
@@ -47,8 +49,16 @@ const modeIcon = (m: PlayMode) =>
 // 按键语义照抄 Valve 自家滑块:onGamepadDirection(Valve 原生 prop,decky Focusable 即
 // Valve 组件、可透传)里 LEFT/RIGHT 调值并返回 true —— 返回非 false 即被消费
 // (stopPropagation+preventDefault),焦点不会被导航拽走;其他方向返回 false 放行,
-// 上下键正常离开滑块。repeat 事件不过滤 → 按住连调。
-function ThinBar({ pct, onAdjust }: { pct: number; onAdjust: (dir: -1 | 1) => void }) {
+// 上下键正常离开滑块。repeat 事件不过滤 → 按住连调;离开时回调 onLeave(进度条借此立即提交拖动)。
+function ThinBar({
+  pct,
+  onAdjust,
+  onLeave,
+}: {
+  pct: number;
+  onAdjust: (dir: -1 | 1) => void;
+  onLeave?: () => void;
+}) {
   return (
     <Focusable
       onActivate={() => {}} // 无激活行为的 Focusable 不进焦点树;空 onActivate 使 D-pad 可走到
@@ -57,7 +67,10 @@ function ThinBar({ pct, onAdjust }: { pct: number; onAdjust: (dir: -1 | 1) => vo
           const b = evt?.detail?.button;
           if (b === GamepadButton.DIR_LEFT) onAdjust(-1);
           else if (b === GamepadButton.DIR_RIGHT) onAdjust(1);
-          else return false;
+          else {
+            onLeave?.();
+            return false;
+          }
           return true;
         },
       }}
@@ -107,7 +120,7 @@ function IconBtn({
 }
 
 export function NowPlaying({ comments = false }: { comments?: boolean }) {
-  const { current, playing, posSec, wallMs, mode, queueMode, volume } = usePlayer();
+  const { current, playing, posSec, wallMs, scrubTarget, mode, queueMode, volume } = usePlayer();
   const initialFocus = usePageAutoFocus();
   const [pane, setPane] = useState<"lyric" | "comments">("lyric");
   // 播放时定时刷新(驱动歌词滚动/逐字);暂停不跑,窗口失焦跳过(见 usePlayingTick)
@@ -115,6 +128,8 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
 
   // 换曲回到歌词面(热评是"当前曲"语境)
   useEffect(() => setPane("lyric"), [current?.id]);
+  // 切页 / 返回离开正在播放时,还没提交的拖动立即生效
+  useEffect(() => commitScrub, []);
 
   // 换曲拉歌词(id 变才重拉);useAsync 丢弃旧请求防覆盖新曲
   const lyric = useAsync<Lyric | null>(
@@ -126,7 +141,8 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
     return <div style={{ margin: "auto", color: theme.textDim }}>{t("nothingPlaying")}</div>;
   }
 
-  const posMs = (playing ? posSec + (Date.now() - wallMs) / 1000 : posSec) * 1000;
+  // 拖动中显示本地目标(停手才 seek,见 scrubBy),否则按 wall 插值
+  const posMs = (scrubTarget ?? (playing ? posSec + (Date.now() - wallMs) / 1000 : posSec)) * 1000;
   const dur = current.duration || 0;
 
   return (
@@ -201,7 +217,8 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
         <Focusable flow-children="column" style={{ width: "100%", maxWidth: 300 }}>
           <ThinBar
             pct={dur > 0 ? (posMs / 1000 / dur) * 100 : 0}
-            onAdjust={(d) => dur > 0 && seek(Math.max(0, Math.min(dur, posMs / 1000 + d * 5)))}
+            onAdjust={(d) => scrubBy(d * SEEK_STEP_SEC)}
+            onLeave={commitScrub}
           />
           <div style={{ color: theme.textDim, fontSize: "0.8em", textAlign: "right" }}>
             {fmtTime(posMs / 1000)} / {fmtTime(dur)}
