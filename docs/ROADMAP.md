@@ -6,7 +6,7 @@
 
 ---
 
-## 左侧 Steam 菜单注入栈溢出（#83，静态/单测验证，待真机）
+## 左侧 Steam 菜单注入栈溢出（#83，已真机验证）
 
 - 现象（用户反馈，v1.1.6 + Decky v3.2.10-pre1）：运行几小时后按 STEAM 键打开左侧菜单，Steam UI
   整页报 `RangeError: Maximum call stack size exceeded`，只能 Restart Decky。栈落在插件
@@ -24,7 +24,9 @@
   不逃逸（ErrorBoundary 落到 null）、clone 失败保留原菜单、旧 wrapper 断开、递归在深度上限截断。
   用 v1.1.6 旧实现跑同一 20k 用例会直接
   `RangeError`。
-- 待真机：部署后反复开关左侧菜单 50+ 次并跑长会话，确认入口正常且无 Steam UI 错误页；当前未部署。
+- 真机验证（2026-11-04，Steam Deck / Decky v3.2.10-pre1，侧载 v1.1.6 + 新 dist）：左侧菜单正常显示
+  「音乐」；连续开关菜单 60 次（30 开 / 30 关）无 `RangeError`、无 Steam UI 错误页；
+  点击「音乐」进入 `/music` 推荐页正常；bridge 日志无 WARN/ERROR、无 `menu injection disabled`。
 
 ---
 
