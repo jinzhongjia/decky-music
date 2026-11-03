@@ -26,7 +26,8 @@
   `RangeError`。
 - 真机验证（2026-11-04，Steam Deck / Decky v3.2.10-pre1，侧载 v1.1.6 + 新 dist）：左侧菜单正常显示
   「音乐」；连续开关菜单 60 次（30 开 / 30 关）无 `RangeError`、无 Steam UI 错误页；
-  点击「音乐」进入 `/music` 推荐页正常；bridge 日志无 WARN/ERROR、无 `menu injection disabled`。
+  点击「音乐」进入 `/music` 推荐页正常；游戏运行中（Fallout 76）再连续开关主菜单 40 次
+  （20 开 / 20 关），入口仍正常、无错误页；bridge 日志无 WARN/ERROR、无 `menu injection disabled`。
 
 ---
 
