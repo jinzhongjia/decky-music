@@ -62,6 +62,22 @@
 4. **定时重打**:`setInterval(1s)`。菜单 remount 后父级会用原始 `fe` 重建 element → `fe.type` 被
    还原,需要重打。`disableMenuInjection()`(`onDismount`)清定时器 + 还原 `fe.type`。
 
+### 崩溃隔离(issue #83)
+
+Steam 主菜单的 render 在插件 `Boundary` 之外,注入代码异常会直接显示整个 Steam UI 的错误页。
+因此注入按 **fail-closed** 实现,目标不是"尽量不崩",而是"注入代码没有任何异常能逃进 React":
+
+- `Ie` 包裹只按**原始 `Ie` 引用**缓存;发现 `type.__deckyMusic` 直接返回,禁止 wrapper 再包 wrapper。
+- `fe.type` 仍是普通函数(保持原 FunctionComponent tag);它下面渲染**真正的 React ErrorBoundary**,
+  wrapper / 原始 `fe` / `Ie` 子树里的 render 异常由 React 正常卸载并落到 `null`,不会抛给 Steam 的错误页。
+  **不能**把已挂载的 function fiber 的 type 直接换成 class,否则 React 会按旧 tag 调用 class 并抛
+  `Class constructor ... cannot be invoked without 'new'`。
+- 所有注入 render 都经过 `boundedRender`:硬深度上限 `MAX_RENDER_DEPTH`,超限返回 `null` 并熔断。
+- `injectItem` 的 clone/splice 异常只熔断,返回原始菜单;`injectItem` 自身不负责兜底原始组件异常。
+- 一旦熔断(`fused`),本进程不再注入,并还原 `fe.type`;「音乐」入口消失,但 Steam UI 正常。
+- class component 不做 `apply` 包裹;旧版本残留的、没有 `__deckyMusicOriginal` 的 wrapper 直接
+  替换为空组件断开,避免历史 wrapper 链继续递归。
+
 ### 何时显示:仅「已选音乐源」时
 
 未选音乐源时大屏页无法用,故 `injectItem` 由模块级同步标志 `providerSelected` 门控 —— 为 false 就不

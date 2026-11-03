@@ -6,6 +6,28 @@
 
 ---
 
+## 左侧 Steam 菜单注入栈溢出（#83，静态/单测验证，待真机）
+
+- 现象（用户反馈，v1.1.6 + Decky v3.2.10-pre1）：运行几小时后按 STEAM 键打开左侧菜单，Steam UI
+  整页报 `RangeError: Maximum call stack size exceeded`，只能 Restart Decky。栈落在插件
+  `dist/index.js:2821/2822`，对应 `src/steamMenu.ts` 的 `ieWrapperFor`。
+- 根因：`Ie` 包裹缓存只按“原始 Ie 引用”命中，且 `bc87e01` 删掉了 `__deckyMusic` 早退；Steam 复用
+  `<Ie>` element 时，`fe` 包裹每次渲染都会把已经是 wrapper 的 `ieEl.type` 再包一层。栈深度随菜单
+  渲染次数累积，最终越过 V8 上限。`OrigIe.apply` 又在 try 之外，异常直接升级到 Steam 错误边界。
+- 修复：`ieWrapperFor` 幂等（已是 wrapper 直接返回，并记录 `__deckyMusicOriginal`）；所有注入 render
+  经 `boundedRender`，深度上限 8，超限返回 `null`；`fe.type` 保持普通函数（不可把 function fiber
+  换成 class），其下渲染真正的 React ErrorBoundary，wrapper / 原始组件 / Ie 子树异常由 React 正常卸载
+  为 `null`；`injectItem` 失败返回原始菜单并熔断；
+  一旦熔断永久停止注入并还原 `fe.type`；class component 不做 `apply` 包裹；无 original 指针的旧
+  wrapper 直接替换为空组件断开。正常路径保留左侧入口，异常路径 fail-closed 为“入口消失但不崩 UI”。
+- 回归：`tests/menuInjection.test.mjs` 覆盖同一 element 连续 20k 次渲染不加深 wrapper、原始组件抛异常
+  不逃逸（ErrorBoundary 落到 null）、clone 失败保留原菜单、旧 wrapper 断开、递归在深度上限截断。
+  用 v1.1.6 旧实现跑同一 20k 用例会直接
+  `RangeError`。
+- 待真机：部署后反复开关左侧菜单 50+ 次并跑长会话，确认入口正常且无 Steam UI 错误页；当前未部署。
+
+---
+
 ## 网易云歌单满 100 个时自建 / 收藏整页报「音乐源出错」
 
 - 现象（用户反馈，v1.1.4 正式版日志）：「我的音乐」自建与收藏都显示音乐源出错；日志只有
