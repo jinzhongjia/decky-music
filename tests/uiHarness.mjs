@@ -31,6 +31,32 @@ export function compileUi(output) {
   );
 }
 
+export function compileMenu(output) {
+  execFileSync(
+    join(root, "node_modules", ".bin", "tsc"),
+    [
+      "src/steamMenu.ts",
+      "--outDir",
+      output,
+      "--rootDir",
+      "src",
+      "--target",
+      "ES2020",
+      "--module",
+      "commonjs",
+      "--ignoreConfig",
+      "--strict",
+      "--skipLibCheck",
+      "--esModuleInterop",
+      "--jsx",
+      "react-jsx",
+      "--lib",
+      "ES2020,DOM",
+    ],
+    { cwd: root, stdio: "inherit" }
+  );
+}
+
 export function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => {
