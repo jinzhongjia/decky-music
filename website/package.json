@@ -9,6 +9,6 @@
   },
   "devDependencies": {
     "marked": "^15.0.12",
-    "wrangler": "^4.149.0"
+    "wrangler": "^4.157.0"
   }
 }
