@@ -1,5 +1,5 @@
 // provider app 外壳(共享):首行 = Logo | L1 | 顶层页签 | R1 | 播放状态徽章;内容全宽。
-// 遵循 specs/steam-deck-ui-rules.md「去常驻播放条」「顶栏分层」:
+// 遵循 docs/design/ui-rules.md「去常驻播放条」「顶栏分层」:
 //  - 无底部 MiniPlayer;徽章纯展示(小封面 + EQ,不带歌名——CSS 视口仅 854px,
 //    NCM 五页签下歌名跑马灯会把首行挤形变),不进焦点树;
 //  - 根级 Focusable 接管 L1/R1 切页(onButtonDown)与 Start 盲操播放/暂停(onMenuButton),
@@ -151,7 +151,7 @@ function AppHeader({ name, accent, tabs, activeId, allowInitialFocus, onSelect }
   );
 }
 
-// 页签胶囊:激活态浅底深字(对齐效果图),可聚焦可 A 激活(硬规则:交互元素全可聚焦)。
+// 页签胶囊:激活态浅底深字,可聚焦可 A 激活(硬规则:交互元素全可聚焦)。
 // 常规页面不由页签抢默认焦点；只有当前页面没有可执行控件时才显式作为 fallback。
 function TabPill({
   title,

@@ -1,4 +1,4 @@
-// 歌手详情(独立路由页,P6):圆头像 + 热门歌曲(provider {artist, songs})。
+// 歌手详情(独立路由页):圆头像 + 热门歌曲(provider {artist, songs})。
 // 入口:搜索歌手分类卡片。导航范式同歌单详情(模块级变量 + 真路由)。
 
 import { Navigation } from "@decky/ui";

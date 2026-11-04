@@ -1,5 +1,5 @@
-// 内容页共享原语(P5a 起):Section 小节 / HeroCard 大入口卡 / PlaylistCard 歌单卡 / SongCell 歌曲格。
-// 视觉遵循 specs/steam-deck-ui-rules.md:封面即卡片(小圆角)、细白描边焦点、品牌色只做点缀。
+// 内容页共享原语:Section 小节 / HeroCard 大入口卡 / PlaylistCard 歌单卡 / SongCell 歌曲格。
+// 视觉遵循 docs/design/ui-rules.md:封面即卡片(小圆角)、细白描边焦点、品牌色只做点缀。
 // 网格容器统一 MAINTAIN_X(上下移动不错列)。
 
 import { Focusable, NavEntryPositionPreferences } from "@decky/ui";

@@ -34,7 +34,7 @@ class Playback(PlaybackQueue, PlaybackRadio):
         self.play_mode = play_mode if play_mode in PLAY_MODES else "list_loop"
         self.queue: list[dict] = []  # [{id, media_mid, name, singer, cover, duration}]
         self.index = -1
-        self.mode = "normal"  # normal | radio(P5d 引入电台流)
+        self.mode = "normal"  # normal | radio
         self.playing = False
         self.pos = 0.0  # 最近上报的播放位置(秒)
         self.wall = 0  # 该位置对应墙钟(ms),UI 插值用

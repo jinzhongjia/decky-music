@@ -1,4 +1,4 @@
-//! 内容页数据(P5b):发现页推荐歌单 / 每日推荐 / 歌单曲目。
+//! 内容页数据:发现页推荐歌单 / 每日推荐 / 歌单曲目。
 //! 归一化到共享形状(Playlist / Song,见 src/api.ts);song_brief 复用 commands.rs。
 
 use ncm_api_rs::Query;
@@ -63,7 +63,7 @@ pub async fn playlist_songs(state: &State, id: u64, args: &Value) -> String {
     .await
 }
 
-/// 榜单列表(P6):NCM 榜单本质是官方歌单,归一化成 Playlist 形状;
+/// 榜单列表:NCM 榜单本质是官方歌单,归一化成 Playlist 形状;
 /// 榜单曲目直接走 playlist_songs(main.rs 里 toplist_songs 别名到它)。
 pub async fn toplists(state: &State, id: u64) -> String {
     let q = maybe_cookie(Query::new(), state.cookie().await);

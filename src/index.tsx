@@ -26,7 +26,7 @@ export default definePlugin(() => {
       <PlaylistDetailPage />
     </Boundary>
   ));
-  // 专辑/歌手详情独立路由(P6,与歌单详情同范式)
+  // 专辑/歌手详情独立路由(与歌单详情同范式)
   routerHook.addRoute(ALBUM_ROUTE, () => (
     <Boundary>
       <AlbumDetailPage />

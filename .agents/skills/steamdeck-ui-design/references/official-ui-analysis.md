@@ -74,7 +74,7 @@ The footer legend belongs to SteamOS.
 ## 7. Anti-patterns
 
 - Persistent left navigation inside `/music`.
-- Bottom fixed MiniPlayer in the target P3 route.
+- Bottom fixed MiniPlayer in the `/music` route.
 - Custom-drawn footer legend.
 - Hover-only menus.
 - Showing account avatars, logout, or settings inside main content when QAM can own them.

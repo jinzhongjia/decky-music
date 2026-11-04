@@ -24,7 +24,7 @@ description: 把"已提交但尚未真机验证"的改动登记成 GitHub issue,
 2. 用下面模板创建 issue;清单只保留本次改动涉及的 `AGENTS.md` 验收项。
 3. 回复 issue 链接,明确写“已提交,真机验证待做”,不要写成已验收。
 4. 验证后勾完清单、附真机截图并关闭 issue。UI 视觉变更还要更新
-   `docs/ui-design/assets/device-screenshots/`,并提示重新渲染展示图。
+   `docs/assets/device-screenshots/`,并提示重新渲染展示图。
 
 ## 模板
 

@@ -1,4 +1,4 @@
-// 二级 Tab(官方库范式,P5e):全宽 Tab 行(带计数徽章)+ 全宽内容区。
+// 二级 Tab(官方库范式):全宽 Tab 行(带计数徽章)+ 全宽内容区。
 // L2/R2 循环切换(顶层已占 L1/R1);Tab 胶囊可聚焦可 A 激活,D-pad 向下进内容区。
 
 import { Focusable, GamepadButton } from "@decky/ui";

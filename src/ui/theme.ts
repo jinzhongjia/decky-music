@@ -1,4 +1,4 @@
-// 大屏 UI 视觉 token(见 docs/ui-design/specs/steam-deck-ui-rules.md)。
+// 大屏 UI 视觉 token(见 docs/design/ui-rules.md)。
 // 近黑底、封面即卡片、2-3px 细白描边焦点、Steam 蓝主交互色;QQ 绿/NCM 红只做点缀。
 
 export const theme = {

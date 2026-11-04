@@ -32,7 +32,7 @@ A Decky plugin is not an ordinary web application with its own browser and Pytho
 
 **Project policy:** decky-music keeps its bridge strictly standard-library-only. Third-party provider libraries and native audio dependencies live in separate executables. This is a deliberate compatibility boundary, not a claim that every Decky plugin requires multiple processes.
 
-Use plugin-specific Python module names. We encountered a real startup failure when `import settings` resolved to the host's `decky_loader.settings` instead of our new file. The implementation is now named [`music_settings.py`](../py_modules/music_settings.py). Add a subprocess import regression that preloads conflicting host modules; a clean local interpreter alone will miss this class of failure.
+Use plugin-specific Python module names. We encountered a real startup failure when `import settings` resolved to the host's `decky_loader.settings` instead of our new file. The implementation is now named [`music_settings.py`](../../py_modules/music_settings.py). Add a subprocess import regression that preloads conflicting host modules; a clean local interpreter alone will miss this class of failure.
 
 The target here is x86-64 SteamOS Game Mode, not exclusively a device branded Steam Deck or an account named `deck`. Existing Steam Deck evidence must not be presented as verification of every other SteamOS device.
 
@@ -61,7 +61,7 @@ Providers may keep process-local authentication state and bounded caches. Keepin
 
 A simple settings plugin may need only the UI and bridge. Introduce another process when isolation, dependencies, or resource ownership justify it, not to imitate a larger project's diagram.
 
-Keep the host-facing facade small. Our [`main.py`](../main.py) exposes a callable allowlist and delegates to [`Bridge`](../py_modules/bridge.py). IPC, settings, supervision, RPC groups, normal queues, and radio behavior are separate responsibilities under `py_modules/`.
+Keep the host-facing facade small. Our [`main.py`](../../main.py) exposes a callable allowlist and delegates to [`Bridge`](../../py_modules/bridge.py). IPC, settings, supervision, RPC groups, normal queues, and radio behavior are separate responsibilities under `py_modules/`.
 
 Split modules along those boundaries. Do not create a generic framework merely to satisfy a line limit, and do not retain obsolete import aliases just to avoid updating tests.
 
@@ -75,7 +75,7 @@ cd decky-music
 pnpm install --frozen-lockfile
 ```
 
-Install the runtime versions declared by [Checks](../.github/workflows/checks.yml), rather than copying an old version list into a new machine setup. The repository also requires Git, SSH, rsync, a Rust toolchain, and an appropriate Docker or rootless Podman environment for compatible builds.
+Install the runtime versions declared by [Checks](../../.github/workflows/checks.yml), rather than copying an old version list into a new machine setup. The repository also requires Git, SSH, rsync, and a Rust toolchain. Rebuilding player/provider for release uses Docker (`scripts/build-rust.sh`); packaging (`scripts/decky-build.sh`) accepts Docker or rootless Podman.
 
 There are three distinct environments:
 
@@ -108,11 +108,11 @@ Define an observable acceptance condition for each slice. Keep changes small eno
 
 ### Frontend to bridge
 
-Keep all callable declarations, shared types, and event subscriptions in one API module. Here that module is [`src/api.ts`](../src/api.ts).
+Keep all callable declarations, shared types, and event subscriptions in one API module. Here that module is [`src/api.ts`](../../src/api.ts).
 
 A TypeScript assertion does not validate runtime data. Validate the event domain, exact variant, object shape, required fields, enum values, nullable objects, and finite numbers **before** calling subscribers. Unknown or malformed events should not mutate state or throw into Steam.
 
-Change both sides of a contract together. Our [callable contract tests](../tests/test_callables.py) keep the frontend declarations, backend methods, and facade allowlist aligned.
+Change both sides of a contract together. Our [callable contract tests](../../tests/test_callables.py) keep the frontend declarations, backend methods, and facade allowlist aligned.
 
 ### Bridge to children
 
@@ -152,7 +152,7 @@ Use deterministic barriers to test the dangerous ordering: hold an old result, p
 
 We found that an upstream Python timeout implementation could handle its own cancellation while leaving the task's cancellation counter set. Treating that counter as proof of user cancellation silently discarded valid QR results.
 
-Our former Python QQ login ran upstream awaits in separate tasks so internal timeout bookkeeping stayed out of the authentication task. The current Rust [QQ backend](../provider/src/qq/auth.rs) aborts the login task on cancellation and still checks an authentication generation before publishing any late result, because cancellation alone does not stop a request that has already completed upstream.
+Our former Python QQ login ran upstream awaits in separate tasks so internal timeout bookkeeping stayed out of the authentication task. The current Rust [QQ backend](../../provider/src/qq/auth.rs) aborts the login task on cancellation and still checks an authentication generation before publishing any late result, because cancellation alone does not stop a request that has already completed upstream.
 
 Do not fix this by indiscriminately clearing cancellation counters or swallowing every `CancelledError`.
 
@@ -222,7 +222,7 @@ Our controller mapping is project-specific:
 
 Separate content height from row stride. For `N` rows with height `h` and gap `g`, the full-list height is `N*h + max(0, N-1)*g`. Do not add an outer flex gap around spacer elements on top of that model.
 
-Our actual row content is 64px, not the earlier 72px estimate. CEF scaling also quantizes fractional gaps, so multiplying the nominal gap can accumulate position errors. [`Windowed.tsx`](../src/ui/Windowed.tsx) calibrates rendered stride on layout changes rather than measuring every scroll frame.
+Song rows (`SongRow`/`Windowed`) are 64px; the queue overlay (`QueueList`) still uses 72px. CEF scaling also quantizes fractional gaps, so multiplying the nominal gap can accumulate position errors. [`Windowed.tsx`](../../src/ui/Windowed.tsx) calibrates rendered stride on layout changes rather than measuring every scroll frame.
 
 Compare virtual windows with a fully rendered reference, including the first/last row and partially visible rows. Then test controller movement across overscan boundaries and appended pages on the device. An arithmetic unit test alone will not detect every CSS or focus problem.
 
@@ -230,7 +230,7 @@ Compare virtual windows with a fully rendered reference, including the first/las
 
 Start module-level stores from plugin initialization and stop them on dismount. Keep unsubscribe functions, clear timers, and fence stale hydration and action failures. A replaced host listener map does not clean up your timers or promises.
 
-Our [plugin entry](../src/index.tsx) owns `startPlayer`/`stopPlayer`; [lifecycle tests](../tests/playerLifecycle.test.mjs) verify restart, stale completion, and debounce behavior.
+Our [plugin entry](../../src/index.tsx) owns `startPlayer`/`stopPlayer`; [lifecycle tests](../../tests/playerLifecycle.test.mjs) verify restart, stale completion, and debounce behavior.
 
 ## 9. Build and deploy the right artifacts
 
@@ -281,7 +281,7 @@ If remote sudo needs a password, provide `DECK_PASS` through the authentication 
 
 **Important:** `deploy.sh` copies existing runtime artifacts; it does not rebuild them. Both the player and the provider must be available. It also clears local `out/`, `dist/`, and `/tmp/decky`, and restarts `plugin_loader`. Do not store hand-authored data in those build locations, and remember that restarting the service affects other loaded plugins too. The full deploy script still uses host sudo; the rootless packaging example is not a rootless deployment command.
 
-Never infer the install directory from the SSH user's home. Our deploy helper discovers it from service configuration and validates the plugin's sandbox owner. Keep the plugin root read-only; grant only the access required by the installation layout, such as archive extraction under `bin/`. Do not use `chmod 777` as a repair strategy.
+Never infer the install directory from the SSH user's home. Our deploy helper discovers it from service configuration and validates the plugin's sandbox owner. Keep the plugin root read-only; grant only the access required by the installation layout: `bin/` for the downloaded executables and `py_modules/` for Python's import cache. Do not use `chmod 777` as a repair strategy.
 
 ## 10. Debug the running Steam UI
 
@@ -352,7 +352,7 @@ Practical CEF lessons:
 
 Use the runtime's `DECKY_PLUGIN_LOG_DIR`; a conventional homebrew path is only a hint. Select the log for the current service session, not an older successful deployment. Inspect `journalctl -u plugin_loader` locally when plugin initialization fails before ordinary RPCs are available, and sanitize anything shared outside the device.
 
-For audio, verify the actual process user, a valid user-owned `XDG_RUNTIME_DIR`, PipeWire availability, selected output, and mute state. Do not create an empty runtime directory as a substitute for a real audio session. [`session_env.py`](../py_modules/session_env.py) documents the project's checks.
+For audio, verify the actual process user, a valid user-owned `XDG_RUNTIME_DIR`, PipeWire availability, selected output, and mute state. Do not create an empty runtime directory as a substitute for a real audio session. [`session_env.py`](../../py_modules/session_env.py) documents the project's checks.
 
 ## 11. Validate failures on the device
 
@@ -385,11 +385,11 @@ Define cleanup before injection. Track exact processes, restore temporary interc
 
 ### Preserve real screenshots
 
-For this project, visual, text, layout, or focus changes require corresponding raw device PNGs under `docs/ui-design/assets/device-screenshots/`. Shared changes require both QQ and NCM coverage. Keep stable names and Git LFS tracking.
+For this project, visual, text, layout, or focus changes require corresponding raw device PNGs under `docs/assets/device-screenshots/`. Shared changes require both QQ and NCM coverage. Keep stable names and Git LFS tracking.
 
 Read the captured images. Reject wrong-provider shells, mixed transition frames, and unintended loading states. A genuine empty account result is valid evidence; do not fabricate content to make the screenshot look populated.
 
-Presentation renders are derived assets, not acceptance evidence. After updating originals, explicitly request regeneration of the corresponding renders. See the [current screenshot register](ui-design/README.md).
+Presentation renders are derived assets, not acceptance evidence. After updating originals, explicitly request regeneration of the corresponding renders. See the [screenshot record](../record/ui-screenshots.md).
 
 ## 12. Automate regression checks
 
@@ -415,7 +415,7 @@ Run local checks once changes settle, then verify the integrated tree. Successfu
 
 ## 13. Release the installer, not just the code
 
-A sideload and a release installation exercise different paths. The release path must cover downloading, checksums, permissions, first-run extraction, startup, and actual behavior.
+A sideload and a release installation exercise different paths. The release path must cover downloading, checksums, permissions, installer unpacking, startup, and actual behavior.
 
 For decky-music:
 
@@ -427,13 +427,13 @@ For decky-music:
 6. Check normal, self-contained/full, and CN variants against their intended manifests and hashes.
 7. Exercise an actual release installation; transferring a ZIP or successfully sideloading is not installer acceptance.
 
-A `remote_binary` archive is downloaded as bytes; extraction is the plugin's responsibility. Validate archive paths, expected executables, permissions, and the sandbox's ability to perform first-run extraction. Never fix ownership failures by making the whole plugin writable.
+`remote_binary` assets are downloaded as single executable files, not archives, and Decky does not unpack them. Verify the downloaded files are executable (the bridge's `chmod` fallback covers a missing execute bit) and never fix ownership failures by making the whole plugin writable.
 
 If binary contents did not change, a zip-only release may intentionally retain the previous binary URLs and hashes. If runtime code changed, reusing old assets is not acceptable. A tag or frontend version bump does not prove the installed executable is current.
 
 **Project delivery policy:** stable releases also deliver all three versioned installers to the confirmed device's Downloads directory and compare remote hashes and sizes. Discover that directory for the target user; do not hardcode `/home/deck/Downloads`. Prereleases do not require this transfer by default. Delivery does not authorize installation or service restart, and an unavailable device must be reported as incomplete delivery rather than silently skipped.
 
-Use the current [release procedure](../.agents/skills/release/SKILL.md) and [release workflow](../.github/workflows/release.yml) for exact mechanics; keep their instructions aligned with current tests and source rather than repeating obsolete troubleshooting assumptions.
+Use the current [release procedure](../../.agents/skills/release/SKILL.md) and [release workflow](../../.github/workflows/release.yml) for exact mechanics; keep their instructions aligned with current tests and source rather than repeating obsolete troubleshooting assumptions.
 
 ## 14. Use an evidence-based completion checklist
 
@@ -452,6 +452,6 @@ Before calling a change complete:
 - [ ] Commit, push, issue closure, and release actions match the authorization actually given.
 - [ ] Any blocked criterion is explicitly recorded instead of reported as passed.
 
-For further detail, read the [architecture](DESIGN.md), [queue behavior](QUEUE-BEHAVIOR.md), [device acceptance history](ROADMAP.md), [controller/UI rules](ui-design/specs/steam-deck-ui-rules.md), and the repository's [development rules](../AGENTS.md).
+For further detail, read the [architecture](architecture.md), [queue behavior](queue.md), [device acceptance records](../record/), [controller/UI rules](ui-rules.md), and the repository's [development rules](../../AGENTS.md).
 
-Upstream starting points: [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader), [Decky CLI](https://github.com/SteamDeckHomebrew/cli), [Decky UI](https://github.com/SteamDeckHomebrew/decky-frontend-lib), and the checked-in [device workflow](../.agents/skills/decky-dev/SKILL.md) and [CDP tools](../.agents/skills/steam-cdp/SKILL.md).
+Upstream starting points: [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader), [Decky CLI](https://github.com/SteamDeckHomebrew/cli), [Decky UI](https://github.com/SteamDeckHomebrew/decky-frontend-lib), and the checked-in [device workflow](../../.agents/skills/decky-dev/SKILL.md) and [CDP tools](../../.agents/skills/steam-cdp/SKILL.md).

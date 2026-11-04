@@ -1,6 +1,6 @@
 // 左侧 Steam 主菜单注入「音乐」入口(issue #28)。
 //
-// 机制(见 docs/STEAM-MENU-INJECT.md):Steam 主菜单项由内部组件 `Ie` 内联渲染,`Ie` 由内部
+// 机制(见 docs/design/steam-menu-inject.md):Steam 主菜单项由内部组件 `Ie` 内联渲染,`Ie` 由内部
 // 组件 `fe` 创建;两者都非模块导出,无法持久 afterPatch。故走 live-fiber 包裹 + 定时重打:
 //   1. 按 prop 签名在 fiber 树里找到 `fe`(bLoggedIn/open/popup),把它的 type 换成包裹函数。
 //   2. `fe` 包裹每次渲染,在其输出里找到 `<Ie>`(loggedIn/menuOpen),把 `<Ie>` 的 type 换成

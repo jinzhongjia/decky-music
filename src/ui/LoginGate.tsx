@@ -1,5 +1,5 @@
 // 登录门(共享):整页需要登录态的内容(私人FM / 我的音乐 / 我的)未登录时显示引导空态,
-// 一键拉开 QAM 扫码(登录 UI 只维护 QAM 一份,见 DESIGN §6 职责分离;全屏登录页方案已否决)。
+// 一键拉开 QAM 扫码(登录 UI 只维护 QAM 一份,见 docs/design/ui-rules.md;全屏登录页方案已否决)。
 // 自管登录态:挂载拉取 + 订阅 login done 事件即时放行,无需上层传参。
 
 import { DialogButton, Focusable, Navigation } from "@decky/ui";

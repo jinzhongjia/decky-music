@@ -94,16 +94,16 @@ Agent 注意:开始长时间真机调试前按 skill 挂防休眠阻断器,结�
 
 ## Testing rules
 
-- 每阶段有可观测验收,未过不进下一阶段。
+- 每项改动有可观测验收,未过不继续往下做。
 - player 出声是命门:真实 gamescope 会话里听到声音、`ldd` 只动态依赖 `libasound`。
-- 每个含 UI 阶段:注入错误/杀后端/畸形数据/断网,**Steam UI 不崩不冻**。
+- 每个 UI 改动:注入错误/杀后端/畸形数据/断网,**Steam UI 不崩不冻**。
 
 ### UI 实机截图与渲染图
 
 - 修改 `src/` 中任何会影响视觉、文案、布局或手柄焦点的 UI 代码后，必须在同一次变更中更新
-  `docs/ui-design/assets/device-screenshots/<provider>/` 下对应场景的 Steam Deck 设备原始截图；
+  `docs/assets/device-screenshots/<provider>/` 下对应场景的 Steam Deck 设备原始截图；
   共享 UI 变更需要同步更新 QQ / NCM 两端所有受影响截图。
-- 实机截图是当前 UI 效果的事实源；`docs/ui-design/assets/device-renders/` 是基于实机截图生成的
+- 实机截图是当前 UI 效果的事实源；`docs/assets/device-renders/` 是基于实机截图生成的
   展示图，不能代替真机验收，也不能用历史设计图或旧渲染图冒充当前实现。
 - 图片文件名保持稳定，并由 Git LFS 追踪。新增场景时使用可读的稳定名称，避免把日期或随机后缀写进文件名。
 - 更新实机截图后，必须明确提示用户使用最新实机截图重新渲染对应的实机渲染图；重渲染完成前，
@@ -179,35 +179,21 @@ Rust 两端共用 `wire` crate(错误码 `ErrorCode`、`LogLevel`、请求解析
 QQ 后端的参数校验在 `provider/src/qq/args.rs`。改协议时 bridge、`wire`、player、provider + `src/api.ts` 的
 `PlayerEvent`/`LoginEvent`/`ProviderEvent` 必须同步。协议模块配套单测(`tests/`、Rust `#[cfg(test)]`)。
 
-要点:
-- **request id**:bridge 递增生成,当前已支持多请求同时在途;[`Conn.request` / `_read_loop`](py_modules/ipc.py)
-  通过 `pending[id] -> Future` 匹配响应,不依赖响应到达顺序,无主的迟到响应丢弃。
-  写锁只保护一帧写入;domain 事件由 `_events` / `_pump_events` 独立按到达顺序消费,不内联阻塞读循环。
-  连接生命周期回归见 [`tests/test_child_death.py`](tests/test_child_death.py) 的 `TestConnDeath`、`TestStaleDisconnect`。
-- **错误码**:失败必带稳定 `error.code`(供前端 i18n),`message` 只作安全 fallback。第三方库原始错误
-  **不透 UI、不原样落日志**;前端 `errorText(code)` 命中已知码 → 本地化，否则显示安全的通用错误。
-- **两种超时不可混用**:`timeout` 只由 bridge 产出,表示通道不可用或等待子进程响应超时(请求等待上限 30s);
-  `upstream_timeout` 由 provider 产出，表示上游或整条命令预算耗尽。NCM 整条命令 25s、单段最多 15s 且服从剩余预算。
-  [`Playback._play_index`](py_modules/playback.py) 对 `song_url` 的 `upstream_timeout` 退避 0.5s 后
-  **原地重试同一首一次**,不因首次抖动顺延。重试仍返回 `upstream_timeout` 时,由 `FUSE_ERRORS`
-  硬熔断报错,不再试下一首;若错误码变化,按对应错误分类处理。`SOFT_FUSE_ERRORS` 仅包含 `fetch_failed`,
-  不是跨两首歌累计 `upstream_timeout`。回归见 [`tests/test_playback_retries.py`](tests/test_playback_retries.py)
-  的 `TestUpstreamTimeoutRetriesSameSong`(瞬时恢复、持续超时不跳歌、电台重试)。
-- **红线延续**:`message` / 日志都不得含 URL(限时 token)/ cookie / credential。
-- 前端订阅先按 player/login/provider 的具体事件类型校验 payload，拒绝数组、缺字段、非法枚举及非有限数值；畸形事件不调用订阅者。
-- **断流后从中断处接上**:`stream.rs` 已按字节位置 Range 续传;它退避重试仍无进展而判死时,
-  bridge 收到 player error 会置 `_loaded=False` 并记下 `_resume_at`,下次 `resume()` 重新加载
-  并 seek 回中断处。seek 失败降级从头播,绝不让「按播放键」变成报错。
-- **可取消拉流**：player 首开每次最多 10s、最多两次加 1s 退避；正文无整曲总时限。新 load/stop/drop 取消并回收旧 HTTP 任务，活动加载上限为 2；旧代次的音频事件不得更新当前状态。
-- **store 生命周期**：`startPlayer`/`stopPlayer` 由插件初始化/卸载调用，退订事件、清除音量与进度提交 timer，并失效在途 hydrate/错误回调。
-- **拖动进度只提交一次**：手柄左右键只在前端移动目标(`scrubBy`),停手 500ms 或离开进度条 / 页面时才发一次 `seek`。
-  提交前出现第二步即视为持续拖动：先暂停，提交时 seek 后续播；单次快进不暂停。提交后 5s 内与目标相差超过 2s 的
-  位置回报是 seek 之前的旧位置，不回写进度条(`src/player/usePlayer.ts`)。
-- **播放错误双通道上报**:插件 UI 内的 `ErrorBanner` + Steam 系统 toast。播放出错时用户
-  多半不在插件界面(在玩游戏),只有横幅等于没提示。见 `src/player/usePlayer.ts`。
+并发、超时、错误码、取消等细节见 [`docs/design/protocol.md`](docs/design/protocol.md);拖动进度、拉流取消、
+store 生命周期见 [`docs/design/performance.md`](docs/design/performance.md);断流恢复与队列语义见
+[`docs/design/queue.md`](docs/design/queue.md)。必须遵守的红线:
+
+- **两种超时不可混用**:`timeout` 只由 bridge 产出(通道不可用或等待子进程超时);`upstream_timeout` 由 provider 产出(上游或命令预算耗尽)。
+- **错误码**:失败必带稳定 `error.code`;第三方库原始错误不透 UI、不原样落日志。
+- `message` / 日志都不得含 URL(限时 token)/ cookie / credential。
 
 ## Documentation rules
 
+- 文档分三类,结构见 [`docs/README.md`](docs/README.md):`docs/design/` 写系统现在是什么和为什么,随代码原地修改;
+  `docs/plan/` 写还要做什么,做完即删除;`docs/record/` 写发生过什么和怎么验证的,只追加。
+- 文档和代码注释不使用阶段代号(如 P0、F1)和“阶段 / 里程碑 / 一期”这类词,指代某项工作时直接写功能名。
+  design / plan 也不写“本轮 / 早期 / 修订 / 历史”。`tests/test_docs.py` 机械校验用词和相对链接。
+- 真机验证结果写入 `docs/record/` 对应主题;未完成事项写入 `docs/plan/`,不混进 design。
 - 代码里用 `ponytail:` 注释标记刻意的简化 / 延后项及其升级路径。
 
 ## Release workflow
@@ -218,7 +204,7 @@ QQ 后端的参数校验在 `provider/src/qq/args.rs`。改协议时 bridge、`w
 ## Agent behavior
 
 * 仅在明确要求时,才能 `git commit` 或 `git push`。
-* ./docs/DESIGN.md 里有详细的设计文档,请在开发前仔细阅读。
+* `docs/design/` 里有详细的设计文档,请在开发前阅读相关部分,入口是 `docs/design/architecture.md`。
 * 如果有任何不清楚的地方,请在开发前提出问题,不要在开发中途才提出。
 * 根据需要更新我们的设计文档,并在 PR 中附上更新的内容。
 * 在重新部署前需要经过用户同意，严禁在未经用户同意的情况下重新部署。

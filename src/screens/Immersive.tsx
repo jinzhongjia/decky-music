@@ -1,4 +1,4 @@
-// 沉浸电台播放器(P5d,共享骨架;效果图 qq-ui/06 / ncm-ui/03):
+// 沉浸电台播放器(共享骨架):
 // 大封面居中 + 曲名/歌手 + 进度 + 三主操作(红心 / 播放暂停 / 垃圾桶或下一首)。
 // 电台无上一首。Y/X 局部覆盖并同帧改图例(spec 硬规则):Y=红心;X=垃圾桶(NCM)/下一首(QQ)。
 // QQ 智能电台走独立路由(openRadioPage);NCM 私人FM 作页签内容(apps/ncm/FM.tsx)。
@@ -85,7 +85,7 @@ export function Immersive({ title, trash }: { title: string; trash: boolean }) {
   // 同 NowPlaying:播放时定时刷新进度,窗口失焦跳过(见 usePlayingTick)
   const tickRef = usePlayingTick<HTMLDivElement>(playing, 500);
 
-  // 换曲/重进:拉当前曲红心态点亮(bridge 会话记忆;跨会话种子同步 P6)
+  // 换曲/重进:拉当前曲红心态点亮(bridge 持有红心集合,启动 / 登录 / 切源后从服务器补种)
   useEffect(() => {
     let alive = true;
     setLiked(false);

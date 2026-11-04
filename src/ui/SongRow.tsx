@@ -1,5 +1,5 @@
 // 歌曲行(共享原语):封面 + 歌名 + VIP 徽标 + 歌手·专辑 + 时长。Focusable(手柄 A 触发)。
-// 搜索结果 / 歌单等列表复用。onMenu:X 键上下文菜单(P4,入队操作),图例随焦点同步。
+// 搜索结果 / 歌单等列表复用。onMenu:X 键上下文菜单(入队操作),图例随焦点同步。
 
 import { Focusable } from "@decky/ui";
 
@@ -20,7 +20,7 @@ export const songListStyle: React.CSSProperties = {
   overflowY: "auto",
 };
 
-/** 一列歌曲行:A = 以整列建队并定位该曲(QUEUE-BEHAVIOR §2),X = 入队菜单。
+/** 一列歌曲行:A = 以整列建队并定位该曲(docs/design/queue.md §2),X = 入队菜单。
  *  空/加载态由调用方渲染 —— 列表页居中、详情页贴顶,排版不同不强行统一。 */
 export function SongRows({
   songs,

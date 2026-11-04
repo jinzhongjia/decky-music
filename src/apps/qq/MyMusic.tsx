@@ -1,4 +1,4 @@
-// QQ 我的音乐(P5e,效果图 qq-ui/04):资产共骨 AssetTabs。
+// QQ 我的音乐:资产共骨 AssetTabs。
 // Tab:我喜欢 / 自建歌单 / 收藏歌单(最近播放待 provider 实装,不建空 tab)。需登录。
 
 import { api } from "../../api";

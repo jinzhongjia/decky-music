@@ -215,7 +215,7 @@ class TestQueueEdit(unittest.TestCase):
 
 
 class TestSongsToItems(unittest.TestCase):
-    """bridge 边界映射:provider Song 形状(mid)→ 队列项形状(id)。P5d 电台回归。"""
+    """bridge 边界映射:provider Song 形状(mid)→ 队列项形状(id)。电台回归。"""
 
     def test_maps_mid_to_id_and_filters_junk(self):
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
