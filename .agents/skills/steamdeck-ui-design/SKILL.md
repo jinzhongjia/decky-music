@@ -11,11 +11,10 @@ Use this project-specific skill for decky-music UI work.
 
 Read these before changing UI behavior:
 
-- `docs/DESIGN.md` §6: architecture-level UI constraints.
-- `docs/ui-design/specs/steam-deck-ui-rules.md`: shared visual, focus, button, Footer Legend, and host-safety contract.
-- `docs/ui-design/specs/qq-ui.md`: QQ provider page rules.
-- `docs/ui-design/specs/ncm-ui.md`: NCM provider page rules.
-- `docs/ROADMAP.md`: current P3+ implementation order.
+- `docs/design/ui-rules.md`: architecture-level UI constraints plus the shared visual, focus, button, Footer Legend, and host-safety contract.
+- `docs/design/ui-qq.md`: QQ provider page rules.
+- `docs/design/ui-ncm.md`: NCM provider page rules.
+- `docs/plan/backlog.md`: remaining UI work.
 
 ## Core layout contract
 

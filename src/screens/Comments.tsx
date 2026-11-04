@@ -1,5 +1,5 @@
-// 热评视图(P5f,NCM;效果图 ncm-ui/07):正在播放页 X 键在歌词/热评间切换时挂载。
-// 行:头像 + 昵称/时间 + 内容 + 点赞数。点赞快捷键(comment_like)留 P6。
+// 热评视图(NCM):正在播放页 X 键在歌词/热评间切换时挂载。
+// 行:头像 + 昵称/时间 + 内容 + 点赞数。
 
 import { Focusable, GamepadButton } from "@decky/ui";
 import { useRef } from "react";

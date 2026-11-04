@@ -1,5 +1,4 @@
-// 网易云音乐 app。页签:发现(默认)/ 私人FM / 搜索 / 我的 / 正在播放(specs/ncm-ui.md)。
-// 热评(P5f)待做。
+// 网易云音乐 app。页签:发现(默认)/ 私人FM / 搜索 / 我的 / 正在播放(docs/design/ui-ncm.md)。
 
 import { t } from "../../i18n";
 import { usePlayer } from "../../player/usePlayer";

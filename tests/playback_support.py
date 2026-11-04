@@ -1,4 +1,4 @@
-"""playback 队列编辑单测(P4):插入/移除的索引账目、清空空态、持久化回调。
+"""playback 队列编辑单测:插入/移除的索引账目、清空空态、持久化回调。
 
 decky 是 Decky 运行时注入的模块,测试里打桩;player/provider 用假 Conn(鸭子类型)。
 运行:python -m unittest tests/test_playback.py

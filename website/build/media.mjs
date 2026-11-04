@@ -1,4 +1,4 @@
-// 媒体流水线:把 docs/ui-design 下的实机截图 / 实机渲染图转成网页用的 WebP。
+// 媒体流水线:把 docs/assets 下的实机截图 / 实机渲染图转成网页用的 WebP。
 // 产物缓存在 .cache/media(按源文件 mtime 判断是否需要重做),再复制进 dist/media。
 // 依赖本机 libvips 的 `vips` 命令;源图是 Git LFS 文件,需先 `git lfs pull`。
 
@@ -43,7 +43,7 @@ export const RENDERS = [
   ["ncm", "12-my-fav", "网易云 · 我的", "NetEase · My music"],
 ];
 
-const ASSETS = "docs/ui-design/assets";
+const ASSETS = "docs/assets";
 
 // 截图存在才进画廊:QQ 侧没有 13/16 场景,两端数量本就不同
 export function screenshotsOf(root, provider) {

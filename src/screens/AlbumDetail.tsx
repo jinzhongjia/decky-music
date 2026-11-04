@@ -1,4 +1,4 @@
-// 专辑详情(独立路由页,P6):封面 + 曲目(provider {album, songs})。
+// 专辑详情(独立路由页):封面 + 曲目(provider {album, songs})。
 // 入口:搜索专辑分类卡片。导航范式同歌单详情(模块级变量 + 真路由)。
 
 import { Navigation } from "@decky/ui";

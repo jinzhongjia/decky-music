@@ -42,6 +42,6 @@ pnpm deploy         # 构建 + wrangler deploy（首次会要求 wrangler login�
 
 ## 内容更新
 
-- 新截图：放进 `docs/ui-design/assets/device-screenshots/<provider>/` 后在 `build/media.mjs` 的 `SCENES` 加一行。
-- 性能数字：在 `partials/store-perf.html`，数据来源为 `docs/ROADMAP.md` 的真机 / 本地实测记录；改数字时同步改出处。
+- 新截图：放进 `docs/assets/device-screenshots/<provider>/` 后在 `build/media.mjs` 的 `SCENES` 加一行。
+- 性能数字：在 `partials/store-perf.html`，数据来源为 `docs/record/performance.md` 的真机 / 本地实测记录；改数字时同步改出处。
 - 版本号、发布日期、包体大小、更新日志由 `/api/releases` 实时填充，发版后无需改网站。

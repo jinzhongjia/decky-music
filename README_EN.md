@@ -19,9 +19,10 @@
 <p align="center">
   <a href="https://decky-music.nvimer.org/?lang=en"><strong>Website</strong></a> ·
   <a href="https://github.com/jinzhongjia/decky-music/releases">Releases</a> ·
-  <a href="docs/DESIGN.md">Architecture</a> ·
-  <a href="docs/ROADMAP.md">Roadmap</a> ·
-  <a href="docs/ui-design/README.md">UI Design and Device Screenshots</a>
+  <a href="docs/design/architecture.md">Architecture</a> ·
+  <a href="docs/README.md">Documentation index</a> ·
+  <a href="docs/design/ui-rules.md">UI Rules</a> ·
+  <a href="docs/assets/device-screenshots/">Device Screenshots</a>
 </p>
 
 Decky Music targets SteamOS Gaming Mode without requiring Steam Deck hardware. It provides a
@@ -36,7 +37,7 @@ in separate processes so network requests, decoding, or backend failures do not 
 
 | QQ Music | NetEase Cloud Music |
 | :---: | :---: |
-| ![QQ Music home](docs/ui-design/assets/device-screenshots/qq/01-home.png) | ![NetEase Cloud Music home](docs/ui-design/assets/device-screenshots/ncm/01-home.png) |
+| ![QQ Music home](docs/assets/device-screenshots/qq/01-home.png) | ![NetEase Cloud Music home](docs/assets/device-screenshots/ncm/01-home.png) |
 
 ## Features
 
@@ -190,7 +191,7 @@ graph LR
   SHA-256 hashes in `package.json` (except for the full offline build, which ships them inside the
   zip).
 
-See [`docs/DESIGN.md`](docs/DESIGN.md) for the full constraints, protocol, and technology decisions.
+See [`docs/design/`](docs/README.md) for the full constraints, protocol, and technology decisions.
 
 ## Local Development
 
@@ -275,18 +276,19 @@ no such device is currently available.
 | `wire/` | Rust implementation of bridge↔child protocol v1, shared by player and provider |
 | `provider/` | Unified Rust source process: QQ Music backend on `QQMusicApi-rs` + NetEase backend on `ncm-api-rs` |
 | `tests/` | Bridge, protocol, settings, and frontend behavior tests |
-| `docs/` | Architecture, roadmap, queue semantics, provider capabilities, and UI specifications |
+| `docs/` | `design/`, `plan/`, and `record/` documents; see [`docs/README.md`](docs/README.md) |
 | `scripts/` | SteamOS-compatible builds, device deployment, and full / CN release packaging |
 | `website/` | Project website (Steam store-page style, deployed on Cloudflare Workers); see `website/README.md` |
 
 ## Design and Development Documentation
 
-- [Architecture and protocol](docs/DESIGN.md)
-- [Feature roadmap and current implementation](docs/ROADMAP.md)
-- [Playback queue semantics](docs/QUEUE-BEHAVIOR.md)
-- [Provider API capability matrix](docs/PROVIDER-APIS.md)
-- [Steam Deck UI specifications and device screenshots](docs/ui-design/README.md)
-- [Steam left-menu injection mechanism](docs/STEAM-MENU-INJECT.md)
+- [Documentation index](docs/README.md)
+- [Architecture](docs/design/architecture.md) · [Protocol](docs/design/protocol.md)
+- [Playback queue semantics](docs/design/queue.md)
+- [Provider API capability matrix](docs/design/provider-apis.md)
+- [Steam Deck UI rules](docs/design/ui-rules.md)
+- [Steam left-menu injection mechanism](docs/design/steam-menu-inject.md)
+- [Backlog](docs/plan/backlog.md) · [Verification records](docs/record/)
 
 ## Contributing
 

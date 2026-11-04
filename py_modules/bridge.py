@@ -44,7 +44,7 @@ class Bridge(Supervision, ProviderRPC, PlaybackRPC):
             auth_retry=self._refresh_credential,
             quality=lambda: self.settings.get("quality", music_settings.DEFAULT_QUALITY),
         )
-        # 恢复上次的普通队列(只存了 id 类字段;不自动开播,见 QUEUE-BEHAVIOR §1.1)
+        # 恢复上次的普通队列(只存了 id 类字段;不自动开播,见 docs/design/queue.md §1.1)
         self.playback.restore(self.settings.get("queue"))
         await self.player.listen()
         self.player.on_event = self._on_player_event

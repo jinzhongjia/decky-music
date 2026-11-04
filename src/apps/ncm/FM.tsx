@@ -1,4 +1,4 @@
-// NCM 私人FM 页签(P5d,效果图 ncm-ui/03):未在电台 → 入口大卡;电台中 → 沉浸播放器。
+// NCM 私人FM 页签:未在电台 → 入口大卡;电台中 → 沉浸播放器。
 // 状态跟随 queue 事件(queueMode),启动成功后自动切换,无需本地状态机。
 
 import { useState } from "react";

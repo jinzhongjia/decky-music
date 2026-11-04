@@ -3,7 +3,7 @@
 //!
 //! 控制红线:所有控制动作(播放/暂停/上下曲/seek/音量/循环)**不在本地直接执行**,而是作为
 //! `{"ev":"player","type":"control",...}` 事件上送 bridge —— bridge 是唯一真相源,与 UI callable
-//! 走同一套命令回路(见 DESIGN §4),避免状态分叉。展示属性(状态/进度/音量)直接读 player 自身
+//! 走同一套命令回路(见 docs/design/architecture.md),避免状态分叉。展示属性(状态/进度/音量)直接读 player 自身
 //! 音频态,不往返 bridge。
 //!
 //! 线程模型:`Server`(zbus)是 Send+Sync,跑在 player 的多线程 tokio 上;共享态用 parking_lot

@@ -13,7 +13,7 @@
 - **循环策略**：支持单曲循环、列表循环、随机播放。
 - **持久化**：随 `settings.json` 落盘，重启 Steam Deck 后可恢复。
 
-普通队列持久化结构为 `"queue": {"items": [{id, media_mid, name, singer, cover, duration}], "index": 3}`。存 id 类字段（歌曲 id + QQ 解析 URL 所需的 media_mid）+ 展示字段（恢复后队列浮层 / 状态徽章直接显示真实信息），键白名单写入，**绝不存解析出的播放 URL（限时 vkey）**；播放时按 id 重新向 provider 解析。写入必须走临时文件 + `os.replace()` 原子替换。
+普通队列持久化结构为 `"queue": {"items": [{id, media_mid, name, singer, cover, duration, max_quality}], "index": 3}`。存 id 类字段（歌曲 id + QQ 解析 URL 所需的 media_mid）+ 展示字段（恢复后队列浮层 / 状态徽章直接显示真实信息），键白名单写入，**绝不存解析出的播放 URL（限时 vkey）**；播放时按 id 重新向 provider 解析。写入必须走临时文件 + `os.replace()` 原子替换。
 
 ### 1.2 电台流模式
 
@@ -39,7 +39,7 @@
 - **普通列表 -> 电台流**：原普通列表被抛弃，进入电台流。
 - **电台流 -> 普通列表**：电台流被丢弃，重新建立静态列表。
 - **跨 provider 切换**：QQ 与 NCM Song ID 体系不通用，切 provider 时队列强制清空并停止播放。
-- **登录态不随切换清除**：`settings.json` 中 `accounts` 按 provider 分 key 存储。切换只决定 spawn provider 时注入哪份 cookie。
+- **登录态不随切换清除**：`settings.json` 中 `accounts` 按 provider 分 key 存储。切换只决定注入 provider 哪份凭证。
 
 ## 3. Bridge 队列控制
 
@@ -47,10 +47,10 @@ bridge 必须处理 player 的 `ended` 事件以决定下一首。协议 v1 事�
 
 自动切歌逻辑：
 
-1. **单曲循环**：`seek(0)` 重新播放当前索引。
+1. **单曲循环**：重新加载当前索引（重新解析 URL 并 `load`），因为 `ended` 后 sink 已空。
 2. **普通列表**：索引 `+1`。到末尾时：
    - 列表循环：索引重置为 `0`。
-   - 随机播放：从随机洗牌后的内部索引取下一首。
+   - 随机播放：每次自动切歌排除当前曲后洗牌候选，按序尝试可播项。
 3. **电台流**：索引 `+1`。若当前已是内存批次倒数第二首，异步调用 provider 对应接口补水。
 
 ### 3.1 队列为空
@@ -58,7 +58,7 @@ bridge 必须处理 player 的 `ended` 事件以决定下一首。协议 v1 事�
 - **触发**：初次安装、跨 provider 切换、用户清空队列。
 - **表现**：Tab 状态徽章显示空态；正在播放页显示“暂无播放”；进度和切歌控件禁用。
 - **拦截**：此时 `Start` 盲操无效，Footer Legend 不展示“播放 / 暂停”为可执行动作。
-- **取消语义（#57）**：清空、空 `play_queue`、空电台及移除最后一曲，在首个 await 前作废旧播放代次并清除已加载/恢复状态。
+- **取消语义**：清空、空 `play_queue`、空电台及移除最后一曲，在首个 await 前作废旧播放代次并清除已加载/恢复状态。
   旧 `song_url`、按需启动或写锁等待结束后都必须复核代次；过期 `load/seek/meta/stop` 不得继续写入。
   已写出的旧 `load` 由后续 stop/new load 的 player 代次失效，不能在旧响应返回时无条件 stop 新歌。
   player 用同一代次锁保护后台 load 的检查及音频入队，与 stop/new load 的代次更新互斥；不跨 HTTP await 持锁。
@@ -75,7 +75,7 @@ bridge 保留当前曲与 `_resume_at`，`resume()` 重载后尝试 seek 回断�
 
 - **已加载**：bridge 把 seek 转给 player。player 对当前音源 seek 后，无论成败都按当前状态回报一次实际位置：
   暂停中发 `paused`，播放中发 `playing`（失败时先发 `seek_failed`，回报 seek 前的位置，不回报目标值）。
-  bridge 与 UI 的进度只从这两类事件更新，所以暂停中拖动也立即同步，不必等恢复播放。
+  bridge 与 UI 的进度从 `playing` / `paused` / `unloaded` 与快照回灌更新，所以暂停中拖动也立即同步，不必等恢复播放。
 - **冷态**（重启回灌后未开播、暂停超过 30 秒释放了 sink、断流、player 崩溃）：player 里没有音源，seek 会被忽略。
   bridge 不再转发，而是把目标记为 `_resume_at`、同步进度并向 UI 发 `paused`；下次 `resume()` 重载后从这里播。
 - `_resume_at` 在加载完成时才取用并清零：冷加载途中拖的进度同样生效；取 URL 失败后再按播放仍从接续点开始。
@@ -103,7 +103,7 @@ bridge 保留当前曲与 `_resume_at`，`resume()` 重载后尝试 seek 回断�
 - 当前单曲卡片仅展示信息，不可聚焦，也不显示无效的 `A 选择 / X 移除` 提示。
 - 标题为“正在收听电台”，辅以“后续歌曲由电台自动推荐”说明。
 - “退出电台”放在次级操作区，执行后清空并关闭浮层；默认焦点在安全的返回按钮上。
-- bridge 对电台模式下的队列编辑 callable（播放队列索引 / 插队 / 追加 / 移除）一律 no-op，避免 UI 快照索引映射到被隐藏的历史 / 未来曲目；只有“清空队列”会退出电台。
+- bridge 对电台模式下的队列编辑 callable（播放队列索引 / 插队 / 追加 / 移除）一律 no-op，避免 UI 快照索引映射到被隐藏的已播 / 未来曲目；只有“清空队列”会退出电台。
 
 读取失败或快照畸形时显示局部错误和重试入口，不把未知字段直接渲染成 React 节点。
 Footer Legend 始终由系统渲染；`B` 关闭后恢复原焦点，原节点消失时由原生导航回退到可用入口。
@@ -112,8 +112,8 @@ Footer Legend 始终由系统渲染；`B` 关闭后恢复原焦点，原节点�
 
 | 状态 | 是否持久化 | 说明 |
 | :--- | :--- | :--- |
-| 普通队列（ids + index） | 是 | 随 `settings.json` 落盘；只存 id，URL 重新解析。 |
-| 电台流内容 | 否 | 动态推荐流存了无意义；只记 `queue_mode: "radio"` 与电台类型。 |
+| 普通队列（items + index） | 是 | 随 `settings.json` 落盘；存 id 类与展示字段，URL 重新解析。 |
+| 电台流内容 | 否 | 动态推荐流存了无意义；电台模式本身也不持久化，进入电台会清空已保存的普通队列。 |
 | 播放模式 / 音量 | 是 | bridge 统一持有。 |
 | 登录态（双 provider cookie） | 是 | 按 provider 分 key，切换 provider 不清除，文件 `chmod 0600`。 |
 | 跨 provider 切换后的队列 | 清空 | Song ID 体系互不通用，无保留意义。 |

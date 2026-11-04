@@ -1,5 +1,5 @@
-// NCM 我的(P5e,效果图 ncm-ui/05):资产共骨 AssetTabs。
-// Tab:我喜欢 / 听歌排行 / 创建歌单 / 收藏歌单(云盘 P6)。需登录(LoginGate 在共骨内)。
+// NCM 我的:资产共骨 AssetTabs。
+// Tab:我喜欢 / 听歌排行 / 自建歌单 / 收藏歌单。需登录(LoginGate 在共骨内)。
 
 import { api } from "../../api";
 import { t } from "../../i18n";

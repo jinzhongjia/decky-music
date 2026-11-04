@@ -1,6 +1,5 @@
-// QQ 推荐页(P5a,效果图 qq-ui/01):智能电台大卡 ×2 + 推荐歌单网格 + 新歌首发网格。
-// 电台卡 P5d(radio 队列模式)前置灰;歌单卡 A = 拉曲目整单入队开播。
-// ponytail: 歌单详情页 P5c 再上,届时歌单卡 A 改进详情。
+// QQ 推荐页:智能电台大卡 ×2 + 推荐歌单网格 + 新歌首发网格。
+// 电台卡打开沉浸电台页(radio 队列模式);歌单卡 A 进详情,X 收藏。
 
 import { Focusable } from "@decky/ui";
 import { FaHeartbeat, FaSatelliteDish } from "react-icons/fa";

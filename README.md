@@ -19,9 +19,10 @@
 <p align="center">
   <a href="https://decky-music.nvimer.org"><strong>官网</strong></a> ·
   <a href="https://github.com/jinzhongjia/decky-music/releases">Releases</a> ·
-  <a href="docs/DESIGN.md">架构设计</a> ·
-  <a href="docs/ROADMAP.md">开发路线图</a> ·
-  <a href="docs/ui-design/README.md">UI 设计与完整实机截图</a>
+  <a href="docs/design/architecture.md">架构设计</a> ·
+  <a href="docs/README.md">文档索引</a> ·
+  <a href="docs/design/ui-rules.md">UI 规则</a> ·
+  <a href="docs/assets/device-screenshots/">完整实机截图</a>
 </p>
 
 Decky Music 面向 SteamOS 游戏模式，不以 Steam Deck 品牌为运行条件。前端采用手柄优先的大屏
@@ -35,7 +36,7 @@ Steam UI。
 
 | QQ 音乐 | 网易云音乐 |
 | :---: | :---: |
-| ![QQ 音乐首页](docs/ui-design/assets/device-screenshots/qq/01-home.png) | ![网易云音乐首页](docs/ui-design/assets/device-screenshots/ncm/01-home.png) |
+| ![QQ 音乐首页](docs/assets/device-screenshots/qq/01-home.png) | ![网易云音乐首页](docs/assets/device-screenshots/ncm/01-home.png) |
 
 ## 功能特性
 
@@ -158,7 +159,7 @@ graph LR
 - 两个外部程序（player、provider）通过 Decky `remote_binary` 下载，并由 `package.json` 中的 SHA-256 校验
   （full 离线包例外：二进制随包分发）。
 
-更完整的约束、协议和技术选型见 [`docs/DESIGN.md`](docs/DESIGN.md)。
+更完整的约束、协议和技术选型见 [`docs/design/`](docs/README.md)。
 
 ## 本地开发
 
@@ -249,19 +250,20 @@ player/provider；修改 `player/`、`provider/` 或 `wire/` 后，必须先运�
 | `wire/` | bridge ↔ 子进程协议 v1 的 Rust 实现，player 与 provider 共用 |
 | `provider/` | 统一 Rust 音源进程：`QQMusicApi-rs` 的 QQ 音乐后端 + `ncm-api-rs` 的网易云后端 |
 | `tests/` | bridge、协议、设置和前端行为测试 |
-| `docs/` | 架构、路线图、队列语义、provider 能力和 UI 规格 |
+| `docs/` | `design/` 设计、`plan/` 计划、`record/` 记录，见 [`docs/README.md`](docs/README.md) |
 | `scripts/` | SteamOS 兼容构建、真机部署，以及 full / CN 发布打包 |
 | `website/` | 项目官网（Steam 商店页风格，Cloudflare Workers 部署），见 `website/README.md` |
 
 ## 设计与开发文档
 
-- [Steam Deck Plugin Development Guide (English)](docs/STEAM-DECK-PLUGIN-DEVELOPMENT-GUIDE.md)
-- [总体架构与协议](docs/DESIGN.md)
-- [功能路线图与当前实现](docs/ROADMAP.md)
-- [播放队列语义](docs/QUEUE-BEHAVIOR.md)
-- [Provider API 能力对照](docs/PROVIDER-APIS.md)
-- [Steam Deck UI 规格与实机截图](docs/ui-design/README.md)
-- [Steam 左侧菜单注入机制](docs/STEAM-MENU-INJECT.md)
+- [文档索引](docs/README.md)
+- [Steam Deck Plugin Development Guide (English)](docs/design/plugin-dev-guide.md)
+- [总体架构](docs/design/architecture.md) · [通信协议](docs/design/protocol.md)
+- [播放队列语义](docs/design/queue.md)
+- [Provider API 能力对照](docs/design/provider-apis.md)
+- [Steam Deck UI 规则](docs/design/ui-rules.md)
+- [Steam 左侧菜单注入机制](docs/design/steam-menu-inject.md)
+- [待办](docs/plan/backlog.md) · [验收记录](docs/record/)
 
 ## 贡献
 

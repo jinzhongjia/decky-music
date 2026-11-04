@@ -1,6 +1,6 @@
 // 歌单/专辑/歌手详情共骨:独立路由全屏框架(与 Page 同规格安全边距)+
 // 封面头(标题/副题/播放全部)+ SongRow 全宽列表。B = Steam 原生路由返回。
-// A 单曲 = 以整列建队定位该曲(QUEUE-BEHAVIOR §2);X = 入队菜单。
+// A 单曲 = 以整列建队定位该曲(docs/design/queue.md §2);X = 入队菜单。
 
 import { DialogButton, Focusable } from "@decky/ui";
 

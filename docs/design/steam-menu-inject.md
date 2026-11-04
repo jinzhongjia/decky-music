@@ -62,7 +62,7 @@
 4. **定时重打**:`setInterval(1s)`。菜单 remount 后父级会用原始 `fe` 重建 element → `fe.type` 被
    还原,需要重打。`disableMenuInjection()`(`onDismount`)清定时器 + 还原 `fe.type`。
 
-### 崩溃隔离(issue #83)
+### 崩溃隔离
 
 Steam 主菜单的 render 在插件 `Boundary` 之外,注入代码异常会直接显示整个 Steam UI 的错误页。
 因此注入按 **fail-closed** 实现,目标不是"尽量不崩",而是"注入代码没有任何异常能逃进 React":
@@ -76,40 +76,26 @@ Steam 主菜单的 render 在插件 `Boundary` 之外,注入代码异常会直�
 - `injectItem` 的 clone/splice 异常只熔断,返回原始菜单;`injectItem` 自身不负责兜底原始组件异常。
 - 一旦熔断(`fused`),本进程不再注入,并还原 `fe.type`;「音乐」入口消失,但 Steam UI 正常。
 - class component 不做 `apply` 包裹;旧版本残留的、没有 `__deckyMusicOriginal` 的 wrapper 直接
-  替换为空组件断开,避免历史 wrapper 链继续递归。
+  替换为空组件断开,避免旧 wrapper 链继续递归。
 
 ### 何时显示:仅「已选音乐源」时
 
 未选音乐源时大屏页无法用,故 `injectItem` 由模块级同步标志 `providerSelected` 门控 —— 为 false 就不
 注入(下次 `Ie` 渲染也不再加,菜单里自然没有「音乐」)。标志来源:`enableMenuInjection` 加载时查一次
 `api.getProvider()`;之后 QAM `pick()` 选源成功即 `setProviderSelected(true)` 通知。选了源后下次开菜单
-即出现。(注:登出不清除已选源,故登出后入口仍在 —— 只在"从未选过源"时隐藏。)
+即出现。(登出不清除已选源,故登出后入口仍在,只在"从未选过源"时隐藏。)
 
 ### 已知局限
 
 - **闪烁窗口**:`fe` 的 element 被父级重建后、下次 retry 命中前(≤1s),「音乐」项会短暂消失。
   可接受(可选增强)。想更稳可缩短 retry 或抬高锚点(代价是更深的下钻)。
-- **Steam 更新脆弱点**:`navID` 串、`fe`/`Ie` 的 prop 签名、`Ae` 的 props 约定任一变化都会让注入
-  静默失效(退回 fallback,不崩)。升级时用 steam-cdp skill 的 `probe-mainmenu.js` 重新核对。
+- **Steam 更新脆弱点**:`fe`/`Ie` 的 prop 签名、`Ae` 的 props 约定、菜单项组件的 `{route,label,icon,onGamepadFocus}` 任一变化都会让注入
+  静默失效(退回 fallback,不崩)。`navID` 不参与注入判定,只用于 CDP 探针定位容器。升级时用 steam-cdp skill 的 `probe-mainmenu.js` 重新核对。
 - **Decky 前端是前置条件**:注入逻辑只有在 Decky 成功导入插件后才会执行。Steam client
   `1784934043` 将 `BFinishedInitStageOne` 改名为 `BFinishedInitBeforeLogin`;Decky `v3.2.6`
   会在导入任何插件前崩溃,表现为 Decky QAM Tab 与「音乐」入口同时消失。新版 Steam 必须使用包含
   官方修复的 Decky `v3.2.8-pre1` 或更高版本。此时不要误改 `fe`/`Ie` 签名；先在
   SharedJSContext 控制台排除宿主初始化异常。
-
-## 踩坑记录:定位插错(第 5 → 第 4)
-
-第一版把「音乐」插到了第 5 个而非第 4,根因是**核对探针在骗人**,值得记:
-
-- 菜单里**并非所有项都有 `route`**:「好友与聊天」「电源」是 `me` 组件、**无 route**;有 route 的
-  (`Ae`)只有 主页/库/商店/媒体/下载/设置。
-- 最初用的核对探针只列**同时有 `route` 和 `label`** 的项,把无 route 的滤掉了 → 看到的是"6 项"的
-  残缺菜单,误以为「媒体前 = 第 4」。真实数组里「好友与聊天」夹在商店与媒体之间,于是"媒体前"实际
-  落到它**之后** = 第 5。(插入代码用的一直是真实数组,错的只是"看不见它、锚点选偏"。)
-- 修法:锚「**商店 `/steamweb` 之后**」(无视中间几个无 route 项),核对改用
-  steam-cdp skill 的 `probe-menu-items.js`(列**所有带 label 的项**,含无 route 的)。
-
-**教训:验证要看完整数组,别用过滤过的子集 —— 量错了还以为对了。**
 
 ## 复验 / 调试
 
@@ -120,5 +106,4 @@ ssh -N -L 8080:localhost:8080 deck@<ip> &
 node .agents/skills/steam-cdp/scripts/cdp.mjs SharedJSContext .agents/skills/steam-cdp/scripts/probe-mainmenu.js
 ```
 
-关注:`navID` 仍是 `MainNavMenuContainer`、菜单项组件仍有 `{route,label,icon,onGamepadFocus}`、
-`fe`/`Ie` 的 prop 签名未变。
+关注:菜单项组件仍有 `{route,label,icon,onGamepadFocus}`、`fe`/`Ie` 的 prop 签名未变;`navID` 只用于探针定位,当前仍应为 `MainNavMenuContainer`。

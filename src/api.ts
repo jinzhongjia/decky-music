@@ -94,7 +94,7 @@ export type UserAssets = {
 export type PlaylistsResult = { ok: boolean; playlists: Playlist[]; error?: string };
 // 榜单卡沿用 Playlist 形状(NCM 榜单即官方歌单;QQ 分类打平归一化)
 export type ToplistsResult = { ok: boolean; toplists: Playlist[]; error?: string };
-// 专辑/歌手(P6:搜索分类 + 详情页;provider brief 归一化)
+// 专辑/歌手(搜索分类 + 详情页;provider brief 归一化)
 export type Album = { id: string; name: string; cover: string; artist: string; count: number };
 export type Artist = { id: string; name: string; avatar: string };
 export type AlbumsResult = { ok: boolean; albums: Album[]; error?: string };
@@ -110,7 +110,7 @@ export type Comment = {
   likes: number;
 };
 export type CommentsResult = { ok: boolean; comments: Comment[]; error?: string };
-// 热搜词(P6;qq get_hotkey / ncm search_hot_detail 归一化):label hot|new|none
+// 热搜词(qq get_hotkey / ncm search_hot_detail 归一化):label hot|new|none
 export type HotKeyword = { keyword: string; label: "hot" | "new" | "none" };
 export type HotSearchResult = { ok: boolean; keywords: HotKeyword[]; error?: string };
 // 归一化歌词(provider 出,QQ / 网易云共用 provider/src/lyric/parse.rs 的解析规则)。
@@ -239,7 +239,7 @@ export type PlaybackState = {
 };
 // 电台种类(provider radio_fetch 的 kind 参数)
 export type RadioKind = "qq_guess" | "qq_radar" | "ncm_fm";
-// 队列快照(Y 浮层用);radio 模式 items 只含当前曲(电台未知感,见 QUEUE-BEHAVIOR §4)
+// 队列快照(Y 浮层用);radio 模式 items 只含当前曲(电台未知感,见 docs/design/queue.md §4)
 export type QueueMode = "normal" | "radio";
 export type QueueState = { mode: QueueMode; index: number; items: TrackInfo[] };
 

@@ -27,7 +27,7 @@ class PlaybackQueue:
         await self._queue_changed()
 
     def snapshot_queue(self) -> dict:
-        """队列快照(浮层用)。radio 模式只暴露当前曲,保持电台未知感(P5d)。"""
+        """队列快照(浮层用)。radio 模式只暴露当前曲,保持电台未知感。"""
         if self.mode == "radio":
             cur = self.queue[self.index] if 0 <= self.index < len(self.queue) else None
             return {
@@ -99,7 +99,7 @@ class PlaybackQueue:
         await self._stop_empty()
 
     async def _stop_empty(self):
-        """清空进入空态:停播 + 通知 UI 当前曲清空(QUEUE-BEHAVIOR §3.1)。"""
+        """清空进入空态:停播 + 通知 UI 当前曲清空(docs/design/queue.md §3.1)。"""
         self._play_gen += 1
         gen = self._play_gen
         self._exit_radio()
@@ -120,7 +120,7 @@ class PlaybackQueue:
                 raise
 
     async def _queue_changed(self):
-        # 结构变化:落盘(只存 id 类字段,见 QUEUE-BEHAVIOR §1.1)+ 广播给浮层刷新
+        # 结构变化:落盘(只存 id 类字段,见 docs/design/queue.md §1.1)+ 广播给浮层刷新
         if self._persist and self.mode == "normal":
             self._persist(self.queue, self.index)
         await self._emit(

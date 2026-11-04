@@ -43,7 +43,7 @@ class ProviderRPC:
                 log("bridge", "own", "debug", "credential refresh failed")
 
     def _kick_seed_liked(self):
-        # 红心种子(P6):后台拉服务器已收藏 id 全集灌 liked_ids,跨会话点亮与服务器一致。
+        # 红心种子:后台拉服务器已收藏 id 全集灌 liked_ids,跨会话点亮与服务器一致。
         # 双端 liked_ids 命令:NCM likelist 全量;QQ get_fav_song 大 num 一发拉全(quaverq 实证)。
         sel = self._selected()
 
@@ -122,7 +122,7 @@ class ProviderRPC:
         return songs_to_items(r.data.get("songs", []))
 
     async def play_radio(self, kind: str) -> dict:
-        # 进电台模式(P5d):拉第一批开播。失败带稳定 error code(not_logged_in 等)供前端 i18n
+        # 进电台模式:拉第一批开播。失败带稳定 error code(not_logged_in 等)供前端 i18n
         r = await self.provider.request("radio_fetch", {"kind": kind})
         if not r.ok:
             code = safe_code(r.error.code) if r.error else "provider_error"
@@ -168,7 +168,7 @@ class ProviderRPC:
         return {"ok": False, "error": code, "liked": cur in self.liked_ids}
 
     async def get_comments(self, song_id: str) -> dict:
-        # 热评(P5f;NCM 专属命令,QQ 调用会得 unknown_cmd → 空列表 + error)
+        # 热评(NCM 专属命令,QQ 调用会得 unknown_cmd → 空列表 + error)
         r = await self.provider.request("comments", {"id": song_id, "limit": 30})
         if r.ok:
             return {"ok": True, "comments": r.data.get("comments", [])}
@@ -187,7 +187,7 @@ class ProviderRPC:
     async def _list_cmd(
         self, cmd: str, key: str, limit: int = 50, extra: dict | None = None
     ) -> dict:
-        # 列表类命令统一形状:{ok, <key>: [...], error?}。首页 50 条(翻页 P6)
+        # 列表类命令统一形状:{ok, <key>: [...], error?}。offset 翻页,每页 50 条
         args = {"limit": limit, **(extra or {})}
         r = await self.provider.request(cmd, args)
         # provider 进程没了(崩溃/被杀)时 writer 为 None,request 会立刻短路成 timeout。
@@ -262,7 +262,7 @@ class ProviderRPC:
         return await self._list_cmd("fav_playlists", "playlists", extra={"offset": offset})
 
     async def add_to_playlist(self, playlist_id: str, song_id: str) -> dict:
-        # 收藏到歌单(P6,X 菜单):QQ 传 dirid(add_songs 语义)、NCM 传 pid,由前端按数据形状选
+        # 收藏到歌单(X 菜单):QQ 传 dirid(add_songs 语义)、NCM 传 pid,由前端按数据形状选
         r = await self.provider.request(
             "add_to_playlist", {"playlist_id": playlist_id, "song_id": song_id}
         )

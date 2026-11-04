@@ -84,7 +84,7 @@ class PlaybackRPC:
 
     async def _on_player_event(self, ev: protocol.ChildEvent, origin: ConnectionOrigin):
         # MPRIS 控制意图(桌面媒体键 / 蓝牙耳机按键)与 UI callable 走同一套 bridge 方法 ——
-        # bridge 是唯一真相源(DESIGN §4),不在 player 本地执行,避免状态分叉。其余播放态事件
+        # bridge 是唯一真相源(docs/design/architecture.md),不在 player 本地执行,避免状态分叉。其余播放态事件
         # 照旧交 playback 跟踪 + 转发 UI。
         if not self.player.is_current(origin):
             return

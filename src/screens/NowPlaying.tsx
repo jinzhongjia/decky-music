@@ -45,7 +45,7 @@ const SEEK_STEP_SEC = 5; // 进度条每按一下左右的步长
 const modeIcon = (m: PlayMode) =>
   m === "shuffle" ? <FaRandom /> : m === "single_loop" ? <FaRedo /> : <FaRetweet />;
 
-// 细条滑块(对齐效果图的细进度线,不用 SliderField 的设置项大盒子)。
+// 细条滑块(细进度线,不用 SliderField 的设置项大盒子)。
 // 按键语义照抄 Valve 自家滑块:onGamepadDirection(Valve 原生 prop,decky Focusable 即
 // Valve 组件、可透传)里 LEFT/RIGHT 调值并返回 true —— 返回非 false 即被消费
 // (stopPropagation+preventDefault),焦点不会被导航拽走;其他方向返回 false 放行,
@@ -229,7 +229,7 @@ export function NowPlaying({ comments = false }: { comments?: boolean }) {
               <ThinBar pct={volume * 100} onAdjust={(d) => setVolume(volume + d * 0.05)} />
             </div>
           </div>
-          {/* 电台模式:无上一首、无播放模式(QUEUE-BEHAVIOR §1.2) */}
+          {/* 电台模式:无上一首、无播放模式(docs/design/queue.md §1.2) */}
           <Focusable
             style={{
               display: "flex",
